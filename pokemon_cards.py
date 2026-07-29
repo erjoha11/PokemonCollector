@@ -3,6 +3,7 @@ Fetch Pokémon trading card data (including prices) from the Pokémon TCG API.
 API docs: https://docs.pokemontcg.io/
 """
 
+import logging
 import math
 import time
 from typing import Any
@@ -14,6 +15,8 @@ except ImportError as exc:
 
 BASE_URL = "https://api.pokemontcg.io/v2/cards"
 PAGE_SIZE = 250  # maximum allowed by the API
+
+logger = logging.getLogger(__name__)
 
 
 def get_all_pokemon_cards(
@@ -36,7 +39,7 @@ def get_all_pokemon_cards(
 
     Args:
         api_key:  Optional Pokémon TCG API key.  Without a key the API still
-                  works but is rate-limited to ~1 000 requests/day.
+                  works but is rate-limited to ~1,000 requests/day.
         query:    Optional API query string to filter results, e.g.
                   ``"set.id:base1"`` or ``"name:Pikachu"``.
         max_cards: Stop after collecting this many cards (useful for testing).
@@ -50,6 +53,8 @@ def get_all_pokemon_cards(
 
     Raises:
         requests.HTTPError: If the API returns a non-2xx status code.
+        requests.ConnectionError: If a network connectivity issue occurs.
+        requests.Timeout: If a request exceeds the configured timeout.
     """
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
@@ -63,8 +68,19 @@ def get_all_pokemon_cards(
     total_count: int | None = None
 
     while True:
-        response = requests.get(BASE_URL, headers=headers, params=params, timeout=30)
-        response.raise_for_status()
+        try:
+            response = requests.get(BASE_URL, headers=headers, params=params, timeout=30)
+            response.raise_for_status()
+        except requests.ConnectionError as exc:
+            raise requests.ConnectionError(
+                "Unable to reach the Pokémon TCG API. Check your internet connection."
+            ) from exc
+        except requests.Timeout as exc:
+            raise requests.Timeout(
+                "Request to the Pokémon TCG API timed out. "
+                "Consider increasing the timeout or retrying later."
+            ) from exc
+
         payload = response.json()
 
         cards: list[dict[str, Any]] = payload.get("data", [])
@@ -73,19 +89,23 @@ def get_all_pokemon_cards(
         if total_count is None:
             total_count = payload.get("totalCount", 0)
             total_pages = math.ceil(total_count / PAGE_SIZE)
-            print(f"Fetching {total_count} cards across {total_pages} page(s)…")
+            logger.info("Fetching %d cards across %d page(s)…", total_count, total_pages)
 
         current_page: int = payload.get("page", params["page"])
-        page_size: int = payload.get("pageSize", PAGE_SIZE)
 
-        print(f"  Page {current_page}: retrieved {len(cards)} cards (total so far: {len(all_cards)})")
+        logger.info(
+            "Page %d: retrieved %d cards (total so far: %d)",
+            current_page,
+            len(cards),
+            len(all_cards),
+        )
 
         if max_cards and len(all_cards) >= max_cards:
             all_cards = all_cards[:max_cards]
             break
 
         # Stop when we have fetched every available card
-        if len(all_cards) >= total_count or len(cards) < page_size:
+        if len(all_cards) >= total_count:
             break
 
         params["page"] = current_page + 1
