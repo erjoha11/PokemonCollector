@@ -1,5 +1,5 @@
 /**
- * PokemonCollector — app.js
+ * Pokemon Collector — app.js
  * Manages the Pokemon Trading Card collection stored in localStorage.
  * On first load, seeds the collection from data/collection.json.
  */
