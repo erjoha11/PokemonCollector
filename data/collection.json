@@ -1,0 +1,112 @@
+[
+  {
+    "id": "1",
+    "name": "Charizard",
+    "set": "Base Set",
+    "number": "4/102",
+    "rarity": "Holo Rare",
+    "type": "Fire",
+    "condition": "Near Mint",
+    "quantity": 1,
+    "value": 350.00
+  },
+  {
+    "id": "2",
+    "name": "Pikachu",
+    "set": "Base Set",
+    "number": "58/102",
+    "rarity": "Common",
+    "type": "Electric",
+    "condition": "Mint",
+    "quantity": 3,
+    "value": 5.00
+  },
+  {
+    "id": "3",
+    "name": "Blastoise",
+    "set": "Base Set",
+    "number": "2/102",
+    "rarity": "Holo Rare",
+    "type": "Water",
+    "condition": "Lightly Played",
+    "quantity": 1,
+    "value": 120.00
+  },
+  {
+    "id": "4",
+    "name": "Mewtwo",
+    "set": "Base Set",
+    "number": "10/102",
+    "rarity": "Holo Rare",
+    "type": "Psychic",
+    "condition": "Near Mint",
+    "quantity": 2,
+    "value": 80.00
+  },
+  {
+    "id": "5",
+    "name": "Venusaur",
+    "set": "Base Set",
+    "number": "15/102",
+    "rarity": "Holo Rare",
+    "type": "Grass",
+    "condition": "Moderately Played",
+    "quantity": 1,
+    "value": 70.00
+  },
+  {
+    "id": "6",
+    "name": "Eevee",
+    "set": "Jungle",
+    "number": "51/64",
+    "rarity": "Common",
+    "type": "Colorless",
+    "condition": "Mint",
+    "quantity": 4,
+    "value": 8.00
+  },
+  {
+    "id": "7",
+    "name": "Umbreon",
+    "set": "Neo Discovery",
+    "number": "13/75",
+    "rarity": "Holo Rare",
+    "type": "Darkness",
+    "condition": "Near Mint",
+    "quantity": 1,
+    "value": 200.00
+  },
+  {
+    "id": "8",
+    "name": "Lugia",
+    "set": "Neo Genesis",
+    "number": "9/111",
+    "rarity": "Holo Rare",
+    "type": "Psychic",
+    "condition": "Near Mint",
+    "quantity": 1,
+    "value": 300.00
+  },
+  {
+    "id": "9",
+    "name": "Rayquaza",
+    "set": "EX Dragon",
+    "number": "102/97",
+    "rarity": "Secret Rare",
+    "type": "Dragon",
+    "condition": "Mint",
+    "quantity": 1,
+    "value": 450.00
+  },
+  {
+    "id": "10",
+    "name": "Pikachu VMAX",
+    "set": "Vivid Voltage",
+    "number": "188/185",
+    "rarity": "Secret Rare",
+    "type": "Electric",
+    "condition": "Mint",
+    "quantity": 1,
+    "value": 90.00
+  }
+]

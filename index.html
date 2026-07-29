@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PokemonCollector</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <h1 class="site-title">
+        <span class="pokeball" aria-hidden="true"></span>
+        PokemonCollector
+      </h1>
+      <p class="site-subtitle">Your Personal Trading Card Collection</p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Stats bar -->
+    <section class="stats-bar" aria-label="Collection statistics">
+      <div class="stat">
+        <span class="stat-value" id="stat-total-cards">0</span>
+        <span class="stat-label">Total Cards</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-unique-cards">0</span>
+        <span class="stat-label">Unique Cards</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-total-value">$0.00</span>
+        <span class="stat-label">Est. Value</span>
+      </div>
+      <div class="stat">
+        <span class="stat-value" id="stat-sets">0</span>
+        <span class="stat-label">Sets</span>
+      </div>
+    </section>
+
+    <!-- Toolbar -->
+    <section class="toolbar" aria-label="Search and filter">
+      <input
+        type="search"
+        id="search-input"
+        class="search-input"
+        placeholder="Search by name…"
+        aria-label="Search cards by name"
+      />
+
+      <select id="filter-set" class="filter-select" aria-label="Filter by set">
+        <option value="">All Sets</option>
+      </select>
+
+      <select id="filter-type" class="filter-select" aria-label="Filter by type">
+        <option value="">All Types</option>
+      </select>
+
+      <select id="filter-rarity" class="filter-select" aria-label="Filter by rarity">
+        <option value="">All Rarities</option>
+      </select>
+
+      <button id="btn-add" class="btn btn-primary" aria-label="Add new card">
+        ＋ Add Card
+      </button>
+    </section>
+
+    <!-- Card grid -->
+    <section id="card-grid" class="card-grid" aria-label="Card collection">
+      <!-- Cards are injected here by app.js -->
+    </section>
+
+    <p id="empty-state" class="empty-state" hidden>
+      No cards match your search. Try adjusting your filters or add a new card.
+    </p>
+  </main>
+
+  <!-- Add / Edit Card Modal -->
+  <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" hidden>
+    <div class="modal-backdrop" id="modal-backdrop"></div>
+    <div class="modal-box">
+      <h2 id="modal-title" class="modal-title">Add Card</h2>
+      <form id="card-form" novalidate>
+        <div class="form-grid">
+          <div class="form-group">
+            <label for="f-name">Name <span aria-hidden="true">*</span></label>
+            <input type="text" id="f-name" name="name" required placeholder="e.g. Charizard" />
+          </div>
+          <div class="form-group">
+            <label for="f-set">Set <span aria-hidden="true">*</span></label>
+            <input type="text" id="f-set" name="set" required placeholder="e.g. Base Set" />
+          </div>
+          <div class="form-group">
+            <label for="f-number">Card Number</label>
+            <input type="text" id="f-number" name="number" placeholder="e.g. 4/102" />
+          </div>
+          <div class="form-group">
+            <label for="f-rarity">Rarity <span aria-hidden="true">*</span></label>
+            <select id="f-rarity" name="rarity" required>
+              <option value="">Select rarity…</option>
+              <option>Common</option>
+              <option>Uncommon</option>
+              <option>Rare</option>
+              <option>Holo Rare</option>
+              <option>Ultra Rare</option>
+              <option>Secret Rare</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="f-type">Type <span aria-hidden="true">*</span></label>
+            <select id="f-type" name="type" required>
+              <option value="">Select type…</option>
+              <option>Colorless</option>
+              <option>Darkness</option>
+              <option>Dragon</option>
+              <option>Electric</option>
+              <option>Fairy</option>
+              <option>Fighting</option>
+              <option>Fire</option>
+              <option>Grass</option>
+              <option>Metal</option>
+              <option>Psychic</option>
+              <option>Water</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="f-condition">Condition <span aria-hidden="true">*</span></label>
+            <select id="f-condition" name="condition" required>
+              <option value="">Select condition…</option>
+              <option>Mint</option>
+              <option>Near Mint</option>
+              <option>Lightly Played</option>
+              <option>Moderately Played</option>
+              <option>Heavily Played</option>
+              <option>Damaged</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="f-quantity">Quantity <span aria-hidden="true">*</span></label>
+            <input type="number" id="f-quantity" name="quantity" required min="1" value="1" />
+          </div>
+          <div class="form-group">
+            <label for="f-value">Value (USD)</label>
+            <input type="number" id="f-value" name="value" min="0" step="0.01" placeholder="0.00" />
+          </div>
+        </div>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+        <div class="modal-actions">
+          <button type="button" id="btn-cancel" class="btn btn-secondary">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Card</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
