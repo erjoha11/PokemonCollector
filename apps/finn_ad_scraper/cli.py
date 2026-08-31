@@ -41,8 +41,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  Cards identified: {len(cards)}")
     for card in cards:
         holo = " (holo)" if card.is_holo else ""
+        number = f" #{card.card_number}" if card.card_number else ""
         print(
-            f"    - {card.quantity}x {card.name}{holo} "
+            f"    - {card.quantity}x {card.name}{number}{holo} "
             f"[{card.set_name or 'unknown set'}, {card.condition}] confidence={card.confidence}"
         )
     return 0

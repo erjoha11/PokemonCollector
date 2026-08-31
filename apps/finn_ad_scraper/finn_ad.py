@@ -44,11 +44,12 @@ def fetch_finn_ad(url: str, *, html: Optional[str] = None, use_browser: bool = T
         Pre-fetched page HTML. Pass this in tests to skip network/browser access
         entirely. When omitted, the page is fetched live.
     use_browser:
-        finn.no ad pages are a JS-rendered Next.js app; a plain HTTP GET usually
-        still contains the embedded JSON-LD/meta data we need, but if that fails
-        we fall back to rendering the page with a real (headless) browser via
-        Playwright so client-side content is available too. Set to False to
-        disable the browser fallback (e.g. in constrained environments).
+        finn.no ad pages are a JS-rendered Next.js app whose photo gallery is
+        populated client-side, so by default the page is opened in a real
+        (headless) Chromium browser via Playwright to make sure every photo is
+        present before we scrape it. Set to False to fetch with a plain HTTP
+        GET instead (faster, but may miss photos beyond the JSON-LD cover
+        image, and requires no browser install).
     """
     if html is None:
         html = _fetch_html(url, use_browser=use_browser)
@@ -59,31 +60,18 @@ def fetch_finn_ad(url: str, *, html: Optional[str] = None, use_browser: bool = T
         raise FinnAdFetchError(
             f"Could not find recognizable ad content (JSON-LD or meta tags) at {url}"
         )
+    ad.images = _dedupe_images(ad.images + _extract_gallery_images(soup))
     ad.raw_html = html
     return ad
 
 
 def _fetch_html(url: str, *, use_browser: bool) -> str:
-    try:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
-        resp.raise_for_status()
-        html = resp.text
-        if _looks_complete(html):
-            return html
-    except requests.RequestException:
-        html = ""
+    if use_browser:
+        return _fetch_html_via_browser(url)
 
-    if not use_browser:
-        if html:
-            return html
-        raise FinnAdFetchError(f"Failed to fetch {url} over HTTP and browser fallback is disabled")
-
-    return _fetch_html_via_browser(url)
-
-
-def _looks_complete(html: str) -> bool:
-    """Heuristic: does the raw HTML already carry the ad's structured data?"""
-    return 'application/ld+json' in html or 'og:title' in html
+    resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=20)
+    resp.raise_for_status()
+    return resp.text
 
 
 def _fetch_html_via_browser(url: str) -> str:
@@ -103,6 +91,49 @@ def _fetch_html_via_browser(url: str) -> str:
             return page.content()
         finally:
             browser.close()
+
+
+_FINN_IMAGE_HOST = "images.finncdn.no"
+_IMAGE_SIZE_RE = re.compile(r"/(\d+)w/")
+
+
+def _extract_gallery_images(soup: BeautifulSoup) -> list[str]:
+    """Find every ad photo in the rendered page, not just the JSON-LD cover image.
+
+    finn.no ad pages show a photo gallery/carousel with one <img> per photo;
+    JSON-LD's `image` field often only carries a single cover shot, which
+    would mean missing cards that only appear in the other photos.
+    """
+    images = []
+    for img in soup.find_all("img"):
+        src = img.get("src") or img.get("data-src") or ""
+        if _FINN_IMAGE_HOST in src:
+            images.append(src)
+    return images
+
+
+def _dedupe_images(urls: list[str]) -> list[str]:
+    """Dedupe photo URLs, keeping the highest-resolution variant of each photo.
+
+    finn.no serves the same photo at multiple widths (e.g. .../320w/<id>.jpg
+    and .../1600w/<id>.jpg); without this, the same card photo would be sent
+    to card identification multiple times at different sizes.
+    """
+    best_size: dict[str, int] = {}
+    best_url: dict[str, str] = {}
+    order: list[str] = []
+    for url in urls:
+        if not url:
+            continue
+        key = url.rsplit("/", 1)[-1].split("?")[0]
+        match = _IMAGE_SIZE_RE.search(url)
+        size = int(match.group(1)) if match else 0
+        if key not in best_size:
+            order.append(key)
+        if key not in best_size or size > best_size[key]:
+            best_size[key] = size
+            best_url[key] = url
+    return [best_url[key] for key in order]
 
 
 def _parse_json_ld(soup: BeautifulSoup, url: str) -> Optional[FinnAd]:
