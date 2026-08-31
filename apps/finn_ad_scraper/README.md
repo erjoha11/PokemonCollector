@@ -31,6 +31,6 @@ cards = identify_cards(ad.images, ad_context=f"{ad.title}\n{ad.description}")
 
 ## Testing
 
-Run from the repo root: `python -m pytest finn_ad_scraper`. Tests run
+Run from the repo root: `python -m pytest apps/finn_ad_scraper`. Tests run
 offline against fixture HTML and a fake Claude client — no network, API
 keys, or Playwright browser install required.

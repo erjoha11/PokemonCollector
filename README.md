@@ -1,14 +1,14 @@
 # PokemonCollector
 
-A collection of small apps/functions for buying and collecting Pokemon
-cards. Each app/function lives in its own top-level folder in this repo,
-independently runnable and testable.
+A collection of small apps for buying and collecting Pokemon cards. Each
+app lives in its own folder under `apps/`, independently runnable and
+testable.
 
 ## Apps
 
 | Folder | Status | What it does |
 |---|---|---|
-| [`finn_ad_scraper/`](finn_ad_scraper) | In progress | Opens a finn.no ad, extracts its title/description/price/photos, and identifies the Pokemon cards visible in the photos (via Claude vision). |
+| [`apps/finn_ad_scraper/`](apps/finn_ad_scraper) | In progress | Opens a finn.no ad, extracts its title/description/price/photos, and identifies the Pokemon cards visible in the photos (via Claude vision). |
 
 ## Setup
 

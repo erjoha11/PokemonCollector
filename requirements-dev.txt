@@ -1,2 +1,2 @@
--r finn_ad_scraper/requirements.txt
+-r apps/finn_ad_scraper/requirements.txt
 pytest>=8.0
