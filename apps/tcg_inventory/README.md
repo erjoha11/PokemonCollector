@@ -156,10 +156,15 @@ env vars — nothing here changes local `python app.py` behavior.
 3. **Auth**: Authentication → Users → **Add user** → create yourself an
    email/password. There's no public signup route in this app on purpose
    — you create your own account here, once.
-4. Grab three more values from Settings → API:
+4. Grab two more values from Settings → API:
    - **Project URL** → `SUPABASE_URL`
-   - **anon / public key** → `SUPABASE_ANON_KEY`
-   - **JWT Secret** (further down the same page) → `SUPABASE_JWT_SECRET`
+   - **anon key**, the legacy JWT one (starts with `eyJhbGci...`, under the
+     "Legacy anon, service_role API keys" tab — not the newer
+     `sb_publishable_...` key) → `SUPABASE_ANON_KEY`
+
+   `SUPABASE_JWT_SECRET` is optional (see "How the login works" below) —
+   only set it if the project is still on the legacy HS256 secret
+   (Settings → JWT Keys → "Legacy JWT Secret" tab).
 
 ### 2. Vercel (hosting)
 
@@ -168,9 +173,10 @@ env vars — nothing here changes local `python app.py` behavior.
    (this is a monorepo; Vercel needs to know the app doesn't live at the
    repo root).
 3. **Settings → Environment Variables** → add `DATABASE_URL`,
-   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` (from above),
-   and — if you're also using Dropbox import — `DROPBOX_APP_KEY`,
-   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `DROPBOX_FOLDER`.
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY` (and `SUPABASE_JWT_SECRET` if you
+   grabbed it above), and — if you're also using Dropbox import —
+   `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`,
+   `DROPBOX_FOLDER`.
 4. Deploy. `vercel.json` + `api/index.py` route every request to the same
    FastAPI app (`api/index.py` just re-exports `app` from `app.py` — all
    the actual routes are unchanged).
@@ -183,12 +189,16 @@ env vars — nothing here changes local `python app.py` behavior.
 supabase-js, no client-side JS. `/login` posts email/password, gets back a
 short-lived access token, and stores it in an `httpOnly` cookie. Every
 other route is gated by a middleware (`auth_guard` in `app.py`) that
-verifies the cookie's JWT locally against `SUPABASE_JWT_SECRET` (HS256,
-Supabase's default) — no network round-trip per request. The access token
+verifies the cookie's JWT. Verification tries Supabase's public JWKS
+endpoint first (`/auth/v1/.well-known/jwks.json`) — this is Supabase's
+current default: an asymmetric signing key (e.g. ES256), so the *public*
+key can be published and fetched instead of a shared secret. If a project
+is still on the legacy shared HS256 secret, JWKS won't have a matching
+key and verification falls back to `SUPABASE_JWT_SECRET`. The access token
 expires after Supabase's default (1 hour); there's no silent refresh yet,
 so an expired session just bounces back to `/login`. Auth is skipped
-entirely whenever `SUPABASE_URL`/`SUPABASE_ANON_KEY`/`SUPABASE_JWT_SECRET`
-aren't all set — that's what keeps local `python app.py` login-free.
+entirely whenever `SUPABASE_URL`/`SUPABASE_ANON_KEY` aren't both set —
+that's what keeps local `python app.py` login-free.
 
 ## Project layout
 

@@ -2,6 +2,7 @@ import importlib
 import sys
 from pathlib import Path
 
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -13,6 +14,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from db import Base  # noqa: E402
 import models  # noqa: E402,F401  (registers tables on Base.metadata)
 import db as db_module  # noqa: E402
+import auth as auth_module  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def no_jwks_network_calls(monkeypatch):
+    """Every test that verifies a token goes through auth.verify_access_token,
+    which tries Supabase's JWKS endpoint first. Stub that lookup to fail fast
+    (no real network call) so the suite stays offline; tests that want the
+    JWKS/ES256 path override auth._get_jwks_client themselves.
+    """
+    monkeypatch.setattr(auth_module, "_jwks_client", None)
+
+    class NoMatch:
+        def get_signing_key_from_jwt(self, token):
+            raise jwt.PyJWKClientError("no matching key")
+
+    monkeypatch.setattr(auth_module, "_get_jwks_client", lambda: NoMatch())
 
 
 @pytest.fixture()
