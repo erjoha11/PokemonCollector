@@ -128,9 +128,14 @@ class SetReleaseOrder(Base):
     Empty by default -- the ~100-row table from the Excel work needs to be
     supplied separately (see README) to enable release-order sorting.
     Without rows here, the app falls back to alphabetical (series, set).
+    Grows over time as new sets get released: a (series, set) missing here
+    sorts after every known set rather than guessing (see app.py's
+    UNKNOWN_RELEASE_RANK), and should get a real row added once its actual
+    release date is known -- never guessed.
     """
 
     __tablename__ = "set_release_order"
+    __table_args__ = (UniqueConstraint("series", "set", name="uq_set_release_order_series_set"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     series: Mapped[str] = mapped_column(String, nullable=False)
