@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<div class="kpis">
+  <div class="kpi"><div class="value">{{ headline.qty_physical }}</div><div class="label">Qty (fysiske)</div></div>
+  <div class="kpi"><div class="value">{{ headline.qty_unique }}</div><div class="label">Qty unike</div></div>
+  <div class="kpi"><div class="value">{{ headline.unique_value | kr }}</div><div class="label">Verdi (unike)</div></div>
+  <div class="kpi"><div class="value">{{ headline.total_value | kr }}</div><div class="label">Total verdi (inkl. duplikater)</div></div>
+</div>
+
+<div class="breakdown-grid">
+  <div>
+    <h2>Collection / Bulk</h2>
+    <table>
+      <thead><tr><th>Navn</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
+      <tbody>
+        <tr class="parent-row">
+          <td>Collection</td>
+          <td>{{ collection_breakdown.parent.qty }}</td>
+          <td>{{ collection_breakdown.parent.duplicates }}</td>
+          <td>{{ collection_breakdown.parent.unique_value | kr }}</td>
+          <td>{{ collection_breakdown.parent.total_value | kr }}</td>
+        </tr>
+        {% for c in collection_breakdown.children %}
+        <tr class="child-row">
+          <td>{{ c.name }}</td>
+          <td>{{ c.qty }}</td>
+          <td>{{ c.duplicates }}</td>
+          <td>{{ c.unique_value | kr }}</td>
+          <td>{{ c.total_value | kr }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="bulk-row">
+          <td>Bulk</td>
+          <td>{{ collection_breakdown.bulk.qty }}</td>
+          <td>{{ collection_breakdown.bulk.duplicates }}</td>
+          <td>{{ collection_breakdown.bulk.unique_value | kr }}</td>
+          <td>{{ collection_breakdown.bulk.total_value | kr }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Etter serie</h2>
+    <table>
+      <thead><tr><th>Serie</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
+      <tbody>
+        {% for s in series_breakdown %}
+        <tr>
+          <td>{{ s.name }}</td>
+          <td>{{ s.qty }}</td>
+          <td>{{ s.duplicates }}</td>
+          <td>{{ s.unique_value | kr }}</td>
+          <td>{{ s.total_value | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Etter binder</h2>
+    <table>
+      <thead><tr><th>Binder</th><th>Qty</th><th>Verdi</th></tr></thead>
+      <tbody>
+        {% for b in binder_breakdown %}
+        <tr>
+          <td>{{ b.name }}</td>
+          <td>{{ b.qty }}</td>
+          <td>{{ b.unique_value | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Topp 10 mest verdifulle kort</h2>
+    <table>
+      <thead><tr><th>Navn</th><th>Set</th><th>Referansepris</th></tr></thead>
+      <tbody>
+        {% for card in top_cards %}
+        <tr>
+          <td>{{ card.name }}</td>
+          <td>{{ card.set }}</td>
+          <td>{{ card.reference_price | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>Datakvalitet</h2>
+    <table>
+      <tbody>
+        <tr><td>Kort uten referansepris</td><td>{{ quality.missing_price_count }}</td></tr>
+        <tr><td>Kort flagget "ikke i siste eksport"</td><td>{{ quality.flagged_missing_count }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

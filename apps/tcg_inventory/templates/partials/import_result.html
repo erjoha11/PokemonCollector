@@ -1,0 +1,24 @@
+{% if result %}
+<div class="result-box" id="import-result">
+  <h2>Resultat</h2>
+  <table>
+    <tbody>
+      <tr><td>Kort opprettet</td><td>{{ result.cards_created }}</td></tr>
+      <tr><td>Kort oppdatert</td><td>{{ result.cards_updated }}</td></tr>
+      <tr><td>Kort flagget "mangler i siste eksport"</td><td>{{ result.cards_flagged_missing }}</td></tr>
+      <tr><td>Kort slettet (full load)</td><td>{{ result.cards_deleted }}</td></tr>
+      <tr><td>Collections berørt</td><td>{{ result.collections_touched | join(', ') }}</td></tr>
+      <tr><td>Bindere berørt</td><td>{{ result.binders_touched | join(', ') }}</td></tr>
+    </tbody>
+  </table>
+
+  {% if result.warnings %}
+  <div class="warnings">
+    <strong>Advarsler:</strong>
+    <ul>
+      {% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}

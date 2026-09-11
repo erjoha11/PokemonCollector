@@ -1,0 +1,9 @@
+<div class="autocomplete-results">
+  {% for card in results %}
+  <div onclick="document.getElementById('card_id').value='{{ card.card_id }}'; document.getElementById('card_search').value='{{ card.name }} ({{ card.card_id }})'; this.parentElement.innerHTML='';">
+    {{ card.name }} — {{ card.set }} ({{ card.card_id }})
+  </div>
+  {% else %}
+  <div class="muted">Ingen treff</div>
+  {% endfor %}
+</div>

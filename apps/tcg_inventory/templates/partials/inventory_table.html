@@ -1,0 +1,68 @@
+{% macro sort_link(field, label) %}
+<a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ field }}&direction={{ 'desc' if sort == field and direction == 'asc' else 'asc' }}"
+   hx-target="#inventory-results" hx-push-url="true">
+  {{ label }}{% if sort == field %} {{ '▲' if direction == 'asc' else '▼' }}{% endif %}
+</a>
+{% endmacro %}
+
+<div id="inventory-results">
+  <p class="muted">{{ total }} kort ({{ cards|length }} vist, side {{ page }} av {{ total_pages }})</p>
+  <table>
+    <thead>
+      <tr>
+        <th>{{ sort_link('name', 'Navn') }}</th>
+        <th>{{ sort_link('number', 'Number') }}</th>
+        <th>{{ sort_link('series', 'Series') }}</th>
+        <th>{{ sort_link('set', 'Set') }}</th>
+        <th>Collections</th>
+        <th>{{ sort_link('reference_price', 'Referansepris') }}</th>
+        <th>{{ sort_link('qty', 'Qty') }}</th>
+        <th>Duplikater</th>
+        <th>Total verdi</th>
+        <th>Variant</th>
+        <th>{{ sort_link('rarity', 'Rarity') }}</th>
+        <th>{{ sort_link('illustrator', 'Illustrator') }}</th>
+        <th>Binder</th>
+        <th>Klassifisering</th>
+        <th>Lokasjon</th>
+        <th>Notater</th>
+        <th>Card ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for card in cards %}
+      <tr>
+        <td>{{ card.name }}</td>
+        <td>{{ card.number or '' }}</td>
+        <td>{{ card.series or '' }}</td>
+        <td>{{ card.set or '' }}</td>
+        <td>{{ card.collections | map(attribute='name') | join(', ') }}</td>
+        <td>{{ card.reference_price | kr }}</td>
+        <td>{{ card.qty }}</td>
+        <td>{{ card.duplicates }}</td>
+        <td>{{ card.total_value | kr }}</td>
+        <td>{{ card.variant or '' }}</td>
+        <td>{{ card.rarity or '' }}</td>
+        <td>{{ card.illustrator or '' }}</td>
+        <td>{{ card.binder.name if card.binder else '' }}</td>
+        <td>{{ card.classification or '' }}</td>
+        <td>{{ card.location or '' }}</td>
+        <td>{{ card.notes or '' }}</td>
+        <td>{{ card.card_id }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="17" class="muted">Ingen kort matcher filteret.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="pagination">
+    {% if page > 1 %}
+    <a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ sort }}&direction={{ direction }}&page={{ page - 1 }}" hx-target="#inventory-results" hx-push-url="true">&larr; Forrige</a>
+    {% endif %}
+    <span>Side {{ page }} av {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ sort }}&direction={{ direction }}&page={{ page + 1 }}" hx-target="#inventory-results" hx-push-url="true">Neste &rarr;</a>
+    {% endif %}
+  </div>
+</div>

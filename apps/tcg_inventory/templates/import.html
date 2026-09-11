@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Import / Sync – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Import / Sync</h1>
+
+<p class="muted">
+  Hver synk bør inkludere BÅDE hovedeksporten ("My Collection") OG Vintage
+  Collection-eksporten sammen. Du kan i tillegg ta med andre
+  kategori-eksporter (illustrator-collections, bindere, "Scarlet &amp;
+  Violet: 151 JP/KR" osv.) i samme runde — velg flere filer på én gang.
+</p>
+
+<h2>Fra Dropbox</h2>
+<div id="dropbox-section" hx-get="/import/dropbox/list" hx-trigger="load" hx-swap="innerHTML">
+  <p class="muted">Henter filliste fra Dropbox…</p>
+</div>
+
+<h2>Last opp manuelt</h2>
+<form method="post" action="/import" enctype="multipart/form-data">
+  <p><input type="file" name="files" multiple accept=".csv" required></p>
+  <p>
+    <label>
+      <input type="checkbox" name="full_load" value="true">
+      Full load — slett kort som mangler i "My Collection"-eksporten i stedet for å bare flagge dem.
+      Bruk kun dette når du eksplisitt vil rydde opp i feilregistreringer.
+    </label>
+  </p>
+  <button type="submit">Kjør synk</button>
+</form>
+
+{% include "partials/import_result.html" %}
+{% endblock %}

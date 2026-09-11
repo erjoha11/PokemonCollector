@@ -1,0 +1,68 @@
+"""Business-rule constants for mapping Dex export categories onto the data
+model. These come from the Excel system this app replaces -- see the task
+description / app README before changing any of them.
+"""
+
+# The Dex category that represents the actual physical inventory ("My
+# Collection" in Dex). Every other category is a tag on a subset of the same
+# physical cards, never a separate set of cards.
+MY_COLLECTION_CATEGORY = "My Collection"
+
+# Categories that must always be fully ignored on import -- never turned into
+# a collection, a binder, or anything else.
+EXCLUDED_CATEGORIES_EXACT = {"Wishlist"}
+EXCLUDED_CATEGORIES_PREFIX = ("151 Fullarts",)
+
+# Dex folder names that route to `binder_id` instead of becoming a collection.
+BINDER_CATEGORIES = {
+    "Illustrator Binder",
+    "Vintage Binder",
+    "151 Binder",
+    "Tradebinder",
+}
+
+# Illustrator-specific collections -- deliberate, curated tagging. Highest
+# primary-collection priority (rank 1).
+ILLUSTRATOR_COLLECTIONS = {
+    "Tomokazu Komiya Collection",
+    "Shinji Kanda Illustrator Collection",
+    "Yuka Morii Collection",
+    "Saya Tsuruta Collection",
+}
+
+VINTAGE_COLLECTION_NAME = "Vintage Collection"
+GENERIC_COLLECTION_NAME = "Collection"
+SV151_COLLECTION_NAME = "Scarlet & Violet: 151 JP/KR"
+
+# Primary-collection priority ranks -- lower number wins when a card belongs
+# to more than one collection at once. Only affects which collection gets
+# "credit" in summaries; card_collections keeps every actual tag regardless.
+PRIORITY_RANK_ILLUSTRATOR = 1
+PRIORITY_RANK_VINTAGE = 2
+PRIORITY_RANK_GENERIC_COLLECTION = 3
+PRIORITY_RANK_SV151 = 4
+# Fallback for any collection name not covered by the rules above (e.g. a
+# newly created Dex folder). Kept lowest priority so known rules always win.
+PRIORITY_RANK_DEFAULT = 99
+
+
+def priority_rank_for(collection_name: str) -> int:
+    if collection_name in ILLUSTRATOR_COLLECTIONS:
+        return PRIORITY_RANK_ILLUSTRATOR
+    if collection_name == VINTAGE_COLLECTION_NAME:
+        return PRIORITY_RANK_VINTAGE
+    if collection_name == GENERIC_COLLECTION_NAME:
+        return PRIORITY_RANK_GENERIC_COLLECTION
+    if collection_name == SV151_COLLECTION_NAME:
+        return PRIORITY_RANK_SV151
+    return PRIORITY_RANK_DEFAULT
+
+
+def is_excluded_category(category: str) -> bool:
+    if category in EXCLUDED_CATEGORIES_EXACT:
+        return True
+    return any(category.startswith(prefix) for prefix in EXCLUDED_CATEGORIES_PREFIX)
+
+
+def is_binder_category(category: str) -> bool:
+    return category in BINDER_CATEGORIES
