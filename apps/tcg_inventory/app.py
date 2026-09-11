@@ -372,6 +372,14 @@ def cron_dropbox_sync(request: Request):
             return {"status": "ok", "folder": folder, "message": "No CSV files found"}
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
         result = import_dex_csv_files(db, payload, full_load=False)
+        print(
+            f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
+            f"created={result.cards_created} updated={result.cards_updated} "
+            f"flagged={result.cards_flagged_missing} "
+            f"collections={sorted(result.collections_touched)} "
+            f"binders={sorted(result.binders_touched)} "
+            f"warnings={len(result.warnings)}"
+        )
         return {
             "status": "ok",
             "folder": folder,
