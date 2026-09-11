@@ -3,7 +3,7 @@ import datetime as dt
 import pytest
 from conftest import make_csv
 
-from importer import _parse_price, import_dex_csv_files
+from importer import _parse_number_int, _parse_price, import_dex_csv_files
 from models import Card, Collection
 
 
@@ -26,6 +26,30 @@ from models import Card, Collection
 )
 def test_parse_price_handles_dex_currency_formatting(raw, expected):
     assert _parse_price(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("109/189", 109),
+        ("1/108", 1),
+        ("SWSH175/307", 175),
+        ("63", 63),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_parse_number_int_extracts_sortable_number(raw, expected):
+    assert _parse_number_int(raw) == expected
+
+
+def test_my_collection_sets_number_int_for_sorting(db_session):
+    csv = make_csv("My Collection", [{"id": "a", "number": "9/189"}, {"id": "b", "number": "109/189"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    a = db_session.query(Card).filter(Card.card_id == "a").one()
+    b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert a.number_int == 9
+    assert b.number_int == 109
 
 
 def test_my_collection_parses_norwegian_kr_price_format(db_session):
