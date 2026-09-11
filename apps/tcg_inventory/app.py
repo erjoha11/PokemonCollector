@@ -240,7 +240,7 @@ def card_search(request: Request, q: str = ""):
 @app.post("/transactions")
 def create_transaction(
     request: Request,
-    card_id: str = Form(...),
+    card_id: int = Form(...),
     type: str = Form(...),
     date: str = Form(...),
     price: float = Form(...),
@@ -249,7 +249,7 @@ def create_transaction(
 ):
     db = get_db_session()
     try:
-        card = db.query(Card).filter(Card.card_id == card_id.strip()).one_or_none()
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
             txs = (
                 db.query(Transaction)
@@ -262,7 +262,7 @@ def create_transaction(
                 "transactions.html",
                 {
                     "transactions": txs,
-                    "error": f"Fant ikke noe kort med Card ID '{card_id}'.",
+                    "error": "Fant ikke kortet -- velg et kort fra søkeresultatene.",
                     "today": dt.date.today().isoformat(),
                 },
             )

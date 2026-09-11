@@ -49,6 +49,67 @@ def test_my_collection_imports_utf16le_bom_export(db_session):
     assert card.reference_price == 0.48
 
 
+def test_my_collection_same_id_different_variant_creates_two_cards(db_session):
+    # Real Dex data: the same Id appears once per Variant the user owns
+    # (e.g. a card's "Normal" and "Poké Ball Holo" prints are two separate
+    # physical cards sharing one Id) -- Id alone used to be the unique key
+    # and crashed every import with a duplicate-key error. (Id, Variant) is
+    # the real natural key.
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "jpn_sv2a-42", "name": "Golbat", "variant": "Normal", "qty": 2, "price": "kr 19,02"},
+            {"id": "jpn_sv2a-42", "name": "Golbat", "variant": "Poké Ball Holo", "qty": 1, "price": "kr —"},
+        ],
+    )
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    assert result.cards_created == 2
+    cards = db_session.query(Card).filter(Card.card_id == "jpn_sv2a-42").all()
+    assert {c.variant for c in cards} == {"Normal", "Poké Ball Holo"}
+
+
+def test_missing_detection_is_per_variant(db_session):
+    first_sync = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Golbat", "variant": "Normal", "qty": 1},
+            {"id": "a", "name": "Golbat", "variant": "Holo", "qty": 1},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", first_sync)])
+
+    second_sync = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Golbat", "variant": "Normal", "qty": 1}],
+    )
+    result = import_dex_csv_files(db_session, [("main.csv", second_sync)])
+
+    assert result.cards_flagged_missing == 1
+    normal = db_session.query(Card).filter(Card.card_id == "a", Card.variant == "Normal").one()
+    holo = db_session.query(Card).filter(Card.card_id == "a", Card.variant == "Holo").one()
+    assert normal.flagged_missing_since is None
+    assert holo.flagged_missing_since is not None
+
+
+def test_binder_tag_matches_specific_variant_only(db_session):
+    my_collection = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Golbat", "variant": "Normal", "qty": 1},
+            {"id": "a", "name": "Golbat", "variant": "Holo", "qty": 1},
+        ],
+    )
+    binder_csv = make_csv("Illustrator Binder", [{"id": "a", "variant": "Holo", "qty": 1}])
+
+    import_dex_csv_files(db_session, [("main.csv", my_collection), ("binder.csv", binder_csv)])
+
+    normal = db_session.query(Card).filter(Card.card_id == "a", Card.variant == "Normal").one()
+    holo = db_session.query(Card).filter(Card.card_id == "a", Card.variant == "Holo").one()
+    assert normal.binder_id is None
+    assert holo.binder_id is not None
+
+
 def test_my_collection_creates_cards_with_core_fields(db_session):
     csv = make_csv(
         "My Collection",

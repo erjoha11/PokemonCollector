@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Date, Float, ForeignKey, Integer, String, Table, Column
+from sqlalchemy import Date, Float, ForeignKey, Integer, String, Table, Column, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -44,9 +44,16 @@ class Collection(Base):
 
 class Card(Base):
     __tablename__ = "cards"
+    __table_args__ = (
+        # Dex's "Id" alone is not a unique physical card -- the same Id
+        # appears once per Variant the user owns (e.g. "Normal" and "Poké
+        # Ball Holo" of the same card are two separate rows/cards with the
+        # same Id). (Id, Variant) is the real natural key -- see importer.py.
+        UniqueConstraint("card_id", "variant", name="uq_cards_card_id_variant"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    card_id: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    card_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     number: Mapped[str | None] = mapped_column(String, nullable=True)
