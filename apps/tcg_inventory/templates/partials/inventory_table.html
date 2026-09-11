@@ -1,13 +1,14 @@
 {% macro sort_link(field, label) %}
-<a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ field }}&direction={{ 'desc' if sort == field and direction == 'asc' else 'asc' }}"
+<a href="#" hx-get="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&sort={{ field | urlencode }}&direction={{ 'desc' if sort == field and direction == 'asc' else 'asc' }}"
    hx-target="#inventory-results" hx-push-url="true">
   {{ label }}{% if sort == field %} {{ '▲' if direction == 'asc' else '▼' }}{% endif %}
 </a>
 {% endmacro %}
 
 <div id="inventory-results">
-  <p class="muted">{{ total }} kort ({{ cards|length }} vist, side {{ page }} av {{ total_pages }})</p>
-  <table>
+  <p class="muted">{{ total }} kort</p>
+  <div class="inventory-table-wrap">
+  <table class="inventory-table">
     <thead>
       <tr>
         <th>{{ sort_link('name', 'Navn') }}</th>
@@ -55,14 +56,5 @@
       {% endfor %}
     </tbody>
   </table>
-
-  <div class="pagination">
-    {% if page > 1 %}
-    <a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ sort }}&direction={{ direction }}&page={{ page - 1 }}" hx-target="#inventory-results" hx-push-url="true">&larr; Forrige</a>
-    {% endif %}
-    <span>Side {{ page }} av {{ total_pages }}</span>
-    {% if page < total_pages %}
-    <a href="#" hx-get="/inventory?q={{ q }}&series={{ series }}&set={{ set }}&collection={{ collection }}&binder={{ binder }}&sort={{ sort }}&direction={{ direction }}&page={{ page + 1 }}" hx-target="#inventory-results" hx-push-url="true">Neste &rarr;</a>
-    {% endif %}
   </div>
 </div>

@@ -67,8 +67,6 @@ async def auth_guard(request: Request, call_next):
             pass
     return RedirectResponse("/login", status_code=303)
 
-PAGE_SIZE = 50
-
 SORT_COLUMNS = {
     "name": Card.name,
     "number": func.coalesce(Card.number_int, 999999),
@@ -101,15 +99,23 @@ def dashboard(request: Request):
         binder_breakdown = queries.by_binder_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
         quality = queries.data_quality(db)
+
+        collection_chart = queries.chart_rows(collection_breakdown["children"] + [collection_breakdown["bulk"]])
+        series_chart = queries.chart_rows(series_breakdown)
+        top_price_max = top_cards[0].reference_price if top_cards else 0
+
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
                 "headline": headline,
                 "collection_breakdown": collection_breakdown,
+                "collection_chart": collection_chart,
                 "series_breakdown": series_breakdown,
+                "series_chart": series_chart,
                 "binder_breakdown": binder_breakdown,
                 "top_cards": top_cards,
+                "top_price_max": top_price_max,
                 "quality": quality,
             },
         )
@@ -151,12 +157,10 @@ def inventory(
     binder: str = "",
     sort: str = "release",
     direction: str = "asc",
-    page: int = 1,
 ):
     db = get_db_session()
     try:
         query = _apply_inventory_filters(db, q, series, set, collection, binder)
-        total = query.count()
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -175,13 +179,7 @@ def inventory(
             sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
             order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
 
-        page = max(page, 1)
-        cards = (
-            query.order_by(*order_cols)
-            .offset((page - 1) * PAGE_SIZE)
-            .limit(PAGE_SIZE)
-            .all()
-        )
+        cards = query.order_by(*order_cols).all()
 
         all_series = [r[0] for r in db.query(Card.series).filter(Card.series.isnot(None)).distinct().order_by(Card.series)]
         all_sets = [r[0] for r in db.query(Card.set).filter(Card.set.isnot(None)).distinct().order_by(Card.set)]
@@ -190,10 +188,7 @@ def inventory(
 
         context = {
             "cards": cards,
-            "total": total,
-            "page": page,
-            "page_size": PAGE_SIZE,
-            "total_pages": max((total + PAGE_SIZE - 1) // PAGE_SIZE, 1),
+            "total": len(cards),
             "q": q,
             "series": series,
             "set": set,
