@@ -1,31 +1,4 @@
-import importlib
-
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from conftest import make_csv
-
-import db as db_module
-
-
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
-    """A TestClient wired to a throwaway SQLite file per test, so tests
-    never touch the app's real tcg_inventory.db.
-    """
-    db_path = tmp_path / "test.db"
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
-    monkeypatch.setattr(db_module, "engine", engine)
-    monkeypatch.setattr(db_module, "SessionLocal", sessionmaker(bind=engine))
-
-    import app as app_module
-
-    importlib.reload(app_module)  # re-bind app's `from db import SessionLocal, init_db`
-
-    with TestClient(app_module.app) as c:
-        yield c
 
 
 def test_all_pages_render(client):

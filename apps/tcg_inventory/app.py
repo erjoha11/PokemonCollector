@@ -13,6 +13,7 @@ import datetime as dt
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,12 +21,14 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+import dropbox_client
 import queries
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
 from models import Binder, Card, Collection, Transaction
 
 APP_DIR = Path(__file__).resolve().parent
+load_dotenv(APP_DIR / ".env")
 
 
 @asynccontextmanager
@@ -269,6 +272,52 @@ async def run_import(request: Request, files: list[UploadFile], full_load: bool 
     try:
         result = import_dex_csv_files(db, payload, full_load=full_load)
         return templates.TemplateResponse(request, "import.html", {"result": result})
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# CSV import / sync -- straight from Dropbox
+# --------------------------------------------------------------------------
+@app.get("/import/dropbox/list")
+def import_dropbox_list(request: Request, folder: str = ""):
+    folder = folder or dropbox_client.default_folder()
+    context = {"folder": folder, "files": None, "error": None}
+    try:
+        dbx = dropbox_client.build_client_from_env()
+        context["files"] = dropbox_client.list_csv_files(dbx, folder)
+    except dropbox_client.DropboxNotConfigured as exc:
+        context["error"] = str(exc)
+    except dropbox_client.DropboxImportError as exc:
+        context["error"] = str(exc)
+    return templates.TemplateResponse(request, "partials/dropbox_files.html", context)
+
+
+@app.post("/import/dropbox/sync")
+def import_dropbox_sync(
+    request: Request,
+    folder: str = Form(""),
+    paths: list[str] = Form(default=[]),
+    full_load: bool = Form(False),
+):
+    if not paths:
+        return templates.TemplateResponse(
+            request,
+            "partials/dropbox_files.html",
+            {"folder": folder, "files": None, "error": "Velg minst én fil å synke."},
+        )
+    db = get_db_session()
+    try:
+        dbx = dropbox_client.build_client_from_env()
+        payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
+        result = import_dex_csv_files(db, payload, full_load=full_load)
+        return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
+    except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
+        return templates.TemplateResponse(
+            request,
+            "partials/dropbox_files.html",
+            {"folder": folder, "files": None, "error": str(exc)},
+        )
     finally:
         db.close()
 

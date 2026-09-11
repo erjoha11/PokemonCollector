@@ -1,7 +1,9 @@
+import importlib
 import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -10,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from db import Base  # noqa: E402
 import models  # noqa: E402,F401  (registers tables on Base.metadata)
+import db as db_module  # noqa: E402
 
 
 @pytest.fixture()
@@ -26,6 +29,24 @@ def db_session():
     finally:
         session.close()
         engine.dispose()
+
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    """A TestClient wired to a throwaway SQLite file per test, so tests
+    never touch the app's real tcg_inventory.db.
+    """
+    db_path = tmp_path / "test.db"
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", sessionmaker(bind=engine))
+
+    import app as app_module
+
+    importlib.reload(app_module)  # re-bind app's `from db import SessionLocal, init_db`
+
+    with TestClient(app_module.app) as c:
+        yield c
 
 
 HEADER = (
