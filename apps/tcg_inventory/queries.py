@@ -36,6 +36,15 @@ class Bucket:
         self.unique_value += card.unique_value
         self.total_value += card.total_value
 
+    @property
+    def unique_count(self) -> int:
+        """Number of distinct cards (owned at least once), duplicates excluded.
+
+        Always `qty - duplicates`: each card contributes exactly 1 here
+        regardless of how many copies it has (min(card.qty, 1)).
+        """
+        return self.qty - self.duplicates
+
 
 def headline_summary(db: Session) -> dict:
     cards = _all_cards_with_collections(db)

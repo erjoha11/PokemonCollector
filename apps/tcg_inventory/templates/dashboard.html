@@ -18,28 +18,31 @@
   <div class="card wide">
     <h2>Collection / Bulk</h2>
     <table>
-      <thead><tr><th>Navn</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
+      <thead><tr><th>Navn</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
       <tbody>
         <tr class="parent-row">
           <td>Totalt (alle collections)</td>
-          <td class="num">{{ collection_breakdown.parent.qty }}</td>
+          <td class="num">{{ collection_breakdown.parent.unique_count }}</td>
           <td class="num">{{ collection_breakdown.parent.duplicates }}</td>
+          <td class="num">{{ collection_breakdown.parent.qty }}</td>
           <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
           <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
         </tr>
         {% for c in collection_breakdown.children %}
         <tr class="child-row">
           <td>{{ filter_link('collection', c.name) }}</td>
-          <td class="num">{{ c.qty }}</td>
+          <td class="num">{{ c.unique_count }}</td>
           <td class="num">{{ dup_link('collection', c.name, c.duplicates) }}</td>
+          <td class="num">{{ c.qty }}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
         {% endfor %}
         <tr class="bulk-row">
           <td>Bulk</td>
-          <td class="num">{{ collection_breakdown.bulk.qty }}</td>
+          <td class="num">{{ collection_breakdown.bulk.unique_count }}</td>
           <td class="num">{{ collection_breakdown.bulk.duplicates }}</td>
+          <td class="num">{{ collection_breakdown.bulk.qty }}</td>
           <td class="num">{{ collection_breakdown.bulk.unique_value | kr }}</td>
           <td class="num">{{ collection_breakdown.bulk.total_value | kr }}</td>
         </tr>
@@ -50,13 +53,14 @@
   <div class="card wide">
     <h2>Etter serie</h2>
     <table>
-      <thead><tr><th>Serie</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
+      <thead><tr><th>Serie</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
       <tbody>
         {% for s in series_breakdown %}
         <tr>
           <td>{{ filter_link('series', s.name) }}</td>
-          <td class="num">{{ s.qty }}</td>
+          <td class="num">{{ s.unique_count }}</td>
           <td class="num">{{ dup_link('series', s.name, s.duplicates) }}</td>
+          <td class="num">{{ s.qty }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
         </tr>
@@ -85,13 +89,14 @@
     <div class="card">
       <h2>Etter rarity</h2>
       <table>
-        <thead><tr><th>Rarity</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th></tr></thead>
+        <thead><tr><th>Rarity</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th></tr></thead>
         <tbody>
           {% for r in rarity_breakdown %}
           <tr>
             <td>{{ filter_link('rarity', r.name) }}</td>
-            <td class="num">{{ r.qty }}</td>
+            <td class="num">{{ r.unique_count }}</td>
             <td class="num">{{ dup_link('rarity', r.name, r.duplicates) }}</td>
+            <td class="num">{{ r.qty }}</td>
             <td class="num">{{ r.unique_value | kr }}</td>
           </tr>
           {% endfor %}
