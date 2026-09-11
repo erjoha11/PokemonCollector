@@ -150,28 +150,40 @@ def import_dex_csv_files(
             rows_by_category.setdefault(category, []).append(row)
 
     # --- 1. My Collection defines the physical inventory ground truth. ---
+    # Dex's "Id" alone is not a unique physical card: the same Id appears
+    # once per Variant the user owns (e.g. a card's "Normal" and "Poké Ball
+    # Holo" prints are two separate rows with the same Id, each a distinct
+    # physical card). (Id, Variant) is the real natural key throughout.
     my_collection_rows = rows_by_category.pop(MY_COLLECTION_CATEGORY, [])
-    seen_card_ids: set[str] = set()
+    seen_keys: set[tuple[str, str | None]] = set()
 
     if my_collection_rows:
+        row_ids = {
+            (row.get("Id") or "").strip() for row in my_collection_rows if (row.get("Id") or "").strip()
+        }
+        existing = db.query(Card).filter(Card.card_id.in_(row_ids)).all() if row_ids else []
+        cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
+
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
             if not card_id:
                 result.warnings.append("My Collection: rad uten Id hoppet over.")
                 continue
-            seen_card_ids.add(card_id)
+            variant = (row.get("Variant") or "").strip() or None
+            key = (card_id, variant)
+            seen_keys.add(key)
 
-            card = db.query(Card).filter(Card.card_id == card_id).one_or_none()
+            card = cards_by_key.get(key)
             is_new = card is None
             if is_new:
-                card = Card(card_id=card_id)
+                card = Card(card_id=card_id, variant=variant)
                 db.add(card)
+                cards_by_key[key] = card
 
             card.name = (row.get("Name") or "").strip()
             card.number = (row.get("Number") or "").strip() or None
             card.series = (row.get("Series") or "").strip() or None
             card.set = (row.get("Set") or "").strip() or None
-            card.variant = (row.get("Variant") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None
             card.reference_price = _parse_price(row.get("Price"))
@@ -187,7 +199,7 @@ def import_dex_csv_files(
                 result.cards_updated += 1
 
         # Cards previously known but absent from this My Collection export.
-        missing = db.query(Card).filter(~Card.card_id.in_(seen_card_ids)).all()
+        missing = [c for c in db.query(Card).all() if (c.card_id, c.variant) not in seen_keys]
         for card in missing:
             if full_load:
                 db.delete(card)
@@ -199,26 +211,32 @@ def import_dex_csv_files(
         db.flush()
 
     # --- 2. Everything else: binders and collections, keyed by category. ---
-    def _cards_by_id(card_ids: set[str]) -> dict[str, Card]:
-        if not card_ids:
+    def _cards_by_key(keys: set[tuple[str, str | None]]) -> dict[tuple[str, str | None], Card]:
+        if not keys:
             return {}
-        found = db.query(Card).filter(Card.card_id.in_(card_ids)).all()
-        return {c.card_id: c for c in found}
+        ids = {k[0] for k in keys}
+        found = db.query(Card).filter(Card.card_id.in_(ids)).all()
+        return {(c.card_id, c.variant): c for c in found if (c.card_id, c.variant) in keys}
 
     for category, rows in rows_by_category.items():
         if constants.is_excluded_category(category):
             continue  # Wishlist / 151 Fullarts * -- never touched.
 
-        row_card_ids = {(r.get("Id") or "").strip() for r in rows if (r.get("Id") or "").strip()}
-        cards_by_id = _cards_by_id(row_card_ids)
-        for card_id in row_card_ids:
-            if card_id not in cards_by_id:
+        row_keys = {
+            ((r.get("Id") or "").strip(), (r.get("Variant") or "").strip() or None)
+            for r in rows
+            if (r.get("Id") or "").strip()
+        }
+        cards_by_key = _cards_by_key(row_keys)
+        for card_id, variant in row_keys:
+            if (card_id, variant) not in cards_by_key:
+                variant_label = f" ({variant})" if variant else ""
                 result.warnings.append(
-                    f"{category}: kort med Id '{card_id}' finnes ikke i databasen "
+                    f"{category}: kort med Id '{card_id}'{variant_label} finnes ikke i databasen "
                     "(mangler i My Collection-eksporten) -- hoppet over."
                 )
 
-        matched_cards = list(cards_by_id.values())
+        matched_cards = list(cards_by_key.values())
 
         if constants.is_binder_category(category):
             binder = db.query(Binder).filter(Binder.name == category).one_or_none()
@@ -228,7 +246,7 @@ def import_dex_csv_files(
                 db.flush()
             # This category is present in the sync: fully replace membership.
             for card in db.query(Card).filter(Card.binder_id == binder.id).all():
-                if card.card_id not in cards_by_id:
+                if (card.card_id, card.variant) not in cards_by_key:
                     card.binder_id = None
             for card in matched_cards:
                 card.binder_id = binder.id
