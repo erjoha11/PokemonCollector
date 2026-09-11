@@ -112,60 +112,23 @@ tbody tr:hover { background: var(--bg-alt); }
 
 .breakdown-grid .card h2 { margin-top: 0; }
 
+/* Collection/Bulk and Etter serie carry 5 columns of data (two of them
+   currency) -- a normal 1/4-width grid track squeezes them into horizontal
+   scroll. Give them the full row instead of fighting for space with the
+   simpler cards. */
+.breakdown-grid .card.wide { grid-column: 1 / -1; }
+
 /* Dashboard metrics link through to the same slice in Inventory (e.g. a
    collection name -> /inventory?collection=...). */
-.breakdown-grid a, .chart-bar-label a {
+.breakdown-grid a {
   color: var(--accent);
   text-decoration: none;
 }
-.breakdown-grid a:hover, .chart-bar-label a:hover { text-decoration: underline; }
+.breakdown-grid a:hover { text-decoration: underline; }
 
 .child-row td:first-child { padding-left: 1.5rem; color: var(--muted); }
 .parent-row { font-weight: 700; }
 .bulk-row td:first-child { font-style: italic; color: var(--muted); }
-
-/* Single-measure bar charts: one hue for every bar -- the categories (a
-   set/collection name) have no inherent order, so color only means "this
-   is a bar," length carries the value. See dataviz guidance: a value-ramp
-   or per-bar rainbow on nominal categories double-encodes and is wrong. */
-.chart-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  margin: 0.25rem 0 1.25rem;
-}
-.chart-bar-row { display: flex; align-items: center; gap: 0.6rem; }
-.chart-bar-label {
-  flex: 0 0 150px;
-  font-size: 0.82rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.chart-bar-track {
-  flex: 1;
-  height: 18px;
-  background: var(--bg-alt);
-  border-radius: 0 4px 4px 0;
-}
-.chart-bar-fill {
-  height: 100%;
-  min-width: 2px;
-  background: var(--accent);
-  border-radius: 0 4px 4px 0;
-}
-.chart-bar-value {
-  flex: 0 0 auto;
-  min-width: 64px;
-  text-align: right;
-  font-size: 0.82rem;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Compact variant used inline inside a table cell (Topp 10). */
-.chart-bar-row--inline { gap: 0.5rem; }
-.chart-bar-track--sm { flex: 0 0 70px; height: 12px; }
 
 form.filters {
   display: flex;
