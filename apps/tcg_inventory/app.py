@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -48,7 +48,9 @@ templates.env.globals["auth_enabled"] = auth.is_configured
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
-_PUBLIC_PATHS = {"/login"}
+# /cron/dropbox-sync has its own separate auth (CRON_SECRET) -- a scheduled
+# job has no browser session to log in with.
+_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync"}
 
 
 @app.middleware("http")
@@ -341,6 +343,48 @@ def import_dropbox_sync(
             "partials/dropbox_files.html",
             {"folder": folder, "files": None, "error": str(exc)},
         )
+    finally:
+        db.close()
+
+
+@app.get("/cron/dropbox-sync")
+def cron_dropbox_sync(request: Request):
+    """Scheduled sync, triggered by the Vercel Cron job in vercel.json.
+
+    Pulls every CSV currently in the configured Dropbox folder and runs a
+    normal (non-full-load) sync -- a cron job runs unattended, so it never
+    deletes cards, only flags missing ones (see importer.py). Protected by
+    CRON_SECRET rather than the Supabase login: Vercel's cron invocations
+    carry no browser session to log in with. Vercel automatically sends
+    `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
+    var is set -- see README "Automatic daily sync".
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    if cron_secret and request.headers.get("authorization") != f"Bearer {cron_secret}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    folder = dropbox_client.default_folder()
+    db = get_db_session()
+    try:
+        dbx = dropbox_client.build_client_from_env()
+        files = dropbox_client.list_csv_files(dbx, folder)
+        if not files:
+            return {"status": "ok", "folder": folder, "message": "No CSV files found"}
+        payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
+        result = import_dex_csv_files(db, payload, full_load=False)
+        return {
+            "status": "ok",
+            "folder": folder,
+            "files_synced": [f.name for f in files],
+            "cards_created": result.cards_created,
+            "cards_updated": result.cards_updated,
+            "cards_flagged_missing": result.cards_flagged_missing,
+            "collections_touched": sorted(result.collections_touched),
+            "binders_touched": sorted(result.binders_touched),
+            "warnings": result.warnings,
+        }
+    except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         db.close()
 

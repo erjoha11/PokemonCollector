@@ -200,6 +200,36 @@ so an expired session just bounces back to `/login`. Auth is skipped
 entirely whenever `SUPABASE_URL`/`SUPABASE_ANON_KEY` aren't both set —
 that's what keeps local `python app.py` login-free.
 
+### Automatic daily sync (Vercel Cron)
+
+Once Dropbox import is set up (see "Dropbox import setup" above), the
+deployed app can sync itself automatically instead of anyone clicking
+"Hent valgte filer og synk" — `vercel.json` schedules a
+[Vercel Cron Job](https://vercel.com/docs/cron-jobs) that hits
+`GET /cron/dropbox-sync` once a day (`0 5 * * *`, i.e. 05:00 UTC — edit
+the `crons` entry in `vercel.json` to change it). That route pulls every
+CSV currently in the configured `DROPBOX_FOLDER` and runs a normal sync
+(never full load — an unattended job should never delete cards, only flag
+missing ones).
+
+To turn it on:
+
+1. Make sure `DROPBOX_APP_KEY`/`DROPBOX_APP_SECRET`/`DROPBOX_REFRESH_TOKEN`/
+   `DROPBOX_FOLDER` are already set in Vercel (see "Dropbox import setup").
+2. Add a `CRON_SECRET` environment variable in Vercel (any random string —
+   Vercel automatically sends it back as `Authorization: Bearer
+   <CRON_SECRET>` on its own cron requests, and `/cron/dropbox-sync`
+   checks it). Without this set, the endpoint runs unauthenticated, which
+   still works but means anyone who finds the URL could trigger a sync.
+3. Redeploy. Vercel's dashboard (Project → Cron Jobs) shows each run and
+   its response — `cards_created`/`cards_updated`/etc. and any warnings,
+   the same summary the manual sync page shows.
+
+Keep your Dropbox folder holding the *current* full set of exports (main
+collection + Vintage + whatever else you track) — each cron run syncs
+whatever's in there at the time, same as selecting every file on the
+Import page manually.
+
 ## Project layout
 
 - `app.py` — FastAPI app, routes, entrypoint (`python app.py`).

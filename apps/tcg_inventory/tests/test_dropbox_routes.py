@@ -39,3 +39,48 @@ def test_dropbox_sync_without_selection_shows_error(client):
     response = client.post("/import/dropbox/sync", data={"folder": "/exports"})
     assert response.status_code == 200
     assert "Velg minst én fil" in response.text
+
+
+def test_cron_sync_requires_secret_when_configured(client, monkeypatch):
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    response = client.get("/cron/dropbox-sync")
+    assert response.status_code == 401
+
+
+def test_cron_sync_accepts_correct_secret(client, monkeypatch):
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    csv_bytes = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    fake = FakeDropbox(
+        pages=[FakeListFolderResult([_file_entry("main.csv")])],
+        download_bytes={"/exports/main.csv": csv_bytes},
+    )
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    response = client.get(
+        "/cron/dropbox-sync", headers={"Authorization": "Bearer s3cr3t"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cards_created"] == 1
+    assert body["files_synced"] == ["main.csv"]
+
+    inventory = client.get("/inventory")
+    assert "Pikachu" in inventory.text
+
+
+def test_cron_sync_works_without_secret_configured(client, monkeypatch):
+    # No CRON_SECRET env var set at all -- open endpoint (still requires
+    # Dropbox to be configured to do anything, but no auth check blocks it).
+    monkeypatch.delenv("CRON_SECRET", raising=False)
+    fake = FakeDropbox(pages=[FakeListFolderResult([])])
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    response = client.get("/cron/dropbox-sync")
+    assert response.status_code == 200
+    assert response.json()["message"] == "No CSV files found"
+
+
+def test_cron_sync_reports_dropbox_not_configured(client):
+    response = client.get("/cron/dropbox-sync")
+    assert response.status_code == 502
+    assert "DROPBOX_APP_KEY" in response.text

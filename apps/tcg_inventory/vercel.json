@@ -8,5 +8,8 @@
   ],
   "routes": [
     { "src": "/(.*)", "dest": "api/index.py" }
+  ],
+  "crons": [
+    { "path": "/cron/dropbox-sync", "schedule": "0 5 * * *" }
   ]
 }
