@@ -10,6 +10,7 @@ Usage:
 """
 from __future__ import annotations
 
+import requests
 from dropbox import DropboxOAuth2FlowNoRedirect
 
 
@@ -31,7 +32,21 @@ def main() -> None:
 
     auth_code = input("Authorization code: ").strip()
 
-    result = flow.finish(auth_code)
+    try:
+        result = flow.finish(auth_code)
+    except requests.exceptions.HTTPError as exc:
+        # flow.finish() raises via resp.raise_for_status(), which swallows the
+        # response body -- that body is exactly what says *why* Dropbox
+        # rejected the exchange (wrong App secret, expired/already-used code,
+        # App key/secret mismatch, ...), so surface it instead of a bare 400.
+        body = exc.response.text if exc.response is not None else "(intet svar)"
+        print(f"\nDropbox avviste token-byttet: {exc}\nSvar fra Dropbox: {body}")
+        print(
+            "\nVanligste årsaker: feil App key/secret (sjekk mot Dropbox App "
+            "Console), eller at koden rakk å utløpe/ble brukt allerede -- kjør "
+            "scriptet på nytt fra bunnen av (ny URL, ny kode, uten forsinkelse)."
+        )
+        raise SystemExit(1) from exc
 
     print("\nFerdig. Legg dette inn i din .env-fil (se .env.example):\n")
     print(f"DROPBOX_APP_KEY={app_key}")
