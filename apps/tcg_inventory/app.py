@@ -96,13 +96,8 @@ def dashboard(request: Request):
         headline = queries.headline_summary(db)
         collection_breakdown = queries.collection_bulk_breakdown(db)
         series_breakdown = queries.by_series_breakdown(db)
-        binder_breakdown = queries.by_binder_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
         quality = queries.data_quality(db)
-
-        collection_chart = queries.chart_rows(collection_breakdown["children"] + [collection_breakdown["bulk"]])
-        series_chart = queries.chart_rows(series_breakdown)
-        top_price_max = top_cards[0].reference_price if top_cards else 0
 
         return templates.TemplateResponse(
             request,
@@ -110,12 +105,8 @@ def dashboard(request: Request):
             {
                 "headline": headline,
                 "collection_breakdown": collection_breakdown,
-                "collection_chart": collection_chart,
                 "series_breakdown": series_breakdown,
-                "series_chart": series_chart,
-                "binder_breakdown": binder_breakdown,
                 "top_cards": top_cards,
-                "top_price_max": top_price_max,
                 "quality": quality,
             },
         )

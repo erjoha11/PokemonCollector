@@ -127,19 +127,3 @@ def data_quality(db: Session) -> dict:
     missing_price = db.query(func.count(Card.id)).filter(Card.reference_price.is_(None)).scalar()
     flagged_missing = db.query(func.count(Card.id)).filter(Card.flagged_missing_since.isnot(None)).scalar()
     return {"missing_price_count": missing_price, "flagged_missing_count": flagged_missing}
-
-
-def chart_rows(buckets, value=lambda b: b.total_value) -> list[dict]:
-    """Rank `buckets` by `value` descending and attach a 0-100 width percent
-    (relative to the largest bar) for a simple single-hue bar chart -- see
-    dashboard.html. One measure across nominal categories (a set/collection
-    name has no inherent order), so every bar is the same color; only length
-    encodes the value. The table each chart sits above is the full-precision
-    twin -- the bars are a ranking aid, not a replacement.
-    """
-    ranked = sorted(buckets, key=value, reverse=True)
-    top = value(ranked[0]) if ranked else 0
-    return [
-        {"name": b.name, "value": value(b), "pct": round(value(b) / top * 100, 1) if top else 0}
-        for b in ranked
-    ]
