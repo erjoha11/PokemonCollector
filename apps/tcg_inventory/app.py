@@ -117,7 +117,7 @@ def dashboard(request: Request):
 # --------------------------------------------------------------------------
 # Inventory
 # --------------------------------------------------------------------------
-def _apply_inventory_filters(db: Session, q, series, set_, collection, binder):
+def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
     if q:
         like = f"%{q.lower()}%"
@@ -135,6 +135,8 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder):
         query = query.join(Card.binder).filter(Binder.name == binder)
     if collection:
         query = query.filter(Card.collections.any(Collection.name == collection))
+    if dup:
+        query = query.filter(Card.qty > 1)  # duplicates = max(qty - 1, 0)
     return query
 
 
@@ -146,12 +148,13 @@ def inventory(
     set: str = "",
     collection: str = "",
     binder: str = "",
+    dup: bool = False,
     sort: str = "release",
     direction: str = "asc",
 ):
     db = get_db_session()
     try:
-        query = _apply_inventory_filters(db, q, series, set, collection, binder)
+        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup)
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -185,6 +188,7 @@ def inventory(
             "set": set,
             "collection": collection,
             "binder": binder,
+            "dup": dup,
             "sort": sort,
             "direction": direction,
             "all_series": all_series,

@@ -30,6 +30,13 @@
 
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
+  <input type="hidden" name="dup" value="{{ '1' if dup else '' }}">
+  {% if dup %}
+  <span class="muted">
+    Viser bare kort med duplikater.
+    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}">Fjern filter</a>
+  </span>
+  {% endif %}
 </form>
 
 {% include "partials/inventory_table.html" %}

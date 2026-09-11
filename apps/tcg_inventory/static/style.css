@@ -1,99 +1,157 @@
 :root {
   color-scheme: light dark;
-  --border: #d8d8d8;
-  --muted: #6b6b6b;
-  --bg-alt: #f6f6f6;
-  --accent: #2a5db0;
+  --page: #f4f5f7;
+  --surface: #ffffff;
+  --border: #e2e4e9;
+  --border-strong: #cdd1d9;
+  --ink: #14161a;
+  --ink-secondary: #52565f;
+  --muted: #868b96;
+  --accent: #2a63d6;
+  --accent-wash: rgba(42, 99, 214, 0.08);
+  --accent-wash-strong: rgba(42, 99, 214, 0.14);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(20, 22, 26, 0.04), 0 2px 6px rgba(20, 22, 26, 0.04);
 }
 
 * { box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   margin: 0;
-  padding: 0 1.5rem 3rem;
-  color: #1c1c1c;
-  background: #fff;
+  padding: 0 1.75rem 3rem;
+  color: var(--ink);
+  background: var(--page);
+  -webkit-font-smoothing: antialiased;
 }
 
 nav {
   display: flex;
-  gap: 1.25rem;
+  gap: 0.25rem;
   align-items: center;
-  padding: 1rem 0;
+  padding: 1.1rem 0;
+  margin-bottom: 1.75rem;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
+}
+
+nav strong {
+  margin-right: 1.25rem;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
 }
 
 nav a {
   text-decoration: none;
-  color: var(--accent);
+  color: var(--ink-secondary);
   font-weight: 600;
+  font-size: 0.92rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.12s ease, color 0.12s ease;
 }
 
-nav a.active { color: #1c1c1c; }
+nav a:hover { background: var(--accent-wash); color: var(--ink); }
+nav a.active { color: var(--accent); background: var(--accent-wash); }
 
-h1 { font-size: 1.4rem; margin: 0 1.5rem 1rem 0; display: inline-block; }
-h2 { font-size: 1.1rem; margin-top: 2rem; }
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 0 1.5rem 1.25rem 0;
+  display: inline-block;
+}
+
+h2 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  margin: 0 0 0.9rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
 
 table {
   border-collapse: collapse;
   width: 100%;
-  font-size: 0.9rem;
+  font-size: 0.87rem;
 }
 
 th, td {
   border-bottom: 1px solid var(--border);
-  padding: 0.4rem 0.6rem;
+  padding: 0.55rem 0.7rem;
   text-align: left;
   white-space: nowrap;
 }
 
+thead th {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
 th a { color: inherit; text-decoration: none; }
-th a:hover { text-decoration: underline; }
+th a:hover { color: var(--accent); }
+
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+tbody tr:nth-child(even) td { background: rgba(20, 22, 26, 0.015); }
+tbody tr:hover td { background: var(--accent-wash); }
 
 /* Inventory: the whole "big spreadsheet" list, no pagination -- a frozen
    header + independently-scrolling body (both axes) instead. */
 .inventory-table-wrap {
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 230px);
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 .inventory-table { width: max-content; min-width: 100%; }
 .inventory-table thead th {
   position: sticky;
   top: 0;
-  background: #fff;
-  box-shadow: 0 1px 0 var(--border);
+  box-shadow: 0 1px 0 var(--border-strong);
   z-index: 1;
 }
-
-tbody tr:hover { background: var(--bg-alt); }
 
 .kpis {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.75rem;
 }
 
 .kpi {
+  background: var(--surface);
   border: 1px solid var(--border);
   border-top: 3px solid var(--accent);
-  border-radius: 8px;
-  padding: 0.75rem 1.1rem;
-  min-width: 140px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.2rem;
+  min-width: 150px;
+  box-shadow: var(--shadow);
 }
 
-.kpi .value { font-size: 1.5rem; font-weight: 700; }
-.kpi .label { color: var(--muted); font-size: 0.8rem; }
+.kpi .value { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.01em; }
+.kpi .label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-top: 0.2rem;
+}
 
 .breakdown-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .breakdown-grid .card {
@@ -104,18 +162,17 @@ tbody tr:hover { background: var(--bg-alt); }
      instead. */
   min-width: 0;
   overflow-x: auto;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 1rem 1.1rem 1.25rem;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem 1.35rem;
+  box-shadow: var(--shadow);
 }
 
-.breakdown-grid .card h2 { margin-top: 0; }
-
-/* Collection/Bulk and Etter serie carry 5 columns of data (two of them
-   currency) -- a normal 1/4-width grid track squeezes them into horizontal
-   scroll. Give them the full row instead of fighting for space with the
-   simpler cards. */
+/* Collection/Bulk, Etter serie, and Topp 10 carry enough columns (two of
+   them currency) that a normal 1/4-width grid track squeezes them into
+   horizontal scroll -- give them the full row instead of fighting for
+   space with the simpler cards. */
 .breakdown-grid .card.wide { grid-column: 1 / -1; }
 
 /* Dashboard metrics link through to the same slice in Inventory (e.g. a
@@ -123,31 +180,57 @@ tbody tr:hover { background: var(--bg-alt); }
 .breakdown-grid a {
   color: var(--accent);
   text-decoration: none;
+  font-weight: 600;
 }
 .breakdown-grid a:hover { text-decoration: underline; }
 
-.child-row td:first-child { padding-left: 1.5rem; color: var(--muted); }
-.parent-row { font-weight: 700; }
+.child-row td:first-child { padding-left: 1.5rem; color: var(--ink-secondary); font-weight: 400; }
+.parent-row td { font-weight: 700; }
+.parent-row { background: var(--accent-wash-strong); }
+.parent-row td:first-child { border-left: 3px solid var(--accent); padding-left: calc(0.7rem - 3px); }
 .bulk-row td:first-child { font-style: italic; color: var(--muted); }
 
 form.filters {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.25rem;
   align-items: center;
 }
 
 form.filters input, form.filters select {
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.87rem;
 }
 
-.warnings { background: #fff6e5; border: 1px solid #e8c97a; border-radius: 6px; padding: 0.75rem 1rem; margin-top: 1rem; }
+form.filters input:focus, form.filters select:focus,
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-wash);
+}
+
+.warnings {
+  background: #fff8ea;
+  border: 1px solid #f0d999;
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-top: 1rem;
+}
 .warnings li { margin: 0.15rem 0; }
 
-.result-box { background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-top: 1rem; }
+.result-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.1rem 1.25rem;
+  margin-top: 1rem;
+  box-shadow: var(--shadow);
+}
 
 .muted { color: var(--muted); }
 
@@ -155,21 +238,27 @@ button, input[type=submit] {
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   cursor: pointer;
+  transition: filter 0.12s ease;
 }
+button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 
 .autocomplete { position: relative; }
 .autocomplete-results {
   position: absolute;
   z-index: 10;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   max-height: 220px;
   overflow-y: auto;
   width: 100%;
+  margin-top: 0.25rem;
 }
-.autocomplete-results div { padding: 0.4rem 0.6rem; cursor: pointer; }
-.autocomplete-results div:hover { background: var(--bg-alt); }
+.autocomplete-results div { padding: 0.5rem 0.7rem; cursor: pointer; }
+.autocomplete-results div:hover { background: var(--accent-wash); }
