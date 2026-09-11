@@ -2,6 +2,7 @@
 {% block title %}Dashboard – TCG Inventory{% endblock %}
 
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
+{% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 
 {% block content %}
 <h1>Dashboard</h1>
@@ -17,30 +18,30 @@
   <div class="card wide">
     <h2>Collection / Bulk</h2>
     <table>
-      <thead><tr><th>Navn</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
+      <thead><tr><th>Navn</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
       <tbody>
         <tr class="parent-row">
           <td>Totalt (alle collections)</td>
-          <td>{{ collection_breakdown.parent.qty }}</td>
-          <td>{{ collection_breakdown.parent.duplicates }}</td>
-          <td>{{ collection_breakdown.parent.unique_value | kr }}</td>
-          <td>{{ collection_breakdown.parent.total_value | kr }}</td>
+          <td class="num">{{ collection_breakdown.parent.qty }}</td>
+          <td class="num">{{ collection_breakdown.parent.duplicates }}</td>
+          <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
+          <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
         </tr>
         {% for c in collection_breakdown.children %}
         <tr class="child-row">
           <td>{{ filter_link('collection', c.name) }}</td>
-          <td>{{ c.qty }}</td>
-          <td>{{ c.duplicates }}</td>
-          <td>{{ c.unique_value | kr }}</td>
-          <td>{{ c.total_value | kr }}</td>
+          <td class="num">{{ c.qty }}</td>
+          <td class="num">{{ dup_link('collection', c.name, c.duplicates) }}</td>
+          <td class="num">{{ c.unique_value | kr }}</td>
+          <td class="num">{{ c.total_value | kr }}</td>
         </tr>
         {% endfor %}
         <tr class="bulk-row">
           <td>Bulk</td>
-          <td>{{ collection_breakdown.bulk.qty }}</td>
-          <td>{{ collection_breakdown.bulk.duplicates }}</td>
-          <td>{{ collection_breakdown.bulk.unique_value | kr }}</td>
-          <td>{{ collection_breakdown.bulk.total_value | kr }}</td>
+          <td class="num">{{ collection_breakdown.bulk.qty }}</td>
+          <td class="num">{{ collection_breakdown.bulk.duplicates }}</td>
+          <td class="num">{{ collection_breakdown.bulk.unique_value | kr }}</td>
+          <td class="num">{{ collection_breakdown.bulk.total_value | kr }}</td>
         </tr>
       </tbody>
     </table>
@@ -49,15 +50,15 @@
   <div class="card wide">
     <h2>Etter serie</h2>
     <table>
-      <thead><tr><th>Serie</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
+      <thead><tr><th>Serie</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
       <tbody>
         {% for s in series_breakdown %}
         <tr>
           <td>{{ filter_link('series', s.name) }}</td>
-          <td>{{ s.qty }}</td>
-          <td>{{ s.duplicates }}</td>
-          <td>{{ s.unique_value | kr }}</td>
-          <td>{{ s.total_value | kr }}</td>
+          <td class="num">{{ s.qty }}</td>
+          <td class="num">{{ dup_link('series', s.name, s.duplicates) }}</td>
+          <td class="num">{{ s.unique_value | kr }}</td>
+          <td class="num">{{ s.total_value | kr }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -67,13 +68,13 @@
   <div class="card wide">
     <h2>Topp 10 mest verdifulle kort</h2>
     <table>
-      <thead><tr><th>Navn</th><th>Set</th><th>Referansepris</th></tr></thead>
+      <thead><tr><th>Navn</th><th>Set</th><th class="num">Referansepris</th></tr></thead>
       <tbody>
         {% for card in top_cards %}
         <tr>
           <td>{{ card.name }}</td>
           <td>{{ filter_link('set', card.set) }}</td>
-          <td>{{ card.reference_price | kr }}</td>
+          <td class="num">{{ card.reference_price | kr }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -84,8 +85,8 @@
     <h2>Datakvalitet</h2>
     <table>
       <tbody>
-        <tr><td>Kort uten referansepris</td><td>{{ quality.missing_price_count }}</td></tr>
-        <tr><td>Kort flagget "ikke i siste eksport"</td><td>{{ quality.flagged_missing_count }}</td></tr>
+        <tr><td>Kort uten referansepris</td><td class="num">{{ quality.missing_price_count }}</td></tr>
+        <tr><td>Kort flagget "ikke i siste eksport"</td><td class="num">{{ quality.flagged_missing_count }}</td></tr>
       </tbody>
     </table>
   </div>

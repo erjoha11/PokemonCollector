@@ -50,6 +50,33 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     assert pos_old2 < pos_old10 < pos_new1
 
 
+def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "qty": 3},
+            {"id": "b", "name": "Charizard", "qty": 1},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/inventory?dup=1")
+    assert "Pikachu" in response.text
+    assert "Charizard" not in response.text
+    assert "1 kort" in response.text
+
+
+def test_dashboard_duplicate_count_links_to_inventory_filtered_by_dup(client):
+    from urllib.parse import quote
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    expected_href = f"/inventory?series={quote('Test Series')}&dup=1"
+    assert expected_href in dashboard.text
+
+
 def test_inventory_search_filters_results(client):
     main = make_csv(
         "My Collection",
