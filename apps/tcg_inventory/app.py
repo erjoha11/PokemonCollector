@@ -384,6 +384,9 @@ def cron_dropbox_sync(request: Request):
             "warnings": result.warnings,
         }
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
+        # Cron runs unattended -- nobody's watching a response body, so this
+        # has to land in Vercel's runtime logs to be debuggable at all.
+        print(f"[cron/dropbox-sync] failed: {exc}")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     finally:
         db.close()
