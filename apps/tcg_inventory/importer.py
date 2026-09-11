@@ -88,8 +88,24 @@ def _notes_from_row(row: dict) -> str | None:
     return "; ".join(parts) if parts else None
 
 
+def _decode_csv_bytes(content: bytes) -> str:
+    """Decode a Dex CSV export, whose encoding varies by export path.
+
+    Dex's in-app CSV export writes UTF-16LE with a BOM; files that reach us
+    some other way (manual save-as, re-export) may be plain UTF-8. Detect
+    from the BOM when present rather than assuming either way; fall back
+    from UTF-8 to UTF-16 if the former fails to decode.
+    """
+    if content.startswith(b"\xff\xfe") or content.startswith(b"\xfe\xff"):
+        return content.decode("utf-16")
+    try:
+        return content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return content.decode("utf-16")
+
+
 def _parse_csv(content: bytes) -> list[dict]:
-    text = content.decode("utf-8-sig")
+    text = _decode_csv_bytes(content)
     reader = csv.DictReader(io.StringIO(text), delimiter=";")
     rows = []
     for row in reader:
@@ -120,8 +136,11 @@ def import_dex_csv_files(
     for filename, content in files:
         try:
             rows = _parse_csv(content)
-        except UnicodeDecodeError:
-            result.warnings.append(f"{filename}: kunne ikke lese filen som CSV (feil tegnsett).")
+        except UnicodeDecodeError as exc:
+            result.warnings.append(
+                f"{filename}: kunne ikke lese filen som CSV (feil tegnsett) -- {exc}. "
+                f"{len(content)} bytes, first bytes: {content[:20]!r}."
+            )
             continue
         for row in rows:
             category = (row.get("Category") or "").strip()
