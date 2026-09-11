@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "mcp__Vercel__get_deployment",
+      "mcp__Vercel__list_deployments",
+      "mcp__Vercel__web_fetch_vercel_url",
+      "mcp__github__pull_request_read",
+      "mcp__Vercel__get_runtime_logs",
+      "mcp__Vercel__list_projects",
+      "mcp__Vercel__get_runtime_errors",
+      "mcp__Vercel__get_project",
+      "mcp__Dropbox__fetch",
+      "mcp__Dropbox__search",
+      "mcp__Dropbox__list_folder"
+    ]
+  }
+}
