@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Inventory – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Inventory</h1>
+
+<form class="filters" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true">
+  <input type="text" name="q" value="{{ q }}" placeholder="Søk (navn, number, illustrator, card id)"
+         hx-get="/inventory" hx-trigger="keyup changed delay:300ms" hx-target="#inventory-results" hx-push-url="true"
+         hx-include="closest form">
+
+  <select name="series" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    <option value="">Alle serier</option>
+    {% for s in all_series %}<option value="{{ s }}" {{ 'selected' if s == series }}>{{ s }}</option>{% endfor %}
+  </select>
+
+  <select name="set" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    <option value="">Alle sett</option>
+    {% for s in all_sets %}<option value="{{ s }}" {{ 'selected' if s == set }}>{{ s }}</option>{% endfor %}
+  </select>
+
+  <select name="collection" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    <option value="">Alle collections</option>
+    {% for c in all_collections %}<option value="{{ c }}" {{ 'selected' if c == collection }}>{{ c }}</option>{% endfor %}
+  </select>
+
+  <select name="binder" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    <option value="">Alle bindere</option>
+    {% for b in all_binders %}<option value="{{ b }}" {{ 'selected' if b == binder }}>{{ b }}</option>{% endfor %}
+  </select>
+
+  <input type="hidden" name="sort" value="{{ sort }}">
+  <input type="hidden" name="direction" value="{{ direction }}">
+</form>
+
+{% include "partials/inventory_table.html" %}
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Transactions – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Transactions</h1>
+
+{% if error %}<p class="warnings">{{ error }}</p>{% endif %}
+
+<form method="post" action="/transactions" class="filters" style="align-items:flex-start; flex-direction:column;">
+  <div class="autocomplete" style="width: 320px;">
+    <input type="text" id="card_search" placeholder="Søk kort (navn eller card id)" autocomplete="off"
+           hx-get="/transactions/card-search" hx-trigger="keyup changed delay:250ms" hx-target="#card-search-results"
+           name="q">
+    <div id="card-search-results"></div>
+    <input type="hidden" id="card_id" name="card_id" required>
+  </div>
+
+  <div class="filters">
+    <select name="type" required>
+      <option value="kjøp">Kjøp</option>
+      <option value="salg">Salg</option>
+    </select>
+    <input type="date" name="date" value="{{ today }}" required>
+    <input type="number" step="0.01" name="price" placeholder="Pris" required>
+    <input type="text" name="platform" placeholder="Platform (valgfritt)">
+    <input type="number" step="0.01" name="fees" placeholder="Gebyr (valgfritt)">
+    <button type="submit">Registrer</button>
+  </div>
+</form>
+
+<table>
+  <thead>
+    <tr><th>Dato</th><th>Type</th><th>Kort</th><th>Pris</th><th>Platform</th><th>Gebyr</th></tr>
+  </thead>
+  <tbody>
+    {% for tx in transactions %}
+    <tr>
+      <td>{{ tx.date }}</td>
+      <td>{{ tx.type }}</td>
+      <td>{{ tx.card.name }} ({{ tx.card.card_id }})</td>
+      <td>{{ tx.price | kr }}</td>
+      <td>{{ tx.platform or '' }}</td>
+      <td>{{ tx.fees | kr if tx.fees is not none else '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="muted">Ingen transaksjoner registrert enda.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

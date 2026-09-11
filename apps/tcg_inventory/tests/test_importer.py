@@ -1,0 +1,228 @@
+import datetime as dt
+
+from conftest import make_csv
+
+from importer import import_dex_csv_files
+from models import Card, Collection
+
+
+def test_my_collection_creates_cards_with_core_fields(db_session):
+    csv = make_csv(
+        "My Collection",
+        [{"id": "jpn_sv2a-27", "name": "Pikachu", "qty": 2, "price": "150.5"}],
+    )
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    assert result.cards_created == 1
+    assert result.cards_updated == 0
+
+    card = db_session.query(Card).filter(Card.card_id == "jpn_sv2a-27").one()
+    assert card.name == "Pikachu"
+    assert card.qty == 2
+    assert card.reference_price == 150.5
+
+
+def test_duplicates_total_value_unique_value_are_derived(db_session):
+    csv = make_csv("My Collection", [{"id": "a", "qty": 3, "price": "100"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+
+    assert card.duplicates == 2  # max(qty - 1, 0)
+    assert card.unique_value == 100.0
+    assert card.total_value == 300.0
+
+
+def test_duplicates_never_negative_for_zero_qty(db_session):
+    csv = make_csv("My Collection", [{"id": "a", "qty": 0, "price": "5"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.duplicates == 0
+
+
+def test_wishlist_and_151_fullarts_are_fully_ignored(db_session):
+    wishlist = make_csv("Wishlist", [{"id": "w1", "name": "Wishlist Card"}])
+    fullarts = make_csv("151 Fullarts JPN", [{"id": "f1", "name": "Fullart Card"}])
+
+    result = import_dex_csv_files(db_session, [("w.csv", wishlist), ("f.csv", fullarts)])
+
+    assert db_session.query(Card).count() == 0
+    assert db_session.query(Collection).count() == 0
+    assert result.warnings == []  # excluded categories never even attempt to match cards
+
+
+def test_binder_category_routes_to_binder_not_collection(db_session):
+    main = make_csv("My Collection", [{"id": "a", "name": "Charizard"}])
+    binder_csv = make_csv("Illustrator Binder", [{"id": "a"}])
+
+    import_dex_csv_files(db_session, [("main.csv", main), ("binder.csv", binder_csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.binder is not None
+    assert card.binder.name == "Illustrator Binder"
+    assert card.collections == []
+
+
+def test_binder_membership_is_replaced_when_category_present_again(db_session):
+    main = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    binder_v1 = make_csv("Tradebinder", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", main), ("binder.csv", binder_v1)])
+
+    binder_v2 = make_csv("Tradebinder", [{"id": "a"}])  # b no longer in the binder
+    import_dex_csv_files(db_session, [("main.csv", main), ("binder.csv", binder_v2)])
+
+    card_a = db_session.query(Card).filter(Card.card_id == "a").one()
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert card_a.binder.name == "Tradebinder"
+    assert card_b.binder is None
+
+
+def test_primary_collection_priority_illustrator_beats_vintage_and_generic(db_session):
+    main = make_csv("My Collection", [{"id": "a", "name": "Charizard"}])
+    illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+    generic = make_csv("Collection", [{"id": "a"}])
+    sv151 = make_csv("Scarlet & Violet: 151 JP/KR", [{"id": "a"}])
+
+    import_dex_csv_files(
+        db_session,
+        [
+            ("main.csv", main),
+            ("illustrator.csv", illustrator),
+            ("vintage.csv", vintage),
+            ("generic.csv", generic),
+            ("sv151.csv", sv151),
+        ],
+    )
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert {c.name for c in card.collections} == {
+        "Tomokazu Komiya Collection",
+        "Vintage Collection",
+        "Collection",
+        "Scarlet & Violet: 151 JP/KR",
+    }
+    assert card.primary_collection.name == "Tomokazu Komiya Collection"
+
+
+def test_priority_rank_ordering_vintage_then_generic_then_sv151(db_session):
+    main = make_csv("My Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+    generic = make_csv("Collection", [{"id": "a"}])
+    sv151 = make_csv("Scarlet & Violet: 151 JP/KR", [{"id": "a"}])
+    import_dex_csv_files(
+        db_session,
+        [("main.csv", main), ("vintage.csv", vintage), ("generic.csv", generic), ("sv151.csv", sv151)],
+    )
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.primary_collection.name == "Vintage Collection"
+
+
+def test_unknown_collection_gets_default_lowest_priority(db_session):
+    main = make_csv("My Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+    mystery = make_csv("Some New Dex Folder", [{"id": "a"}])
+    import_dex_csv_files(
+        db_session, [("main.csv", main), ("vintage.csv", vintage), ("mystery.csv", mystery)]
+    )
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    # Vintage Collection (rank 2) still wins over an unrecognized category (rank 99).
+    assert card.primary_collection.name == "Vintage Collection"
+
+
+def test_vintage_tag_survives_a_sync_without_a_fresh_vintage_export(db_session):
+    main = make_csv("My Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage)])
+
+    # Second sync: only the main export, no Vintage file this time.
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert [c.name for c in card.collections] == ["Vintage Collection"]
+
+
+def test_collection_membership_is_replaced_when_its_category_is_present(db_session):
+    main = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    vintage_v1 = make_csv("Vintage Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage_v1)])
+
+    vintage_v2 = make_csv("Vintage Collection", [{"id": "a"}])  # b dropped out
+    import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage_v2)])
+
+    card_a = db_session.query(Card).filter(Card.card_id == "a").one()
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert [c.name for c in card_a.collections] == ["Vintage Collection"]
+    assert card_b.collections == []
+
+
+def test_normal_sync_flags_missing_card_instead_of_deleting(db_session):
+    v1 = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", v1)])
+
+    v2 = make_csv("My Collection", [{"id": "a"}])  # b missing this time
+    result = import_dex_csv_files(db_session, [("main.csv", v2)], full_load=False)
+
+    assert result.cards_flagged_missing == 1
+    assert result.cards_deleted == 0
+    assert db_session.query(Card).count() == 2
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert card_b.flagged_missing_since is not None
+
+
+def test_flagged_missing_since_does_not_move_on_repeated_misses(db_session):
+    v1 = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", v1)])
+
+    v2 = make_csv("My Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", v2)], today=dt.date(2026, 1, 1))
+    import_dex_csv_files(db_session, [("main.csv", v2)], today=dt.date(2026, 6, 1))
+
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert card_b.flagged_missing_since == dt.date(2026, 1, 1)
+
+
+def test_card_reappearing_clears_the_missing_flag(db_session):
+    v1 = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", v1)])
+    v2 = make_csv("My Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", v2)])
+
+    import_dex_csv_files(db_session, [("main.csv", v1)])  # b is back
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    assert card_b.flagged_missing_since is None
+
+
+def test_full_load_deletes_missing_cards(db_session):
+    v1 = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", v1)])
+
+    v2 = make_csv("My Collection", [{"id": "a"}])
+    result = import_dex_csv_files(db_session, [("main.csv", v2)], full_load=True)
+
+    assert result.cards_deleted == 1
+    assert db_session.query(Card).count() == 1
+    assert db_session.query(Card).filter(Card.card_id == "b").one_or_none() is None
+
+
+def test_sync_without_my_collection_file_never_flags_or_deletes(db_session):
+    main = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    # Only a collection export this time -- no My Collection file at all.
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+    result = import_dex_csv_files(db_session, [("vintage.csv", vintage)])
+
+    assert result.cards_flagged_missing == 0
+    assert result.cards_deleted == 0
+    assert db_session.query(Card).count() == 2
+
+
+def test_collection_row_for_unknown_card_id_produces_a_warning(db_session):
+    main = make_csv("My Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "does-not-exist"}])
+    result = import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage)])
+
+    assert any("does-not-exist" in w for w in result.warnings)
+    assert db_session.query(Collection).filter(Collection.name == "Vintage Collection").one().cards == []
