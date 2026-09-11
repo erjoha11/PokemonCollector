@@ -9,7 +9,7 @@ testable.
 | Folder | Status | What it does |
 |---|---|---|
 | [`apps/finn_ad_scraper/`](apps/finn_ad_scraper) | In progress | Opens a finn.no ad, extracts its title/description/price/photos, and identifies the Pokemon cards visible in the photos (via Claude vision). |
-| [`apps/tcg_inventory/`](apps/tcg_inventory) | In progress | Local FastAPI + SQLite webapp (`python app.py`) that replaces an Excel workbook for tracking a physical Pokémon card collection: dashboard, inventory table, transaction log, and Dex CSV import/sync. |
+| [`apps/tcg_inventory/`](apps/tcg_inventory) | In progress | FastAPI webapp that replaces an Excel workbook for tracking a physical Pokémon card collection: dashboard, inventory table, transaction log, Dex CSV import/sync (manual or from Dropbox). Runs locally (`python app.py`, SQLite) or deployed (Vercel + Supabase, with login). |
 
 ## Setup
 

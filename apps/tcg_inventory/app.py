@@ -10,6 +10,7 @@ external services, no build step (server-rendered HTML + HTMX).
 from __future__ import annotations
 
 import datetime as dt
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+import auth
 import dropbox_client
 import queries
 from db import SessionLocal, init_db
@@ -41,6 +43,27 @@ app = FastAPI(title="TCG Inventory", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["kr"] = lambda v: f"{v:,.0f} kr".replace(",", " ") if v is not None else "-"
+templates.env.globals["auth_enabled"] = auth.is_configured
+
+# Paths reachable without a session -- everything else needs a login once
+# Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
+# local dev) leaves the app open, same as before this was added.
+_PUBLIC_PATHS = {"/login"}
+
+
+@app.middleware("http")
+async def auth_guard(request: Request, call_next):
+    if not auth.is_configured() or request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/static"):
+        return await call_next(request)
+
+    token = request.cookies.get(auth.SESSION_COOKIE)
+    if token:
+        try:
+            auth.verify_access_token(token)
+            return await call_next(request)
+        except auth.AuthError:
+            pass
+    return RedirectResponse("/login", status_code=303)
 
 PAGE_SIZE = 50
 
@@ -320,6 +343,46 @@ def import_dropbox_sync(
         )
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------
+# Auth (Supabase) -- only enforced when SUPABASE_* env vars are set
+# --------------------------------------------------------------------------
+def _cookie_secure() -> bool:
+    # Vercel sets VERCEL=1 at runtime; treat that as "served over https".
+    # Locally (no VERCEL var) cookies stay non-secure so http://localhost works.
+    return bool(os.environ.get("VERCEL"))
+
+
+@app.get("/login")
+def login_form(request: Request):
+    return templates.TemplateResponse(request, "login.html", {"error": None})
+
+
+@app.post("/login")
+def login_submit(request: Request, email: str = Form(...), password: str = Form(...)):
+    try:
+        tokens = auth.login(email, password)
+    except auth.AuthError as exc:
+        return templates.TemplateResponse(request, "login.html", {"error": str(exc)})
+
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        auth.SESSION_COOKIE,
+        tokens["access_token"],
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        max_age=tokens.get("expires_in", 3600),
+    )
+    return response
+
+
+@app.get("/logout")
+def logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return response
 
 
 if __name__ == "__main__":
