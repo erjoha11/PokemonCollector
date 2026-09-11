@@ -1,5 +1,20 @@
 {% extends "base.html" %}
 {% block title %}Dashboard – TCG Inventory{% endblock %}
+
+{% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
+
+{% macro bar_chart(rows, param) %}
+<div class="chart-bars">
+  {% for row in rows %}
+  <div class="chart-bar-row">
+    <div class="chart-bar-label" title="{{ row.name }}">{{ filter_link(param, row.name) }}</div>
+    <div class="chart-bar-track"><div class="chart-bar-fill" style="width: {{ row.pct }}%"></div></div>
+    <div class="chart-bar-value">{{ row.value | kr }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
 {% block content %}
 <h1>Dashboard</h1>
 
@@ -11,8 +26,9 @@
 </div>
 
 <div class="breakdown-grid">
-  <div>
+  <div class="card">
     <h2>Collection / Bulk</h2>
+    {{ bar_chart(collection_chart, 'collection') }}
     <table>
       <thead><tr><th>Navn</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
       <tbody>
@@ -25,7 +41,7 @@
         </tr>
         {% for c in collection_breakdown.children %}
         <tr class="child-row">
-          <td>{{ c.name }}</td>
+          <td>{{ filter_link('collection', c.name) }}</td>
           <td>{{ c.qty }}</td>
           <td>{{ c.duplicates }}</td>
           <td>{{ c.unique_value | kr }}</td>
@@ -43,14 +59,15 @@
     </table>
   </div>
 
-  <div>
+  <div class="card">
     <h2>Etter serie</h2>
+    {{ bar_chart(series_chart, 'series') }}
     <table>
       <thead><tr><th>Serie</th><th>Qty</th><th>Duplikater</th><th>Verdi</th><th>Total verdi</th></tr></thead>
       <tbody>
         {% for s in series_breakdown %}
         <tr>
-          <td>{{ s.name }}</td>
+          <td>{{ filter_link('series', s.name) }}</td>
           <td>{{ s.qty }}</td>
           <td>{{ s.duplicates }}</td>
           <td>{{ s.unique_value | kr }}</td>
@@ -61,23 +78,25 @@
     </table>
   </div>
 
-  <div>
+  <div class="card">
     <h2>Etter binder</h2>
     <table>
       <thead><tr><th>Binder</th><th>Qty</th><th>Verdi</th></tr></thead>
       <tbody>
         {% for b in binder_breakdown %}
         <tr>
-          <td>{{ b.name }}</td>
+          <td>{{ filter_link('binder', b.name) }}</td>
           <td>{{ b.qty }}</td>
           <td>{{ b.unique_value | kr }}</td>
         </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">Ingen bindere enda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <div>
+  <div class="card">
     <h2>Topp 10 mest verdifulle kort</h2>
     <table>
       <thead><tr><th>Navn</th><th>Set</th><th>Referansepris</th></tr></thead>
@@ -85,15 +104,22 @@
         {% for card in top_cards %}
         <tr>
           <td>{{ card.name }}</td>
-          <td>{{ card.set }}</td>
-          <td>{{ card.reference_price | kr }}</td>
+          <td>{{ filter_link('set', card.set) }}</td>
+          <td>
+            <div class="chart-bar-row chart-bar-row--inline">
+              <div class="chart-bar-track chart-bar-track--sm">
+                <div class="chart-bar-fill" style="width: {{ (card.reference_price / top_price_max * 100) if top_price_max else 0 }}%"></div>
+              </div>
+              <span>{{ card.reference_price | kr }}</span>
+            </div>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <div>
+  <div class="card">
     <h2>Datakvalitet</h2>
     <table>
       <tbody>
