@@ -77,6 +77,16 @@ tbody tr:hover { background: var(--bg-alt); }
   gap: 1.5rem;
 }
 
+/* Grid items default to a content-based min-width, so a table wider than
+   its track (long collection/series names, "nowrap" cells) would overflow
+   sideways into the next column instead of respecting the grid -- let it
+   shrink to the track width and scroll its own content horizontally
+   instead. */
+.breakdown-grid > div {
+  min-width: 0;
+  overflow-x: auto;
+}
+
 .child-row td:first-child { padding-left: 1.5rem; color: var(--muted); }
 .parent-row { font-weight: 700; }
 .bulk-row td:first-child { font-style: italic; color: var(--muted); }
