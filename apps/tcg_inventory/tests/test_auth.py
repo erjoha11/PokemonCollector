@@ -59,6 +59,18 @@ def test_login_raises_auth_error_on_bad_credentials(monkeypatch):
         auth.login("user@example.com", "wrong-password")
 
 
+def test_login_rejects_non_ascii_anon_key_with_a_clear_error(monkeypatch):
+    # A real Supabase anon key/JWT is always plain ASCII. Non-ASCII means the
+    # env var got corrupted (e.g. invisible characters from a copy/paste) --
+    # this must fail with a clear AuthError, not a raw UnicodeEncodeError
+    # from deep inside httpx's header encoding (a real regression once).
+    monkeypatch.setattr(auth, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(auth, "SUPABASE_ANON_KEY", "eyJhbGci​OiJIUzI1NiJ9")
+
+    with pytest.raises(auth.AuthError, match="ugyldige tegn"):
+        auth.login("user@example.com", "correct-password")
+
+
 def test_login_returns_tokens_on_success(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_URL", "https://x.supabase.co")
     monkeypatch.setattr(auth, "SUPABASE_ANON_KEY", "anon")

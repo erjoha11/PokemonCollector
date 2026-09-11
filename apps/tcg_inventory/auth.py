@@ -23,9 +23,9 @@ import os
 import httpx
 import jwt
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
-SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
-SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+SUPABASE_JWT_SECRET = os.environ.get("SUPABASE_JWT_SECRET", "").strip()
 
 SESSION_COOKIE = "tcg_session"
 
@@ -40,6 +40,17 @@ def is_configured() -> bool:
 
 def login(email: str, password: str) -> dict:
     """Exchange email/password for Supabase tokens via the GoTrue password grant."""
+    if not SUPABASE_ANON_KEY.isascii():
+        # A real Supabase key/JWT is always plain ASCII. Non-ASCII here means
+        # the env var got corrupted somewhere along the way (e.g. invisible
+        # characters picked up during copy/paste) -- fail clearly instead of
+        # crashing deep inside httpx's header encoding with a raw
+        # UnicodeEncodeError and a bare 500.
+        raise AuthError(
+            "SUPABASE_ANON_KEY inneholder ugyldige tegn. Kopier nøkkelen på nytt "
+            "direkte fra Supabase (Settings -> API -> anon key) og lim den inn på "
+            "nytt i Vercel."
+        )
     try:
         response = httpx.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
