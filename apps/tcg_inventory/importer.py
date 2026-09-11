@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import io
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -38,14 +39,33 @@ class ImportResult:
 
 
 def _parse_price(raw: str | None) -> float | None:
+    """Parse a Dex "Price" cell into a float.
+
+    Dex exports the price with a currency prefix and locale-dependent
+    formatting, e.g. "kr 0,48" (Norwegian: comma decimal, space thousands)
+    or plain "150.5". Strip everything but the digits/separators, then
+    figure out which of "," or "." is the decimal point from whichever
+    appears last (European "1.234,56" vs US "1,234.56"); a lone "," is
+    treated as a decimal point (matches the Norwegian kr format above).
+    """
     if raw is None:
         return None
-    raw = raw.strip()
+    raw = raw.strip().replace(" ", "").replace("\xa0", "")
     if not raw:
         return None
-    raw = raw.replace(" ", "").replace(",", ".")
+    match = re.search(r"-?[\d.,]+", raw)
+    if not match:
+        return None
+    number = match.group(0)
+    if "," in number and "." in number:
+        if number.rfind(",") > number.rfind("."):
+            number = number.replace(".", "").replace(",", ".")
+        else:
+            number = number.replace(",", "")
+    elif "," in number:
+        number = number.replace(",", ".")
     try:
-        return float(raw)
+        return float(number)
     except ValueError:
         return None
 

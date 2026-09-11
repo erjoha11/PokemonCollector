@@ -1,9 +1,38 @@
 import datetime as dt
 
+import pytest
 from conftest import make_csv
 
-from importer import import_dex_csv_files
+from importer import _parse_price, import_dex_csv_files
 from models import Card, Collection
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("kr 0,48", 0.48),
+        ("kr 783,70", 783.70),
+        ("150.5", 150.5),
+        ("150,5", 150.5),
+        ("kr 1 234,56", 1234.56),  # space as thousands separator
+        ("1,234.56", 1234.56),  # US-style thousands
+        ("1.234,56", 1234.56),  # European-style thousands
+        ("", None),
+        (None, None),
+        ("kr -", None),
+    ],
+)
+def test_parse_price_handles_dex_currency_formatting(raw, expected):
+    assert _parse_price(raw) == expected
+
+
+def test_my_collection_parses_norwegian_kr_price_format(db_session):
+    # Real Dex exports look like "kr 0,48", not a plain float -- this was a
+    # real bug: reference_price silently ended up None for every card.
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.reference_price == 0.48
 
 
 def test_my_collection_creates_cards_with_core_fields(db_session):
