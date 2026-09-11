@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logg inn – TCG Inventory</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main style="max-width: 360px; margin: 4rem auto;">
+    <h1>TCG Inventory</h1>
+    {% if error %}<p class="warnings">{{ error }}</p>{% endif %}
+    <form method="post" action="/login" style="display:flex; flex-direction:column; gap:0.6rem;">
+      <input type="email" name="email" placeholder="E-post" required autofocus>
+      <input type="password" name="password" placeholder="Passord" required>
+      <button type="submit">Logg inn</button>
+    </form>
+  </main>
+</body>
+</html>

@@ -1,10 +1,13 @@
 # tcg_inventory
 
-A local webapp that replaces an Excel workbook for tracking a physical
-Pokémon card collection. FastAPI + SQLite + Jinja2/HTMX — no build step, no
-external services.
+A webapp that replaces an Excel workbook for tracking a physical Pokémon
+card collection. FastAPI + Jinja2/HTMX — no build step. Runs two ways:
 
-## Running it
+- **Locally**: `python app.py`, SQLite, no accounts, no setup.
+- **Deployed**: Vercel (hosting) + Supabase (Postgres + login) — see
+  "Deploying to Vercel + Supabase" below.
+
+## Running it locally
 
 ```bash
 cd apps/tcg_inventory
@@ -133,16 +136,73 @@ One-time setup:
 The refresh token doesn't expire, so this is a one-time setup. Nothing is
 ever written back to Dropbox.
 
+## Deploying to Vercel + Supabase
+
+Moving off `localhost` means two things change: the SQLite file needs to
+become a real database (Vercel's filesystem is read-only/ephemeral —
+`db.py` refuses to start on Vercel without `DATABASE_URL` set, rather than
+silently failing on writes), and the app is now reachable by anyone with
+the URL, so it needs a login. Both are optional until you set the matching
+env vars — nothing here changes local `python app.py` behavior.
+
+### 1. Supabase (database + login)
+
+1. Create a project at [supabase.com](https://supabase.com/dashboard).
+2. **Database**: Settings → Database → **Connection string** → copy the
+   **Transaction pooler** one (port 6543, not the direct 5432 one — the
+   pooler is what keeps a serverless app from exhausting Postgres'
+   connection limit across many short-lived invocations). This is
+   `DATABASE_URL`.
+3. **Auth**: Authentication → Users → **Add user** → create yourself an
+   email/password. There's no public signup route in this app on purpose
+   — you create your own account here, once.
+4. Grab three more values from Settings → API:
+   - **Project URL** → `SUPABASE_URL`
+   - **anon / public key** → `SUPABASE_ANON_KEY`
+   - **JWT Secret** (further down the same page) → `SUPABASE_JWT_SECRET`
+
+### 2. Vercel (hosting)
+
+1. Import this repo as a new Vercel project.
+2. **Settings → General → Root Directory** → set to `apps/tcg_inventory`
+   (this is a monorepo; Vercel needs to know the app doesn't live at the
+   repo root).
+3. **Settings → Environment Variables** → add `DATABASE_URL`,
+   `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_JWT_SECRET` (from above),
+   and — if you're also using Dropbox import — `DROPBOX_APP_KEY`,
+   `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN`, `DROPBOX_FOLDER`.
+4. Deploy. `vercel.json` + `api/index.py` route every request to the same
+   FastAPI app (`api/index.py` just re-exports `app` from `app.py` — all
+   the actual routes are unchanged).
+5. Open the deployed URL → you'll land on `/login` → sign in with the user
+   you created in Supabase.
+
+### How the login works
+
+`auth.py` talks to Supabase's Auth API (GoTrue) directly over HTTP — no
+supabase-js, no client-side JS. `/login` posts email/password, gets back a
+short-lived access token, and stores it in an `httpOnly` cookie. Every
+other route is gated by a middleware (`auth_guard` in `app.py`) that
+verifies the cookie's JWT locally against `SUPABASE_JWT_SECRET` (HS256,
+Supabase's default) — no network round-trip per request. The access token
+expires after Supabase's default (1 hour); there's no silent refresh yet,
+so an expired session just bounces back to `/login`. Auth is skipped
+entirely whenever `SUPABASE_URL`/`SUPABASE_ANON_KEY`/`SUPABASE_JWT_SECRET`
+aren't all set — that's what keeps local `python app.py` login-free.
+
 ## Project layout
 
 - `app.py` — FastAPI app, routes, entrypoint (`python app.py`).
-- `db.py` — SQLite engine/session setup.
+- `db.py` — SQLite (local) / Postgres (Supabase, via `DATABASE_URL`) engine
+  and session setup.
+- `auth.py` — Supabase Auth login + JWT verification.
 - `models.py` — SQLAlchemy models + computed properties.
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
 - `queries.py` — dashboard aggregation queries.
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
+- `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.
 - `templates/`, `static/` — Jinja2 + HTMX frontend (HTMX is vendored in
   `static/htmx.min.js`, no CDN dependency, works fully offline).
 - `tests/` — pytest, offline, no network or real DB file touched.
@@ -167,3 +227,9 @@ network access or the app's real `tcg_inventory.db` involved.
 - The `set_release_order` seed data (see "Chronological sorting" above).
 - `classification` and `location` are plain nullable text fields with no
   UI to edit them yet beyond what's shown in the Inventory table.
+- Database migrations — `init_db()` only ever creates missing tables
+  (`CREATE TABLE IF NOT EXISTS`, via SQLAlchemy). A schema change later
+  will need a real migration (e.g. Alembic) rather than editing a live
+  Supabase table by hand.
+- Silent session refresh — an expired Supabase session redirects to
+  `/login` instead of refreshing quietly in the background.
