@@ -20,6 +20,8 @@ from models import Card, Collection
         ("", None),
         (None, None),
         ("kr -", None),
+        ("kr —", None),  # em dash, Dex's "no price" placeholder
+        ("—", None),
     ],
 )
 def test_parse_price_handles_dex_currency_formatting(raw, expected):
@@ -32,6 +34,18 @@ def test_my_collection_parses_norwegian_kr_price_format(db_session):
     csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])
     card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.reference_price == 0.48
+
+
+def test_my_collection_imports_utf16le_bom_export(db_session):
+    # Dex's in-app CSV export writes UTF-16LE with a BOM, not UTF-8 -- a real
+    # export downloaded via the Dropbox API failed to decode until this was
+    # handled explicitly.
+    csv_utf8 = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
+    csv_utf16 = csv_utf8.decode("utf-8").encode("utf-16")  # adds a BOM
+    import_dex_csv_files(db_session, [("main.csv", csv_utf16)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.name == "Shellder"
     assert card.reference_price == 0.48
 
 
