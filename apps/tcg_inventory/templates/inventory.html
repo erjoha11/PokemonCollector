@@ -31,10 +31,17 @@
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
   <input type="hidden" name="dup" value="{{ '1' if dup else '' }}">
+  <input type="hidden" name="rarity" value="{{ rarity }}">
   {% if dup %}
   <span class="muted">
     Viser bare kort med duplikater.
-    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}">Fjern filter</a>
+    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}">Fjern filter</a>
+  </span>
+  {% endif %}
+  {% if rarity %}
+  <span class="muted">
+    Filtrert på rarity: {{ rarity }}
+    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}">Fjern filter</a>
   </span>
   {% endif %}
 </form>

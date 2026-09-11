@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 from models import Binder, Card
@@ -91,6 +90,16 @@ def by_series_breakdown(db: Session) -> list[Bucket]:
     return sorted(buckets.values(), key=lambda b: b.name)
 
 
+def by_rarity_breakdown(db: Session) -> list[Bucket]:
+    cards = _all_cards_with_collections(db)
+    buckets: dict[str, Bucket] = {}
+    for card in cards:
+        key = card.rarity or "(uten rarity)"
+        bucket = buckets.setdefault(key, Bucket(name=key))
+        bucket.add(card)
+    return sorted(buckets.values(), key=lambda b: b.name)
+
+
 @dataclass
 class BinderBucket:
     name: str
@@ -121,9 +130,3 @@ def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
         .limit(limit)
         .all()
     )
-
-
-def data_quality(db: Session) -> dict:
-    missing_price = db.query(func.count(Card.id)).filter(Card.reference_price.is_(None)).scalar()
-    flagged_missing = db.query(func.count(Card.id)).filter(Card.flagged_missing_since.isnot(None)).scalar()
-    return {"missing_price_count": missing_price, "flagged_missing_count": flagged_missing}
