@@ -1,0 +1,502 @@
+[
+  {
+    "series": "Original",
+    "set": "Base Set",
+    "rank": 1
+  },
+  {
+    "series": "Original",
+    "set": "Jungle",
+    "rank": 2
+  },
+  {
+    "series": "Original",
+    "set": "Team Rocket",
+    "rank": 3
+  },
+  {
+    "series": "Original",
+    "set": "Gym Heroes",
+    "rank": 4
+  },
+  {
+    "series": "Neo",
+    "set": "Neo Revelation",
+    "rank": 5
+  },
+  {
+    "series": "Legendary Collection",
+    "set": "Legendary Collection",
+    "rank": 6
+  },
+  {
+    "series": "EX",
+    "set": "EX Sandstorm",
+    "rank": 7
+  },
+  {
+    "series": "EX",
+    "set": "EX Dragon",
+    "rank": 8
+  },
+  {
+    "series": "EX",
+    "set": "EX Hidden Legends",
+    "rank": 9
+  },
+  {
+    "series": "EX",
+    "set": "EX Legend Maker",
+    "rank": 10
+  },
+  {
+    "series": "EX",
+    "set": "EX Crystal Guardians",
+    "rank": 11
+  },
+  {
+    "series": "EX",
+    "set": "EX Power Keepers",
+    "rank": 12
+  },
+  {
+    "series": "Diamond & Pearl",
+    "set": "Diamond & Pearl",
+    "rank": 13
+  },
+  {
+    "series": "Diamond & Pearl",
+    "set": "Secret Wonders",
+    "rank": 14
+  },
+  {
+    "series": "Diamond & Pearl",
+    "set": "Great Encounters",
+    "rank": 15
+  },
+  {
+    "series": "Diamond & Pearl",
+    "set": "Stormfront",
+    "rank": 16
+  },
+  {
+    "series": "Platinum",
+    "set": "Platinum",
+    "rank": 17
+  },
+  {
+    "series": "Platinum",
+    "set": "Rising Rivals",
+    "rank": 18
+  },
+  {
+    "series": "Platinum",
+    "set": "Arceus",
+    "rank": 19
+  },
+  {
+    "series": "HeartGold & SoulSilver",
+    "set": "HeartGold & SoulSilver",
+    "rank": 20
+  },
+  {
+    "series": "HeartGold & SoulSilver",
+    "set": "Unleashed",
+    "rank": 21
+  },
+  {
+    "series": "HeartGold & SoulSilver",
+    "set": "Undaunted",
+    "rank": 22
+  },
+  {
+    "series": "HeartGold & SoulSilver",
+    "set": "Triumphant",
+    "rank": 23
+  },
+  {
+    "series": "HeartGold & SoulSilver",
+    "set": "Call of Legends",
+    "rank": 24
+  },
+  {
+    "series": "Trainer Kits",
+    "set": "HS Trainer Kit: Raichu Half Deck",
+    "rank": 25
+  },
+  {
+    "series": "Black & White",
+    "set": "Black & White",
+    "rank": 26
+  },
+  {
+    "series": "Black & White",
+    "set": "Emerging Powers",
+    "rank": 27
+  },
+  {
+    "series": "Black & White",
+    "set": "Next Destinies",
+    "rank": 28
+  },
+  {
+    "series": "Black & White",
+    "set": "Plasma Blast",
+    "rank": 29
+  },
+  {
+    "series": "XY",
+    "set": "XY",
+    "rank": 30
+  },
+  {
+    "series": "XY",
+    "set": "Flashfire",
+    "rank": 31
+  },
+  {
+    "series": "XY",
+    "set": "Furious Fists",
+    "rank": 32
+  },
+  {
+    "series": "XY",
+    "set": "Phantom Forces",
+    "rank": 33
+  },
+  {
+    "series": "XY",
+    "set": "Primal Clash",
+    "rank": 34
+  },
+  {
+    "series": "XY",
+    "set": "Roaring Skies",
+    "rank": 35
+  },
+  {
+    "series": "XY",
+    "set": "Ancient Origins",
+    "rank": 36
+  },
+  {
+    "series": "XY",
+    "set": "BREAKthrough",
+    "rank": 37
+  },
+  {
+    "series": "XY",
+    "set": "BREAKpoint",
+    "rank": 38
+  },
+  {
+    "series": "XY",
+    "set": "Generations",
+    "rank": 39
+  },
+  {
+    "series": "XY",
+    "set": "Fates Collide",
+    "rank": 40
+  },
+  {
+    "series": "XY",
+    "set": "Steam Siege",
+    "rank": 41
+  },
+  {
+    "series": "XY",
+    "set": "Evolutions",
+    "rank": 42
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Sun & Moon",
+    "rank": 43
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Guardians Rising",
+    "rank": 44
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Burning Shadows",
+    "rank": 45
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Crimson Invasion",
+    "rank": 46
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Forbidden Light",
+    "rank": 47
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Celestial Storm",
+    "rank": 48
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Lost Thunder",
+    "rank": 49
+  },
+  {
+    "series": "Sun & Moon",
+    "set": "Hidden Fates",
+    "rank": 50
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Sword & Shield",
+    "rank": 51
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Sword & Shield Promos",
+    "rank": 52
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Rebel Clash",
+    "rank": 53
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Darkness Ablaze",
+    "rank": 54
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Champion's Path",
+    "rank": 55
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Vivid Voltage",
+    "rank": 56
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Shining Fates",
+    "rank": 57
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Battle Styles",
+    "rank": 58
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Chilling Reign",
+    "rank": 59
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Evolving Skies",
+    "rank": 60
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Fusion Strike",
+    "rank": 61
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Brilliant Stars",
+    "rank": 62
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Astral Radiance",
+    "rank": 63
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Pokémon GO",
+    "rank": 64
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Lost Origin",
+    "rank": 65
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Silver Tempest",
+    "rank": 66
+  },
+  {
+    "series": "Sword & Shield",
+    "set": "Crown Zenith",
+    "rank": 67
+  },
+  {
+    "series": "McDonald's Collections",
+    "set": "McDonald's Collection 2023",
+    "rank": 68
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Scarlet & Violet",
+    "rank": 69
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Pokémon Card 151",
+    "rank": 70
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Paldea Evolved",
+    "rank": 71
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Obsidian Flames",
+    "rank": 72
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "151",
+    "rank": 73
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Paradox Rift",
+    "rank": 74
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Shiny Treasure ex",
+    "rank": 75
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Temporal Forces",
+    "rank": 76
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Twilight Masquerade",
+    "rank": 77
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Shrouded Fable",
+    "rank": 78
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Stellar Crown",
+    "rank": 79
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Paradise Dragona",
+    "rank": 80
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Surging Sparks",
+    "rank": 81
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Terastal Festival ex",
+    "rank": 82
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Heat Wave Arena",
+    "rank": 83
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Glory of Team Rocket",
+    "rank": 84
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Destined Rivals",
+    "rank": 85
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Black Bolt",
+    "rank": 86
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Gem Pack Vol. 3",
+    "rank": 87
+  },
+  {
+    "series": "Scarlet & Violet",
+    "set": "Gem Pack Vol. 5",
+    "rank": 88
+  },
+  {
+    "series": "MEGA",
+    "set": "Mega Brave",
+    "rank": 89
+  },
+  {
+    "series": "MEGA",
+    "set": "MEGA Dream ex",
+    "rank": 90
+  },
+  {
+    "series": "MEGA",
+    "set": "Start Deck 100 Battle Collection",
+    "rank": 91
+  },
+  {
+    "series": "MEGA",
+    "set": "Nihil Zero",
+    "rank": 92
+  },
+  {
+    "series": "MEGA",
+    "set": "Abyss Eye",
+    "rank": 93
+  },
+  {
+    "series": "MEGA",
+    "set": "Storm Emeralda",
+    "rank": 94
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Mega Evolution",
+    "rank": 95
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Phantasmal Flames",
+    "rank": 96
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Ascended Heroes",
+    "rank": 97
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Perfect Order",
+    "rank": 98
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Chaos Rising",
+    "rank": 99
+  },
+  {
+    "series": "Mega Evolution",
+    "set": "Pitch Black",
+    "rank": 100
+  }
+]
