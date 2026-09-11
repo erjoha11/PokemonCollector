@@ -82,6 +82,23 @@ def _parse_qty(raw: str | None) -> int:
         return 0
 
 
+def _parse_number_int(number: str | None) -> int | None:
+    """Extract a sortable integer from Dex's "Number" cell (e.g. "109/189"
+    -> 109, "SWSH175/307" -> 175) so cards within a set sort in printed
+    order (1, 2, ..., 10) instead of alphabetically ("1", "10", "2", ...).
+    """
+    if not number:
+        return None
+    left = number.split("/")[0]
+    digits = re.sub(r"\D", "", left)
+    if not digits:
+        return None
+    try:
+        return int(digits)
+    except ValueError:
+        return None
+
+
 def _notes_from_row(row: dict) -> str | None:
     parts = [row.get(f"Note {i}", "").strip() for i in range(1, 6)]
     parts = [p for p in parts if p]
@@ -182,6 +199,7 @@ def import_dex_csv_files(
 
             card.name = (row.get("Name") or "").strip()
             card.number = (row.get("Number") or "").strip() or None
+            card.number_int = _parse_number_int(card.number)
             card.series = (row.get("Series") or "").strip() or None
             card.set = (row.get("Set") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None

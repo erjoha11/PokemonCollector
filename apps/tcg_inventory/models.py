@@ -57,6 +57,11 @@ class Card(Base):
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     number: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Derived from `number` at import time (e.g. "109/189" -> 109) purely so
+    # cards within a set sort in printed order (1, 2, ..., 10) instead of
+    # alphabetically ("1", "10", "2", ...). Never set directly -- see
+    # importer._parse_number_int.
+    number_int: Mapped[int | None] = mapped_column(Integer, nullable=True)
     series: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     set: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     variant: Mapped[str | None] = mapped_column(String, nullable=True)

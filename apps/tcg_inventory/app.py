@@ -27,7 +27,7 @@ import dropbox_client
 import queries
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
-from models import Binder, Card, Collection, Transaction
+from models import Binder, Card, Collection, SetReleaseOrder, Transaction
 
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
@@ -71,7 +71,7 @@ PAGE_SIZE = 50
 
 SORT_COLUMNS = {
     "name": Card.name,
-    "number": Card.number,
+    "number": func.coalesce(Card.number_int, 999999),
     "series": Card.series,
     "set": Card.set,
     "reference_price": Card.reference_price,
@@ -79,6 +79,9 @@ SORT_COLUMNS = {
     "rarity": Card.rarity,
     "illustrator": Card.illustrator,
 }
+# Cards not present in set_release_order (no research done for that set yet)
+# sort after every known set, not before -- see SetReleaseOrder's docstring.
+UNKNOWN_RELEASE_RANK = 999999
 
 
 def get_db_session() -> Session:
@@ -146,7 +149,7 @@ def inventory(
     set: str = "",
     collection: str = "",
     binder: str = "",
-    sort: str = "name",
+    sort: str = "release",
     direction: str = "asc",
     page: int = 1,
 ):
@@ -154,12 +157,27 @@ def inventory(
     try:
         query = _apply_inventory_filters(db, q, series, set, collection, binder)
         total = query.count()
+        number_sort = func.coalesce(Card.number_int, 999999)
 
-        sort_col = SORT_COLUMNS.get(sort, Card.name)
-        sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
+        if sort == "release":
+            # Default: actual print order -- Base Set #1 first, etc. Sets
+            # with no research done yet (no set_release_order row) sort
+            # after every known set rather than before (see UNKNOWN_RELEASE_RANK).
+            query = query.outerjoin(
+                SetReleaseOrder,
+                (SetReleaseOrder.series == Card.series) & (SetReleaseOrder.set == Card.set),
+            )
+            release_rank = func.coalesce(SetReleaseOrder.release_rank, UNKNOWN_RELEASE_RANK)
+            rank_col = release_rank.desc() if direction == "desc" else release_rank.asc()
+            order_cols = [rank_col, Card.set.asc(), number_sort.asc()]
+        else:
+            sort_col = SORT_COLUMNS.get(sort, Card.name)
+            sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
+            order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
+
         page = max(page, 1)
         cards = (
-            query.order_by(sort_col, Card.number.asc())
+            query.order_by(*order_cols)
             .offset((page - 1) * PAGE_SIZE)
             .limit(PAGE_SIZE)
             .all()

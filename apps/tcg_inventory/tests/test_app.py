@@ -20,6 +20,36 @@ def test_import_then_dashboard_reflects_the_sync(client):
     assert "Pikachu" in inventory.text
 
 
+def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
+    import db as db_module
+    from models import SetReleaseOrder
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "new1", "name": "NewCard", "series": "Scarlet & Violet", "set": "151", "number": "1/165"},
+            {"id": "old10", "name": "OldCard10", "series": "Original", "set": "Base Set", "number": "10/102"},
+            {"id": "old2", "name": "OldCard2", "series": "Original", "set": "Base Set", "number": "2/102"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    db.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
+    db.add(SetReleaseOrder(series="Scarlet & Violet", set="151", release_rank=50))
+    db.commit()
+    db.close()
+
+    response = client.get("/inventory")
+    text = response.text
+    # Base Set (release rank 1) sorts before the newer set (rank 50), and
+    # within Base Set, card #2 sorts before #10 (numeric, not alphabetical).
+    pos_old2 = text.index("OldCard2")
+    pos_old10 = text.index("OldCard10")
+    pos_new1 = text.index("NewCard")
+    assert pos_old2 < pos_old10 < pos_new1
+
+
 def test_inventory_search_filters_results(client):
     main = make_csv(
         "My Collection",
