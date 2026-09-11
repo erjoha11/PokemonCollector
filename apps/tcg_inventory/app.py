@@ -97,7 +97,7 @@ def dashboard(request: Request):
         collection_breakdown = queries.collection_bulk_breakdown(db)
         series_breakdown = queries.by_series_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
-        quality = queries.data_quality(db)
+        rarity_breakdown = queries.by_rarity_breakdown(db)
 
         return templates.TemplateResponse(
             request,
@@ -107,7 +107,7 @@ def dashboard(request: Request):
                 "collection_breakdown": collection_breakdown,
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
-                "quality": quality,
+                "rarity_breakdown": rarity_breakdown,
             },
         )
     finally:
@@ -117,7 +117,7 @@ def dashboard(request: Request):
 # --------------------------------------------------------------------------
 # Inventory
 # --------------------------------------------------------------------------
-def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup):
+def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
     if q:
         like = f"%{q.lower()}%"
@@ -137,6 +137,8 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, d
         query = query.filter(Card.collections.any(Collection.name == collection))
     if dup:
         query = query.filter(Card.qty > 1)  # duplicates = max(qty - 1, 0)
+    if rarity:
+        query = query.filter(Card.rarity == rarity)
     return query
 
 
@@ -149,12 +151,13 @@ def inventory(
     collection: str = "",
     binder: str = "",
     dup: bool = False,
+    rarity: str = "",
     sort: str = "release",
     direction: str = "asc",
 ):
     db = get_db_session()
     try:
-        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup)
+        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity)
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -189,6 +192,7 @@ def inventory(
             "collection": collection,
             "binder": binder,
             "dup": dup,
+            "rarity": rarity,
             "sort": sort,
             "direction": direction,
             "all_series": all_series,

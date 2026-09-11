@@ -175,6 +175,17 @@ tbody tr:hover td { background: var(--accent-wash); }
    space with the simpler cards. */
 .breakdown-grid .card.wide { grid-column: 1 / -1; }
 
+/* Topp 10 and Etter rarity are both small enough to share a row -- wrap them
+   in their own auto-fit pair instead of the top-level grid, so exactly these
+   two split the row 50/50 (auto-fit collapses unused tracks) regardless of
+   how many cards live in the outer .breakdown-grid. */
+.breakdown-grid .card-pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1.25rem;
+}
+
 /* Dashboard metrics link through to the same slice in Inventory (e.g. a
    collection name -> /inventory?collection=...). */
 .breakdown-grid a {

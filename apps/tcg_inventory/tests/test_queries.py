@@ -67,12 +67,18 @@ def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session)
     assert top[0].card_id == "expensive-single"
 
 
-def test_data_quality_counts(db_session):
-    main = make_csv("My Collection", [{"id": "a", "price": "10"}, {"id": "b", "price": ""}])
+def test_rarity_breakdown_groups_by_rarity(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "rarity": "Common", "qty": 2, "price": "5"},
+            {"id": "b", "rarity": "Common", "qty": 1, "price": "5"},
+            {"id": "c", "rarity": "Rare", "qty": 1, "price": "50"},
+        ],
+    )
     import_dex_csv_files(db_session, [("main.csv", main)])
-    v2 = make_csv("My Collection", [{"id": "a", "price": "10"}])  # b now missing -> flagged
-    import_dex_csv_files(db_session, [("main.csv", v2)])
 
-    quality = queries.data_quality(db_session)
-    assert quality["missing_price_count"] == 1
-    assert quality["flagged_missing_count"] == 1
+    rarities = {b.name: b for b in queries.by_rarity_breakdown(db_session)}
+    assert rarities["Common"].qty == 3
+    assert rarities["Common"].duplicates == 1  # card "a" has qty 2 -> 1 duplicate
+    assert rarities["Rare"].qty == 1

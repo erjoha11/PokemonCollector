@@ -65,30 +65,39 @@
     </table>
   </div>
 
-  <div class="card wide">
-    <h2>Topp 10 mest verdifulle kort</h2>
-    <table>
-      <thead><tr><th>Navn</th><th>Set</th><th class="num">Referansepris</th></tr></thead>
-      <tbody>
-        {% for card in top_cards %}
-        <tr>
-          <td>{{ card.name }}</td>
-          <td>{{ filter_link('set', card.set) }}</td>
-          <td class="num">{{ card.reference_price | kr }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <div class="card-pair">
+    <div class="card">
+      <h2>Topp 10 mest verdifulle kort</h2>
+      <table>
+        <thead><tr><th>Navn</th><th>Set</th><th class="num">Referansepris</th></tr></thead>
+        <tbody>
+          {% for card in top_cards %}
+          <tr>
+            <td>{{ card.name }}</td>
+            <td>{{ filter_link('set', card.set) }}</td>
+            <td class="num">{{ card.reference_price | kr }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
-  <div class="card">
-    <h2>Datakvalitet</h2>
-    <table>
-      <tbody>
-        <tr><td>Kort uten referansepris</td><td class="num">{{ quality.missing_price_count }}</td></tr>
-        <tr><td>Kort flagget "ikke i siste eksport"</td><td class="num">{{ quality.flagged_missing_count }}</td></tr>
-      </tbody>
-    </table>
+    <div class="card">
+      <h2>Etter rarity</h2>
+      <table>
+        <thead><tr><th>Rarity</th><th class="num">Qty</th><th class="num">Duplikater</th><th class="num">Verdi</th></tr></thead>
+        <tbody>
+          {% for r in rarity_breakdown %}
+          <tr>
+            <td>{{ filter_link('rarity', r.name) }}</td>
+            <td class="num">{{ r.qty }}</td>
+            <td class="num">{{ dup_link('rarity', r.name, r.duplicates) }}</td>
+            <td class="num">{{ r.unique_value | kr }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}

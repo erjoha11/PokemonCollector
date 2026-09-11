@@ -22,7 +22,7 @@ run).
 ## Pages
 
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
-  series, by binder, top 10 most valuable cards, data-quality counts.
+  series, top 10 most valuable cards, by rarity.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table.
 - **Transactions** (`/transactions`) — a purchase/sale log per card.
