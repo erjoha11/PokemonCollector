@@ -156,10 +156,17 @@ def test_dashboard_top_cards_show_card_number(client):
     assert "58/102" in dashboard.text
 
 
-def test_dashboard_inventory_table_sortable_by_other_columns(client):
-    main = make_csv("My Collection", [{"id": "a", "qty": 1}, {"id": "b", "qty": 20}])
-    alpha = make_csv("Alpha Collection", [{"id": "a"}])
-    zeta = make_csv("Zeta Collection", [{"id": "b"}])
+def test_dashboard_column_sort_only_reorders_leaf_cards_not_buckets(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Card A", "qty": 1},
+            {"id": "b", "name": "Card B", "qty": 20},
+            {"id": "c", "qty": 5},
+        ],
+    )
+    alpha = make_csv("Alpha Collection", [{"id": "a"}, {"id": "b"}])
+    zeta = make_csv("Zeta Collection", [{"id": "c"}])
     client.post(
         "/import",
         files=[
@@ -175,10 +182,15 @@ def test_dashboard_inventory_table_sortable_by_other_columns(client):
         return html.split("<h2>Inventory</h2>", 1)[1]
 
     default = _inventory_table(client.get("/").text)
-    assert default.index("Alpha Collection") < default.index("Zeta Collection")
-
     by_qty_desc = _inventory_table(client.get("/?csort=qty&cdir=desc").text)
-    assert by_qty_desc.index("Zeta Collection") < by_qty_desc.index("Alpha Collection")
+
+    # Bucket (collection) order is static -- unaffected by csort.
+    assert default.index("Alpha Collection") < default.index("Zeta Collection")
+    assert by_qty_desc.index("Alpha Collection") < by_qty_desc.index("Zeta Collection")
+
+    # The cards *inside* Alpha Collection do reorder by qty.
+    assert default.index("Card A") < default.index("Card B")
+    assert by_qty_desc.index("Card B") < by_qty_desc.index("Card A")
 
 
 def test_inventory_search_filters_results(client):

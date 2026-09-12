@@ -97,17 +97,6 @@ SORT_COLUMNS = {
 # sort after every known set, not before -- see SetReleaseOrder's docstring.
 UNKNOWN_RELEASE_RANK = 999999
 
-# Dashboard breakdown tables (Inventory/Serie/Rarity) render `queries.Bucket`
-# rows -- these are the columns a user can click to re-sort one, overriding
-# its default order (see queries.by_series_breakdown etc for the defaults).
-BUCKET_SORT_KEYS = {
-    "name": lambda b: b.name.lower(),
-    "unique": lambda b: b.unique_count,
-    "duplicates": lambda b: b.duplicates,
-    "qty": lambda b: b.qty,
-    "value": lambda b: b.unique_value,
-    "total_value": lambda b: b.total_value,
-}
 TOP_CARD_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "number": lambda c: c.number_int if c.number_int is not None else 999999,
@@ -121,6 +110,48 @@ def _sorted_rows(rows, sort: str, direction: str, keys: dict):
     if key_fn is None:  # no/unknown sort param -- keep the caller's default order
         return rows
     return sorted(rows, key=key_fn, reverse=(direction == "desc"))
+
+
+# Inventory/Serie/Rarity's column headers only ever re-sort the deepest
+# level -- the actual cards -- never the bucket rows themselves (collection,
+# series, set, rarity always keep their default order from queries.py; see
+# by_series_breakdown etc). This is deliberately a different key set from
+# TOP_CARD_SORT_KEYS above: "unique" has no per-card equivalent to a bucket's
+# unique_count, since a single card is always exactly 1 or 0.
+CARD_LEAF_SORT_KEYS = {
+    "name": lambda c: c.name.lower(),
+    "unique": lambda c: 1 if c.qty > 0 else 0,
+    "duplicates": lambda c: c.duplicates,
+    "qty": lambda c: c.qty,
+    "value": lambda c: c.unique_value,
+    "total_value": lambda c: c.total_value,
+}
+
+
+def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
+    """Sort each bucket's `.cards` list in place; buckets themselves are
+    never reordered by this -- only what's nested inside them.
+    """
+    key_fn = CARD_LEAF_SORT_KEYS.get(sort)
+    if key_fn is None:
+        return
+    reverse = direction == "desc"
+    for bucket in buckets:
+        bucket.cards.sort(key=key_fn, reverse=reverse)
+
+
+def _sort_cards_in_series(series_list, sort: str, direction: str) -> None:
+    """Same as `_sort_cards_in_buckets`, but for series -> set -> cards: the
+    series and set rows both stay in their default order, only the cards
+    inside each set move.
+    """
+    key_fn = CARD_LEAF_SORT_KEYS.get(sort)
+    if key_fn is None:
+        return
+    reverse = direction == "desc"
+    for series in series_list:
+        for set_bucket in series.sets:
+            set_bucket.cards.sort(key=key_fn, reverse=reverse)
 
 
 def get_db_session() -> Session:
@@ -151,12 +182,14 @@ def dashboard(
         rarity_breakdown = queries.by_rarity_breakdown(db)
         cheapest_card = queries.cheapest_card(db)
 
-        # Default order (see queries.py) unless the user clicked a column
-        # header to sort one table by something else.
+        # Bucket rows (collection, series, set, rarity) always keep their
+        # default order from queries.py -- clicking a column header only
+        # re-sorts the cards nested inside each bucket, never the buckets
+        # themselves.
         collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
-        collection_rows = _sorted_rows(collection_rows, csort, cdir, BUCKET_SORT_KEYS)
-        series_breakdown = _sorted_rows(series_breakdown, ssort, sdir, BUCKET_SORT_KEYS)
-        rarity_breakdown = _sorted_rows(rarity_breakdown, rsort, rdir, BUCKET_SORT_KEYS)
+        _sort_cards_in_buckets(collection_rows, csort, cdir)
+        _sort_cards_in_series(series_breakdown, ssort, sdir)
+        _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
 
         # Highlights for the KPI row -- the single most valuable named
