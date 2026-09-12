@@ -14,8 +14,6 @@
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Verdi dupl.</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Verdi unike</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
     </div>
   </div>
 
@@ -24,6 +22,11 @@
     {% if top_cards %}
     <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}</div>
+    <div class="kpi-support">
+      <div class="stat-row"><span class="stat-label">Rarity</span><span class="stat-value">{{ top_cards[0].rarity or '-' }}</span></div>
+      <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
+    </div>
     {% else %}
     <div class="kpi-caption muted">Ingen data</div>
     {% endif %}
@@ -34,6 +37,10 @@
     {% if top_collection %}
     <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
+    <div class="kpi-support">
+      <div class="stat-row"><span class="stat-label">Antall kort</span><span class="stat-value">{{ top_collection.qty }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
+    </div>
     {% else %}
     <div class="kpi-caption muted">Ingen data</div>
     {% endif %}
@@ -44,6 +51,10 @@
     {% if top_series %}
     <div class="kpi-hero"><span class="value">{{ top_series.total_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div>
+    <div class="kpi-support">
+      <div class="stat-row"><span class="stat-label">Antall kort</span><span class="stat-value">{{ top_series.qty }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
+    </div>
     {% else %}
     <div class="kpi-caption muted">Ingen data</div>
     {% endif %}
