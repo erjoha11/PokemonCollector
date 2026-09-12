@@ -22,11 +22,11 @@
 
 <div class="kpi-grid">
   <div class="kpi-card">
-    <h3>Antall</h3>
+    <h3>Total</h3>
     <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">fysiske kort</span></div>
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ headline.duplicates }}</span></div>
-      <div class="stat-row"><span class="stat-label">Unike (Total)</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
+      <div class="stat-row"><span class="stat-label">Unike</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
     </div>
   </div>
 
@@ -36,22 +36,8 @@
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Verdi dupl.</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Verdi unike</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Snittverdi</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.avg_unique_value | kr }}</span><span class="label">per unikt kort</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Duplikat-andel</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.duplicate_share | round(1) }}%</span><span class="label">av antall</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Av verdi</span><span class="stat-value">{{ headline.duplicate_value_share | round(1) }}%</span></div>
+      <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
     </div>
   </div>
 
@@ -66,19 +52,9 @@
   </div>
 
   <div class="kpi-card">
-    <h3>Rimeligste kort</h3>
-    {% if cheapest_card %}
-    <div class="kpi-hero"><span class="value">{{ cheapest_card.reference_price | kr }}</span></div>
-    <div class="kpi-caption" title="{{ cheapest_card.name }}">{{ cheapest_card.name }}</div>
-    {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
-    {% endif %}
-  </div>
-
-  <div class="kpi-card">
     <h3>Mest verdifulle collection</h3>
     {% if top_collection %}
-    <div class="kpi-hero"><span class="value">{{ top_collection.total_value | kr }}</span></div>
+    <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
     {% else %}
     <div class="kpi-caption muted">Ingen data</div>

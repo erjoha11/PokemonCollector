@@ -1,6 +1,38 @@
 from conftest import make_csv
 
 
+def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client):
+    # Duplicated Collection has more raw value (500) once duplicates count,
+    # but only 50 kr of *unique* value. Single Card Collection has just one
+    # card worth 100 kr unique -- and should win despite its lower total.
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Onesy", "qty": 1, "price": "100"},
+            {"id": "b", "name": "Manysy", "qty": 10, "price": "50"},
+        ],
+    )
+    single = make_csv("Single Card Collection", [{"id": "a"}])
+    duped = make_csv("Duplicated Collection", [{"id": "b"}])
+    client.post(
+        "/import",
+        files=[
+            ("files", ("main.csv", main, "text/csv")),
+            ("files", ("single.csv", single, "text/csv")),
+            ("files", ("duped.csv", duped, "text/csv")),
+        ],
+    )
+
+    dashboard = client.get("/")
+    text = dashboard.text
+    # Scope to the KPI card itself -- both collection names also appear in
+    # the Inventory breakdown table further down the page.
+    card = text.split("<h3>Mest verdifulle collection</h3>", 1)[1].split("<h3>", 1)[0]
+    assert "Single Card Collection" in card
+    assert "Duplicated Collection" not in card  # not picked -- lower unique value
+    assert "100 kr" in card  # the unique value shown, not 500 kr (its total_value)
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)
