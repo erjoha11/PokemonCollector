@@ -10,10 +10,13 @@
 
   <div class="kpi-card">
     <h3>Verdi</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span></div>
+    <!-- Verdi = value of unique cards only; Total verdi = unique + duplicates
+         (same convention as the Inventory/Serie/Rarity tables' Verdi/Total
+         verdi columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
+    <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
     <div class="kpi-support">
+      <div class="stat-row"><span class="stat-label">Total verdi</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Verdi dupl.</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Verdi unike</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
     </div>
   </div>
 
@@ -21,9 +24,8 @@
     <h3>Mest verdifulle kort</h3>
     {% if top_cards %}
     <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}</div>
+    <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}{% if top_cards[0].rarity %} · {{ top_cards[0].rarity }}{% endif %}</div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Rarity</span><span class="stat-value">{{ top_cards[0].rarity or '-' }}</span></div>
       <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
     </div>
