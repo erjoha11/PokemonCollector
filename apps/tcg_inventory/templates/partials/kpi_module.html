@@ -16,7 +16,7 @@
     <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Total verdi</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Verdi dupl.</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Verdi duplikater</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
     </div>
   </div>
 
@@ -40,7 +40,7 @@
     <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Antall kort</span><span class="stat-value">{{ top_collection.qty }}</span></div>
+      <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_collection.qty }}</span></div>
       <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
     </div>
     {% else %}
@@ -54,7 +54,7 @@
     <div class="kpi-hero"><span class="value">{{ top_series.total_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Antall kort</span><span class="stat-value">{{ top_series.qty }}</span></div>
+      <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_series.qty }}</span></div>
       <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
     </div>
     {% else %}
