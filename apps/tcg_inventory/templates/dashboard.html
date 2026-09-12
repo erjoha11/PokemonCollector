@@ -3,6 +3,7 @@
 
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
+{% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir) %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
 
 {% block content %}
 <h1>Dashboard</h1>
@@ -18,7 +19,16 @@
   <div class="card wide">
     <h2>Inventory</h2>
     <table>
-      <thead><tr><th>Navn</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Navn', 'name', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Unike', 'unique', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Totalt', 'qty', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Verdi', 'value', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Total verdi', 'total_value', 'csort', 'cdir', csort, cdir) }}</th>
+        </tr>
+      </thead>
       <tbody>
         <tr class="parent-row">
           <td>Collections</td>
@@ -28,32 +38,33 @@
           <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
           <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
         </tr>
-        {% for c in collection_breakdown.children %}
+        {% for c in collection_rows %}
         <tr class="child-row">
-          <td>{{ filter_link('collection', c.name) }}</td>
+          <td>{% if c.name == 'Bulk' %}Bulk{% else %}{{ filter_link('collection', c.name) }}{% endif %}</td>
           <td class="num">{{ c.unique_count }}</td>
-          <td class="num">{{ dup_link('collection', c.name, c.duplicates) }}</td>
+          <td class="num">{% if c.name == 'Bulk' %}{{ c.duplicates }}{% else %}{{ dup_link('collection', c.name, c.duplicates) }}{% endif %}</td>
           <td class="num">{{ c.qty }}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
         {% endfor %}
-        <tr class="child-row">
-          <td>Bulk</td>
-          <td class="num">{{ collection_breakdown.bulk.unique_count }}</td>
-          <td class="num">{{ collection_breakdown.bulk.duplicates }}</td>
-          <td class="num">{{ collection_breakdown.bulk.qty }}</td>
-          <td class="num">{{ collection_breakdown.bulk.unique_value | kr }}</td>
-          <td class="num">{{ collection_breakdown.bulk.total_value | kr }}</td>
-        </tr>
       </tbody>
     </table>
   </div>
 
   <div class="card wide">
-    <h2>Etter serie</h2>
+    <h2>Serie</h2>
     <table>
-      <thead><tr><th>Serie</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Serie', 'name', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Unike', 'unique', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Totalt', 'qty', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Verdi', 'value', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Total verdi', 'total_value', 'ssort', 'sdir', ssort, sdir) }}</th>
+        </tr>
+      </thead>
       <tbody>
         {% for s in series_breakdown %}
         <tr>
@@ -73,11 +84,19 @@
     <div class="card">
       <h2>Topp 10 mest verdifulle kort</h2>
       <table>
-        <thead><tr><th>Navn</th><th>Set</th><th class="num">Referansepris</th></tr></thead>
+        <thead>
+          <tr>
+            <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
+            <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
+            <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
+            <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
+          </tr>
+        </thead>
         <tbody>
           {% for card in top_cards %}
           <tr>
             <td>{{ card.name }}</td>
+            <td>{{ card.number or '' }}</td>
             <td>{{ filter_link('set', card.set) }}</td>
             <td class="num">{{ card.reference_price | kr }}</td>
           </tr>
@@ -87,9 +106,17 @@
     </div>
 
     <div class="card">
-      <h2>Etter rarity</h2>
+      <h2>Rarity</h2>
       <table>
-        <thead><tr><th>Rarity</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th></tr></thead>
+        <thead>
+          <tr>
+            <th>{{ sort_th('Rarity', 'name', 'rsort', 'rdir', rsort, rdir) }}</th>
+            <th class="num">{{ sort_th('Unike', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
+            <th class="num">{{ sort_th('Duplikater', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
+            <th class="num">{{ sort_th('Totalt', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
+            <th class="num">{{ sort_th('Verdi', 'value', 'rsort', 'rdir', rsort, rdir) }}</th>
+          </tr>
+        </thead>
         <tbody>
           {% for r in rarity_breakdown %}
           <tr>

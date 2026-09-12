@@ -2,6 +2,7 @@ from conftest import make_csv
 
 import queries
 from importer import import_dex_csv_files
+from models import SetReleaseOrder
 
 
 def _seed(db_session):
@@ -92,6 +93,28 @@ def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session)
     import_dex_csv_files(db_session, [("main.csv", main)])
     top = queries.top_valuable_cards(db_session, limit=10)
     assert top[0].card_id == "expensive-single"
+
+
+def test_series_breakdown_sorts_by_release_order_not_alphabetically(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "series": "XY", "set": "XY"},
+            {"id": "b", "series": "Original", "set": "Base Set"},
+            {"id": "c", "series": "Unresearched Series", "set": "Some Set"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    db_session.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
+    db_session.add(SetReleaseOrder(series="XY", set="XY", release_rank=50))
+    db_session.commit()
+
+    names = [b.name for b in queries.by_series_breakdown(db_session)]
+    # "Original" (rank 1) before "XY" (rank 50) before the series with no
+    # set_release_order row at all -- release order, not alphabetical
+    # (which would put "Original" after "Unresearched Series").
+    assert names == ["Original", "XY", "Unresearched Series"]
 
 
 def test_rarity_breakdown_groups_by_rarity(db_session):

@@ -13,10 +13,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Binder, Card
+from models import Binder, Card, SetReleaseOrder
+
+# Series with no research done in set_release_order yet sort after every
+# known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
+_UNKNOWN_RELEASE_RANK = 999999
 
 
 def _all_cards_with_collections(db: Session) -> list[Card]:
@@ -116,13 +121,26 @@ def _ordered_children(buckets) -> list[Bucket]:
 
 
 def by_series_breakdown(db: Session) -> list[Bucket]:
+    """Series sort by release order (oldest first), not alphabetically --
+    matches Inventory's default "release" sort. A series with no
+    set_release_order rows at all sorts after every known series.
+    """
     cards = _all_cards_with_collections(db)
     buckets: dict[str, Bucket] = {}
     for card in cards:
         key = card.series or "(uten serie)"
         bucket = buckets.setdefault(key, Bucket(name=key))
         bucket.add(card)
-    return sorted(buckets.values(), key=lambda b: b.name)
+
+    release_ranks = dict(
+        db.query(SetReleaseOrder.series, func.min(SetReleaseOrder.release_rank))
+        .group_by(SetReleaseOrder.series)
+        .all()
+    )
+    return sorted(
+        buckets.values(),
+        key=lambda b: (release_ranks.get(b.name, _UNKNOWN_RELEASE_RANK), b.name),
+    )
 
 
 def by_rarity_breakdown(db: Session) -> list[Bucket]:

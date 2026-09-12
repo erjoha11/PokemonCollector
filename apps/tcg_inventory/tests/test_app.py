@@ -77,6 +77,34 @@ def test_dashboard_duplicate_count_links_to_inventory_filtered_by_dup(client):
     assert expected_href in dashboard.text
 
 
+def test_dashboard_top_cards_show_card_number(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "number": "58/102", "price": "150"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    assert "58/102" in dashboard.text
+
+
+def test_dashboard_inventory_table_sortable_by_other_columns(client):
+    main = make_csv("My Collection", [{"id": "a", "qty": 1}, {"id": "b", "qty": 20}])
+    alpha = make_csv("Alpha Collection", [{"id": "a"}])
+    zeta = make_csv("Zeta Collection", [{"id": "b"}])
+    client.post(
+        "/import",
+        files=[
+            ("files", ("main.csv", main, "text/csv")),
+            ("files", ("alpha.csv", alpha, "text/csv")),
+            ("files", ("zeta.csv", zeta, "text/csv")),
+        ],
+    )
+
+    default = client.get("/")
+    assert default.text.index("Alpha Collection") < default.text.index("Zeta Collection")
+
+    by_qty_desc = client.get("/?csort=qty&cdir=desc")
+    assert by_qty_desc.text.index("Zeta Collection") < by_qty_desc.text.index("Alpha Collection")
+
+
 def test_inventory_search_filters_results(client):
     main = make_csv(
         "My Collection",

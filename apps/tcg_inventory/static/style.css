@@ -175,8 +175,8 @@ tbody tr:hover td { background: var(--accent-wash); }
    space with the simpler cards. */
 .breakdown-grid .card.wide { grid-column: 1 / -1; }
 
-/* Topp 10 and Etter rarity are both small enough to share a row -- wrap them
-   in their own auto-fit pair instead of the top-level grid, so exactly these
+/* Topp 10 and Rarity are both small enough to share a row -- wrap them in
+   their own auto-fit pair instead of the top-level grid, so exactly these
    two split the row 50/50 (auto-fit collapses unused tracks) regardless of
    how many cards live in the outer .breakdown-grid. */
 .breakdown-grid .card-pair {
@@ -194,6 +194,12 @@ tbody tr:hover td { background: var(--accent-wash); }
   font-weight: 600;
 }
 .breakdown-grid a:hover { text-decoration: underline; }
+
+/* Column headers are sort links too, but should keep the plain uppercase
+   header look (same as Inventory's) instead of the bold-accent body-link
+   style above -- only turn accent-colored on hover. */
+.breakdown-grid th a { color: inherit; font-weight: 700; }
+.breakdown-grid th a:hover { color: var(--accent); text-decoration: none; }
 
 .child-row td:first-child { padding-left: 1.5rem; color: var(--ink-secondary); font-weight: 400; }
 .parent-row td { font-weight: 700; }
