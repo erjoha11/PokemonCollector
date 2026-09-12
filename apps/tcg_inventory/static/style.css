@@ -121,18 +121,17 @@ tbody tr:hover td { background: var(--accent-wash); }
   z-index: 1;
 }
 
-/* 8 multi-stat cards filling the full width. Each has its own theme color
-   (a fixed, validated 8-hue categorical order -- see dataviz palette) and
-   its own hero number, so the eye has one clear entry point per card
-   instead of a wall of equal-weight rows.
-   Hue order: 1 Antall/blue, 2 Verdi/orange, 3 Snittverdi/aqua,
-   4 Duplikat-andel/yellow, 5 Mest verdifulle kort/magenta,
-   6 Rimeligste kort/green, 7 Mest verdifulle collection/violet,
-   8 Mest verdifulle serie/red. Order is fixed -- never reassigned based on
-   which card has the "biggest" number, only on its fixed category. */
+/* Multi-stat cards filling the full width. Each has its own theme color (a
+   fixed, validated categorical hue order -- see dataviz palette) and its
+   own hero number, so the eye has one clear entry point per card instead
+   of a wall of equal-weight rows.
+   Hue order: 1 Total/blue, 2 Verdi/orange, 3 Mest verdifulle kort/aqua,
+   4 Mest verdifulle collection/yellow, 5 Mest verdifulle serie/magenta.
+   Order is fixed -- never reassigned based on which card has the
+   "biggest" number, only on its fixed category. */
 .kpi-grid {
   display: grid;
-  /* 140px keeps all 8 cards on one row at common desktop widths (>=1280px);
+  /* 140px keeps all 5 cards on one row at common desktop widths (>=1280px);
      narrower viewports wrap to fewer columns automatically. */
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 0.85rem;
@@ -153,9 +152,6 @@ tbody tr:hover td { background: var(--accent-wash); }
 .kpi-card:nth-child(3) { --kpi-accent: #1baf7a; }
 .kpi-card:nth-child(4) { --kpi-accent: #eda100; }
 .kpi-card:nth-child(5) { --kpi-accent: #e87ba4; }
-.kpi-card:nth-child(6) { --kpi-accent: #008300; }
-.kpi-card:nth-child(7) { --kpi-accent: #4a3aa7; }
-.kpi-card:nth-child(8) { --kpi-accent: #e34948; }
 
 .kpi-card h3 {
   display: flex;

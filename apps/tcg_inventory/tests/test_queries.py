@@ -74,27 +74,10 @@ def test_headline_summary_totals(db_session):
 
     # Pikachu (qty 2 -> 1 dup) + Charizard (qty 1 -> 0 dup) + Bulbasaur (qty 5 -> 4 dup)
     assert headline["duplicates"] == 5
-    assert headline["duplicate_share"] == 5 / 8 * 100
     assert headline["avg_unique_value"] == (150.5 + 900 + 10) / 3
     assert headline["avg_physical_value"] == (2 * 150.5 + 900 + 5 * 10) / 8
     # duplicate_value = total_value - unique_value = value tied up in extra copies
     assert headline["duplicate_value"] == (2 * 150.5 + 900 + 5 * 10) - (150.5 + 900 + 10)
-    assert headline["duplicate_value_share"] == headline["duplicate_value"] / headline["total_value"] * 100
-
-
-def test_cheapest_card_ignores_unowned_and_priceless_cards(db_session):
-    main = make_csv(
-        "My Collection",
-        [
-            {"id": "a", "name": "Pikachu", "price": "5"},
-            {"id": "b", "name": "Magikarp", "price": "1"},
-            {"id": "c", "name": "FreeCard", "price": ""},
-        ],
-    )
-    import_dex_csv_files(db_session, [("main.csv", main)])
-
-    cheapest = queries.cheapest_card(db_session)
-    assert cheapest.name == "Magikarp"
 
 
 def test_binder_breakdown_uses_unique_value_not_total_value(db_session):
