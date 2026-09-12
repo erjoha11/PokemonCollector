@@ -20,6 +20,23 @@ def test_import_then_dashboard_reflects_the_sync(client):
     assert "Pikachu" in inventory.text
 
 
+def test_inventory_card_name_links_to_dex(client):
+    main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    inventory = client.get("/inventory")
+    assert '<a href="https://app.dextcg.com/cards/ex5-4"' in inventory.text
+    assert "target=\"_blank\"" in inventory.text
+
+
+def test_dashboard_top_cards_link_to_dex(client):
+    main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    assert '<a href="https://app.dextcg.com/cards/ex5-4"' in dashboard.text
+
+
 def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     import db as db_module
     from models import SetReleaseOrder
