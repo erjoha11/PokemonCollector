@@ -11,7 +11,7 @@ primary-collection tie-break logic in SQL.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
@@ -35,6 +35,10 @@ class Bucket:
     duplicates: int = 0
     unique_value: float = 0.0
     total_value: float = 0.0
+    # Only populated for series buckets -- the sets within that series, for
+    # the dashboard's expandable drill-down row. Empty for every other kind
+    # of bucket (collection, rarity).
+    sets: list["Bucket"] = field(default_factory=list)
 
     def add(self, card: Card) -> None:
         self.qty += card.qty
@@ -124,23 +128,50 @@ def by_series_breakdown(db: Session) -> list[Bucket]:
     """Series sort by release order (oldest first), not alphabetically --
     matches Inventory's default "release" sort. A series with no
     set_release_order rows at all sorts after every known series.
+
+    Each series bucket also carries `.sets` -- the sets within that series,
+    for the dashboard's expandable per-series drill-down row -- sorted the
+    same way (release order, unresearched sets last).
     """
     cards = _all_cards_with_collections(db)
     buckets: dict[str, Bucket] = {}
+    set_buckets: dict[tuple[str, str], Bucket] = {}
     for card in cards:
-        key = card.series or "(uten serie)"
-        bucket = buckets.setdefault(key, Bucket(name=key))
+        series_key = card.series or "(uten serie)"
+        bucket = buckets.setdefault(series_key, Bucket(name=series_key))
         bucket.add(card)
+
+        set_key = card.set or "(uten sett)"
+        set_bucket = set_buckets.setdefault((series_key, set_key), Bucket(name=set_key))
+        set_bucket.add(card)
 
     release_ranks = dict(
         db.query(SetReleaseOrder.series, func.min(SetReleaseOrder.release_rank))
         .group_by(SetReleaseOrder.series)
         .all()
     )
+    set_release_ranks = {(r.series, r.set): r.release_rank for r in db.query(SetReleaseOrder).all()}
+
+    for (series_key, _set_key), set_bucket in set_buckets.items():
+        buckets[series_key].sets.append(set_bucket)
+    for series_key, bucket in buckets.items():
+        bucket.sets.sort(
+            key=lambda b, series_key=series_key: (
+                set_release_ranks.get((series_key, b.name), _UNKNOWN_RELEASE_RANK),
+                b.name,
+            )
+        )
+
     return sorted(
         buckets.values(),
         key=lambda b: (release_ranks.get(b.name, _UNKNOWN_RELEASE_RANK), b.name),
     )
+
+
+# Rarity tiers with a well-known, unambiguous order -- everything else (the
+# many special/holo/ultra variants that don't share one universal ranking
+# across eras) sorts alphabetically after these, per request ("Common først").
+_RARITY_TIER_ORDER = ["Common", "Uncommon", "Rare"]
 
 
 def by_rarity_breakdown(db: Session) -> list[Bucket]:
@@ -150,7 +181,14 @@ def by_rarity_breakdown(db: Session) -> list[Bucket]:
         key = card.rarity or "(uten rarity)"
         bucket = buckets.setdefault(key, Bucket(name=key))
         bucket.add(card)
-    return sorted(buckets.values(), key=lambda b: b.name)
+
+    def _rank(b: Bucket) -> tuple[int, str]:
+        try:
+            return (_RARITY_TIER_ORDER.index(b.name), "")
+        except ValueError:
+            return (len(_RARITY_TIER_ORDER), b.name)
+
+    return sorted(buckets.values(), key=_rank)
 
 
 @dataclass
