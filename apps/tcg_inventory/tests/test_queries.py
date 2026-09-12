@@ -76,8 +76,6 @@ def test_headline_summary_totals(db_session):
     assert headline["duplicates"] == 5
     assert headline["duplicate_share"] == 5 / 8 * 100
     assert headline["avg_unique_value"] == (150.5 + 900 + 10) / 3
-    assert headline["series_count"] == 2  # Scarlet & Violet, Sword & Shield
-    assert headline["set_count"] == 1  # all three default to "Test Set"
 
 
 def test_binder_breakdown_uses_unique_value_not_total_value(db_session):

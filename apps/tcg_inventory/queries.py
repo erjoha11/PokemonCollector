@@ -68,9 +68,8 @@ def _card_sort_key(card: Card):
 
 def headline_summary(db: Session) -> dict:
     cards = _all_cards_with_collections(db)
-    owned = [c for c in cards if c.qty > 0]
     qty_physical = sum(c.qty for c in cards)
-    qty_unique = len(owned)
+    qty_unique = sum(1 for c in cards if c.qty > 0)
     duplicates = sum(c.duplicates for c in cards)
     unique_value = sum(c.unique_value for c in cards)
     total_value = sum(c.total_value for c in cards)
@@ -82,8 +81,6 @@ def headline_summary(db: Session) -> dict:
         "unique_value": unique_value,
         "total_value": total_value,
         "avg_unique_value": (unique_value / qty_unique) if qty_unique else 0.0,
-        "series_count": len({c.series for c in owned if c.series}),
-        "set_count": len({c.set for c in owned if c.set}),
     }
 
 
