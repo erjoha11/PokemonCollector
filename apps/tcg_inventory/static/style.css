@@ -203,17 +203,21 @@ tbody tr:hover td { background: var(--accent-wash); }
 
 .child-row td:first-child { padding-left: 1.5rem; color: var(--ink-secondary); font-weight: 400; }
 
-.row-toggle {
+/* A bucket's whole name is the drilldown trigger where it has children to
+   expand (e.g. a series' sets) -- styled like the accent body-links above,
+   since it replaces one (there's nothing left to link to Inventory with). */
+.row-toggle-name {
   background: none;
   border: none;
   padding: 0;
-  margin-right: 0.4rem;
-  font-size: 0.7rem;
-  line-height: 1;
-  color: var(--muted);
+  font: inherit;
+  color: var(--accent);
+  font-weight: 600;
   cursor: pointer;
 }
-.row-toggle:hover { color: var(--accent); }
+.row-toggle-name:hover { text-decoration: underline; }
+.row-toggle-name .arrow { color: var(--muted); font-size: 0.7rem; display: inline-block; }
+.row-toggle-name:hover .arrow { color: var(--accent); }
 
 .parent-row td { font-weight: 700; }
 .parent-row { background: var(--accent-wash-strong); }

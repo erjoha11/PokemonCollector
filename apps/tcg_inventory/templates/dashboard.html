@@ -42,8 +42,8 @@
         <tr class="child-row">
           <td>{% if c.name == 'Bulk' %}Bulk{% else %}{{ filter_link('collection', c.name) }}{% endif %}</td>
           <td class="num">{{ c.unique_count }}</td>
-          <td class="num">{% if c.name == 'Bulk' %}{{ c.duplicates }}{% else %}{{ dup_link('collection', c.name, c.duplicates) }}{% endif %}</td>
-          <td class="num">{{ c.qty }}</td>
+          <td class="num">{{ c.duplicates }}</td>
+          <td class="num">{% if c.name == 'Bulk' %}{{ c.qty }}{% else %}{{ dup_link('collection', c.name, c.qty) }}{% endif %}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
@@ -70,12 +70,15 @@
         {% set row_id = 'series-sets-' ~ loop.index %}
         <tr>
           <td>
-            {% if s.sets %}<button type="button" class="row-toggle" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)">▶</button>{% endif %}
-            {{ filter_link('series', s.name) }}
+            {% if s.sets %}
+            <button type="button" class="row-toggle-name" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ s.name }}</button>
+            {% else %}
+            {{ s.name }}
+            {% endif %}
           </td>
           <td class="num">{{ s.unique_count }}</td>
-          <td class="num">{{ dup_link('series', s.name, s.duplicates) }}</td>
-          <td class="num">{{ s.qty }}</td>
+          <td class="num">{{ s.duplicates }}</td>
+          <td class="num">{{ dup_link('series', s.name, s.qty) }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
         </tr>
@@ -83,8 +86,8 @@
         <tr class="child-row {{ row_id }}" hidden>
           <td>{{ filter_link('set', set_b.name) }}</td>
           <td class="num">{{ set_b.unique_count }}</td>
-          <td class="num">{{ dup_link('set', set_b.name, set_b.duplicates) }}</td>
-          <td class="num">{{ set_b.qty }}</td>
+          <td class="num">{{ set_b.duplicates }}</td>
+          <td class="num">{{ dup_link('set', set_b.name, set_b.qty) }}</td>
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
         </tr>
@@ -136,8 +139,8 @@
           <tr>
             <td>{{ filter_link('rarity', r.name) }}</td>
             <td class="num">{{ r.unique_count }}</td>
-            <td class="num">{{ dup_link('rarity', r.name, r.duplicates) }}</td>
-            <td class="num">{{ r.qty }}</td>
+            <td class="num">{{ r.duplicates }}</td>
+            <td class="num">{{ dup_link('rarity', r.name, r.qty) }}</td>
             <td class="num">{{ r.unique_value | kr }}</td>
           </tr>
           {% endfor %}
@@ -154,7 +157,10 @@ function toggleRows(rowClass, btn) {
     row.hidden = expanded;
   });
   btn.setAttribute('aria-expanded', String(!expanded));
-  btn.textContent = expanded ? '▶' : '▼';
+  var arrow = btn.querySelector('.arrow');
+  if (arrow) {
+    arrow.textContent = expanded ? '▶' : '▼';
+  }
 }
 </script>
 {% endblock %}

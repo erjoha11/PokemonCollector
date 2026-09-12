@@ -66,15 +66,28 @@ def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):
     assert "1 kort" in response.text
 
 
-def test_dashboard_duplicate_count_links_to_inventory_filtered_by_dup(client):
+def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
     from urllib.parse import quote
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
+    # The "which cards" link lives on Totalt (not Duplikater) -- same filter,
+    # different column: /inventory?series=...&dup=1.
     expected_href = f"/inventory?series={quote('Test Series')}&dup=1"
     assert expected_href in dashboard.text
+
+
+def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
+    main = make_csv("My Collection", [{"id": "a", "series": "Original", "set": "Base Set"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    text = dashboard.text
+    assert 'class="row-toggle-name"' in text
+    assert ">Original</a>" not in text  # no longer a plain link to Inventory
+    assert "Base Set" in text  # the nested set row is rendered (hidden until expanded)
 
 
 def test_dashboard_top_cards_show_card_number(client):
