@@ -169,21 +169,26 @@ tbody tr:hover td { background: var(--accent-wash); }
   box-shadow: var(--shadow);
 }
 
-/* Collection/Bulk, Etter serie, and Topp 10 carry enough columns (two of
-   them currency) that a normal 1/4-width grid track squeezes them into
-   horizontal scroll -- give them the full row instead of fighting for
-   space with the simpler cards. */
-.breakdown-grid .card.wide { grid-column: 1 / -1; }
-
-/* Topp 10 and Rarity are both small enough to share a row -- wrap them in
-   their own auto-fit pair instead of the top-level grid, so exactly these
-   two split the row 50/50 (auto-fit collapses unused tracks) regardless of
-   how many cards live in the outer .breakdown-grid. */
+/* Every dashboard row is a pair (Inventory+Topp 10, Serie+Rarity) -- wrap
+   each in its own auto-fit pair instead of the top-level grid, so exactly
+   two cards split the row 50/50 (auto-fit collapses unused tracks)
+   regardless of how many pairs live in the outer .breakdown-grid. */
 .breakdown-grid .card-pair {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.25rem;
+}
+
+/* Inventory and Serie carry enough columns (two of them currency, plus a
+   drilldown) that pairing them with another card needs a smaller, tighter
+   table to avoid horizontal scroll. */
+.breakdown-grid table {
+  font-size: 0.68rem;
+}
+.breakdown-grid th,
+.breakdown-grid td {
+  padding: 0.28rem 0.35rem;
 }
 
 /* Dashboard metrics link through to the same slice in Inventory (e.g. a

@@ -27,7 +27,8 @@
 </div>
 
 <div class="breakdown-grid">
-  <div class="card wide">
+  <div class="card-pair">
+  <div class="card">
     <h2>Inventory</h2>
     <table>
       <thead>
@@ -67,7 +68,33 @@
     </table>
   </div>
 
-  <div class="card wide">
+  <div class="card">
+    <h2>Topp 10 mest verdifulle kort</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in top_cards %}
+        <tr>
+          <td>{{ card.name }}</td>
+          <td>{{ card.number or '' }}</td>
+          <td>{{ filter_link('set', card.set) }}</td>
+          <td class="num">{{ card.reference_price | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+
+  <div class="card-pair">
+  <div class="card">
     <h2>Serie</h2>
     <table>
       <thead>
@@ -110,60 +137,35 @@
     </table>
   </div>
 
-  <div class="card-pair">
-    <div class="card">
-      <h2>Topp 10 mest verdifulle kort</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
-            <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
-            <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
-            <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for card in top_cards %}
-          <tr>
-            <td>{{ card.name }}</td>
-            <td>{{ card.number or '' }}</td>
-            <td>{{ filter_link('set', card.set) }}</td>
-            <td class="num">{{ card.reference_price | kr }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>Rarity</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>{{ sort_th('Rarity', 'name', 'rsort', 'rdir', rsort, rdir) }}</th>
-            <th class="num">{{ sort_th('Unike', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
-            <th class="num">{{ sort_th('Duplikater', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
-            <th class="num">{{ sort_th('Totalt', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
-            <th class="num">{{ sort_th('Verdi', 'value', 'rsort', 'rdir', rsort, rdir) }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rarity_breakdown %}
-          {% set row_id = 'rarity-' ~ loop.index %}
-          <tr>
-            <td>{% if r.cards %}{{ toggle_button(r.name, row_id) }}{% else %}{{ r.name }}{% endif %}</td>
-            <td class="num">{{ r.unique_count }}</td>
-            <td class="num">{{ r.duplicates }}</td>
-            <td class="num">{{ dup_link('rarity', r.name, r.qty) }}</td>
-            <td class="num">{{ r.unique_value | kr }}</td>
-          </tr>
-          {% for card in r.cards %}
-          {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
-          {% endfor %}
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+  <div class="card">
+    <h2>Rarity</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Rarity', 'name', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Unike', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Totalt', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Verdi', 'value', 'rsort', 'rdir', rsort, rdir) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rarity_breakdown %}
+        {% set row_id = 'rarity-' ~ loop.index %}
+        <tr>
+          <td>{% if r.cards %}{{ toggle_button(r.name, row_id) }}{% else %}{{ r.name }}{% endif %}</td>
+          <td class="num">{{ r.unique_count }}</td>
+          <td class="num">{{ r.duplicates }}</td>
+          <td class="num">{{ dup_link('rarity', r.name, r.qty) }}</td>
+          <td class="num">{{ r.unique_value | kr }}</td>
+        </tr>
+        {% for card in r.cards %}
+        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
   </div>
 </div>
 
