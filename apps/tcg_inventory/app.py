@@ -13,6 +13,7 @@ import datetime as dt
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -44,6 +45,21 @@ app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 templates.env.filters["kr"] = lambda v: f"{v:,.0f} kr".replace(",", " ") if v is not None else "-"
 templates.env.globals["auth_enabled"] = auth.is_configured
+
+
+def _sort_url(request: Request, sort_param: str, dir_param: str, field: str, current_sort: str, current_dir: str) -> str:
+    """Build a dashboard link that sorts one breakdown table by `field`,
+    toggling direction on repeat clicks, while preserving every other query
+    param as-is (including the other tables' own sort state).
+    """
+    next_dir = "desc" if current_sort == field and current_dir == "asc" else "asc"
+    params = dict(request.query_params)
+    params[sort_param] = field
+    params[dir_param] = next_dir
+    return "/?" + urlencode(params)
+
+
+templates.env.globals["sort_url"] = _sort_url
 
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
@@ -81,6 +97,31 @@ SORT_COLUMNS = {
 # sort after every known set, not before -- see SetReleaseOrder's docstring.
 UNKNOWN_RELEASE_RANK = 999999
 
+# Dashboard breakdown tables (Inventory/Serie/Rarity) render `queries.Bucket`
+# rows -- these are the columns a user can click to re-sort one, overriding
+# its default order (see queries.by_series_breakdown etc for the defaults).
+BUCKET_SORT_KEYS = {
+    "name": lambda b: b.name.lower(),
+    "unique": lambda b: b.unique_count,
+    "duplicates": lambda b: b.duplicates,
+    "qty": lambda b: b.qty,
+    "value": lambda b: b.unique_value,
+    "total_value": lambda b: b.total_value,
+}
+TOP_CARD_SORT_KEYS = {
+    "name": lambda c: c.name.lower(),
+    "number": lambda c: c.number_int if c.number_int is not None else 999999,
+    "set": lambda c: (c.set or "").lower(),
+    "reference_price": lambda c: c.reference_price or 0,
+}
+
+
+def _sorted_rows(rows, sort: str, direction: str, keys: dict):
+    key_fn = keys.get(sort)
+    if key_fn is None:  # no/unknown sort param -- keep the caller's default order
+        return rows
+    return sorted(rows, key=key_fn, reverse=(direction == "desc"))
+
 
 def get_db_session() -> Session:
     return SessionLocal()
@@ -90,7 +131,17 @@ def get_db_session() -> Session:
 # Dashboard
 # --------------------------------------------------------------------------
 @app.get("/")
-def dashboard(request: Request):
+def dashboard(
+    request: Request,
+    csort: str = "",
+    cdir: str = "asc",
+    ssort: str = "",
+    sdir: str = "asc",
+    rsort: str = "",
+    rdir: str = "asc",
+    tsort: str = "",
+    tdir: str = "asc",
+):
     db = get_db_session()
     try:
         headline = queries.headline_summary(db)
@@ -99,15 +150,32 @@ def dashboard(request: Request):
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db)
 
+        # Default order (see queries.py) unless the user clicked a column
+        # header to sort one table by something else.
+        collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
+        collection_rows = _sorted_rows(collection_rows, csort, cdir, BUCKET_SORT_KEYS)
+        series_breakdown = _sorted_rows(series_breakdown, ssort, sdir, BUCKET_SORT_KEYS)
+        rarity_breakdown = _sorted_rows(rarity_breakdown, rsort, rdir, BUCKET_SORT_KEYS)
+        top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
+
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
                 "headline": headline,
                 "collection_breakdown": collection_breakdown,
+                "collection_rows": collection_rows,
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
+                "csort": csort,
+                "cdir": cdir,
+                "ssort": ssort,
+                "sdir": sdir,
+                "rsort": rsort,
+                "rdir": rdir,
+                "tsort": tsort,
+                "tdir": tdir,
             },
         )
     finally:
