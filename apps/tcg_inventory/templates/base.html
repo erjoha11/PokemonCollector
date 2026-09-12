@@ -19,5 +19,43 @@
   <main>
     {% block content %}{% endblock %}
   </main>
+
+  <div id="card-modal-overlay" class="card-modal-overlay" hidden onclick="if (event.target === this) closeCardModal();">
+    <div class="card-modal">
+      <div class="card-modal-header">
+        <span class="name" id="card-modal-name"></span>
+        <div class="actions">
+          <a id="card-modal-newtab" href="#" target="_blank" rel="noopener noreferrer">Åpne i ny fane ↗</a>
+          <button type="button" class="card-modal-close" onclick="closeCardModal()" aria-label="Lukk">×</button>
+        </div>
+      </div>
+      <iframe id="card-modal-iframe" src="" title="Dex-kort"></iframe>
+    </div>
+  </div>
+  <script>
+    // Card links open Dex's card page in this overlay instead of navigating
+    // away -- a plain click stays "on the page"; ctrl/cmd/shift/middle-click
+    // still falls through to the browser's normal new-tab/window behavior.
+    function dexCardClick(event, anchor) {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1) return;
+      event.preventDefault();
+      openCardModal(anchor.href, anchor.dataset.cardName || anchor.textContent);
+    }
+    function openCardModal(url, name) {
+      document.getElementById('card-modal-name').textContent = name;
+      document.getElementById('card-modal-newtab').href = url;
+      document.getElementById('card-modal-iframe').src = url;
+      document.getElementById('card-modal-overlay').hidden = false;
+      document.addEventListener('keydown', _cardModalEscHandler);
+    }
+    function closeCardModal() {
+      document.getElementById('card-modal-overlay').hidden = true;
+      document.getElementById('card-modal-iframe').src = 'about:blank';
+      document.removeEventListener('keydown', _cardModalEscHandler);
+    }
+    function _cardModalEscHandler(event) {
+      if (event.key === 'Escape') closeCardModal();
+    }
+  </script>
 </body>
 </html>
