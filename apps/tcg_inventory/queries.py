@@ -63,7 +63,11 @@ class Bucket:
 
 
 def _card_sort_key(card: Card):
-    return (card.number_int if card.number_int is not None else _UNKNOWN_RELEASE_RANK, card.name)
+    # Default order for cards nested inside a dashboard bucket: most
+    # valuable first. Column-header clicks (see app.py's CARD_LEAF_SORT_KEYS)
+    # override this per-table; this is only what a freshly expanded bucket
+    # shows before any column is clicked.
+    return (-card.unique_value, card.number_int if card.number_int is not None else _UNKNOWN_RELEASE_RANK, card.name)
 
 
 def headline_summary(db: Session) -> dict:
