@@ -202,6 +202,8 @@ tbody tr:hover td { background: var(--accent-wash); }
 .breakdown-grid th a:hover { color: var(--accent); text-decoration: none; }
 
 .child-row td:first-child { padding-left: 1.5rem; color: var(--ink-secondary); font-weight: 400; }
+.grandchild-row td:first-child { padding-left: 3rem; color: var(--ink-secondary); font-weight: 400; }
+.grandchild-row .muted { font-size: 0.85em; }
 
 /* A bucket's whole name is the drilldown trigger where it has children to
    expand (e.g. a series' sets) -- styled like the accent body-links above,

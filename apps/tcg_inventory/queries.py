@@ -39,12 +39,18 @@ class Bucket:
     # the dashboard's expandable drill-down row. Empty for every other kind
     # of bucket (collection, rarity).
     sets: list["Bucket"] = field(default_factory=list)
+    # Every bucket accumulates the actual cards behind it via .add() below --
+    # the dashboard's final drill-down level, uniformly available on every
+    # kind of bucket (collection, set, rarity) since it's populated here
+    # rather than per-breakdown-function.
+    cards: list[Card] = field(default_factory=list)
 
     def add(self, card: Card) -> None:
         self.qty += card.qty
         self.duplicates += card.duplicates
         self.unique_value += card.unique_value
         self.total_value += card.total_value
+        self.cards.append(card)
 
     @property
     def unique_count(self) -> int:
@@ -54,6 +60,10 @@ class Bucket:
         regardless of how many copies it has (min(card.qty, 1)).
         """
         return self.qty - self.duplicates
+
+
+def _card_sort_key(card: Card):
+    return (card.number_int if card.number_int is not None else _UNKNOWN_RELEASE_RANK, card.name)
 
 
 def headline_summary(db: Session) -> dict:
@@ -91,6 +101,9 @@ def collection_bulk_breakdown(db: Session) -> dict:
         bucket = children.setdefault(primary.name, Bucket(name=primary.name))
         bucket.add(card)
         parent.add(card)
+
+    for bucket in list(children.values()) + [bulk]:
+        bucket.cards.sort(key=_card_sort_key)
 
     return {
         "parent": parent,
@@ -154,6 +167,7 @@ def by_series_breakdown(db: Session) -> list[Bucket]:
 
     for (series_key, _set_key), set_bucket in set_buckets.items():
         buckets[series_key].sets.append(set_bucket)
+        set_bucket.cards.sort(key=_card_sort_key)
     for series_key, bucket in buckets.items():
         bucket.sets.sort(
             key=lambda b, series_key=series_key: (
@@ -181,6 +195,9 @@ def by_rarity_breakdown(db: Session) -> list[Bucket]:
         key = card.rarity or "(uten rarity)"
         bucket = buckets.setdefault(key, Bucket(name=key))
         bucket.add(card)
+
+    for bucket in buckets.values():
+        bucket.cards.sort(key=_card_sort_key)
 
     def _rank(b: Bucket) -> tuple[int, str]:
         try:
