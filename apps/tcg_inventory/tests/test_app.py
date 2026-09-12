@@ -169,11 +169,16 @@ def test_dashboard_inventory_table_sortable_by_other_columns(client):
         ],
     )
 
-    default = client.get("/")
-    assert default.text.index("Alpha Collection") < default.text.index("Zeta Collection")
+    # Scope to the Inventory table itself -- collection names can also appear
+    # earlier on the page via the "Mest verdifulle collection" KPI highlight.
+    def _inventory_table(html: str) -> str:
+        return html.split("<h2>Inventory</h2>", 1)[1]
 
-    by_qty_desc = client.get("/?csort=qty&cdir=desc")
-    assert by_qty_desc.text.index("Zeta Collection") < by_qty_desc.text.index("Alpha Collection")
+    default = _inventory_table(client.get("/").text)
+    assert default.index("Alpha Collection") < default.index("Zeta Collection")
+
+    by_qty_desc = _inventory_table(client.get("/?csort=qty&cdir=desc").text)
+    assert by_qty_desc.index("Zeta Collection") < by_qty_desc.index("Alpha Collection")
 
 
 def test_inventory_search_filters_results(client):

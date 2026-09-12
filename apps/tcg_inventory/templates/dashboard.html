@@ -20,13 +20,68 @@
 {% block content %}
 <h1>Dashboard</h1>
 
-<div class="kpis">
-  <div class="kpi"><div class="value">{{ headline.qty_unique }}</div><div class="label">Qty</div></div>
-  <div class="kpi"><div class="value">{{ headline.qty_physical }}</div><div class="label">Total</div></div>
-  <div class="kpi"><div class="value">{{ headline.unique_value | kr }}</div><div class="label">Verdi (unike)</div></div>
-  <div class="kpi"><div class="value">{{ headline.total_value | kr }}</div><div class="label">Total verdi (inkl. duplikater)</div></div>
-  <div class="kpi"><div class="value">{{ headline.duplicate_share | round(1) }}%</div><div class="label">Duplikat-andel</div></div>
-  <div class="kpi"><div class="value">{{ headline.avg_unique_value | kr }}</div><div class="label">Snittverdi per kort</div></div>
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <h3>Antall</h3>
+    <div class="stat-row"><span class="stat-label">Qty</span><span class="stat-value">{{ headline.qty_physical }}</span></div>
+    <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ headline.duplicates }}</span></div>
+    <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <h3>Verdi</h3>
+    <div class="stat-row"><span class="stat-label">Verdi Qty</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
+    <div class="stat-row"><span class="stat-label">Verdi dupl</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
+    <div class="stat-row"><span class="stat-label">Verdi Total</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <h3>Snittverdi</h3>
+    <div class="stat-row"><span class="stat-label">Per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
+    <div class="stat-row"><span class="stat-label">Per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <h3>Duplikat-andel</h3>
+    <div class="stat-row"><span class="stat-label">Andel antall</span><span class="stat-value">{{ headline.duplicate_share | round(1) }}%</span></div>
+    <div class="stat-row"><span class="stat-label">Andel verdi</span><span class="stat-value">{{ headline.duplicate_value_share | round(1) }}%</span></div>
+  </div>
+
+  <div class="kpi-card">
+    <h3>Mest verdifulle kort</h3>
+    {% if top_cards %}
+    <div class="stat-row"><span class="stat-label" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}</span><span class="stat-value">{{ top_cards[0].reference_price | kr }}</span></div>
+    {% else %}
+    <div class="stat-row"><span class="stat-label muted">Ingen data</span></div>
+    {% endif %}
+  </div>
+
+  <div class="kpi-card">
+    <h3>Rimeligste kort</h3>
+    {% if cheapest_card %}
+    <div class="stat-row"><span class="stat-label" title="{{ cheapest_card.name }}">{{ cheapest_card.name }}</span><span class="stat-value">{{ cheapest_card.reference_price | kr }}</span></div>
+    {% else %}
+    <div class="stat-row"><span class="stat-label muted">Ingen data</span></div>
+    {% endif %}
+  </div>
+
+  <div class="kpi-card">
+    <h3>Mest verdifulle collection</h3>
+    {% if top_collection %}
+    <div class="stat-row"><span class="stat-label" title="{{ top_collection.name }}">{{ top_collection.name }}</span><span class="stat-value">{{ top_collection.total_value | kr }}</span></div>
+    {% else %}
+    <div class="stat-row"><span class="stat-label muted">Ingen data</span></div>
+    {% endif %}
+  </div>
+
+  <div class="kpi-card">
+    <h3>Mest verdifulle serie</h3>
+    {% if top_series %}
+    <div class="stat-row"><span class="stat-label" title="{{ top_series.name }}">{{ top_series.name }}</span><span class="stat-value">{{ top_series.total_value | kr }}</span></div>
+    {% else %}
+    <div class="stat-row"><span class="stat-label muted">Ingen data</span></div>
+    {% endif %}
+  </div>
 </div>
 
 <div class="breakdown-grid">

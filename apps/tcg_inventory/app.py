@@ -149,6 +149,7 @@ def dashboard(
         series_breakdown = queries.by_series_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db)
+        cheapest_card = queries.cheapest_card(db)
 
         # Default order (see queries.py) unless the user clicked a column
         # header to sort one table by something else.
@@ -157,6 +158,11 @@ def dashboard(
         series_breakdown = _sorted_rows(series_breakdown, ssort, sdir, BUCKET_SORT_KEYS)
         rarity_breakdown = _sorted_rows(rarity_breakdown, rsort, rdir, BUCKET_SORT_KEYS)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
+
+        # Highlights for the KPI row -- the single most valuable named
+        # collection/series (Bulk isn't a collection, so excluded).
+        top_collection = max(collection_breakdown["children"], key=lambda b: b.total_value, default=None)
+        top_series = max(series_breakdown, key=lambda b: b.total_value, default=None)
 
         return templates.TemplateResponse(
             request,
@@ -168,6 +174,9 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
+                "cheapest_card": cheapest_card,
+                "top_collection": top_collection,
+                "top_series": top_series,
                 "csort": csort,
                 "cdir": cdir,
                 "ssort": ssort,
