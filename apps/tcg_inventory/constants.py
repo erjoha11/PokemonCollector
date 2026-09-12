@@ -39,10 +39,10 @@ SV151_COLLECTION_NAME = "Scarlet & Violet: 151 JP/KR"
 # to fill in `binder_id` for a card that doesn't already have one -- an
 # explicit Dex Binder-category export (e.g. Tradebinder) always wins over
 # this fallback, since that reflects where the card is actually placed.
+# No entry for Vintage Collection -- it doesn't have its own physical binder.
 AUTO_BINDER_RULES = [
     (frozenset(ILLUSTRATOR_COLLECTIONS), "Illustrator Binder"),
     (frozenset({SV151_COLLECTION_NAME}), "151 Binder"),
-    (frozenset({VINTAGE_COLLECTION_NAME}), "Vintage Binder"),
 ]
 
 # Primary-collection priority ranks -- lower number wins when a card belongs
