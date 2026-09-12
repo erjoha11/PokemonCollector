@@ -206,15 +206,16 @@ def test_binder_membership_is_replaced_when_category_present_again(db_session):
     assert card_b.binder is None
 
 
-def test_auto_binder_rules_assign_illustrator_151_and_vintage(db_session):
+def test_auto_binder_rules_assign_illustrator_and_151_not_vintage(db_session):
     main = make_csv(
         "My Collection",
         [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}],
     )
     illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "a"}])
     sv151 = make_csv("Scarlet & Violet: 151 JP/KR", [{"id": "b"}])
+    # Vintage Collection has no auto-binder rule -- it isn't a physical binder.
     vintage = make_csv("Vintage Collection", [{"id": "c"}])
-    # d belongs to none of the three -- stays without a binder.
+    # d belongs to none of the above -- stays without a binder.
     import_dex_csv_files(
         db_session,
         [
@@ -231,7 +232,7 @@ def test_auto_binder_rules_assign_illustrator_151_and_vintage(db_session):
 
     assert _binder_name("a") == "Illustrator Binder"
     assert _binder_name("b") == "151 Binder"
-    assert _binder_name("c") == "Vintage Binder"
+    assert _binder_name("c") is None
     assert _binder_name("d") is None
 
 
