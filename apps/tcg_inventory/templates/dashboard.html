@@ -20,10 +20,14 @@
 <h1>Dashboard</h1>
 
 <div class="kpis">
-  <div class="kpi"><div class="value">{{ headline.qty_physical }}</div><div class="label">Qty (fysiske)</div></div>
-  <div class="kpi"><div class="value">{{ headline.qty_unique }}</div><div class="label">Qty unike</div></div>
+  <div class="kpi"><div class="value">{{ headline.qty_unique }}</div><div class="label">Qty</div></div>
+  <div class="kpi"><div class="value">{{ headline.qty_physical }}</div><div class="label">Total</div></div>
   <div class="kpi"><div class="value">{{ headline.unique_value | kr }}</div><div class="label">Verdi (unike)</div></div>
   <div class="kpi"><div class="value">{{ headline.total_value | kr }}</div><div class="label">Total verdi (inkl. duplikater)</div></div>
+  <div class="kpi"><div class="value">{{ headline.duplicate_share | round(1) }}%</div><div class="label">Duplikat-andel</div></div>
+  <div class="kpi"><div class="value">{{ headline.avg_unique_value | kr }}</div><div class="label">Snittverdi per kort</div></div>
+  <div class="kpi"><div class="value">{{ headline.series_count }}</div><div class="label">Antall serier</div></div>
+  <div class="kpi"><div class="value">{{ headline.set_count }}</div><div class="label">Antall sett</div></div>
 </div>
 
 <div class="breakdown-grid">
@@ -34,9 +38,9 @@
       <thead>
         <tr>
           <th>{{ sort_th('Navn', 'name', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Totalt', 'qty', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Qty', 'unique', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Dupes', 'duplicates', 'csort', 'cdir', csort, cdir) }}</th>
+          <th class="num">{{ sort_th('Total', 'qty', 'csort', 'cdir', csort, cdir) }}</th>
           <th class="num">{{ sort_th('Verdi', 'value', 'csort', 'cdir', csort, cdir) }}</th>
           <th class="num">{{ sort_th('Total verdi', 'total_value', 'csort', 'cdir', csort, cdir) }}</th>
         </tr>
@@ -100,9 +104,9 @@
       <thead>
         <tr>
           <th>{{ sort_th('Serie', 'name', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Totalt', 'qty', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Qty', 'unique', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Dupes', 'duplicates', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th class="num">{{ sort_th('Total', 'qty', 'ssort', 'sdir', ssort, sdir) }}</th>
           <th class="num">{{ sort_th('Verdi', 'value', 'ssort', 'sdir', ssort, sdir) }}</th>
           <th class="num">{{ sort_th('Total verdi', 'total_value', 'ssort', 'sdir', ssort, sdir) }}</th>
         </tr>
@@ -143,9 +147,9 @@
       <thead>
         <tr>
           <th>{{ sort_th('Rarity', 'name', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Totalt', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Qty', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Dupes', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th class="num">{{ sort_th('Total', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
           <th class="num">{{ sort_th('Verdi', 'value', 'rsort', 'rdir', rsort, rdir) }}</th>
         </tr>
       </thead>
