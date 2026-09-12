@@ -287,5 +287,35 @@ def import_dex_csv_files(
                 card.collections.append(collection)
             result.collections_touched.add(category)
 
+    _apply_auto_binder_rules(db, result)
+
     db.commit()
     return result
+
+
+def _apply_auto_binder_rules(db: Session, result: ImportResult) -> None:
+    """Fill in `binder_id` for cards whose collection membership implies one
+    specific physical binder (see constants.AUTO_BINDER_RULES: illustrator
+    collections -> Illustrator Binder, 151 -> 151 Binder, Vintage -> Vintage
+    Binder). Only fills cards that have no binder yet -- an explicit Dex
+    Binder-category export (e.g. Tradebinder, handled above) always wins,
+    since that reflects where the card is actually, physically placed.
+    """
+    for collection_names, binder_name in constants.AUTO_BINDER_RULES:
+        cards = (
+            db.query(Card)
+            .join(Card.collections)
+            .filter(Collection.name.in_(collection_names), Card.binder_id.is_(None))
+            .distinct()
+            .all()
+        )
+        if not cards:
+            continue
+        binder = db.query(Binder).filter(Binder.name == binder_name).one_or_none()
+        if binder is None:
+            binder = Binder(name=binder_name)
+            db.add(binder)
+            db.flush()
+        for card in cards:
+            card.binder_id = binder.id
+        result.binders_touched.add(binder_name)

@@ -34,6 +34,17 @@ VINTAGE_COLLECTION_NAME = "Vintage Collection"
 GENERIC_COLLECTION_NAME = "Collection"
 SV151_COLLECTION_NAME = "Scarlet & Violet: 151 JP/KR"
 
+# Collections whose cards always live in one specific physical binder.
+# Applied at the end of every import (see importer._apply_auto_binder_rules)
+# to fill in `binder_id` for a card that doesn't already have one -- an
+# explicit Dex Binder-category export (e.g. Tradebinder) always wins over
+# this fallback, since that reflects where the card is actually placed.
+AUTO_BINDER_RULES = [
+    (frozenset(ILLUSTRATOR_COLLECTIONS), "Illustrator Binder"),
+    (frozenset({SV151_COLLECTION_NAME}), "151 Binder"),
+    (frozenset({VINTAGE_COLLECTION_NAME}), "Vintage Binder"),
+]
+
 # Primary-collection priority ranks -- lower number wins when a card belongs
 # to more than one collection at once. Only affects which collection gets
 # "credit" in summaries; card_collections keeps every actual tag regardless.

@@ -206,6 +206,51 @@ def test_binder_membership_is_replaced_when_category_present_again(db_session):
     assert card_b.binder is None
 
 
+def test_auto_binder_rules_assign_illustrator_151_and_vintage(db_session):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}],
+    )
+    illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "a"}])
+    sv151 = make_csv("Scarlet & Violet: 151 JP/KR", [{"id": "b"}])
+    vintage = make_csv("Vintage Collection", [{"id": "c"}])
+    # d belongs to none of the three -- stays without a binder.
+    import_dex_csv_files(
+        db_session,
+        [
+            ("main.csv", main),
+            ("illustrator.csv", illustrator),
+            ("sv151.csv", sv151),
+            ("vintage.csv", vintage),
+        ],
+    )
+
+    def _binder_name(card_id):
+        card = db_session.query(Card).filter(Card.card_id == card_id).one()
+        return card.binder.name if card.binder else None
+
+    assert _binder_name("a") == "Illustrator Binder"
+    assert _binder_name("b") == "151 Binder"
+    assert _binder_name("c") == "Vintage Binder"
+    assert _binder_name("d") is None
+
+
+def test_auto_binder_rules_never_override_an_explicit_binder_tag(db_session):
+    # A card already placed in a physical binder via a real Dex Binder-
+    # category export (e.g. Tradebinder) keeps that binder even though it
+    # also happens to be in an illustrator collection.
+    main = make_csv("My Collection", [{"id": "a"}])
+    illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "a"}])
+    tradebinder = make_csv("Tradebinder", [{"id": "a"}])
+    import_dex_csv_files(
+        db_session,
+        [("main.csv", main), ("illustrator.csv", illustrator), ("binder.csv", tradebinder)],
+    )
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.binder.name == "Tradebinder"
+
+
 def test_primary_collection_priority_illustrator_beats_vintage_and_generic(db_session):
     main = make_csv("My Collection", [{"id": "a", "name": "Charizard"}])
     illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "a"}])
