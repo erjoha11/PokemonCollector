@@ -5,7 +5,7 @@
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir) %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
-{% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer" data-card-name="{{ card.name }}" onclick="dexCardClick(event, this)">{{ card.name }}</a>{% endmacro %}
+{% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true) %}
 <tr class="{{ css_class }}" data-group="{{ group_id }}" hidden>
   <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</td>

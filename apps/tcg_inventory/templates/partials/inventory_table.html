@@ -33,7 +33,7 @@
     <tbody>
       {% for card in cards %}
       <tr>
-        <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer" data-card-name="{{ card.name }}" onclick="dexCardClick(event, this)">{{ card.name }}</a></td>
+        <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
         <td>{{ card.number or '' }}</td>
         <td>{{ card.series or '' }}</td>
         <td>{{ card.set or '' }}</td>
