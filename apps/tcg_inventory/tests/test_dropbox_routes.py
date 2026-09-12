@@ -68,6 +68,27 @@ def test_cron_sync_accepts_correct_secret(client, monkeypatch):
     assert "Pikachu" in inventory.text
 
 
+def test_cron_sync_accepts_secret_as_query_param(client, monkeypatch):
+    # Fallback for callers that can't set a custom Authorization header.
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    csv_bytes = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    fake = FakeDropbox(
+        pages=[FakeListFolderResult([_file_entry("main.csv")])],
+        download_bytes={"/exports/main.csv": csv_bytes},
+    )
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    response = client.get("/cron/dropbox-sync?secret=s3cr3t")
+    assert response.status_code == 200
+    assert response.json()["cards_created"] == 1
+
+
+def test_cron_sync_rejects_wrong_query_param_secret(client, monkeypatch):
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    response = client.get("/cron/dropbox-sync?secret=wrong")
+    assert response.status_code == 401
+
+
 def test_cron_sync_works_without_secret_configured(client, monkeypatch):
     # No CRON_SECRET env var set at all -- open endpoint (still requires
     # Dropbox to be configured to do anything, but no auth check blocks it).
