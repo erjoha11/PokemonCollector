@@ -36,6 +36,33 @@ def test_collection_bulk_parent_equals_sum_of_children_plus_bulk_is_separate(db_
     assert breakdown["parent"].qty == 3  # Pikachu (2) + Charizard (1)
 
 
+def test_collection_bulk_display_order_pins_vintage_second_and_illustrators_last(db_session):
+    main = make_csv("My Collection", [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}])
+    generic = make_csv("Collection", [{"id": "a"}])
+    vintage = make_csv("Vintage Collection", [{"id": "b"}])
+    illustrator = make_csv("Tomokazu Komiya Collection", [{"id": "c"}])
+    other = make_csv("Scarlet & Violet: 151 JP/KR", [{"id": "d"}])
+    import_dex_csv_files(
+        db_session,
+        [
+            ("main.csv", main),
+            ("generic.csv", generic),
+            ("vintage.csv", vintage),
+            ("illustrator.csv", illustrator),
+            ("other.csv", other),
+        ],
+    )
+
+    breakdown = queries.collection_bulk_breakdown(db_session)
+    names = [c.name for c in breakdown["children"]]
+    assert names == [
+        "Collection",
+        "Vintage Collection",
+        "Scarlet & Violet: 151 JP/KR",
+        "Tomokazu Komiya Collection",
+    ]
+
+
 def test_headline_summary_totals(db_session):
     _seed(db_session)
     headline = queries.headline_summary(db_session)

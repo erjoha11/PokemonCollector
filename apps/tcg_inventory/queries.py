@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session, selectinload
 
+import constants
 from models import Binder, Card
 
 
@@ -84,9 +85,34 @@ def collection_bulk_breakdown(db: Session) -> dict:
 
     return {
         "parent": parent,
-        "children": sorted(children.values(), key=lambda b: b.name),
+        "children": _ordered_children(children.values()),
         "bulk": bulk,
     }
+
+
+def _ordered_children(buckets) -> list[Bucket]:
+    """Dashboard display order for the Collection/Bulk breakdown -- distinct
+    from `constants.priority_rank_for` (which only decides primary_collection
+    tie-breaks and must stay untouched by display preferences).
+
+    Ordinary collections sort alphabetically first, Vintage Collection is
+    pinned right after the first one (always the #2 row), and the curated
+    illustrator collections always sort last, alphabetically among
+    themselves.
+    """
+    illustrators = sorted(
+        (b for b in buckets if b.name in constants.ILLUSTRATOR_COLLECTIONS), key=lambda b: b.name
+    )
+    vintage = [b for b in buckets if b.name == constants.VINTAGE_COLLECTION_NAME]
+    others = sorted(
+        (
+            b
+            for b in buckets
+            if b.name not in constants.ILLUSTRATOR_COLLECTIONS and b.name != constants.VINTAGE_COLLECTION_NAME
+        ),
+        key=lambda b: b.name,
+    )
+    return others[:1] + vintage + others[1:] + illustrators
 
 
 def by_series_breakdown(db: Session) -> list[Bucket]:
