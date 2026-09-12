@@ -4,6 +4,17 @@
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir) %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
+{% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
+{% macro card_leaf_row(card, css_class, group_id, show_total_value=true) %}
+<tr class="{{ css_class }}" data-group="{{ group_id }}" hidden>
+  <td>{{ card.name }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</td>
+  <td class="num">{{ 1 if card.qty > 0 else 0 }}</td>
+  <td class="num">{{ card.duplicates }}</td>
+  <td class="num">{{ card.qty }}</td>
+  <td class="num">{{ card.unique_value | kr }}</td>
+  {% if show_total_value %}<td class="num">{{ card.total_value | kr }}</td>{% endif %}
+</tr>
+{% endmacro %}
 
 {% block content %}
 <h1>Dashboard</h1>
@@ -39,14 +50,18 @@
           <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
         </tr>
         {% for c in collection_rows %}
+        {% set row_id = 'coll-' ~ loop.index %}
         <tr class="child-row">
-          <td>{% if c.name == 'Bulk' %}Bulk{% else %}{{ filter_link('collection', c.name) }}{% endif %}</td>
+          <td>{% if c.cards %}{{ toggle_button(c.name, row_id) }}{% else %}{{ c.name }}{% endif %}</td>
           <td class="num">{{ c.unique_count }}</td>
           <td class="num">{{ c.duplicates }}</td>
           <td class="num">{% if c.name == 'Bulk' %}{{ c.qty }}{% else %}{{ dup_link('collection', c.name, c.qty) }}{% endif %}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
+        {% for card in c.cards %}
+        {{ card_leaf_row(card, 'grandchild-row', row_id) }}
+        {% endfor %}
         {% endfor %}
       </tbody>
     </table>
@@ -67,15 +82,9 @@
       </thead>
       <tbody>
         {% for s in series_breakdown %}
-        {% set row_id = 'series-sets-' ~ loop.index %}
+        {% set series_row_id = 'series-' ~ loop.index %}
         <tr>
-          <td>
-            {% if s.sets %}
-            <button type="button" class="row-toggle-name" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ s.name }}</button>
-            {% else %}
-            {{ s.name }}
-            {% endif %}
-          </td>
+          <td>{% if s.sets %}{{ toggle_button(s.name, series_row_id) }}{% else %}{{ s.name }}{% endif %}</td>
           <td class="num">{{ s.unique_count }}</td>
           <td class="num">{{ s.duplicates }}</td>
           <td class="num">{{ dup_link('series', s.name, s.qty) }}</td>
@@ -83,14 +92,18 @@
           <td class="num">{{ s.total_value | kr }}</td>
         </tr>
         {% for set_b in s.sets %}
-        <tr class="child-row {{ row_id }}" hidden>
-          <td>{{ filter_link('set', set_b.name) }}</td>
+        {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
+        <tr class="child-row" data-group="{{ series_row_id }}" hidden>
+          <td>{% if set_b.cards %}{{ toggle_button(set_b.name, set_row_id) }}{% else %}{{ set_b.name }}{% endif %}</td>
           <td class="num">{{ set_b.unique_count }}</td>
           <td class="num">{{ set_b.duplicates }}</td>
           <td class="num">{{ dup_link('set', set_b.name, set_b.qty) }}</td>
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
         </tr>
+        {% for card in set_b.cards %}
+        {{ card_leaf_row(card, 'grandchild-row', set_row_id) }}
+        {% endfor %}
         {% endfor %}
         {% endfor %}
       </tbody>
@@ -136,13 +149,17 @@
         </thead>
         <tbody>
           {% for r in rarity_breakdown %}
+          {% set row_id = 'rarity-' ~ loop.index %}
           <tr>
-            <td>{{ filter_link('rarity', r.name) }}</td>
+            <td>{% if r.cards %}{{ toggle_button(r.name, row_id) }}{% else %}{{ r.name }}{% endif %}</td>
             <td class="num">{{ r.unique_count }}</td>
             <td class="num">{{ r.duplicates }}</td>
             <td class="num">{{ dup_link('rarity', r.name, r.qty) }}</td>
             <td class="num">{{ r.unique_value | kr }}</td>
           </tr>
+          {% for card in r.cards %}
+          {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
+          {% endfor %}
           {% endfor %}
         </tbody>
       </table>
@@ -151,16 +168,33 @@
 </div>
 
 <script>
-function toggleRows(rowClass, btn) {
-  var expanded = btn.getAttribute('aria-expanded') === 'true';
-  document.querySelectorAll('.' + rowClass).forEach(function (row) {
-    row.hidden = expanded;
-  });
-  btn.setAttribute('aria-expanded', String(!expanded));
+function toggleRows(rowId, btn) {
+  var expanding = btn.getAttribute('aria-expanded') !== 'true';
+  if (expanding) {
+    document.querySelectorAll('[data-group="' + rowId + '"]').forEach(function (row) {
+      row.hidden = false;
+    });
+  } else {
+    collapseGroup(rowId);
+  }
+  btn.setAttribute('aria-expanded', String(expanding));
   var arrow = btn.querySelector('.arrow');
   if (arrow) {
-    arrow.textContent = expanded ? '▶' : '▼';
+    arrow.textContent = expanding ? '▼' : '▶';
   }
+}
+
+function collapseGroup(rowId) {
+  document.querySelectorAll('[data-group="' + rowId + '"]').forEach(function (row) {
+    row.hidden = true;
+    var nestedBtn = row.querySelector('.row-toggle-name');
+    if (nestedBtn) {
+      nestedBtn.setAttribute('aria-expanded', 'false');
+      var nestedArrow = nestedBtn.querySelector('.arrow');
+      if (nestedArrow) nestedArrow.textContent = '▶';
+      collapseGroup(nestedBtn.dataset.rowId);
+    }
+  });
 }
 </script>
 {% endblock %}
