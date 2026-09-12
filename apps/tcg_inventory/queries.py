@@ -73,6 +73,7 @@ def headline_summary(db: Session) -> dict:
     duplicates = sum(c.duplicates for c in cards)
     unique_value = sum(c.unique_value for c in cards)
     total_value = sum(c.total_value for c in cards)
+    duplicate_value = total_value - unique_value  # value tied up in extra copies specifically
     return {
         "qty_physical": qty_physical,
         "qty_unique": qty_unique,
@@ -80,8 +81,21 @@ def headline_summary(db: Session) -> dict:
         "duplicate_share": (duplicates / qty_physical * 100) if qty_physical else 0.0,
         "unique_value": unique_value,
         "total_value": total_value,
+        "duplicate_value": duplicate_value,
+        "duplicate_value_share": (duplicate_value / total_value * 100) if total_value else 0.0,
         "avg_unique_value": (unique_value / qty_unique) if qty_unique else 0.0,
+        "avg_physical_value": (total_value / qty_physical) if qty_physical else 0.0,
     }
+
+
+def cheapest_card(db: Session) -> Card | None:
+    """The lowest-priced card actually owned (qty > 0) with a known price."""
+    return (
+        db.query(Card)
+        .filter(Card.reference_price.isnot(None), Card.qty > 0)
+        .order_by(Card.reference_price.asc())
+        .first()
+    )
 
 
 def collection_bulk_breakdown(db: Session) -> dict:
@@ -186,10 +200,23 @@ def by_series_breakdown(db: Session) -> list[Bucket]:
     )
 
 
-# Rarity tiers with a well-known, unambiguous order -- everything else (the
-# many special/holo/ultra variants that don't share one universal ranking
-# across eras) sorts alphabetically after these, per request ("Common først").
-_RARITY_TIER_ORDER = ["Common", "Uncommon", "Rare"]
+# Modern (Scarlet & Violet-era) rarity tier order, low to high, per request.
+# Anything not in this list (older eras' own rarity names -- "Holo Rare",
+# "Promo", etc -- that don't share one single ranking across eras) sorts
+# alphabetically after these.
+_RARITY_TIER_ORDER = [
+    "Common",
+    "Uncommon",
+    "Rare",
+    "Double Rare",  # includes ACE SPEC
+    "Ultra Rare",  # full-art ex cards
+    "Illustration Rare",
+    "Special Illustration Rare",
+    "Hyper Rare",  # gold cards
+    "Rainbow Rare",  # phased out, used in earlier sets
+    "Black White Rare",  # set-specific gold-symbol variants, e.g. Trainer Gallery
+    "Secret Rare",  # numbered beyond the set's main size
+]
 
 
 def by_rarity_breakdown(db: Session) -> list[Bucket]:

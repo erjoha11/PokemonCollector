@@ -76,6 +76,25 @@ def test_headline_summary_totals(db_session):
     assert headline["duplicates"] == 5
     assert headline["duplicate_share"] == 5 / 8 * 100
     assert headline["avg_unique_value"] == (150.5 + 900 + 10) / 3
+    assert headline["avg_physical_value"] == (2 * 150.5 + 900 + 5 * 10) / 8
+    # duplicate_value = total_value - unique_value = value tied up in extra copies
+    assert headline["duplicate_value"] == (2 * 150.5 + 900 + 5 * 10) - (150.5 + 900 + 10)
+    assert headline["duplicate_value_share"] == headline["duplicate_value"] / headline["total_value"] * 100
+
+
+def test_cheapest_card_ignores_unowned_and_priceless_cards(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "price": "5"},
+            {"id": "b", "name": "Magikarp", "price": "1"},
+            {"id": "c", "name": "FreeCard", "price": ""},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    cheapest = queries.cheapest_card(db_session)
+    assert cheapest.name == "Magikarp"
 
 
 def test_binder_breakdown_uses_unique_value_not_total_value(db_session):
@@ -160,20 +179,30 @@ def test_rarity_breakdown_groups_by_rarity(db_session):
     assert rarities["Rare"].qty == 1
 
 
-def test_rarity_breakdown_sorts_common_uncommon_rare_first(db_session):
+def test_rarity_breakdown_sorts_by_modern_tier_order(db_session):
     main = make_csv(
         "My Collection",
         [
-            {"id": "a", "rarity": "Ultra Rare"},
-            {"id": "b", "rarity": "Rare"},
-            {"id": "c", "rarity": "Amazing Rare"},
+            {"id": "a", "rarity": "Secret Rare"},
+            {"id": "b", "rarity": "Special Illustration Rare"},
+            {"id": "c", "rarity": "Amazing Rare"},  # not in the known tier list
             {"id": "d", "rarity": "Uncommon"},
             {"id": "e", "rarity": "Common"},
+            {"id": "f", "rarity": "Ultra Rare"},
+            {"id": "g", "rarity": "Rare"},
         ],
     )
     import_dex_csv_files(db_session, [("main.csv", main)])
 
     names = [b.name for b in queries.by_rarity_breakdown(db_session)]
-    # Common/Uncommon/Rare always first in that order; everything else
+    # Known tiers in their canonical low-to-high order; anything unknown
     # (no single universal ranking across eras) sorts alphabetically after.
-    assert names == ["Common", "Uncommon", "Rare", "Amazing Rare", "Ultra Rare"]
+    assert names == [
+        "Common",
+        "Uncommon",
+        "Rare",
+        "Ultra Rare",
+        "Special Illustration Rare",
+        "Secret Rare",
+        "Amazing Rare",
+    ]
