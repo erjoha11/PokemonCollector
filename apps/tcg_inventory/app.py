@@ -164,14 +164,14 @@ def get_db_session() -> Session:
 @app.get("/")
 def dashboard(
     request: Request,
-    csort: str = "",
-    cdir: str = "asc",
-    ssort: str = "",
-    sdir: str = "asc",
-    rsort: str = "",
-    rdir: str = "asc",
-    tsort: str = "",
-    tdir: str = "asc",
+    csort: str = "value",
+    cdir: str = "desc",
+    ssort: str = "value",
+    sdir: str = "desc",
+    rsort: str = "value",
+    rdir: str = "desc",
+    tsort: str = "reference_price",
+    tdir: str = "desc",
 ):
     db = get_db_session()
     try:
