@@ -20,57 +20,7 @@
 {% block content %}
 <h1>Dashboard</h1>
 
-<div class="kpi-grid">
-  <div class="kpi-card">
-    <h3>Total</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">fysiske kort</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ headline.duplicates }}</span></div>
-      <div class="stat-row"><span class="stat-label">Unike</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Verdi</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Verdi dupl.</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Verdi unike</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Mest verdifulle kort</h3>
-    {% if top_cards %}
-    <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}</div>
-    {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
-    {% endif %}
-  </div>
-
-  <div class="kpi-card">
-    <h3>Mest verdifulle collection</h3>
-    {% if top_collection %}
-    <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
-    {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
-    {% endif %}
-  </div>
-
-  <div class="kpi-card">
-    <h3>Mest verdifulle serie</h3>
-    {% if top_series %}
-    <div class="kpi-hero"><span class="value">{{ top_series.total_value | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div>
-    {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
-    {% endif %}
-  </div>
-</div>
+{% include "partials/kpi_module.html" %}
 
 <div class="breakdown-grid">
   <div class="card-pair">

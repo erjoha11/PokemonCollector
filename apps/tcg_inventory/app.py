@@ -310,7 +310,24 @@ def inventory(
             "all_collections": all_collections,
             "all_binders": all_binders,
         }
-        template = "partials/inventory_table.html" if request.headers.get("HX-Request") else "inventory.html"
+        is_htmx = bool(request.headers.get("HX-Request"))
+        if not is_htmx:
+            # The KPI module lives outside the htmx-swapped #inventory-results
+            # target, so only compute it on a full page load, not on every
+            # filter keystroke/select change.
+            collection_breakdown = queries.collection_bulk_breakdown(db)
+            series_breakdown = queries.by_series_breakdown(db)
+            context.update(
+                {
+                    "headline": queries.headline_summary(db),
+                    "top_cards": queries.top_valuable_cards(db, limit=10),
+                    "top_collection": max(
+                        collection_breakdown["children"], key=lambda b: b.unique_value, default=None
+                    ),
+                    "top_series": max(series_breakdown, key=lambda b: b.total_value, default=None),
+                }
+            )
+        template = "partials/inventory_table.html" if is_htmx else "inventory.html"
         return templates.TemplateResponse(request, template, context)
     finally:
         db.close()

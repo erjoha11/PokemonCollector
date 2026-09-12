@@ -90,7 +90,9 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     db.close()
 
     response = client.get("/inventory")
-    text = response.text
+    # Scope to the results table -- the KPI module above it can also caption
+    # a card/series name and would otherwise throw off raw position checks.
+    text = response.text.split('id="inventory-results"', 1)[1]
     # Base Set (release rank 1) sorts before the newer set (rank 50), and
     # within Base Set, card #2 sorts before #10 (numeric, not alphabetical).
     pos_old2 = text.index("OldCard2")

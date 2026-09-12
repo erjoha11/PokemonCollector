@@ -3,6 +3,8 @@
 {% block content %}
 <h1>Inventory</h1>
 
+{% include "partials/kpi_module.html" %}
+
 <form class="filters" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true">
   <input type="text" name="q" value="{{ q }}" placeholder="Søk (navn, number, illustrator, card id)"
          hx-get="/inventory" hx-trigger="keyup changed delay:300ms" hx-target="#inventory-results" hx-push-url="true"
