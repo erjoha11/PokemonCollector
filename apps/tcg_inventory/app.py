@@ -487,7 +487,7 @@ def import_dropbox_sync(
 
 
 @app.get("/cron/dropbox-sync")
-def cron_dropbox_sync(request: Request):
+def cron_dropbox_sync(request: Request, secret: str = ""):
     """Scheduled sync, triggered by the Vercel Cron job in vercel.json.
 
     Pulls every CSV currently in the configured Dropbox folder and runs a
@@ -496,10 +496,13 @@ def cron_dropbox_sync(request: Request):
     CRON_SECRET rather than the Supabase login: Vercel's cron invocations
     carry no browser session to log in with. Vercel automatically sends
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
-    var is set -- see README "Automatic daily sync".
+    var is set -- see README "Automatic daily sync". A manual trigger (e.g.
+    from a tool that can't set custom headers) may instead pass the same
+    value as `?secret=`.
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
-    if cron_secret and request.headers.get("authorization") != f"Bearer {cron_secret}":
+    authorized = not cron_secret or request.headers.get("authorization") == f"Bearer {cron_secret}" or secret == cron_secret
+    if not authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     folder = dropbox_client.default_folder()
