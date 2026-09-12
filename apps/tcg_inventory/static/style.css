@@ -199,7 +199,6 @@ tbody tr:hover td { background: var(--accent-wash); }
 .parent-row td { font-weight: 700; }
 .parent-row { background: var(--accent-wash-strong); }
 .parent-row td:first-child { border-left: 3px solid var(--accent); padding-left: calc(0.7rem - 3px); }
-.bulk-row td:first-child { font-style: italic; color: var(--muted); }
 
 form.filters {
   display: flex;

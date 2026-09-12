@@ -16,12 +16,12 @@
 
 <div class="breakdown-grid">
   <div class="card wide">
-    <h2>Collection / Bulk</h2>
+    <h2>Inventory</h2>
     <table>
       <thead><tr><th>Navn</th><th class="num">Unike</th><th class="num">Duplikater</th><th class="num">Totalt</th><th class="num">Verdi</th><th class="num">Total verdi</th></tr></thead>
       <tbody>
         <tr class="parent-row">
-          <td>Totalt (alle collections)</td>
+          <td>Collections</td>
           <td class="num">{{ collection_breakdown.parent.unique_count }}</td>
           <td class="num">{{ collection_breakdown.parent.duplicates }}</td>
           <td class="num">{{ collection_breakdown.parent.qty }}</td>
@@ -38,7 +38,7 @@
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
         {% endfor %}
-        <tr class="bulk-row">
+        <tr class="child-row">
           <td>Bulk</td>
           <td class="num">{{ collection_breakdown.bulk.unique_count }}</td>
           <td class="num">{{ collection_breakdown.bulk.duplicates }}</td>
