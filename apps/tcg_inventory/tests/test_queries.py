@@ -117,6 +117,27 @@ def test_series_breakdown_sorts_by_release_order_not_alphabetically(db_session):
     assert names == ["Original", "XY", "Unresearched Series"]
 
 
+def test_series_breakdown_carries_per_series_sets_in_release_order(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "series": "Original", "set": "Base Set", "qty": 1},
+            {"id": "b", "series": "Original", "set": "Jungle", "qty": 2},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    db_session.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
+    db_session.add(SetReleaseOrder(series="Original", set="Jungle", release_rank=2))
+    db_session.commit()
+
+    original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
+    set_names = [s.name for s in original.sets]
+    assert set_names == ["Base Set", "Jungle"]
+    assert original.sets[0].qty == 1
+    assert original.sets[1].qty == 2
+
+
 def test_rarity_breakdown_groups_by_rarity(db_session):
     main = make_csv(
         "My Collection",
@@ -132,3 +153,22 @@ def test_rarity_breakdown_groups_by_rarity(db_session):
     assert rarities["Common"].qty == 3
     assert rarities["Common"].duplicates == 1  # card "a" has qty 2 -> 1 duplicate
     assert rarities["Rare"].qty == 1
+
+
+def test_rarity_breakdown_sorts_common_uncommon_rare_first(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "rarity": "Ultra Rare"},
+            {"id": "b", "rarity": "Rare"},
+            {"id": "c", "rarity": "Amazing Rare"},
+            {"id": "d", "rarity": "Uncommon"},
+            {"id": "e", "rarity": "Common"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    names = [b.name for b in queries.by_rarity_breakdown(db_session)]
+    # Common/Uncommon/Rare always first in that order; everything else
+    # (no single universal ranking across eras) sorts alphabetically after.
+    assert names == ["Common", "Uncommon", "Rare", "Amazing Rare", "Ultra Rare"]

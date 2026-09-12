@@ -67,14 +67,28 @@
       </thead>
       <tbody>
         {% for s in series_breakdown %}
+        {% set row_id = 'series-sets-' ~ loop.index %}
         <tr>
-          <td>{{ filter_link('series', s.name) }}</td>
+          <td>
+            {% if s.sets %}<button type="button" class="row-toggle" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)">▶</button>{% endif %}
+            {{ filter_link('series', s.name) }}
+          </td>
           <td class="num">{{ s.unique_count }}</td>
           <td class="num">{{ dup_link('series', s.name, s.duplicates) }}</td>
           <td class="num">{{ s.qty }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
         </tr>
+        {% for set_b in s.sets %}
+        <tr class="child-row {{ row_id }}" hidden>
+          <td>{{ filter_link('set', set_b.name) }}</td>
+          <td class="num">{{ set_b.unique_count }}</td>
+          <td class="num">{{ dup_link('set', set_b.name, set_b.duplicates) }}</td>
+          <td class="num">{{ set_b.qty }}</td>
+          <td class="num">{{ set_b.unique_value | kr }}</td>
+          <td class="num">{{ set_b.total_value | kr }}</td>
+        </tr>
+        {% endfor %}
         {% endfor %}
       </tbody>
     </table>
@@ -132,4 +146,15 @@
     </div>
   </div>
 </div>
+
+<script>
+function toggleRows(rowClass, btn) {
+  var expanded = btn.getAttribute('aria-expanded') === 'true';
+  document.querySelectorAll('.' + rowClass).forEach(function (row) {
+    row.hidden = expanded;
+  });
+  btn.setAttribute('aria-expanded', String(!expanded));
+  btn.textContent = expanded ? '▶' : '▼';
+}
+</script>
 {% endblock %}

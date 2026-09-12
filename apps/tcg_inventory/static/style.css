@@ -202,6 +202,19 @@ tbody tr:hover td { background: var(--accent-wash); }
 .breakdown-grid th a:hover { color: var(--accent); text-decoration: none; }
 
 .child-row td:first-child { padding-left: 1.5rem; color: var(--ink-secondary); font-weight: 400; }
+
+.row-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.row-toggle:hover { color: var(--accent); }
+
 .parent-row td { font-weight: 700; }
 .parent-row { background: var(--accent-wash-strong); }
 .parent-row td:first-child { border-left: 3px solid var(--accent); padding-left: calc(0.7rem - 3px); }
