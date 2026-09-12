@@ -121,51 +121,121 @@ tbody tr:hover td { background: var(--accent-wash); }
   z-index: 1;
 }
 
-/* 8 multi-stat cards filling the full width -- each groups 1-3 related
-   numbers instead of the older one-metric-per-tile layout. */
+/* 8 multi-stat cards filling the full width. Each has its own theme color
+   (a fixed, validated 8-hue categorical order -- see dataviz palette) and
+   its own hero number, so the eye has one clear entry point per card
+   instead of a wall of equal-weight rows.
+   Hue order: 1 Antall/blue, 2 Verdi/orange, 3 Snittverdi/aqua,
+   4 Duplikat-andel/yellow, 5 Mest verdifulle kort/magenta,
+   6 Rimeligste kort/green, 7 Mest verdifulle collection/violet,
+   8 Mest verdifulle serie/red. Order is fixed -- never reassigned based on
+   which card has the "biggest" number, only on its fixed category. */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 1rem;
+  /* 140px keeps all 8 cards on one row at common desktop widths (>=1280px);
+     narrower viewports wrap to fewer columns automatically. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.85rem;
   margin-bottom: 1.75rem;
 }
 
 .kpi-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-top: 3px solid var(--accent);
+  border-top: 3px solid var(--kpi-accent, var(--accent));
   border-radius: var(--radius);
   padding: 0.85rem 1rem;
   box-shadow: var(--shadow);
 }
 
+.kpi-card:nth-child(1) { --kpi-accent: #2a78d6; }
+.kpi-card:nth-child(2) { --kpi-accent: #eb6834; }
+.kpi-card:nth-child(3) { --kpi-accent: #1baf7a; }
+.kpi-card:nth-child(4) { --kpi-accent: #eda100; }
+.kpi-card:nth-child(5) { --kpi-accent: #e87ba4; }
+.kpi-card:nth-child(6) { --kpi-accent: #008300; }
+.kpi-card:nth-child(7) { --kpi-accent: #4a3aa7; }
+.kpi-card:nth-child(8) { --kpi-accent: #e34948; }
+
 .kpi-card h3 {
-  margin: 0 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--muted);
 }
+.kpi-card h3::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--kpi-accent, var(--accent));
+  flex-shrink: 0;
+}
 
-.kpi-card .stat-row {
+/* The hero: one number per card gets visual priority -- proportional
+   figures (not tabular-nums) per the stat-tile spec for a large
+   standalone value. */
+.kpi-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.kpi-hero .value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.kpi-hero .label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Supporting numbers ride below a hairline, smaller and quieter than the
+   hero -- never competing with it for attention. */
+.kpi-support {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.kpi-support .stat-row {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 0.5rem;
-  padding: 0.2rem 0;
-  font-size: 0.85rem;
+  font-size: 0.76rem;
 }
-.kpi-card .stat-row + .stat-row { border-top: 1px solid var(--border); }
-.kpi-card .stat-label {
+.kpi-support .stat-label {
   color: var(--ink-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.kpi-card .stat-value {
-  font-weight: 700;
+.kpi-support .stat-value {
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* Highlight cards (most/least valuable X) show a name as a caption under
+   the hero price instead of a label:value row -- it's an identity, not a
+   second number. */
+.kpi-caption {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--ink-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
