@@ -113,12 +113,36 @@ tbody tr:hover td { background: var(--accent-wash); }
   background: var(--surface);
   box-shadow: var(--shadow);
 }
-.inventory-table { width: max-content; min-width: 100%; }
+.inventory-table {
+  width: max-content;
+  min-width: 100%;
+  font-size: 0.7rem;
+}
+.inventory-table th,
+.inventory-table td {
+  padding: 0.25rem 0.4rem;
+}
 .inventory-table thead th {
   position: sticky;
   top: 0;
   box-shadow: 0 1px 0 var(--border-strong);
   z-index: 1;
+}
+
+/* Free-text columns are the ones driving horizontal scroll (long set/series
+   names, comma-joined collection lists, notes) -- let these wrap instead of
+   forcing the table wider; short/numeric columns keep nowrap so they stay
+   compact. */
+.inventory-table td:nth-child(3),  /* Series */
+.inventory-table td:nth-child(4),  /* Set */
+.inventory-table td:nth-child(5),  /* Collections */
+.inventory-table td:nth-child(12), /* Illustrator */
+.inventory-table td:nth-child(14), /* Klassifisering */
+.inventory-table td:nth-child(15), /* Lokasjon */
+.inventory-table td:nth-child(16) /* Notater */ {
+  white-space: normal;
+  word-break: break-word;
+  max-width: 130px;
 }
 
 /* Multi-stat cards filling the full width. Each has its own theme color (a
