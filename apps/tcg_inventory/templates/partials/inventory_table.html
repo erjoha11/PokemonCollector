@@ -17,6 +17,7 @@
         <th class="num">Duplikater</th>
         <th class="num">Total verdi</th>
         <th>Variant</th>
+        <th>{{ sort_link('language', 'Språk') }}</th>
         <th>{{ sort_link('rarity', 'Rarity') }}</th>
         <th>{{ sort_link('illustrator', 'Illustrator') }}</th>
         <th>Binder</th>
@@ -39,6 +40,7 @@
         <td class="num">{{ card.duplicates }}</td>
         <td class="num">{{ card.total_value | kr }}</td>
         <td>{{ card.variant or '' }}</td>
+        <td>{{ card.language or '' }}</td>
         <td>{{ card.rarity or '' }}</td>
         <td>{{ card.illustrator or '' }}</td>
         <td>{{ card.binder.name if card.binder else '' }}</td>
@@ -48,7 +50,7 @@
         <td>{{ card.card_id }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="17" class="muted">Ingen kort matcher filteret.</td></tr>
+      <tr><td colspan="18" class="muted">Ingen kort matcher filteret.</td></tr>
       {% endfor %}
     </tbody>
   </table>

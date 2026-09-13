@@ -77,8 +77,8 @@ def make_csv(category: str, rows: list[dict]) -> bytes:
     """Build a minimal Dex-export CSV for one category from row dicts.
 
     Each row dict may set any of: id, number, series, set, name, variant,
-    rarity, illustrator, qty, price. Missing fields default to sensible
-    values so tests only need to specify what they care about.
+    rarity, illustrator, qty, price, locale. Missing fields default to
+    sensible values so tests only need to specify what they care about.
     """
     lines = [HEADER]
     for i, row in enumerate(rows):
@@ -92,8 +92,9 @@ def make_csv(category: str, rows: list[dict]) -> bytes:
         illustrator = row.get("illustrator", "")
         qty = row.get("qty", 1)
         price = row.get("price", "10.0")
+        locale = row.get("locale", "JPN")
         lines.append(
-            f"Card;{category};JPN;{series};{set_};{card_id};{number};{name};"
+            f"Card;{category};{locale};{series};{set_};{card_id};{number};{name};"
             f"{variant};{rarity};{illustrator};{qty};{price};;;;;"
         )
     return "\n".join(lines).encode("utf-8")

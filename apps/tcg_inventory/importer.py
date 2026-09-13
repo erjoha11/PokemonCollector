@@ -206,6 +206,7 @@ def import_dex_csv_files(
             card.number_int = _parse_number_int(card.number)
             card.series = (row.get("Series") or "").strip() or None
             card.set = (row.get("Set") or "").strip() or None
+            card.language = (row.get("Locale") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None
             card.reference_price = _parse_price(row.get("Price"))

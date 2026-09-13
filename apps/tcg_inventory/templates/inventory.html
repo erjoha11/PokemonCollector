@@ -30,6 +30,11 @@
     {% for b in all_binders %}<option value="{{ b }}" {{ 'selected' if b == binder }}>{{ b }}</option>{% endfor %}
   </select>
 
+  <select name="language" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    <option value="">Alle språk</option>
+    {% for l in all_languages %}<option value="{{ l }}" {{ 'selected' if l == language }}>{{ l }}</option>{% endfor %}
+  </select>
+
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
   <input type="hidden" name="dup" value="{{ '1' if dup else '' }}">
@@ -37,13 +42,13 @@
   {% if dup %}
   <span class="muted">
     Viser bare kort med duplikater.
-    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}">Fjern filter</a>
+    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}">Fjern filter</a>
   </span>
   {% endif %}
   {% if rarity %}
   <span class="muted">
     Filtrert på rarity: {{ rarity }}
-    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}">Fjern filter</a>
+    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}">Fjern filter</a>
   </span>
   {% endif %}
 </form>

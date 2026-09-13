@@ -115,6 +115,7 @@ SORT_COLUMNS = {
     "qty": Card.qty,
     "rarity": Card.rarity,
     "illustrator": Card.illustrator,
+    "language": Card.language,
 }
 # Cards not present in set_release_order (no research done for that set yet)
 # sort after every known set, not before -- see SetReleaseOrder's docstring.
@@ -400,7 +401,7 @@ def _top_collection_and_series(collection_breakdown: dict, series_breakdown: lis
     return top_collection, top_series
 
 
-def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity):
+def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
     if q:
         like = _like_pattern(q)
@@ -422,6 +423,8 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, d
         query = query.filter(Card.qty > 1)  # duplicates = max(qty - 1, 0)
     if rarity:
         query = query.filter(Card.rarity == rarity)
+    if language:
+        query = query.filter(Card.language == language)
     return query
 
 
@@ -433,14 +436,20 @@ def inventory(
     set: str = "",
     collection: str = "",
     binder: str = "",
-    dup: bool = False,
+    # Bare `bool` rejects an empty-string query value (?dup=) with a 422 --
+    # and the filter form's own hidden `dup` input submits exactly that when
+    # unchecked (its hx-include picks up every field in the form, not just
+    # the one the user touched). Query-string presence/truthiness, not a
+    # real bool type, is what every "if dup" check below actually wants.
+    dup: str = "",
     rarity: str = "",
+    language: str = "",
     sort: str = "release",
     direction: str = "asc",
 ):
     db = get_db_session()
     try:
-        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity)
+        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity, language)
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -465,6 +474,7 @@ def inventory(
         all_sets = _distinct_values(db, Card.set)
         all_collections = _distinct_values(db, Collection.name)
         all_binders = _distinct_values(db, Binder.name)
+        all_languages = _distinct_values(db, Card.language)
 
         context = {
             "cards": cards,
@@ -476,12 +486,14 @@ def inventory(
             "binder": binder,
             "dup": dup,
             "rarity": rarity,
+            "language": language,
             "sort": sort,
             "direction": direction,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,
             "all_binders": all_binders,
+            "all_languages": all_languages,
         }
         is_htmx = bool(request.headers.get("HX-Request"))
         if not is_htmx:
