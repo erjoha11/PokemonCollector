@@ -1,0 +1,3 @@
+{# Shared across every page with a sortable table -- one implementation so
+   the toggle-direction/arrow behavior can never drift between pages. #}
+{% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir, path='/') %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir, path) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}

@@ -28,7 +28,7 @@ import dropbox_client
 import queries
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
-from models import Binder, Card, Collection, ImportLog, SetReleaseOrder, Transaction
+from models import Binder, Card, Collection, FavoritePokemon, ImportLog, SetReleaseOrder, Transaction
 
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
@@ -154,6 +154,18 @@ def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
         bucket.cards.sort(key=key_fn, reverse=reverse)
 
 
+# Unlike CARD_LEAF_SORT_KEYS (individual cards nested in a bucket), this
+# sorts the Pokemon *buckets* themselves -- the top-10-by-unique cutoff
+# needs to rank buckets before any column click ever happens.
+POKEMON_BUCKET_SORT_KEYS = {
+    "name": lambda b: b.name.lower(),
+    "unique": lambda b: b.unique_count,
+    "duplicates": lambda b: b.duplicates,
+    "qty": lambda b: b.qty,
+    "value": lambda b: b.unique_value,
+}
+
+
 def _sort_cards_in_series(series_list, sort: str, direction: str) -> None:
     """Same as `_sort_cards_in_buckets`, but for series -> set -> cards: the
     series and set rows both stay in their default order, only the cards
@@ -172,6 +184,10 @@ def get_db_session() -> Session:
     return SessionLocal()
 
 
+def _favorite_pokemon_names(db: Session) -> set[str]:
+    return {row.name for row in db.query(FavoritePokemon).all()}
+
+
 # --------------------------------------------------------------------------
 # Dashboard
 # --------------------------------------------------------------------------
@@ -184,7 +200,7 @@ def dashboard(
     sdir: str = "desc",
     rsort: str = "value",
     rdir: str = "desc",
-    psort: str = "value",
+    psort: str = "unique",
     pdir: str = "desc",
     tsort: str = "reference_price",
     tdir: str = "desc",
@@ -196,18 +212,23 @@ def dashboard(
         series_breakdown = queries.by_series_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db)
-        pokemon_breakdown = queries.by_pokemon_breakdown(db)
 
-        # Bucket rows (collection, series, set, rarity, pokemon) always keep
-        # their default order from queries.py -- clicking a column header
-        # only re-sorts the cards nested inside each bucket, never the
-        # buckets themselves.
+        # Bucket rows (collection, series, set, rarity) always keep their
+        # default order from queries.py -- clicking a column header only
+        # re-sorts the cards nested inside each bucket, never the buckets
+        # themselves.
         collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
         _sort_cards_in_buckets(collection_rows, csort, cdir)
         _sort_cards_in_series(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
-        _sort_cards_in_buckets(pokemon_breakdown, psort, pdir)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
+
+        # Pokemon is different from the other breakdowns: it's a flat top-10
+        # (by unique prints owned, the fixed cutoff), and a column click
+        # re-orders those same 10 buckets -- same pattern as "Topp 10 mest
+        # verdifulle kort" above, not the bucket-hierarchy tables.
+        pokemon_top = sorted(queries.by_pokemon_breakdown(db), key=lambda b: b.unique_count, reverse=True)[:10]
+        pokemon_top = _sorted_rows(pokemon_top, psort, pdir, POKEMON_BUCKET_SORT_KEYS)
 
         # Highlights for the KPI row -- the single most valuable named
         # collection/series (Bulk isn't a collection, so excluded). The
@@ -226,7 +247,8 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
-                "pokemon_breakdown": pokemon_breakdown,
+                "pokemon_top": pokemon_top,
+                "favorite_pokemon": _favorite_pokemon_names(db),
                 "top_collection": top_collection,
                 "top_series": top_series,
                 "csort": csort,
@@ -241,6 +263,21 @@ def dashboard(
                 "tdir": tdir,
             },
         )
+    finally:
+        db.close()
+
+
+@app.post("/pokemon/favorite")
+def toggle_pokemon_favorite(name: str = Form(...)):
+    db = get_db_session()
+    try:
+        existing = db.query(FavoritePokemon).filter(FavoritePokemon.name == name).one_or_none()
+        if existing is not None:
+            db.delete(existing)
+        else:
+            db.add(FavoritePokemon(name=name))
+        db.commit()
+        return RedirectResponse("/", status_code=303)
     finally:
         db.close()
 
@@ -421,7 +458,35 @@ def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     return by_card
 
 
-def _transactions_context(db, request: Request, tsort: str, tdir: str, error: str | None = None) -> dict:
+def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None = None) -> dict:
+    """Sort keys for a flat list of Card rows -- used by both the "Kort lagt
+    til" date groups and the "Ukjent dato" table. `registered_price` is only
+    meaningful where that column is actually shown (Kort lagt til).
+    """
+    keys = {
+        "name": lambda c: c.name.lower(),
+        "variant": lambda c: (c.variant or "").lower(),
+        "series": lambda c: (c.series or "").lower(),
+        "set": lambda c: (c.set or "").lower(),
+        "reference_price": lambda c: c.reference_price if c.reference_price is not None else -1,
+        "card_id": lambda c: c.card_id.lower(),
+    }
+    if purchase_prices_by_card is not None:
+        keys["registered_price"] = lambda c: max(purchase_prices_by_card.get(c.id, [-1]))
+    return keys
+
+
+def _transactions_context(
+    db,
+    request: Request,
+    tsort: str,
+    tdir: str,
+    gsort: str = "name",
+    gdir: str = "asc",
+    usort: str = "name",
+    udir: str = "asc",
+    error: str | None = None,
+) -> dict:
     txs = (
         db.query(Transaction)
         .options(selectinload(Transaction.card))
@@ -432,6 +497,12 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
     groups, unknown_cards = _cards_grouped_by_added_date(db)
     known_count = sum(len(g["cards"]) for g in groups)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
+
+    card_keys = _card_field_sort_keys(purchase_prices_by_card)
+    for group in groups:
+        group["cards"] = _sorted_rows(group["cards"], gsort, gdir, card_keys)
+    unknown_cards = _sorted_rows(unknown_cards, usort, udir, _card_field_sort_keys())
+
     return {
         "transactions": txs,
         "error": error,
@@ -439,6 +510,10 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
         "recent_cards": _recently_added_cards(db),
         "tsort": tsort,
         "tdir": tdir,
+        "gsort": gsort,
+        "gdir": gdir,
+        "usort": usort,
+        "udir": udir,
         "groups": groups,
         "known_count": known_count,
         "unknown_cards": unknown_cards,
@@ -456,11 +531,19 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
 
 
 @app.get("/transactions")
-def list_transactions(request: Request, tsort: str = "date", tdir: str = "desc"):
+def list_transactions(
+    request: Request,
+    tsort: str = "date",
+    tdir: str = "desc",
+    gsort: str = "name",
+    gdir: str = "asc",
+    usort: str = "name",
+    udir: str = "asc",
+):
     db = get_db_session()
     try:
         return templates.TemplateResponse(
-            request, "transactions.html", _transactions_context(db, request, tsort, tdir)
+            request, "transactions.html", _transactions_context(db, request, tsort, tdir, gsort, gdir, usort, udir)
         )
     finally:
         db.close()
@@ -550,16 +633,39 @@ def create_transaction(
 # --------------------------------------------------------------------------
 # CSV import / sync
 # --------------------------------------------------------------------------
-def _recent_import_logs(db: Session, limit: int = 20) -> list[ImportLog]:
-    return db.query(ImportLog).order_by(ImportLog.ran_at.desc(), ImportLog.id.desc()).limit(limit).all()
+LOG_SORT_KEYS = {
+    "ran_at": lambda log: log.ran_at,
+    "source": lambda log: log.source,
+    "files": lambda log: (log.files or "").lower(),
+    "cards_created": lambda log: log.cards_created,
+    "cards_updated": lambda log: log.cards_updated,
+    "cards_flagged_missing": lambda log: log.cards_flagged_missing,
+    "cards_deleted": lambda log: log.cards_deleted,
+    "warnings_count": lambda log: log.warnings_count,
+    "collections_touched": lambda log: (log.collections_touched or "").lower(),
+    "binders_touched": lambda log: (log.binders_touched or "").lower(),
+}
+
+DROPBOX_FILE_SORT_KEYS = {
+    "name": lambda f: f.name.lower(),
+    "client_modified": lambda f: f.client_modified,
+    "size": lambda f: f.size,
+}
+
+
+def _recent_import_logs(db: Session, lsort: str = "ran_at", ldir: str = "desc", limit: int = 20) -> list[ImportLog]:
+    logs = db.query(ImportLog).order_by(ImportLog.ran_at.desc(), ImportLog.id.desc()).limit(limit).all()
+    return _sorted_rows(logs, lsort, ldir, LOG_SORT_KEYS)
 
 
 @app.get("/import")
-def import_form(request: Request):
+def import_form(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
     db = get_db_session()
     try:
         return templates.TemplateResponse(
-            request, "import.html", {"result": None, "logs": _recent_import_logs(db)}
+            request,
+            "import.html",
+            {"result": None, "logs": _recent_import_logs(db, lsort, ldir), "lsort": lsort, "ldir": ldir},
         )
     finally:
         db.close()
@@ -572,7 +678,9 @@ async def run_import(request: Request, files: list[UploadFile], full_load: bool 
     try:
         result = import_dex_csv_files(db, payload, full_load=full_load, source="manual")
         return templates.TemplateResponse(
-            request, "import.html", {"result": result, "logs": _recent_import_logs(db)}
+            request,
+            "import.html",
+            {"result": result, "logs": _recent_import_logs(db), "lsort": "ran_at", "ldir": "desc"},
         )
     finally:
         db.close()
@@ -582,12 +690,13 @@ async def run_import(request: Request, files: list[UploadFile], full_load: bool 
 # CSV import / sync -- straight from Dropbox
 # --------------------------------------------------------------------------
 @app.get("/import/dropbox/list")
-def import_dropbox_list(request: Request, folder: str = ""):
+def import_dropbox_list(request: Request, folder: str = "", dsort: str = "client_modified", ddir: str = "desc"):
     folder = folder or dropbox_client.default_folder()
-    context = {"folder": folder, "files": None, "error": None}
+    context = {"folder": folder, "files": None, "error": None, "dsort": dsort, "ddir": ddir}
     try:
         dbx = dropbox_client.build_client_from_env()
-        context["files"] = dropbox_client.list_csv_files(dbx, folder)
+        files = dropbox_client.list_csv_files(dbx, folder)
+        context["files"] = _sorted_rows(files, dsort, ddir, DROPBOX_FILE_SORT_KEYS)
     except dropbox_client.DropboxNotConfigured as exc:
         context["error"] = str(exc)
     except dropbox_client.DropboxImportError as exc:
@@ -606,7 +715,13 @@ def import_dropbox_sync(
         return templates.TemplateResponse(
             request,
             "partials/dropbox_files.html",
-            {"folder": folder, "files": None, "error": "Velg minst én fil å synke."},
+            {
+                "folder": folder,
+                "files": None,
+                "error": "Velg minst én fil å synke.",
+                "dsort": "client_modified",
+                "ddir": "desc",
+            },
         )
     db = get_db_session()
     try:

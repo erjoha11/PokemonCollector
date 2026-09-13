@@ -173,3 +173,14 @@ class ImportLog(Base):
     collections_touched: Mapped[str | None] = mapped_column(String, nullable=True)
     binders_touched: Mapped[str | None] = mapped_column(String, nullable=True)
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class FavoritePokemon(Base):
+    """A Pokemon (by name, e.g. "Sableye") the user flagged as a favorite on
+    the Dashboard's Pokemon breakdown -- not tied to any one physical card,
+    since the breakdown itself groups every print of that name together.
+    """
+
+    __tablename__ = "favorite_pokemon"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)

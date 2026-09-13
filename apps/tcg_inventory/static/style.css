@@ -376,6 +376,19 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .row-toggle-name .arrow { color: var(--muted); font-size: 0.7rem; display: inline-block; }
 .row-toggle-name:hover .arrow { color: var(--accent); }
 
+.favorite-star {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-right: 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  vertical-align: middle;
+}
+.favorite-star:hover, .favorite-star.active { color: #eda100; }
+
 .parent-row td { font-weight: 700; }
 .parent-row { background: var(--accent-wash-strong); }
 .parent-row td:first-child { border-left: 3px solid var(--accent); padding-left: calc(0.7rem - 3px); }

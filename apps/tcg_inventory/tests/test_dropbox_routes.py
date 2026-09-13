@@ -18,6 +18,22 @@ def test_dropbox_list_shows_files_when_configured(client, monkeypatch):
     assert "my_collection.csv" in response.text
 
 
+def test_dropbox_file_list_can_be_sorted_by_column(client, monkeypatch):
+    fake = FakeDropbox(
+        pages=[FakeListFolderResult([_file_entry("zzz.csv"), _file_entry("aaa.csv")])]
+    )
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    def _table_body(html: str) -> str:
+        return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _table_body(client.get("/import/dropbox/list?dsort=name&ddir=asc").text)
+    assert asc.index("aaa.csv") < asc.index("zzz.csv")
+
+    desc = _table_body(client.get("/import/dropbox/list?dsort=name&ddir=desc").text)
+    assert desc.index("zzz.csv") < desc.index("aaa.csv")
+
+
 def test_dropbox_file_list_table_scrolls_instead_of_widening_the_page(client, monkeypatch):
     fake = FakeDropbox(pages=[FakeListFolderResult([_file_entry("my_collection.csv")])])
     monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
