@@ -671,6 +671,45 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
     assert "Celebi" not in top10_section  # confirms it really was excluded from the cutoff
 
 
+def test_pokemon_topp10_table_can_be_sorted_by_column(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Abra"}, {"id": "b", "name": "Zubat"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    def _topp10(html: str) -> str:
+        # Scope to the Pokemon card's own "Topp 10" table -- "Topp 10 mest
+        # verdifulle kort" appears earlier on the page too.
+        pokemon_section = html.split("<h2>Pokemon</h2>", 1)[1]
+        return pokemon_section.split("Topp 10", 1)[1]
+
+    asc = _topp10(client.get("/?psort=name&pdir=asc").text)
+    assert asc.index("Abra") < asc.index("Zubat")
+
+    desc = _topp10(client.get("/?psort=name&pdir=desc").text)
+    assert desc.index("Zubat") < desc.index("Abra")
+
+
+def test_pokemon_favoritter_table_can_be_sorted_by_column(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Abra"}, {"id": "b", "name": "Zubat"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    client.post("/pokemon/favorite", data={"name": "Abra"})
+    client.post("/pokemon/favorite", data={"name": "Zubat"})
+
+    def _favoritter(html: str) -> str:
+        return html.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+
+    asc = _favoritter(client.get("/?fsort=name&fdir=asc").text)
+    assert asc.index("Abra") < asc.index("Zubat")
+
+    desc = _favoritter(client.get("/?fsort=name&fdir=desc").text)
+    assert desc.index("Zubat") < desc.index("Abra")
+
+
 def test_merging_an_evolution_family_into_one_folder(client):
     # Unlike Celebi/Dark Celebi (a name variant of the same species),
     # Slowpoke/Slowbro/Slowking are genuinely different species -- the
