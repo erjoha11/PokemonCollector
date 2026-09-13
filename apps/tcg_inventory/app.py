@@ -575,6 +575,14 @@ def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     return by_card
 
 
+def _registered_purchase_ids_by_card(txs) -> dict[int, list[int | None]]:
+    by_card: dict[int, list[int | None]] = {}
+    for tx in txs:
+        if tx.type == "kjøp":
+            by_card.setdefault(tx.card_id, []).append(tx.purchase_id)
+    return by_card
+
+
 def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None = None) -> dict:
     """Sort keys for a flat list of Card rows -- used by both the "Kort lagt
     til" date groups and the "Ukjent dato" table. `registered_price` is only
@@ -646,6 +654,7 @@ def _transactions_context(
     recent_cards = [card for group in groups for card in group["cards"]][:100]
     known_count = sum(len(g["cards"]) for g in groups)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
+    purchase_ids_by_card = _registered_purchase_ids_by_card(txs)
 
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
     for group in groups:
@@ -677,6 +686,15 @@ def _transactions_context(
         },
         "single_registered_price": {
             card_id: prices[0] for card_id, prices in purchase_prices_by_card.items() if len(prices) == 1
+        },
+        # Prefills the quick-register form's Kjøps-ID field when correcting
+        # the one existing purchase -- same "exactly one kjøp" condition as
+        # single_registered_price above, and empty when that purchase never
+        # got tagged with a purchase_id.
+        "single_registered_purchase_id": {
+            card_id: pids[0]
+            for card_id, pids in purchase_ids_by_card.items()
+            if len(pids) == 1 and pids[0] is not None
         },
     }
 
@@ -764,6 +782,7 @@ def create_transaction(
         if existing is not None:
             existing.date = dt.date.fromisoformat(date)
             existing.price = price
+            existing.purchase_id = purchase_id
         else:
             tx = Transaction(
                 card_id=card.id,

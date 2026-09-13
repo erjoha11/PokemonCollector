@@ -83,6 +83,9 @@
               <input type="hidden" name="upsert" value="1">
               <input type="number" step="0.01" name="price" placeholder="Pris" required
                      {% if card.id in single_registered_price %}value="{{ single_registered_price[card.id] }}"{% endif %}>
+              <input type="number" step="1" name="purchase_id" placeholder="Kjøps-ID" style="width: 6rem;"
+                     title="Samme tall på flere kort = kjøpt sammen"
+                     {% if card.id in single_registered_purchase_id %}value="{{ single_registered_purchase_id[card.id] }}"{% endif %}>
               <button type="submit">{{ 'Oppdater' if card.id in single_registered_price else 'Legg til' }}</button>
             </form>
           </td>
