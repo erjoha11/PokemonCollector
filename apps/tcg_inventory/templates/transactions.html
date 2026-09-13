@@ -29,11 +29,12 @@
 
 <table>
   <thead>
-    <tr><th>Dato</th><th>Type</th><th>Kort</th><th>Pris</th><th>Platform</th><th>Gebyr</th></tr>
+    <tr><th>Trans ID</th><th>Dato</th><th>Type</th><th>Kort</th><th>Pris</th><th>Platform</th><th>Gebyr</th></tr>
   </thead>
   <tbody>
     {% for tx in transactions %}
     <tr>
+      <td>{{ tx.id }}</td>
       <td>{{ tx.date }}</td>
       <td>{{ tx.type }}</td>
       <td>{{ tx.card.name }} ({{ tx.card.card_id }})</td>
@@ -42,7 +43,7 @@
       <td>{{ tx.fees | kr if tx.fees is not none else '' }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="6" class="muted">Ingen transaksjoner registrert enda.</td></tr>
+    <tr><td colspan="7" class="muted">Ingen transaksjoner registrert enda.</td></tr>
     {% endfor %}
   </tbody>
 </table>

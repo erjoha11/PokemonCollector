@@ -45,9 +45,40 @@ def test_import_page_shows_sync_log_history(client):
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import"]:
+    for path in ["/", "/inventory", "/transactions", "/import", "/added"]:
         response = client.get(path)
         assert response.status_code == 200, path
+
+
+def test_transactions_page_shows_transaction_id(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "150"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    response = client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "10"},
+        follow_redirects=True,
+    )
+    assert "Trans ID" in response.text
+    assert "<td>1</td>" in response.text  # the first transaction gets id 1
+
+
+def test_added_page_groups_cards_by_date_added(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/added")
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+    assert "<h2>Ukjent dato" not in response.text  # freshly imported -- has a known date
+    assert "1 av 1" in response.text
 
 
 def test_import_then_dashboard_reflects_the_sync(client):

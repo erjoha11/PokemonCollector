@@ -76,6 +76,11 @@ class Card(Base):
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
     flagged_missing_since: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # When this physical card (card_id, variant) was first imported -- set once,
+    # on creation, never touched on update. Null for cards that already existed
+    # before this column was added; there's no way to recover their real
+    # creation date after the fact.
+    created_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     binder: Mapped[Binder | None] = relationship(back_populates="cards")
     collections: Mapped[list[Collection]] = relationship(

@@ -197,7 +197,7 @@ def import_dex_csv_files(
             card = cards_by_key.get(key)
             is_new = card is None
             if is_new:
-                card = Card(card_id=card_id, variant=variant)
+                card = Card(card_id=card_id, variant=variant, created_at=dt.datetime.utcnow())
                 db.add(card)
                 cards_by_key[key] = card
 

@@ -150,6 +150,20 @@ def test_my_collection_creates_cards_with_core_fields(db_session):
     assert card.reference_price == 150.5
 
 
+def test_new_card_gets_created_at_but_existing_card_keeps_its_own(db_session):
+    csv = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.created_at is not None
+    original_created_at = card.created_at
+
+    # Re-importing (an update, not a creation) must never touch created_at.
+    csv2 = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "5"}])
+    import_dex_csv_files(db_session, [("main.csv", csv2)])
+    db_session.refresh(card)
+    assert card.created_at == original_created_at
+
+
 def test_duplicates_total_value_unique_value_are_derived(db_session):
     csv = make_csv("My Collection", [{"id": "a", "qty": 3, "price": "100"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])

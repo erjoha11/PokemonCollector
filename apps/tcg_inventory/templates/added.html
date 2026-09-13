@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Lagt til – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Lagt til</h1>
+
+<p class="muted">
+  {{ known_count }} av {{ total_count }} kort har en kjent dato for når de ble lagt til.
+  Datoen settes automatisk når et kort importeres for første gang -- kort som allerede
+  fantes før denne funksjonen kom, vises under "Ukjent dato".
+</p>
+
+{% for group in groups %}
+<div class="card" style="margin-bottom: 1.25rem;">
+  <h2>{{ group.label }} <span class="muted">({{ group.cards | length }} kort)</span></h2>
+  <div class="inventory-table-wrap" style="max-height: 400px;">
+    <table class="inventory-table">
+      <thead>
+        <tr>
+          <th>Navn</th>
+          <th>Variant</th>
+          <th>Serie</th>
+          <th>Sett</th>
+          <th class="num">Referansepris</th>
+          <th>Card ID</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in group.cards %}
+        <tr>
+          <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
+          <td>{{ card.variant or '' }}</td>
+          <td>{{ card.series or '' }}</td>
+          <td>{{ card.set or '' }}</td>
+          <td class="num">{{ card.reference_price | kr }}</td>
+          <td>{{ card.card_id }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<p class="muted">Ingen kort registrert.</p>
+{% endfor %}
+{% endblock %}

@@ -334,6 +334,40 @@ def inventory(
 
 
 # --------------------------------------------------------------------------
+# Added -- when each card was first imported
+# --------------------------------------------------------------------------
+@app.get("/added")
+def added_cards(request: Request):
+    db = get_db_session()
+    try:
+        cards = (
+            db.query(Card)
+            .order_by(Card.created_at.desc().nullslast(), Card.id.desc())
+            .all()
+        )
+        known_count = sum(1 for c in cards if c.created_at is not None)
+
+        # Group consecutive cards under the same calendar date -- cheap since
+        # `cards` is already sorted by created_at desc; unknown-date cards
+        # (created_at is None, pre-dates this column) form their own trailing
+        # group.
+        groups: list[dict] = []
+        for card in cards:
+            label = card.created_at.date().isoformat() if card.created_at else "Ukjent dato"
+            if not groups or groups[-1]["label"] != label:
+                groups.append({"label": label, "cards": []})
+            groups[-1]["cards"].append(card)
+
+        return templates.TemplateResponse(
+            request,
+            "added.html",
+            {"groups": groups, "known_count": known_count, "total_count": len(cards)},
+        )
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
 # Transactions
 # --------------------------------------------------------------------------
 @app.get("/transactions")
