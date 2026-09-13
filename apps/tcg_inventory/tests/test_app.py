@@ -140,6 +140,33 @@ def test_transactions_page_groups_added_cards_by_date(client):
     assert "1 av 1" in response.text
 
 
+def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    response = client.get("/transactions")
+    added_section = response.text.split("Kort lagt til", 1)[1]
+    assert f'value="{pikachu_id}"' in added_section
+    assert 'name="price"' in added_section
+
+    # Submitting that inline form is just a normal /transactions POST.
+    client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "25"},
+    )
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.card_id == pikachu_id).one()
+    assert tx.price == 25
+    db.close()
+
+
 def test_transactions_table_can_be_sorted_by_column(client):
     import db as db_module
     from models import Card

@@ -100,6 +100,7 @@
           <th>Sett</th>
           <th class="num">Referansepris</th>
           <th>Card ID</th>
+          <th>Registrer kjøp</th>
         </tr>
       </thead>
       <tbody>
@@ -111,6 +112,15 @@
           <td>{{ card.set or '' }}</td>
           <td class="num">{{ card.reference_price | kr }}</td>
           <td>{{ card.card_id }}</td>
+          <td>
+            <form method="post" action="/transactions" style="display:flex; gap:.25rem;">
+              <input type="hidden" name="card_id" value="{{ card.id }}">
+              <input type="hidden" name="type" value="kjøp">
+              <input type="hidden" name="date" value="{{ today }}">
+              <input type="number" step="0.01" name="price" placeholder="Pris" required style="width:80px;">
+              <button type="submit">Legg til</button>
+            </form>
+          </td>
         </tr>
         {% endfor %}
       </tbody>
