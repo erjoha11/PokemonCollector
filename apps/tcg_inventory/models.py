@@ -187,10 +187,12 @@ class FavoritePokemon(Base):
 
 
 class PokemonAlias(Base):
-    """Maps one printed card name (e.g. "Dark Celebi") onto the Pokemon
-    name it should be grouped/favorited under (e.g. "Celebi") -- lets the
-    user combine names the game treats as distinct but that represent the
-    same Pokemon to them.
+    """Maps one printed card name (e.g. "Dark Celebi") onto the folder name
+    it should be grouped/favorited under (e.g. "Celebi") -- lets the user
+    put cards into the same "Pokemon folder" whether they're name variants
+    of the same species (Celebi / Dark Celebi) or a whole evolution family
+    (Slowpoke / Slowbro / Slowking). Purely a display grouping -- it never
+    touches the underlying Card rows.
     """
 
     __tablename__ = "pokemon_alias"

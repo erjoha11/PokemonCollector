@@ -345,12 +345,15 @@ def toggle_pokemon_favorite(name: str = Form(...)):
 
 @app.post("/pokemon/merge")
 def merge_pokemon(name: str = Form(...), canonical: str = Form(...)):
-    """Combine `name` into `canonical` -- e.g. "Dark Celebi" into "Celebi" --
-    so the Dashboard's Pokemon breakdown treats every card of either name as
-    one Pokemon. `canonical` is resolved to its own true root first (in case
-    it's itself already merged into something else), and anything currently
-    merged into `name` is cascaded onto that same root, so no alias chain
-    ever needs more than one hop to resolve.
+    """Put `name` into the same Pokemon folder as `canonical` -- e.g. "Dark
+    Celebi" into "Celebi" (a rename), or "Slowpoke" into "Slowbro" (an
+    evolution family) -- so the Dashboard's Pokemon breakdown groups every
+    card under either name into one bucket. This only affects that display
+    grouping; it never changes the underlying Card rows, prices, or export.
+    `canonical` is resolved to its own true root first (in case it's itself
+    already folded into something else), and anything currently folded into
+    `name` is cascaded onto that same root, so no alias chain ever needs
+    more than one hop to resolve.
     """
     db = get_db_session()
     try:

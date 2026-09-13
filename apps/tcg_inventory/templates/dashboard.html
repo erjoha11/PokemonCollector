@@ -174,12 +174,15 @@
     </div>
 
     <details style="margin-bottom: 1.1rem;">
-      <summary>Slå sammen Pokemon (f.eks. Celebi + Dark Celebi)</summary>
-      <form method="post" action="/pokemon/merge" style="display:flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem;">
-        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn (f.eks. Dark Celebi)" required>
-        <span>slås sammen med</span>
-        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Navn (f.eks. Celebi)" required>
-        <button type="submit">Slå sammen</button>
+      <summary>Legg Pokemon i samme mappe (f.eks. Celebi + Dark Celebi, eller Slowpoke + Slowbro)</summary>
+      <p class="muted" style="margin: 0.5rem 0;">
+        Dette endrer kun visningen her på Dashboardet -- kortene, prisene og eksporten dine påvirkes ikke.
+      </p>
+      <form method="post" action="/pokemon/merge" style="display:flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn (f.eks. Slowpoke)" required>
+        <span>i samme mappe som</span>
+        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Mappenavn (f.eks. Slowbro)" required>
+        <button type="submit">Legg i mappe</button>
       </form>
       <datalist id="pokemon-names-list">
         {% for pname in all_pokemon_names %}
@@ -193,7 +196,7 @@
           {{ alias.name }} &rarr; {{ alias.canonical_name }}
           <form method="post" action="/pokemon/unmerge" style="display:inline;">
             <input type="hidden" name="name" value="{{ alias.name }}">
-            <button type="submit" title="Angre sammenslåing">Angre</button>
+            <button type="submit" title="Fjern fra mappen">Angre</button>
           </form>
         </li>
         {% endfor %}

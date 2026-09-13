@@ -623,6 +623,31 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
     assert "Celebi" not in top10_section  # confirms it really was excluded from the cutoff
 
 
+def test_merging_an_evolution_family_into_one_folder(client):
+    # Unlike Celebi/Dark Celebi (a name variant of the same species),
+    # Slowpoke/Slowbro/Slowking are genuinely different species -- the
+    # folder concept groups them together anyway, purely for display.
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Slowpoke"},
+            {"id": "b", "name": "Slowbro"},
+            {"id": "c", "name": "Slowking"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Slowpoke", "canonical": "Slowbro"})
+    client.post("/pokemon/merge", data={"name": "Slowking", "canonical": "Slowbro"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    assert top10_section.count('class="row-toggle-name"') == 1
+    assert "Slowbro</button>" in top10_section
+    assert '<td class="num">3</td>' in top10_section  # all three species, one bucket
+
+
 def test_merging_pokemon_groups_them_into_one_bucket(client):
     main = make_csv(
         "My Collection",
@@ -688,7 +713,7 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
     assert "Sandslash</button>" not in top10_section
     assert "Alolan Sandslash</button>" not in top10_section
 
-    aliases_html = pokemon_card.split("Slå sammen Pokemon", 1)[1].split("Favoritter", 1)[0]
+    aliases_html = pokemon_card.split("Legg Pokemon i samme mappe", 1)[1].split("Favoritter", 1)[0]
     # Alolan Sandslash's alias was cascaded onto the new root, not left
     # pointing at "Sandslash" (which is itself now merged away).
     assert "Alolan Sandslash &rarr; Sand Rat" in aliases_html
