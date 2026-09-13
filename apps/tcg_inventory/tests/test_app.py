@@ -1,3 +1,5 @@
+import re
+
 from conftest import make_csv
 
 
@@ -541,8 +543,11 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     assert "Sableye" in pokemon_section
     assert "Magikarp" in pokemon_section
     # Both Sableye prints (Normal + Holo, two different sets) count under one
-    # "Sableye" bucket -- 2 unique, not two separate one-card rows.
-    row = pokemon_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
+    # "Sableye" bucket -- 2 unique, not two separate one-card rows. Look only
+    # at the "Topp 10" table itself, since the merge form's <datalist> also
+    # lists raw card names earlier in the same card.
+    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "<td class=\"num\">2</td>" in row
 
 
@@ -616,6 +621,138 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
 
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert "Celebi" not in top10_section  # confirms it really was excluded from the cutoff
+
+
+def test_merging_pokemon_groups_them_into_one_bucket(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    # "Dark Celebi" no longer has its own bucket -- both cards count under the
+    # single "Celebi" bucket, with "Dark Celebi" still visible as a nested
+    # physical print (not as its own top-level row).
+    assert top10_section.count('class="row-toggle-name"') == 1
+    assert "Celebi</button>" in top10_section
+    assert "Dark Celebi</button>" not in top10_section
+    assert '<td class="num">2</td>' in top10_section
+
+
+def test_merging_pokemon_migrates_an_existing_favorite(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/favorite", data={"name": "Dark Celebi"})
+    client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    assert "Favoritter" in pokemon_card
+    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Celebi" in favorites_section
+
+
+def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
+    # Sandslash and Alolan Sandslash already merged into "Sandslash", then
+    # the user decides "Sandslash" itself should be merged into "Sand Rat"
+    # -- Alolan Sandslash must follow along to the new root too, so no
+    # alias chain is left dangling.
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Sandslash"},
+            {"id": "b", "name": "Alolan Sandslash"},
+            {"id": "c", "name": "Sand Rat"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Alolan Sandslash", "canonical": "Sandslash"})
+    client.post("/pokemon/merge", data={"name": "Sandslash", "canonical": "Sand Rat"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    # Only one bucket now -- neither alias name surfaces as its own top-level row.
+    assert top10_section.count('class="row-toggle-name"') == 1
+    assert "Sand Rat</button>" in top10_section
+    assert "Sandslash</button>" not in top10_section
+    assert "Alolan Sandslash</button>" not in top10_section
+
+    aliases_html = pokemon_card.split("Slå sammen Pokemon", 1)[1].split("Favoritter", 1)[0]
+    # Alolan Sandslash's alias was cascaded onto the new root, not left
+    # pointing at "Sandslash" (which is itself now merged away).
+    assert "Alolan Sandslash &rarr; Sand Rat" in aliases_html
+    assert "Sandslash &rarr; Sand Rat" in aliases_html
+
+
+def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Celebi", "canonical": "Dark Celebi"})
+    # Attempting the reverse now would create a 2-cycle; it must no-op.
+    response = client.post(
+        "/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"}, follow_redirects=True
+    )
+    assert response.status_code == 200
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    # Still a single bucket, rooted at "Dark Celebi" (the first merge's
+    # target) -- the reverse merge attempt changed nothing.
+    assert top10_section.count('class="row-toggle-name"') == 1
+    bucket_name = re.search(
+        r'<span class="arrow">.</span> ([^<]+)</button>', top10_section
+    ).group(1)
+    assert bucket_name == "Dark Celebi"
+
+
+def test_unmerging_a_pokemon_restores_its_own_bucket(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
+    client.post("/pokemon/unmerge", data={"name": "Dark Celebi"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    assert "Dark Celebi" in top10_section
+
+
+def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
+    # Favoriting via the old, now-merged-away name should favorite "Celebi".
+    client.post("/pokemon/favorite", data={"name": "Dark Celebi"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    assert "Favoritter" in pokemon_card
+    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Celebi" in favorites_section
 
 
 def test_dashboard_series_set_row_drills_down_to_individual_cards(client):

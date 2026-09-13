@@ -173,6 +173,34 @@
       <div id="pokemon-search-results"></div>
     </div>
 
+    <details style="margin-bottom: 1.1rem;">
+      <summary>Slå sammen Pokemon (f.eks. Celebi + Dark Celebi)</summary>
+      <form method="post" action="/pokemon/merge" style="display:flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-top: 0.6rem;">
+        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn (f.eks. Dark Celebi)" required>
+        <span>slås sammen med</span>
+        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Navn (f.eks. Celebi)" required>
+        <button type="submit">Slå sammen</button>
+      </form>
+      <datalist id="pokemon-names-list">
+        {% for pname in all_pokemon_names %}
+        <option value="{{ pname }}">
+        {% endfor %}
+      </datalist>
+      {% if pokemon_aliases %}
+      <ul style="margin-top: 0.6rem;">
+        {% for alias in pokemon_aliases %}
+        <li>
+          {{ alias.name }} &rarr; {{ alias.canonical_name }}
+          <form method="post" action="/pokemon/unmerge" style="display:inline;">
+            <input type="hidden" name="name" value="{{ alias.name }}">
+            <button type="submit" title="Angre sammenslåing">Angre</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </details>
+
     {% if favorite_breakdown %}
     <h3>Favoritter</h3>
     <table style="margin-bottom: 1.5rem;">

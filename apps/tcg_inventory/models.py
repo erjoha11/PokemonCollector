@@ -184,3 +184,16 @@ class FavoritePokemon(Base):
     __tablename__ = "favorite_pokemon"
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
+
+
+class PokemonAlias(Base):
+    """Maps one printed card name (e.g. "Dark Celebi") onto the Pokemon
+    name it should be grouped/favorited under (e.g. "Celebi") -- lets the
+    user combine names the game treats as distinct but that represent the
+    same Pokemon to them.
+    """
+
+    __tablename__ = "pokemon_alias"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String, nullable=False, index=True)

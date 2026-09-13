@@ -28,7 +28,16 @@ import dropbox_client
 import queries
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
-from models import Binder, Card, Collection, FavoritePokemon, ImportLog, SetReleaseOrder, Transaction
+from models import (
+    Binder,
+    Card,
+    Collection,
+    FavoritePokemon,
+    ImportLog,
+    PokemonAlias,
+    SetReleaseOrder,
+    Transaction,
+)
 
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
@@ -239,6 +248,14 @@ def dashboard(
             (b for b in all_pokemon if b.name in favorite_names), key=lambda b: b.name.lower()
         )
 
+        # For the "combine Pokemon" form: every raw printed name (pre-alias)
+        # to autocomplete from, and the existing aliases so the user can see
+        # and undo what's already merged.
+        all_pokemon_names = [
+            row[0] for row in db.query(Card.name).distinct().order_by(Card.name).all()
+        ]
+        pokemon_aliases = db.query(PokemonAlias).order_by(PokemonAlias.name).all()
+
         # Highlights for the KPI row -- the single most valuable named
         # collection/series (Bulk isn't a collection, so excluded). The
         # collection highlight ranks by unique_value (not total_value) so
@@ -259,6 +276,8 @@ def dashboard(
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
                 "favorite_breakdown": favorite_breakdown,
+                "all_pokemon_names": all_pokemon_names,
+                "pokemon_aliases": pokemon_aliases,
                 "top_collection": top_collection,
                 "top_series": top_series,
                 "csort": csort,
@@ -293,10 +312,15 @@ def pokemon_search(request: Request, q: str = ""):
                 .limit(20)
                 .all()
             ]
+        alias_map = queries.pokemon_alias_map(db)
+        favorite_names = _favorite_pokemon_names(db)
+        favorited_results = {
+            name for name in results if queries.resolve_pokemon_name(name, alias_map) in favorite_names
+        }
         return templates.TemplateResponse(
             request,
             "partials/pokemon_search_results.html",
-            {"results": results, "favorite_pokemon": _favorite_pokemon_names(db)},
+            {"results": results, "favorite_pokemon": favorited_results},
         )
     finally:
         db.close()
@@ -306,12 +330,72 @@ def pokemon_search(request: Request, q: str = ""):
 def toggle_pokemon_favorite(name: str = Form(...)):
     db = get_db_session()
     try:
+        alias_map = queries.pokemon_alias_map(db)
+        name = queries.resolve_pokemon_name(name, alias_map)
         existing = db.query(FavoritePokemon).filter(FavoritePokemon.name == name).one_or_none()
         if existing is not None:
             db.delete(existing)
         else:
             db.add(FavoritePokemon(name=name))
         db.commit()
+        return RedirectResponse("/", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/pokemon/merge")
+def merge_pokemon(name: str = Form(...), canonical: str = Form(...)):
+    """Combine `name` into `canonical` -- e.g. "Dark Celebi" into "Celebi" --
+    so the Dashboard's Pokemon breakdown treats every card of either name as
+    one Pokemon. `canonical` is resolved to its own true root first (in case
+    it's itself already merged into something else), and anything currently
+    merged into `name` is cascaded onto that same root, so no alias chain
+    ever needs more than one hop to resolve.
+    """
+    db = get_db_session()
+    try:
+        name = name.strip()
+        canonical = canonical.strip()
+        if not name or not canonical:
+            return RedirectResponse("/", status_code=303)
+
+        alias_map = queries.pokemon_alias_map(db)
+        root = queries.resolve_pokemon_name(canonical, alias_map)
+
+        if name == root:
+            return RedirectResponse("/", status_code=303)
+
+        db.query(PokemonAlias).filter(PokemonAlias.canonical_name == name).update(
+            {"canonical_name": root}
+        )
+
+        existing = db.query(PokemonAlias).filter(PokemonAlias.name == name).one_or_none()
+        if existing is not None:
+            existing.canonical_name = root
+        else:
+            db.add(PokemonAlias(name=name, canonical_name=root))
+
+        old_favorite = db.query(FavoritePokemon).filter(FavoritePokemon.name == name).one_or_none()
+        if old_favorite is not None:
+            db.delete(old_favorite)
+            db.flush()
+            if db.query(FavoritePokemon).filter(FavoritePokemon.name == root).one_or_none() is None:
+                db.add(FavoritePokemon(name=root))
+
+        db.commit()
+        return RedirectResponse("/", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/pokemon/unmerge")
+def unmerge_pokemon(name: str = Form(...)):
+    db = get_db_session()
+    try:
+        alias = db.query(PokemonAlias).filter(PokemonAlias.name == name).one_or_none()
+        if alias is not None:
+            db.delete(alias)
+            db.commit()
         return RedirectResponse("/", status_code=303)
     finally:
         db.close()
