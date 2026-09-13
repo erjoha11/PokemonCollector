@@ -45,7 +45,7 @@ def test_import_page_shows_sync_log_history(client):
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import", "/added"]:
+    for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)
         assert response.status_code == 200, path
 
@@ -128,15 +128,46 @@ def test_transactions_page_offers_recently_added_cards_in_a_dropdown(client):
     assert "Charizard" not in response.text.split('id="recent_card_select"', 1)[1].split("</select>", 1)[0]
 
 
-def test_added_page_groups_cards_by_date_added(client):
+def test_transactions_page_groups_added_cards_by_date(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/added")
+    response = client.get("/transactions")
     assert response.status_code == 200
+    assert "Kort lagt til" in response.text
     assert "Pikachu" in response.text
-    assert "<h2>Ukjent dato" not in response.text  # freshly imported -- has a known date
+    assert "<h3>Ukjent dato" not in response.text  # freshly imported -- has a known date
     assert "1 av 1" in response.text
+
+
+def test_transactions_table_can_be_sorted_by_column(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    for card_id, price in ((ids["a"], "100"), (ids["b"], "50")):
+        client.post(
+            "/transactions",
+            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price},
+        )
+
+    def _table_body(html: str) -> str:
+        return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    text = _table_body(client.get("/transactions?tsort=name&tdir=asc").text)
+    assert text.index("Abra") < text.index("Zebra")
+
+    text_desc = _table_body(client.get("/transactions?tsort=price&tdir=desc").text)
+    assert text_desc.index("Zebra") < text_desc.index("Abra")  # 100 kr before 50 kr
 
 
 def test_import_then_dashboard_reflects_the_sync(client):
