@@ -1,12 +1,8 @@
 {# This table lives inside an HTMX auto-loaded section (#dropbox-section),
    so its sort links re-fetch that section instead of doing a plain page
-   navigation like every other sortable table -- same sort_url-built href
-   and ▲/▼ indicator, just routed through hx-get/hx-target to match how the
-   surrounding folder/checkbox controls already behave here. #}
-{% macro sort_th_hx(label, field) %}
-{% set href = sort_url(request, 'dsort', 'ddir', field, dsort, ddir, '/import/dropbox/list') %}
-<a href="{{ href }}" hx-get="{{ href }}" hx-target="#dropbox-section" hx-swap="innerHTML">{{ label }}{% if dsort == field %} {{ '▲' if ddir == 'asc' else '▼' }}{% endif %}</a>
-{% endmacro %}
+   navigation like every other sortable table -- see sort_th's hx_target. #}
+{% from "partials/macros.html" import sort_th with context %}
+{% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'dsort', 'ddir', dsort, ddir, path='/import/dropbox/list', hx_target='#dropbox-section') }}{% endmacro %}
 <div>
   <form hx-get="/import/dropbox/list" hx-target="#dropbox-section" hx-swap="innerHTML" class="filters">
     <input type="text" name="folder" value="{{ folder }}" placeholder="/Dex Exports" style="width: 280px;">

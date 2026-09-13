@@ -135,6 +135,15 @@ def _sorted_rows(rows, sort: str, direction: str, keys: dict):
     return sorted(rows, key=key_fn, reverse=(direction == "desc"))
 
 
+# Shared by CARD_LEAF_SORT_KEYS and POKEMON_BUCKET_SORT_KEYS below: both
+# Card and Bucket expose these same attribute names, so these three sort the
+# same way regardless of which kind of row they're given.
+_COMMON_ROW_SORT_KEYS = {
+    "duplicates": lambda row: row.duplicates,
+    "qty": lambda row: row.qty,
+    "value": lambda row: row.unique_value,
+}
+
 # Inventory/Serie/Rarity's column headers only ever re-sort the deepest
 # level -- the actual cards -- never the bucket rows themselves (collection,
 # series, set, rarity always keep their default order from queries.py; see
@@ -144,24 +153,9 @@ def _sorted_rows(rows, sort: str, direction: str, keys: dict):
 CARD_LEAF_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "unique": lambda c: 1 if c.qty > 0 else 0,
-    "duplicates": lambda c: c.duplicates,
-    "qty": lambda c: c.qty,
-    "value": lambda c: c.unique_value,
+    **_COMMON_ROW_SORT_KEYS,
     "total_value": lambda c: c.total_value,
 }
-
-
-def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
-    """Sort each bucket's `.cards` list in place; buckets themselves are
-    never reordered by this -- only what's nested inside them.
-    """
-    key_fn = CARD_LEAF_SORT_KEYS.get(sort)
-    if key_fn is None:
-        return
-    reverse = direction == "desc"
-    for bucket in buckets:
-        bucket.cards.sort(key=key_fn, reverse=reverse)
-
 
 # Unlike CARD_LEAF_SORT_KEYS (individual cards nested in a bucket), this
 # sorts the Pokemon *buckets* themselves -- the top-10-by-unique cutoff
@@ -169,32 +163,32 @@ def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
 POKEMON_BUCKET_SORT_KEYS = {
     "name": lambda b: b.name.lower(),
     "unique": lambda b: b.unique_count,
-    "duplicates": lambda b: b.duplicates,
-    "qty": lambda b: b.qty,
-    "value": lambda b: b.unique_value,
+    **_COMMON_ROW_SORT_KEYS,
 }
 
 
-def _sort_cards_in_series(series_list, sort: str, direction: str) -> None:
-    """Same as `_sort_cards_in_buckets`, but for series -> set -> cards: the
-    series and set rows both stay in their default order, only the cards
-    inside each set move.
+def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
+    """Sort every bucket's `.cards` list in place, recursing into any nested
+    `.child_sets` (only series buckets have these -- a Bucket is a
+    self-similar tree, one level deep at most in practice). Buckets/series/
+    sets themselves are never reordered by this, only what's nested inside.
     """
     key_fn = CARD_LEAF_SORT_KEYS.get(sort)
     if key_fn is None:
         return
     reverse = direction == "desc"
-    for series in series_list:
-        for set_bucket in series.sets:
-            set_bucket.cards.sort(key=key_fn, reverse=reverse)
+
+    def _apply(bucket_list):
+        for bucket in bucket_list:
+            bucket.cards.sort(key=key_fn, reverse=reverse)
+            if bucket.child_sets:
+                _apply(bucket.child_sets)
+
+    _apply(buckets)
 
 
 def get_db_session() -> Session:
     return SessionLocal()
-
-
-def _favorite_pokemon_names(db: Session) -> set[str]:
-    return {row.name for row in db.query(FavoritePokemon).all()}
 
 
 # --------------------------------------------------------------------------
@@ -216,11 +210,16 @@ def dashboard(
 ):
     db = get_db_session()
     try:
-        headline = queries.headline_summary(db)
-        collection_breakdown = queries.collection_bulk_breakdown(db)
-        series_breakdown = queries.by_series_breakdown(db)
+        # Loaded once and threaded through every breakdown below, instead of
+        # each of the five re-querying the whole `cards` table itself.
+        cards = queries.all_cards_with_collections(db)
+        alias_map = queries.pokemon_alias_map(db)
+
+        headline = queries.headline_summary(db, cards)
+        collection_breakdown = queries.collection_bulk_breakdown(db, cards)
+        series_breakdown = queries.by_series_breakdown(db, cards)
         top_cards = queries.top_valuable_cards(db, limit=10)
-        rarity_breakdown = queries.by_rarity_breakdown(db)
+        rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
         # Bucket rows (collection, series, set, rarity) always keep their
         # default order from queries.py -- clicking a column header only
@@ -228,7 +227,7 @@ def dashboard(
         # themselves.
         collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
         _sort_cards_in_buckets(collection_rows, csort, cdir)
-        _sort_cards_in_series(series_breakdown, ssort, sdir)
+        _sort_cards_in_buckets(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
 
@@ -236,38 +235,35 @@ def dashboard(
         # (by unique prints owned, the fixed cutoff), and a column click
         # re-orders those same 10 buckets -- same pattern as "Topp 10 mest
         # verdifulle kort" above, not the bucket-hierarchy tables.
-        all_pokemon = queries.by_pokemon_breakdown(db)
+        all_pokemon = queries.by_pokemon_breakdown(db, cards, alias_map)
         pokemon_top = sorted(all_pokemon, key=lambda b: b.unique_count, reverse=True)[:10]
         pokemon_top = _sorted_rows(pokemon_top, psort, pdir, POKEMON_BUCKET_SORT_KEYS)
 
         # Favorited Pokemon always show here regardless of the top-10 cutoff
         # above -- that's the whole point of favoriting one that isn't
         # already in your most-unique-prints list.
-        favorite_names = _favorite_pokemon_names(db)
+        favorite_names = queries.favorite_pokemon_names(db)
         favorite_breakdown = sorted(
             (b for b in all_pokemon if b.name in favorite_names), key=lambda b: b.name.lower()
         )
 
         # For the "combine Pokemon" form: every raw printed name (pre-alias)
-        # to autocomplete from, and the existing aliases so the user can see
-        # and undo what's already merged.
-        all_pokemon_names = [
-            row[0] for row in db.query(Card.name).distinct().order_by(Card.name).all()
-        ]
-        # Ordered by canonical_name first so the template's `groupby` filter
-        # (which just walks consecutive rows) produces one group per folder.
-        pokemon_aliases = (
-            db.query(PokemonAlias)
-            .order_by(PokemonAlias.canonical_name, PokemonAlias.name)
-            .all()
+        # to autocomplete from -- derived from the cards already loaded above
+        # rather than a fresh query. Aliases are similarly derived from the
+        # alias_map already loaded above, ordered by folder (canonical_name)
+        # first so the template's `groupby` filter (which just walks
+        # consecutive rows) produces one group per folder.
+        all_pokemon_names = sorted({c.name for c in cards})
+        pokemon_aliases = sorted(
+            ({"name": name, "canonical_name": canonical} for name, canonical in alias_map.items()),
+            key=lambda a: (a["canonical_name"], a["name"]),
         )
 
         # Highlights for the KPI row -- the single most valuable named
         # collection/series (Bulk isn't a collection, so excluded). The
         # collection highlight ranks by unique_value (not total_value) so
         # duplicates can't inflate which collection looks "most valuable".
-        top_collection = max(collection_breakdown["children"], key=lambda b: b.unique_value, default=None)
-        top_series = max(series_breakdown, key=lambda b: b.total_value, default=None)
+        top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
 
         return templates.TemplateResponse(
             request,
@@ -308,18 +304,17 @@ def pokemon_search(request: Request, q: str = ""):
     try:
         results = []
         if q and len(q) >= 2:
-            like = f"%{q.lower()}%"
             results = [
                 row[0]
                 for row in db.query(Card.name)
-                .filter(func.lower(Card.name).like(like))
+                .filter(func.lower(Card.name).like(_like_pattern(q)))
                 .distinct()
                 .order_by(Card.name)
                 .limit(20)
                 .all()
             ]
         alias_map = queries.pokemon_alias_map(db)
-        favorite_names = _favorite_pokemon_names(db)
+        favorite_names = queries.favorite_pokemon_names(db)
         favorited_results = {
             name for name in results if queries.resolve_pokemon_name(name, alias_map) in favorite_names
         }
@@ -351,46 +346,9 @@ def toggle_pokemon_favorite(name: str = Form(...)):
 
 @app.post("/pokemon/merge")
 def merge_pokemon(name: str = Form(...), canonical: str = Form(...)):
-    """Put `name` into the same Pokemon folder as `canonical` -- e.g. "Dark
-    Celebi" into "Celebi" (a rename), or "Slowpoke" into "Slowbro" (an
-    evolution family) -- so the Dashboard's Pokemon breakdown groups every
-    card under either name into one bucket. This only affects that display
-    grouping; it never changes the underlying Card rows, prices, or export.
-    `canonical` is resolved to its own true root first (in case it's itself
-    already folded into something else), and anything currently folded into
-    `name` is cascaded onto that same root, so no alias chain ever needs
-    more than one hop to resolve.
-    """
     db = get_db_session()
     try:
-        name = name.strip()
-        canonical = canonical.strip()
-        if not name or not canonical:
-            return RedirectResponse("/", status_code=303)
-
-        alias_map = queries.pokemon_alias_map(db)
-        root = queries.resolve_pokemon_name(canonical, alias_map)
-
-        if name == root:
-            return RedirectResponse("/", status_code=303)
-
-        db.query(PokemonAlias).filter(PokemonAlias.canonical_name == name).update(
-            {"canonical_name": root}
-        )
-
-        existing = db.query(PokemonAlias).filter(PokemonAlias.name == name).one_or_none()
-        if existing is not None:
-            existing.canonical_name = root
-        else:
-            db.add(PokemonAlias(name=name, canonical_name=root))
-
-        old_favorite = db.query(FavoritePokemon).filter(FavoritePokemon.name == name).one_or_none()
-        if old_favorite is not None:
-            db.delete(old_favorite)
-            db.flush()
-            if db.query(FavoritePokemon).filter(FavoritePokemon.name == root).one_or_none() is None:
-                db.add(FavoritePokemon(name=root))
-
+        queries.merge_pokemon(db, name, canonical)
         db.commit()
         return RedirectResponse("/", status_code=303)
     finally:
@@ -413,10 +371,32 @@ def unmerge_pokemon(name: str = Form(...)):
 # --------------------------------------------------------------------------
 # Inventory
 # --------------------------------------------------------------------------
+def _like_pattern(q: str) -> str:
+    return f"%{q.lower()}%"
+
+
+def _distinct_values(db: Session, column) -> list[str]:
+    """Every distinct, non-null value of one column, sorted -- the "options
+    for this filter dropdown" idiom used for series/set/collection/binder.
+    """
+    return [row[0] for row in db.query(column).filter(column.isnot(None)).distinct().order_by(column)]
+
+
+def _top_collection_and_series(collection_breakdown: dict, series_breakdown: list):
+    """The KPI row's highlights -- the single most valuable named
+    collection/series (Bulk isn't a collection, so excluded). The collection
+    highlight ranks by unique_value (not total_value) so duplicates can't
+    inflate which collection looks "most valuable".
+    """
+    top_collection = max(collection_breakdown["children"], key=lambda b: b.unique_value, default=None)
+    top_series = max(series_breakdown, key=lambda b: b.total_value, default=None)
+    return top_collection, top_series
+
+
 def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
     if q:
-        like = f"%{q.lower()}%"
+        like = _like_pattern(q)
         query = query.filter(
             func.lower(Card.name).like(like)
             | func.lower(func.coalesce(Card.card_id, "")).like(like)
@@ -474,10 +454,10 @@ def inventory(
 
         cards = query.order_by(*order_cols).all()
 
-        all_series = [r[0] for r in db.query(Card.series).filter(Card.series.isnot(None)).distinct().order_by(Card.series)]
-        all_sets = [r[0] for r in db.query(Card.set).filter(Card.set.isnot(None)).distinct().order_by(Card.set)]
-        all_collections = [r[0] for r in db.query(Collection.name).distinct().order_by(Collection.name)]
-        all_binders = [r[0] for r in db.query(Binder.name).distinct().order_by(Binder.name)]
+        all_series = _distinct_values(db, Card.series)
+        all_sets = _distinct_values(db, Card.set)
+        all_collections = _distinct_values(db, Collection.name)
+        all_binders = _distinct_values(db, Binder.name)
 
         context = {
             "cards": cards,
@@ -503,14 +483,13 @@ def inventory(
             # filter keystroke/select change.
             collection_breakdown = queries.collection_bulk_breakdown(db)
             series_breakdown = queries.by_series_breakdown(db)
+            top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
             context.update(
                 {
                     "headline": queries.headline_summary(db),
                     "top_cards": queries.top_valuable_cards(db, limit=10),
-                    "top_collection": max(
-                        collection_breakdown["children"], key=lambda b: b.unique_value, default=None
-                    ),
-                    "top_series": max(series_breakdown, key=lambda b: b.total_value, default=None),
+                    "top_collection": top_collection,
+                    "top_series": top_series,
                 }
             )
         template = "partials/inventory_table.html" if is_htmx else "inventory.html"
@@ -539,16 +518,6 @@ TRANSACTION_SORT_KEYS = {
     "platform": lambda t: (t.platform or "").lower(),
     "fees": lambda t: t.fees if t.fees is not None else -1,
 }
-
-
-def _recently_added_cards(db):
-    return (
-        db.query(Card)
-        .filter(Card.created_at.isnot(None))
-        .order_by(Card.created_at.desc(), Card.id.desc())
-        .limit(100)
-        .all()
-    )
 
 
 def _cards_grouped_by_added_date(db):
@@ -623,6 +592,10 @@ def _transactions_context(
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     groups, unknown_cards = _cards_grouped_by_added_date(db)
+    # Capture recency order before the per-group sort below (gsort/gdir may
+    # reorder each group's own cards e.g. by name) -- same cards, same
+    # created_at-desc order `_recently_added_cards` used to re-query for.
+    recent_cards = [card for group in groups for card in group["cards"]][:100]
     known_count = sum(len(g["cards"]) for g in groups)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
 
@@ -635,7 +608,7 @@ def _transactions_context(
         "transactions": txs,
         "error": error,
         "today": dt.date.today().isoformat(),
-        "recent_cards": _recently_added_cards(db),
+        "recent_cards": recent_cards,
         "tsort": tsort,
         "tdir": tdir,
         "gsort": gsort,
@@ -683,7 +656,7 @@ def card_search(request: Request, q: str = ""):
     try:
         results = []
         if q and len(q) >= 2:
-            like = f"%{q.lower()}%"
+            like = _like_pattern(q)
             results = (
                 db.query(Card)
                 .filter(func.lower(Card.name).like(like) | func.lower(Card.card_id).like(like))

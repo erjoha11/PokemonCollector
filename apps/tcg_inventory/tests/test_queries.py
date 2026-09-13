@@ -80,15 +80,6 @@ def test_headline_summary_totals(db_session):
     assert headline["duplicate_value"] == (2 * 150.5 + 900 + 5 * 10) - (150.5 + 900 + 10)
 
 
-def test_binder_breakdown_uses_unique_value_not_total_value(db_session):
-    _seed(db_session)
-    binders = queries.by_binder_breakdown(db_session)
-    illustrator_binder = next(b for b in binders if b.name == "Illustrator Binder")
-    # Charizard: qty=1, price=900 -> unique_value must be 900, NOT qty * price.
-    assert illustrator_binder.qty == 1
-    assert illustrator_binder.unique_value == 900
-
-
 def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session):
     main = make_csv(
         "My Collection",
@@ -139,10 +130,10 @@ def test_series_breakdown_carries_per_series_sets_in_release_order(db_session):
     db_session.commit()
 
     original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
-    set_names = [s.name for s in original.sets]
+    set_names = [s.name for s in original.child_sets]
     assert set_names == ["Base Set", "Jungle"]
-    assert original.sets[0].qty == 1
-    assert original.sets[1].qty == 2
+    assert original.child_sets[0].qty == 1
+    assert original.child_sets[1].qty == 2
 
 
 def test_rarity_breakdown_groups_by_rarity(db_session):
@@ -189,3 +180,21 @@ def test_rarity_breakdown_sorts_by_modern_tier_order(db_session):
         "Secret Rare",
         "Amazing Rare",
     ]
+
+
+def test_merge_pokemon_is_reusable_at_the_queries_layer(db_session):
+    # merge_pokemon used to live inline in the /pokemon/merge route; it's now
+    # a plain queries.py operation any caller can use directly (a bulk-import
+    # merge, a future API, etc.) without going through the HTTP layer.
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    queries.merge_pokemon(db_session, "Dark Celebi", "Celebi")
+    db_session.commit()
+
+    assert queries.pokemon_alias_map(db_session) == {"Dark Celebi": "Celebi"}
+    bucket = next(b for b in queries.by_pokemon_breakdown(db_session) if b.name == "Celebi")
+    assert bucket.unique_count == 2

@@ -13,18 +13,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Binder, Card, PokemonAlias, SetReleaseOrder
+from models import Card, FavoritePokemon, PokemonAlias, SetReleaseOrder
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
 _UNKNOWN_RELEASE_RANK = 999999
 
 
-def _all_cards_with_collections(db: Session) -> list[Card]:
+def all_cards_with_collections(db: Session) -> list[Card]:
+    """The one full-table load every breakdown below is built from. Each
+    breakdown also accepts an already-loaded `cards` list (see their
+    `cards=None` params) so a caller building several breakdowns in one
+    request -- the dashboard route does all five -- only pays for this once.
+    """
     return db.query(Card).options(selectinload(Card.collections)).all()
 
 
@@ -35,10 +39,14 @@ class Bucket:
     duplicates: int = 0
     unique_value: float = 0.0
     total_value: float = 0.0
+    # False only for the synthetic "Bulk" bucket (cards with no collection at
+    # all) -- there's no real collection to filter Inventory by, so its qty
+    # cell is plain text instead of a link. Every other bucket is filterable.
+    filterable: bool = True
     # Only populated for series buckets -- the sets within that series, for
     # the dashboard's expandable drill-down row. Empty for every other kind
-    # of bucket (collection, rarity).
-    sets: list["Bucket"] = field(default_factory=list)
+    # of bucket (collection, rarity, Pokemon).
+    child_sets: list["Bucket"] = field(default_factory=list)
     # Every bucket accumulates the actual cards behind it via .add() below --
     # the dashboard's final drill-down level, uniformly available on every
     # kind of bucket (collection, set, rarity) since it's populated here
@@ -83,8 +91,8 @@ def _card_sort_key(card: Card):
     return (-card.unique_value, card.number_int if card.number_int is not None else _UNKNOWN_RELEASE_RANK, card.name)
 
 
-def headline_summary(db: Session) -> dict:
-    cards = _all_cards_with_collections(db)
+def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
+    cards = all_cards_with_collections(db) if cards is None else cards
     qty_physical = sum(c.qty for c in cards)
     qty_unique = sum(1 for c in cards if c.qty > 0)
     duplicates = sum(c.duplicates for c in cards)
@@ -103,17 +111,17 @@ def headline_summary(db: Session) -> dict:
     }
 
 
-def collection_bulk_breakdown(db: Session) -> dict:
+def collection_bulk_breakdown(db: Session, cards: list[Card] | None = None) -> dict:
     """Nested Collection (parent) / named collections (children) / Bulk.
 
     Children are keyed by each card's primary_collection, so the parent
     (sum of all children) always matches exactly by construction -- this
     was the hard-won bug fix from the Excel version.
     """
-    cards = _all_cards_with_collections(db)
+    cards = all_cards_with_collections(db) if cards is None else cards
 
     children: dict[str, Bucket] = {}
-    bulk = Bucket(name="Bulk")
+    bulk = Bucket(name="Bulk", filterable=False)
     parent = Bucket(name="Collection")
 
     for card in cards:
@@ -160,16 +168,16 @@ def _ordered_children(buckets) -> list[Bucket]:
     return others[:1] + vintage + others[1:] + illustrators
 
 
-def by_series_breakdown(db: Session) -> list[Bucket]:
+def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bucket]:
     """Series sort by release order (oldest first), not alphabetically --
     matches Inventory's default "release" sort. A series with no
     set_release_order rows at all sorts after every known series.
 
-    Each series bucket also carries `.sets` -- the sets within that series,
-    for the dashboard's expandable per-series drill-down row -- sorted the
-    same way (release order, unresearched sets last).
+    Each series bucket also carries `.child_sets` -- the sets within that
+    series, for the dashboard's expandable per-series drill-down row --
+    sorted the same way (release order, unresearched sets last).
     """
-    cards = _all_cards_with_collections(db)
+    cards = all_cards_with_collections(db) if cards is None else cards
     buckets: dict[str, Bucket] = {}
     set_buckets: dict[tuple[str, str], Bucket] = {}
     for card in cards:
@@ -181,18 +189,20 @@ def by_series_breakdown(db: Session) -> list[Bucket]:
         set_bucket = set_buckets.setdefault((series_key, set_key), Bucket(name=set_key))
         set_bucket.add(card)
 
-    release_ranks = dict(
-        db.query(SetReleaseOrder.series, func.min(SetReleaseOrder.release_rank))
-        .group_by(SetReleaseOrder.series)
-        .all()
-    )
-    set_release_ranks = {(r.series, r.set): r.release_rank for r in db.query(SetReleaseOrder).all()}
+    # One pass over set_release_order covers both the per-series rank (its
+    # earliest set's rank) and the per-set rank -- a second, near-identical
+    # query for just the per-series min would just re-scan the same rows.
+    set_release_rows = db.query(SetReleaseOrder).all()
+    set_release_ranks = {(r.series, r.set): r.release_rank for r in set_release_rows}
+    release_ranks: dict[str, int] = {}
+    for r in set_release_rows:
+        release_ranks[r.series] = min(release_ranks.get(r.series, r.release_rank), r.release_rank)
 
     for (series_key, _set_key), set_bucket in set_buckets.items():
-        buckets[series_key].sets.append(set_bucket)
+        buckets[series_key].child_sets.append(set_bucket)
         set_bucket.cards.sort(key=_card_sort_key)
     for series_key, bucket in buckets.items():
-        bucket.sets.sort(
+        bucket.child_sets.sort(
             key=lambda b, series_key=series_key: (
                 set_release_ranks.get((series_key, b.name), _UNKNOWN_RELEASE_RANK),
                 b.name,
@@ -224,8 +234,8 @@ _RARITY_TIER_ORDER = [
 ]
 
 
-def by_rarity_breakdown(db: Session) -> list[Bucket]:
-    cards = _all_cards_with_collections(db)
+def by_rarity_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bucket]:
+    cards = all_cards_with_collections(db) if cards is None else cards
     buckets: dict[str, Bucket] = {}
     for card in cards:
         key = card.rarity or "(uten rarity)"
@@ -261,7 +271,9 @@ def resolve_pokemon_name(name: str, alias_map: dict[str, str]) -> str:
     return name
 
 
-def by_pokemon_breakdown(db: Session) -> list[Bucket]:
+def by_pokemon_breakdown(
+    db: Session, cards: list[Card] | None = None, alias_map: dict[str, str] | None = None
+) -> list[Bucket]:
     """Every card sharing the same name (e.g. all Sableye you own, across
     every set/variant) grouped into one bucket -- "how much Sableye do I
     have" rather than "how much of this exact print". Names merged via
@@ -270,8 +282,8 @@ def by_pokemon_breakdown(db: Session) -> list[Bucket]:
     priority order for a Pokemon the way there is for rarity tiers or set
     release dates.
     """
-    alias_map = pokemon_alias_map(db)
-    cards = _all_cards_with_collections(db)
+    alias_map = pokemon_alias_map(db) if alias_map is None else alias_map
+    cards = all_cards_with_collections(db) if cards is None else cards
     buckets: dict[str, Bucket] = {}
     for card in cards:
         canonical = resolve_pokemon_name(card.name, alias_map)
@@ -284,26 +296,45 @@ def by_pokemon_breakdown(db: Session) -> list[Bucket]:
     return sorted(buckets.values(), key=lambda b: b.name.lower())
 
 
-@dataclass
-class BinderBucket:
-    name: str
-    qty: int = 0
-    unique_value: float = 0.0  # sum of reference_price, NOT qty * price
-
-    def add(self, card: Card) -> None:
-        self.qty += card.qty
-        self.unique_value += card.unique_value
+def favorite_pokemon_names(db: Session) -> set[str]:
+    return {row.name for row in db.query(FavoritePokemon).all()}
 
 
-def by_binder_breakdown(db: Session) -> list[BinderBucket]:
-    binders = db.query(Binder).options(selectinload(Binder.cards)).all()
-    buckets = []
-    for binder in binders:
-        bucket = BinderBucket(name=binder.name)
-        for card in binder.cards:
-            bucket.add(card)
-        buckets.append(bucket)
-    return sorted(buckets, key=lambda b: b.name)
+def merge_pokemon(db: Session, name: str, canonical: str) -> None:
+    """Put `name` into the same Pokemon folder as `canonical` -- e.g. "Dark
+    Celebi" into "Celebi" (a rename), or "Slowpoke" into "Slowbro" (an
+    evolution family) -- so the Dashboard's Pokemon breakdown groups every
+    card under either name into one bucket. This only affects that display
+    grouping; it never changes the underlying Card rows, prices, or export.
+    `canonical` is resolved to its own true root first (in case it's itself
+    already folded into something else), and anything currently folded into
+    `name` is cascaded onto that same root, so no alias chain ever needs
+    more than one hop to resolve. Does not commit -- the caller decides that.
+    """
+    name = name.strip()
+    canonical = canonical.strip()
+    if not name or not canonical:
+        return
+
+    alias_map = pokemon_alias_map(db)
+    root = resolve_pokemon_name(canonical, alias_map)
+    if name == root:
+        return
+
+    db.query(PokemonAlias).filter(PokemonAlias.canonical_name == name).update({"canonical_name": root})
+
+    existing = db.query(PokemonAlias).filter(PokemonAlias.name == name).one_or_none()
+    if existing is not None:
+        existing.canonical_name = root
+    else:
+        db.add(PokemonAlias(name=name, canonical_name=root))
+
+    old_favorite = db.query(FavoritePokemon).filter(FavoritePokemon.name == name).one_or_none()
+    if old_favorite is not None:
+        db.delete(old_favorite)
+        db.flush()
+        if db.query(FavoritePokemon).filter(FavoritePokemon.name == root).one_or_none() is None:
+            db.add(FavoritePokemon(name=root))
 
 
 def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:

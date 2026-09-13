@@ -1,3 +1,10 @@
 {# Shared across every page with a sortable table -- one implementation so
-   the toggle-direction/arrow behavior can never drift between pages. #}
-{% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir, path='/') %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir, path) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
+   the toggle-direction/arrow behavior can never drift between pages.
+   `hx_target` opts into an htmx-swapped link instead of a plain navigation
+   (for a table that lives inside an htmx-loaded section, e.g. Inventory's
+   own results or the Dropbox file list); `hx_push_url` additionally updates
+   the address bar (Inventory's filters are meant to be bookmarkable). #}
+{% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir, path='/', hx_target=none, hx_push_url=false) %}
+{%- set href = sort_url(request, sort_param, dir_param, field, current_sort, current_dir, path) -%}
+<a href="{{ href }}"{% if hx_target %} hx-get="{{ href }}" hx-target="{{ hx_target }}" hx-swap="innerHTML"{% if hx_push_url %} hx-push-url="true"{% endif %}{% endif %}>{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>
+{%- endmacro %}
