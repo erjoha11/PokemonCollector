@@ -714,10 +714,13 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
     assert "Alolan Sandslash</button>" not in top10_section
 
     aliases_html = pokemon_card.split("Legg Pokemon i samme mappe", 1)[1].split("Favoritter", 1)[0]
-    # Alolan Sandslash's alias was cascaded onto the new root, not left
-    # pointing at "Sandslash" (which is itself now merged away).
-    assert "Alolan Sandslash &rarr; Sand Rat" in aliases_html
-    assert "Sandslash &rarr; Sand Rat" in aliases_html
+    # A single "Sand Rat" folder, containing both aliased names -- Alolan
+    # Sandslash's alias was cascaded onto the new root, not left pointing at
+    # "Sandslash" (which is itself now merged away).
+    assert aliases_html.count('class="folder-name"') == 1
+    assert '<span class="folder-name">Sand Rat</span>' in aliases_html
+    assert "Alolan Sandslash" in aliases_html
+    assert "Sandslash" in aliases_html
 
 
 def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):

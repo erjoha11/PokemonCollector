@@ -254,7 +254,13 @@ def dashboard(
         all_pokemon_names = [
             row[0] for row in db.query(Card.name).distinct().order_by(Card.name).all()
         ]
-        pokemon_aliases = db.query(PokemonAlias).order_by(PokemonAlias.name).all()
+        # Ordered by canonical_name first so the template's `groupby` filter
+        # (which just walks consecutive rows) produces one group per folder.
+        pokemon_aliases = (
+            db.query(PokemonAlias)
+            .order_by(PokemonAlias.canonical_name, PokemonAlias.name)
+            .all()
+        )
 
         # Highlights for the KPI row -- the single most valuable named
         # collection/series (Bulk isn't a collection, so excluded). The
