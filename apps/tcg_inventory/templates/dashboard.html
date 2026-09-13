@@ -178,8 +178,8 @@
       <p class="muted" style="margin: 0.5rem 0;">
         Dette endrer kun visningen her på Dashboardet -- kortene, prisene og eksporten dine påvirkes ikke.
       </p>
-      <form method="post" action="/pokemon/merge" style="display:flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn (f.eks. Slowpoke)" required>
+      <form method="post" action="/pokemon/merge" class="merge-form">
+        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn som skal flyttes (f.eks. Slowpoke)" required>
         <span>i samme mappe som</span>
         <input type="text" name="canonical" list="pokemon-names-list" placeholder="Mappenavn (f.eks. Slowbro)" required>
         <button type="submit">Legg i mappe</button>
@@ -190,14 +190,21 @@
         {% endfor %}
       </datalist>
       {% if pokemon_aliases %}
-      <ul style="margin-top: 0.6rem;">
-        {% for alias in pokemon_aliases %}
+      <ul class="folder-list">
+        {% for canonical_name, members in pokemon_aliases | groupby('canonical_name') %}
         <li>
-          {{ alias.name }} &rarr; {{ alias.canonical_name }}
-          <form method="post" action="/pokemon/unmerge" style="display:inline;">
-            <input type="hidden" name="name" value="{{ alias.name }}">
-            <button type="submit" title="Fjern fra mappen">Angre</button>
-          </form>
+          <span class="folder-name">{{ canonical_name }}</span>
+          <ul class="folder-members">
+            {% for alias in members %}
+            <li>
+              <span>{{ alias.name }}</span>
+              <form method="post" action="/pokemon/unmerge">
+                <input type="hidden" name="name" value="{{ alias.name }}">
+                <button type="submit" title="Fjern fra mappen">Angre</button>
+              </form>
+            </li>
+            {% endfor %}
+          </ul>
         </li>
         {% endfor %}
       </ul>

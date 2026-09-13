@@ -465,3 +465,50 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 }
 .autocomplete-results div { padding: 0.5rem 0.7rem; cursor: pointer; }
 .autocomplete-results div:hover { background: var(--accent-wash); }
+
+.autocomplete input,
+.merge-form input {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.87rem;
+}
+
+.merge-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.merge-form input { flex: 1 1 200px; width: auto; min-width: 0; }
+
+.folder-list { list-style: none; padding: 0; margin: 0.6rem 0 0 0; }
+.folder-list > li {
+  margin-bottom: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--accent-wash);
+  border-radius: var(--radius-sm);
+}
+.folder-list .folder-name { font-weight: 600; }
+.folder-members {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.folder-members li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.4rem 0.25rem 0.6rem;
+}
+.folder-members form { display: inline-flex; }
+.folder-members button { padding: 0.25rem 0.55rem; font-size: 0.78rem; }
