@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 import constants
-from models import Binder, Card, Collection
+from models import Binder, Card, Collection, ImportLog
 
 MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
 
@@ -138,6 +138,7 @@ def import_dex_csv_files(
     files: list[tuple[str, bytes]],
     full_load: bool = False,
     today: dt.date | None = None,
+    source: str = "manual",
 ) -> ImportResult:
     """Import one or more Dex CSV exports as a single sync.
 
@@ -145,6 +146,9 @@ def import_dex_csv_files(
     across all files is processed together, so passing the main export and
     the Vintage export in one call (as every sync should) merges correctly
     without either one clobbering the other's untouched data.
+
+    `source` ("manual" | "dropbox" | "cron") is only used to label the
+    ImportLog row this call writes -- see _log_import below.
     """
     today = today or dt.date.today()
     result = ImportResult()
@@ -288,9 +292,27 @@ def import_dex_csv_files(
             result.collections_touched.add(category)
 
     _apply_auto_binder_rules(db, result)
+    _log_import(db, result, source, [name for name, _ in files])
 
     db.commit()
     return result
+
+
+def _log_import(db: Session, result: ImportResult, source: str, filenames: list[str]) -> None:
+    db.add(
+        ImportLog(
+            ran_at=dt.datetime.utcnow(),
+            source=source,
+            files=", ".join(filenames) or None,
+            cards_created=result.cards_created,
+            cards_updated=result.cards_updated,
+            cards_flagged_missing=result.cards_flagged_missing,
+            cards_deleted=result.cards_deleted,
+            collections_touched=", ".join(sorted(result.collections_touched)) or None,
+            binders_touched=", ".join(sorted(result.binders_touched)) or None,
+            warnings_count=len(result.warnings),
+        )
+    )
 
 
 def _apply_auto_binder_rules(db: Session, result: ImportResult) -> None:

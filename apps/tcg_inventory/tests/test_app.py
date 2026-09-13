@@ -33,6 +33,17 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
     assert "100 kr" in card  # the unique value shown, not 500 kr (its total_value)
 
 
+def test_import_page_shows_sync_log_history(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/import")
+    assert response.status_code == 200
+    assert "Synk-logg" in response.text
+    assert "main.csv" in response.text
+    assert "manual" in response.text
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)

@@ -4,7 +4,7 @@ import pytest
 from conftest import make_csv
 
 from importer import _parse_number_int, _parse_price, import_dex_csv_files
-from models import Card, Collection
+from models import Card, Collection, ImportLog
 
 
 @pytest.mark.parametrize(
@@ -250,6 +250,34 @@ def test_auto_binder_rules_never_override_an_explicit_binder_tag(db_session):
 
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert card.binder.name == "Tradebinder"
+
+
+def test_import_writes_a_log_row(db_session):
+    csv = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)], source="dropbox")
+
+    log = db_session.query(ImportLog).one()
+    assert log.source == "dropbox"
+    assert log.files == "main.csv"
+    assert log.cards_created == 1
+    assert log.cards_updated == 0
+    assert log.cards_flagged_missing == 0
+    assert log.warnings_count == 0
+    assert log.ran_at is not None
+
+
+def test_import_source_defaults_to_manual(db_session):
+    csv = make_csv("My Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    log = db_session.query(ImportLog).one()
+    assert log.source == "manual"
+
+
+def test_each_import_call_adds_its_own_log_row(db_session):
+    csv = make_csv("My Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)], source="cron")
+    import_dex_csv_files(db_session, [("main.csv", csv)], source="cron")
+    assert db_session.query(ImportLog).count() == 2
 
 
 def test_primary_collection_priority_illustrator_beats_vintage_and_generic(db_session):
