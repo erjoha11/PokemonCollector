@@ -298,6 +298,73 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   white-space: nowrap;
 }
 
+/* A small (i) icon that reveals an explanatory tooltip on hover/focus --
+   for a KPI tile or table heading that needs a one-line "what does this
+   mean" note without permanently taking up page space. Keyboard-reachable
+   (tabindex + :focus) since hover alone would leave it inaccessible. */
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--border-strong);
+  color: var(--surface);
+  font-size: 0.66rem;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  cursor: help;
+  position: relative;
+}
+.info-icon:hover,
+.info-icon:focus {
+  background: var(--accent);
+  outline: none;
+}
+.info-icon .info-tooltip {
+  display: none;
+  position: absolute;
+  bottom: 130%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  line-height: 1.4;
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  width: max-content;
+  max-width: 260px;
+  z-index: 20;
+  white-space: normal;
+  text-align: left;
+}
+.info-icon:hover .info-tooltip,
+.info-icon:focus .info-tooltip {
+  display: block;
+}
+/* Tooltip stays inside the viewport near the page's right edge (KPI row's
+   rightmost cards, table headers near the edge of .breakdown-grid). */
+.info-icon.align-right .info-tooltip {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+/* Opens downward instead of upward -- for a heading inside
+   .breakdown-grid .card, where overflow-x:auto also clips vertical
+   overflow above the card's own top edge (see the `below` macro param). */
+.info-icon.below .info-tooltip {
+  bottom: auto;
+  top: 130%;
+}
+
 .breakdown-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));

@@ -8,3 +8,13 @@
 {%- set href = sort_url(request, sort_param, dir_param, field, current_sort, current_dir, path) -%}
 <a href="{{ href }}"{% if hx_target %} hx-get="{{ href }}" hx-target="{{ hx_target }}" hx-swap="innerHTML"{% if hx_push_url %} hx-push-url="true"{% endif %}{% endif %}>{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>
 {%- endmacro %}
+
+{# A small (i) icon with a hover/focus tooltip -- for a one-line "what does
+   this mean" note on a KPI tile or section heading. `align_right` flips the
+   tooltip to open leftward instead of centered, for icons near the page's
+   right edge where a centered tooltip would run off-screen. `below` opens
+   it downward instead of upward -- needed for a heading inside
+   `.breakdown-grid .card`, whose `overflow-x: auto` also clips vertical
+   overflow, so an upward tooltip there gets cut off by the card's own top
+   edge. #}
+{% macro info(text, align_right=false, below=false) %}<span class="info-icon{{ ' align-right' if align_right else '' }}{{ ' below' if below else '' }}" tabindex="0" role="note" aria-label="{{ text }}">i<span class="info-tooltip">{{ text }}</span></span>{% endmacro %}
