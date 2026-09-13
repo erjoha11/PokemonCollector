@@ -73,9 +73,18 @@ def test_import_log_table_can_be_sorted_by_column(client):
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import"]:
+    for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
         response = client.get(path)
         assert response.status_code == 200, path
+
+
+def test_wiki_page_documents_the_main_features(client):
+    response = client.get("/wiki")
+    assert response.status_code == 200
+    text = response.text
+    for heading in ["Dashboard", "Pokemon-mapper", "Sortering", "Inventory", "Transactions", "Import"]:
+        assert heading in text
+    assert 'href="/wiki"' in text  # linked from the nav
 
 
 def test_transactions_page_shows_transaction_id(client):
