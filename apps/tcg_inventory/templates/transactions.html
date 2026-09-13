@@ -79,8 +79,10 @@
               <input type="hidden" name="card_id" value="{{ card.id }}">
               <input type="hidden" name="type" value="kjøp">
               <input type="hidden" name="date" value="{{ today }}">
-              <input type="number" step="0.01" name="price" placeholder="Pris" required>
-              <button type="submit">Legg til</button>
+              <input type="hidden" name="upsert" value="1">
+              <input type="number" step="0.01" name="price" placeholder="Pris" required
+                     {% if card.id in single_registered_price %}value="{{ single_registered_price[card.id] }}"{% endif %}>
+              <button type="submit">{{ 'Oppdater' if card.id in single_registered_price else 'Legg til' }}</button>
             </form>
           </td>
         </tr>

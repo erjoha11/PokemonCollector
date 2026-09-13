@@ -221,6 +221,70 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     assert "25 kr" in added_section
 
 
+def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "15", "upsert": "1"},
+    )
+
+    # The row now offers to update that price, not add a second one.
+    response = client.get("/transactions")
+    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    assert 'value="15.0"' in added_section or 'value="15"' in added_section
+    assert "Oppdater" in added_section
+
+    # Re-submitting through the same upsert form corrects the price in
+    # place -- exactly the "skrive over" the user expects -- instead of
+    # creating a second "kjøp" transaction for the same card.
+    client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-02", "price": "0", "upsert": "1"},
+    )
+    db = db_module.SessionLocal()
+    txs = db.query(Transaction).filter(Transaction.card_id == pikachu_id).all()
+    assert len(txs) == 1
+    assert txs[0].price == 0
+    db.close()
+
+
+def test_inline_buy_form_does_not_guess_which_purchase_to_update_when_ambiguous(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    # Two genuine prior purchases already on record (e.g. bought twice).
+    for price in ("10", "20"):
+        client.post(
+            "/transactions",
+            data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": price},
+        )
+
+    client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-03", "price": "5", "upsert": "1"},
+    )
+    db = db_module.SessionLocal()
+    prices = sorted(t.price for t in db.query(Transaction).filter(Transaction.card_id == pikachu_id).all())
+    assert prices == [5, 10, 20]  # inserted alongside, nothing overwritten
+    db.close()
+
+
 def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
