@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import Date, Float, ForeignKey, Integer, String, Table, Column, UniqueConstraint
+from sqlalchemy import DateTime, Date, Float, ForeignKey, Integer, String, Table, Column, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -141,3 +141,26 @@ class SetReleaseOrder(Base):
     series: Mapped[str] = mapped_column(String, nullable=False)
     set: Mapped[str] = mapped_column(String, nullable=False)
     release_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ImportLog(Base):
+    """One row per completed import/sync -- manual upload, a manual Dropbox
+    sync, or the scheduled cron job. Persisted (rather than only printed to
+    Vercel's runtime logs) so the app itself can show a history of what
+    happened on every sync, including the unattended cron runs nobody
+    watched live.
+    """
+
+    __tablename__ = "import_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ran_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False)  # "manual" | "dropbox" | "cron"
+    files: Mapped[str | None] = mapped_column(String, nullable=True)  # comma-joined filenames
+    cards_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cards_updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cards_flagged_missing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cards_deleted: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    collections_touched: Mapped[str | None] = mapped_column(String, nullable=True)
+    binders_touched: Mapped[str | None] = mapped_column(String, nullable=True)
+    warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

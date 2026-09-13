@@ -1,0 +1,39 @@
+<div class="card" id="import-log">
+  <h2>Synk-logg</h2>
+  {% if logs %}
+  <table>
+    <thead>
+      <tr>
+        <th>Tidspunkt</th>
+        <th>Kilde</th>
+        <th>Filer</th>
+        <th class="num">Opprettet</th>
+        <th class="num">Oppdatert</th>
+        <th class="num">Flagget</th>
+        <th class="num">Slettet</th>
+        <th class="num">Advarsler</th>
+        <th>Collections</th>
+        <th>Bindere</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td>{{ log.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+        <td>{{ log.source }}</td>
+        <td>{{ log.files or '-' }}</td>
+        <td class="num">{{ log.cards_created }}</td>
+        <td class="num">{{ log.cards_updated }}</td>
+        <td class="num">{{ log.cards_flagged_missing }}</td>
+        <td class="num">{{ log.cards_deleted }}</td>
+        <td class="num">{{ log.warnings_count }}</td>
+        <td>{{ log.collections_touched or '-' }}</td>
+        <td>{{ log.binders_touched or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">Ingen synker registrert ennå.</p>
+  {% endif %}
+</div>

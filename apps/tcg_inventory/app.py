@@ -28,7 +28,7 @@ import dropbox_client
 import queries
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
-from models import Binder, Card, Collection, SetReleaseOrder, Transaction
+from models import Binder, Card, Collection, ImportLog, SetReleaseOrder, Transaction
 
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
@@ -424,9 +424,19 @@ def create_transaction(
 # --------------------------------------------------------------------------
 # CSV import / sync
 # --------------------------------------------------------------------------
+def _recent_import_logs(db: Session, limit: int = 20) -> list[ImportLog]:
+    return db.query(ImportLog).order_by(ImportLog.ran_at.desc(), ImportLog.id.desc()).limit(limit).all()
+
+
 @app.get("/import")
 def import_form(request: Request):
-    return templates.TemplateResponse(request, "import.html", {"result": None})
+    db = get_db_session()
+    try:
+        return templates.TemplateResponse(
+            request, "import.html", {"result": None, "logs": _recent_import_logs(db)}
+        )
+    finally:
+        db.close()
 
 
 @app.post("/import")
@@ -434,8 +444,10 @@ async def run_import(request: Request, files: list[UploadFile], full_load: bool 
     payload = [(f.filename or "upload.csv", await f.read()) for f in files]
     db = get_db_session()
     try:
-        result = import_dex_csv_files(db, payload, full_load=full_load)
-        return templates.TemplateResponse(request, "import.html", {"result": result})
+        result = import_dex_csv_files(db, payload, full_load=full_load, source="manual")
+        return templates.TemplateResponse(
+            request, "import.html", {"result": result, "logs": _recent_import_logs(db)}
+        )
     finally:
         db.close()
 
@@ -474,7 +486,7 @@ def import_dropbox_sync(
     try:
         dbx = dropbox_client.build_client_from_env()
         payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
-        result = import_dex_csv_files(db, payload, full_load=full_load)
+        result = import_dex_csv_files(db, payload, full_load=full_load, source="dropbox")
         return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         return templates.TemplateResponse(
@@ -513,7 +525,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         if not files:
             return {"status": "ok", "folder": folder, "message": "No CSV files found"}
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
-        result = import_dex_csv_files(db, payload, full_load=False)
+        result = import_dex_csv_files(db, payload, full_load=False, source="cron")
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
             f"created={result.cards_created} updated={result.cards_updated} "
