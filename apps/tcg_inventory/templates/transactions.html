@@ -29,7 +29,11 @@
 
 <table>
   <thead>
-    <tr><th>Trans ID</th><th>Dato</th><th>Type</th><th>Kort</th><th>Pris</th><th>Platform</th><th>Gebyr</th></tr>
+    <tr>
+      <th>Trans ID</th><th>Dato</th><th>Type</th><th>Kort</th><th>Variant</th>
+      <th>Rarity</th><th>Serie</th><th>Sett</th><th>Nr</th>
+      <th class="num">Pris</th><th>Platform</th><th class="num">Gebyr</th>
+    </tr>
   </thead>
   <tbody>
     {% for tx in transactions %}
@@ -37,13 +41,18 @@
       <td>{{ tx.id }}</td>
       <td>{{ tx.date }}</td>
       <td>{{ tx.type }}</td>
-      <td>{{ tx.card.name }} ({{ tx.card.card_id }})</td>
-      <td>{{ tx.price | kr }}</td>
+      <td><a href="https://app.dextcg.com/cards/{{ tx.card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ tx.card.name }}</a> ({{ tx.card.card_id }})</td>
+      <td>{{ tx.card.variant or '' }}</td>
+      <td>{{ tx.card.rarity or '' }}</td>
+      <td>{{ tx.card.series or '' }}</td>
+      <td>{{ tx.card.set or '' }}</td>
+      <td>{{ tx.card.number or '' }}</td>
+      <td class="num">{{ tx.price | kr }}</td>
       <td>{{ tx.platform or '' }}</td>
-      <td>{{ tx.fees | kr if tx.fees is not none else '' }}</td>
+      <td class="num">{{ tx.fees | kr if tx.fees is not none else '' }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="muted">Ingen transaksjoner registrert enda.</td></tr>
+    <tr><td colspan="12" class="muted">Ingen transaksjoner registrert enda.</td></tr>
     {% endfor %}
   </tbody>
 </table>
