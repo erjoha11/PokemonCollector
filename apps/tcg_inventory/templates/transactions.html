@@ -96,7 +96,9 @@
 <p class="muted">Ingen kort med kjent dato enda.</p>
 {% endfor %}
 
-<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris.') }}</h2>
+<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Transaksjoner med samme Kjøps-ID (kort kjøpt sammen, f.eks. et lot) grupperes under en egen overskrift med sum.') }}</h2>
+
+{% macro tx_table(rows, empty_message) %}
 <div class="table-scroll">
   <table>
     <thead>
@@ -117,7 +119,7 @@
       </tr>
     </thead>
     <tbody>
-      {% for tx in transactions %}
+      {% for tx in rows %}
       <tr>
         <td>{{ tx.date }}</td>
         <td>{{ tx.type }}</td>
@@ -134,11 +136,28 @@
         <td>{{ tx.id }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="13" class="muted">Ingen transaksjoner registrert enda.</td></tr>
+      <tr><td colspan="13" class="muted">{{ empty_message }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+{% endmacro %}
+
+{% for group in purchase_groups %}
+<div class="card" style="margin-bottom: 1.25rem;">
+  <h3>Kjøp #{{ group.purchase_id }}
+    <span class="muted">
+      ({{ group.transactions | length }} kort · {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %})
+    </span>
+  </h3>
+  {{ tx_table(group.transactions, 'Ingen transaksjoner i dette kjøpet.') }}
+</div>
+{% endfor %}
+
+{% if purchase_groups %}
+<h3 style="margin-top: 1.5rem;">Enkeltregistrert <span class="muted">(uten Kjøps-ID)</span></h3>
+{% endif %}
+{{ tx_table(ungrouped_transactions, 'Ingen transaksjoner registrert enda.' if not purchase_groups else 'Ingen enkeltregistrerte transaksjoner.') }}
 
 <details class="collapsible">
   <summary>Resten av samlingen uten kjent dato ({{ unknown_cards | length }} kort)</summary>

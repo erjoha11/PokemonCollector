@@ -593,6 +593,33 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
     return keys
 
 
+def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict], list[Transaction]]:
+    """Split an already tsort/tdir-ordered transaction list into purchase-id
+    groups (cards bought/sold together under a shared purchase_id, e.g. a
+    lot) plus the remaining ungrouped ones -- mirrors the "Kort lagt til"
+    date-groups pattern, but keyed on purchase_id instead of created_at.
+    Group order follows first appearance in `txs`, so the default
+    date-desc sort naturally puts the most recent purchase first.
+    """
+    groups: dict[int, list[Transaction]] = {}
+    ungrouped: list[Transaction] = []
+    for tx in txs:
+        if tx.purchase_id is None:
+            ungrouped.append(tx)
+        else:
+            groups.setdefault(tx.purchase_id, []).append(tx)
+    purchase_groups = [
+        {
+            "purchase_id": pid,
+            "transactions": group_txs,
+            "total_price": sum(t.price for t in group_txs),
+            "total_fees": sum(t.fees or 0 for t in group_txs),
+        }
+        for pid, group_txs in groups.items()
+    ]
+    return purchase_groups, ungrouped
+
+
 def _transactions_context(
     db,
     request: Request,
@@ -611,6 +638,7 @@ def _transactions_context(
         .all()
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
+    purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs)
     groups, unknown_cards = _cards_grouped_by_added_date(db)
     # Capture recency order before the per-group sort below (gsort/gdir may
     # reorder each group's own cards e.g. by name) -- same cards, same
@@ -626,6 +654,8 @@ def _transactions_context(
 
     return {
         "transactions": txs,
+        "purchase_groups": purchase_groups,
+        "ungrouped_transactions": ungrouped_transactions,
         "error": error,
         "today": dt.date.today().isoformat(),
         "recent_cards": recent_cards,
