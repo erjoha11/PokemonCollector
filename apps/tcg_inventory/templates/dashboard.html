@@ -61,7 +61,7 @@
           <td>{% if c.cards %}{{ toggle_button(c.name, row_id) }}{% else %}{{ c.name }}{% endif %}</td>
           <td class="num">{{ c.unique_count }}</td>
           <td class="num">{{ c.duplicates }}</td>
-          <td class="num">{% if c.name == 'Bulk' %}{{ c.qty }}{% else %}{{ dup_link('collection', c.name, c.qty) }}{% endif %}</td>
+          <td class="num">{% if c.filterable %}{{ dup_link('collection', c.name, c.qty) }}{% else %}{{ c.qty }}{% endif %}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
@@ -116,14 +116,14 @@
         {% for s in series_breakdown %}
         {% set series_row_id = 'series-' ~ loop.index %}
         <tr>
-          <td>{% if s.sets %}{{ toggle_button(s.name, series_row_id) }}{% else %}{{ s.name }}{% endif %}</td>
+          <td>{% if s.child_sets %}{{ toggle_button(s.name, series_row_id) }}{% else %}{{ s.name }}{% endif %}</td>
           <td class="num">{{ s.unique_count }}</td>
           <td class="num">{{ s.duplicates }}</td>
           <td class="num">{{ dup_link('series', s.name, s.qty) }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
         </tr>
-        {% for set_b in s.sets %}
+        {% for set_b in s.child_sets %}
         {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
         <tr class="child-row" data-group="{{ series_row_id }}" hidden>
           <td>{% if set_b.cards %}{{ toggle_button(set_b.name, set_row_id) }}{% else %}{{ set_b.name }}{% endif %}</td>

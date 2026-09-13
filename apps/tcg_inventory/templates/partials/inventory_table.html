@@ -1,9 +1,5 @@
-{% macro sort_link(field, label) %}
-<a href="#" hx-get="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&rarity={{ rarity | urlencode }}&sort={{ field | urlencode }}&direction={{ 'desc' if sort == field and direction == 'asc' else 'asc' }}"
-   hx-target="#inventory-results" hx-push-url="true">
-  {{ label }}{% if sort == field %} {{ '▲' if direction == 'asc' else '▼' }}{% endif %}
-</a>
-{% endmacro %}
+{% from "partials/macros.html" import sort_th with context %}
+{% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
 
 <div id="inventory-results">
   <p class="muted">{{ total }} kort</p>
