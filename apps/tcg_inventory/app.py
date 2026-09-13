@@ -897,6 +897,14 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 
 
 # --------------------------------------------------------------------------
+# Wiki -- static in-app reference, no DB access
+# --------------------------------------------------------------------------
+@app.get("/wiki")
+def wiki(request: Request):
+    return templates.TemplateResponse(request, "wiki.html", {})
+
+
+# --------------------------------------------------------------------------
 # Auth (Supabase) -- only enforced when SUPABASE_* env vars are set
 # --------------------------------------------------------------------------
 def _cookie_secure() -> bool:
