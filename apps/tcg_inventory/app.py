@@ -205,6 +205,8 @@ def dashboard(
     rdir: str = "desc",
     psort: str = "unique",
     pdir: str = "desc",
+    fsort: str = "name",
+    fdir: str = "asc",
     tsort: str = "reference_price",
     tdir: str = "desc",
 ):
@@ -241,11 +243,14 @@ def dashboard(
 
         # Favorited Pokemon always show here regardless of the top-10 cutoff
         # above -- that's the whole point of favoriting one that isn't
-        # already in your most-unique-prints list.
+        # already in your most-unique-prints list. Sortable the same way as
+        # the Topp 10 table above it (same column set, same POKEMON_BUCKET_
+        # SORT_KEYS), just with its own independent sort state.
         favorite_names = queries.favorite_pokemon_names(db)
         favorite_breakdown = sorted(
             (b for b in all_pokemon if b.name in favorite_names), key=lambda b: b.name.lower()
         )
+        favorite_breakdown = _sorted_rows(favorite_breakdown, fsort, fdir, POKEMON_BUCKET_SORT_KEYS)
 
         # For the "combine Pokemon" form: every raw printed name (pre-alias)
         # to autocomplete from -- derived from the cards already loaded above
@@ -290,6 +295,8 @@ def dashboard(
                 "rdir": rdir,
                 "psort": psort,
                 "pdir": pdir,
+                "fsort": fsort,
+                "fdir": fdir,
                 "tsort": tsort,
                 "tdir": tdir,
             },

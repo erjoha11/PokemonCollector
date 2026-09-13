@@ -225,13 +225,13 @@
     <table style="margin-bottom: 1.5rem;">
       <thead>
         <tr>
-          <th>Navn</th>
+          <th>{{ sort_th('Navn', 'name', 'fsort', 'fdir', fsort, fdir) }}</th>
           <th>Sett</th>
           <th>Serie</th>
-          <th class="num">Unike</th>
-          <th class="num">Duplikater</th>
-          <th class="num">Total</th>
-          <th class="num">Verdi</th>
+          <th class="num">{{ sort_th('Unike', 'unique', 'fsort', 'fdir', fsort, fdir) }}</th>
+          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'fsort', 'fdir', fsort, fdir) }}</th>
+          <th class="num">{{ sort_th('Total', 'qty', 'fsort', 'fdir', fsort, fdir) }}</th>
+          <th class="num">{{ sort_th('Verdi', 'value', 'fsort', 'fdir', fsort, fdir) }}</th>
         </tr>
       </thead>
       <tbody>
