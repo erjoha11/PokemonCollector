@@ -109,6 +109,20 @@ tbody tr:hover td { background: var(--accent-wash); }
    whole page -- including the nav bar -- wider than the viewport. */
 .table-scroll { overflow-x: auto; }
 
+/* The per-row "register a purchase" form inside .inventory-table rows --
+   sized to match the table's own compact row height instead of the
+   full-size global button/input. */
+.inline-buy-form { display: flex; gap: 0.25rem; }
+.inline-buy-form input {
+  width: 70px;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.7rem;
+}
+.inline-buy-form button {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+}
+
 details.collapsible {
   margin-top: 1.5rem;
 }
