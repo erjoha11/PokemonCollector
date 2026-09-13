@@ -128,6 +128,32 @@ def test_analyse_page_handles_no_transactions_or_dated_cards(client):
     assert "Ingen registrerte transaksjoner" in response.text
 
 
+def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "10"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    default_page = client.get("/analyse")
+    assert "Unik samling" in default_page.text
+    assert "Duplikater" in default_page.text
+    assert "Total" in default_page.text
+    assert 'href="/analyse?metric=unique"' in default_page.text
+    assert 'href="/analyse?metric=duplicates"' in default_page.text
+    assert 'href="/analyse?metric=total"' in default_page.text
+    assert 'class="viz-filter-pill active"' in default_page.text  # unique selected by default
+
+    total_page = client.get("/analyse?metric=total")
+    assert total_page.status_code == 200
+    assert "Kumulativ verdi (Total)" in total_page.text
+    # unique_value=10, total_value=30 for this card -- the chosen metric
+    # changes which one shows up as the chart's cumulative total.
+    assert "30 kr" in total_page.text
+
+    # An unknown metric falls back to the default instead of erroring.
+    fallback_page = client.get("/analyse?metric=not-a-real-metric")
+    assert fallback_page.status_code == 200
+    assert "Kumulativ verdi (Unik samling)" in fallback_page.text
+
+
 def test_wiki_page_documents_the_main_features(client):
     response = client.get("/wiki")
     assert response.status_code == 200

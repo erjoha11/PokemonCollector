@@ -34,8 +34,13 @@
   <div class="card-pair">
   <div class="card">
     <h2>Samlingens verdiutvikling {{ info('Bruker dagens referansepris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
+    <div class="viz-filter">
+      {% for key, label in metric_options %}
+      <a href="/analyse?metric={{ key }}" class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
     {% if value_chart.points %}
-    <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Kumulativ verdiutvikling over tid">
+    <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Kumulativ verdiutvikling over tid ({{ metric_label }})">
       {% for y, label in value_chart.y_ticks %}
       <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ value_chart.width - 16 }}" y2="{{ y }}"></line>
       <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
@@ -59,7 +64,7 @@
     <details>
       <summary>Vis som tabell</summary>
       <table style="margin-top: 0.6rem;">
-        <thead><tr><th>Måned</th><th class="num">Lagt til</th><th class="num">Kumulativ verdi</th></tr></thead>
+        <thead><tr><th>Måned</th><th class="num">Lagt til ({{ metric_label }})</th><th class="num">Kumulativ verdi ({{ metric_label }})</th></tr></thead>
         <tbody>
           {% for row in value_growth %}
           <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>

@@ -920,10 +920,12 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 # Analyse -- economic development over time
 # --------------------------------------------------------------------------
 @app.get("/analyse")
-def analyse(request: Request):
+def analyse(request: Request, metric: str = "unique"):
+    if metric not in queries.VALUE_GROWTH_METRICS:
+        metric = "unique"
     db = get_db_session()
     try:
-        value_growth = queries.collection_value_growth(db)
+        value_growth = queries.collection_value_growth(db, metric=metric)
         cash_flow = queries.cash_flow_by_month(db)
 
         value_chart = charts.build_line_chart(
@@ -945,6 +947,11 @@ def analyse(request: Request):
                 "cash_flow": cash_flow,
                 "value_chart": value_chart,
                 "cash_chart": cash_chart,
+                "metric": metric,
+                "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
+                "metric_options": [
+                    (key, label) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
+                ],
             },
         )
     finally:

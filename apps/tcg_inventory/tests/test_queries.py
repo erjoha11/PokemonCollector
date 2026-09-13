@@ -1,3 +1,4 @@
+import pytest
 from conftest import make_csv
 
 import queries
@@ -227,6 +228,30 @@ def test_collection_value_growth_buckets_by_created_at_month(db_session):
     assert growth[0]["added_value"] == 10  # Magikarp, untracked
     assert growth[1]["added_value"] == 150  # Pikachu + Charizard, same month
     assert growth[1]["cumulative_value"] == 160  # running total across both buckets
+
+
+def test_collection_value_growth_metric_switches_unique_duplicates_total(db_session):
+    import datetime as dt
+
+    from models import Card
+
+    # qty=3, price=10 -> unique_value=10, total_value=30, duplicate value=20.
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "10"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    card.created_at = dt.datetime(2026, 1, 10)
+    db_session.commit()
+
+    unique = queries.collection_value_growth(db_session, metric="unique")
+    duplicates = queries.collection_value_growth(db_session, metric="duplicates")
+    total = queries.collection_value_growth(db_session, metric="total")
+
+    assert unique[0]["cumulative_value"] == 10
+    assert duplicates[0]["cumulative_value"] == 20
+    assert total[0]["cumulative_value"] == 30
+
+    with pytest.raises(ValueError):
+        queries.collection_value_growth(db_session, metric="not-a-real-metric")
 
 
 def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):
