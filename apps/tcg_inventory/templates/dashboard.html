@@ -173,6 +173,37 @@
       <div id="pokemon-search-results"></div>
     </div>
 
+    <details style="margin-bottom: 1.1rem;">
+      <summary>Legg Pokemon i samme mappe (f.eks. Celebi + Dark Celebi, eller Slowpoke + Slowbro)</summary>
+      <p class="muted" style="margin: 0.5rem 0;">
+        Dette endrer kun visningen her på Dashboardet -- kortene, prisene og eksporten dine påvirkes ikke.
+      </p>
+      <form method="post" action="/pokemon/merge" style="display:flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn (f.eks. Slowpoke)" required>
+        <span>i samme mappe som</span>
+        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Mappenavn (f.eks. Slowbro)" required>
+        <button type="submit">Legg i mappe</button>
+      </form>
+      <datalist id="pokemon-names-list">
+        {% for pname in all_pokemon_names %}
+        <option value="{{ pname }}">
+        {% endfor %}
+      </datalist>
+      {% if pokemon_aliases %}
+      <ul style="margin-top: 0.6rem;">
+        {% for alias in pokemon_aliases %}
+        <li>
+          {{ alias.name }} &rarr; {{ alias.canonical_name }}
+          <form method="post" action="/pokemon/unmerge" style="display:inline;">
+            <input type="hidden" name="name" value="{{ alias.name }}">
+            <button type="submit" title="Fjern fra mappen">Angre</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </details>
+
     {% if favorite_breakdown %}
     <h3>Favoritter</h3>
     <table style="margin-bottom: 1.5rem;">

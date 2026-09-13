@@ -184,3 +184,18 @@ class FavoritePokemon(Base):
     __tablename__ = "favorite_pokemon"
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
+
+
+class PokemonAlias(Base):
+    """Maps one printed card name (e.g. "Dark Celebi") onto the folder name
+    it should be grouped/favorited under (e.g. "Celebi") -- lets the user
+    put cards into the same "Pokemon folder" whether they're name variants
+    of the same species (Celebi / Dark Celebi) or a whole evolution family
+    (Slowpoke / Slowbro / Slowking). Purely a display grouping -- it never
+    touches the underlying Card rows.
+    """
+
+    __tablename__ = "pokemon_alias"
+
+    name: Mapped[str] = mapped_column(String, primary_key=True)
+    canonical_name: Mapped[str] = mapped_column(String, nullable=False, index=True)

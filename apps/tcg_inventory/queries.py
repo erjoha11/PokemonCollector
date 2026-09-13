@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Binder, Card, SetReleaseOrder
+from models import Binder, Card, PokemonAlias, SetReleaseOrder
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -231,17 +231,38 @@ def by_rarity_breakdown(db: Session) -> list[Bucket]:
     return sorted(buckets.values(), key=_rank)
 
 
+def pokemon_alias_map(db: Session) -> dict[str, str]:
+    return {row.name: row.canonical_name for row in db.query(PokemonAlias).all()}
+
+
+def resolve_pokemon_name(name: str, alias_map: dict[str, str]) -> str:
+    """Follow the alias chain to its root. Merging is supposed to keep this
+    a single hop (see /pokemon/merge, which re-points anything aliased to
+    the old name), but this walks defensively in case that invariant is
+    ever broken by hand (e.g. direct DB edits).
+    """
+    seen: set[str] = set()
+    while name in alias_map and name not in seen:
+        seen.add(name)
+        name = alias_map[name]
+    return name
+
+
 def by_pokemon_breakdown(db: Session) -> list[Bucket]:
     """Every card sharing the same name (e.g. all Sableye you own, across
     every set/variant) grouped into one bucket -- "how much Sableye do I
-    have" rather than "how much of this exact print". Alphabetical, since
-    there's no natural priority order for a Pokemon the way there is for
-    rarity tiers or set release dates.
+    have" rather than "how much of this exact print". Names merged via
+    PokemonAlias (e.g. "Dark Celebi" -> "Celebi") land in the same bucket
+    as their canonical name. Alphabetical, since there's no natural
+    priority order for a Pokemon the way there is for rarity tiers or set
+    release dates.
     """
+    alias_map = pokemon_alias_map(db)
     cards = _all_cards_with_collections(db)
     buckets: dict[str, Bucket] = {}
     for card in cards:
-        bucket = buckets.setdefault(card.name, Bucket(name=card.name))
+        canonical = resolve_pokemon_name(card.name, alias_map)
+        bucket = buckets.setdefault(canonical, Bucket(name=canonical))
         bucket.add(card)
 
     for bucket in buckets.values():
