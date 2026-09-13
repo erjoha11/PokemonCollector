@@ -419,6 +419,7 @@ def create_transaction(
     price: float = Form(...),
     platform: str = Form(""),
     fees: float | None = Form(None),
+    purchase_id: int | None = Form(None),
 ):
     db = get_db_session()
     try:
@@ -447,6 +448,7 @@ def create_transaction(
             price=price,
             platform=platform or None,
             fees=fees,
+            purchase_id=purchase_id,
         )
         db.add(tx)
         db.commit()

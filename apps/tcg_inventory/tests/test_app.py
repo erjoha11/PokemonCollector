@@ -70,6 +70,37 @@ def test_transactions_page_shows_transaction_id(client):
     assert "<td>1</td>" in response.text  # the first transaction gets id 1
 
 
+def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    for card_id in (ids["a"], ids["b"]):
+        client.post(
+            "/transactions",
+            data={
+                "card_id": card_id,
+                "type": "kjøp",
+                "date": "2026-01-01",
+                "price": "10",
+                "purchase_id": "5",
+            },
+        )
+
+    response = client.get("/transactions")
+    assert "Kjøps-ID" in response.text
+    assert response.text.count("<td>5</td>") == 2  # both transactions tagged to the same purchase
+
+
 def test_added_page_groups_cards_by_date_added(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
