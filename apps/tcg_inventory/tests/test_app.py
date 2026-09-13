@@ -179,8 +179,9 @@ def test_transactions_page_shows_transaction_id(client):
         data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "10"},
         follow_redirects=True,
     )
-    assert "Trans ID" in response.text
-    assert "<td>1</td>" in response.text  # the first transaction gets id 1
+    # The transaction id is shown de-emphasized next to the date rather than
+    # its own column -- the first transaction gets id 1.
+    assert 'title="Transaksjon-ID">#1</span>' in response.text
 
 
 def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
@@ -210,8 +211,10 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
         )
 
     response = client.get("/transactions")
-    assert "Kjøps-ID" in response.text
-    assert response.text.count("<td>5</td>") == 2  # both transactions tagged to the same purchase
+    # The shared purchase_id shows as the group's own heading (with a
+    # subtotal), not a repeated per-row column -- see the grouping test below.
+    assert "Kjøp #5" in response.text
+    assert "2 kort" in response.text
 
 
 def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
