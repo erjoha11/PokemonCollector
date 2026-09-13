@@ -18,6 +18,14 @@ def test_dropbox_list_shows_files_when_configured(client, monkeypatch):
     assert "my_collection.csv" in response.text
 
 
+def test_dropbox_file_list_table_scrolls_instead_of_widening_the_page(client, monkeypatch):
+    fake = FakeDropbox(pages=[FakeListFolderResult([_file_entry("my_collection.csv")])])
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    response = client.get("/import/dropbox/list?folder=/Dex Exports")
+    assert '<div class="table-scroll">' in response.text
+
+
 def test_dropbox_sync_downloads_selected_files_and_imports_them(client, monkeypatch):
     csv_bytes = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     fake = FakeDropbox(download_bytes={"/exports/main.csv": csv_bytes})

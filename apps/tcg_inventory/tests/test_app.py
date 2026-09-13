@@ -44,6 +44,15 @@ def test_import_page_shows_sync_log_history(client):
     assert "manual" in response.text
 
 
+def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/import")
+    log_section = response.text.split('id="import-log"', 1)[1]
+    assert '<div class="table-scroll">' in log_section
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)
