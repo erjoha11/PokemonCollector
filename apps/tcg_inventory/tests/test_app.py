@@ -86,9 +86,46 @@ def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
+    for path in ["/", "/inventory", "/transactions", "/import", "/wiki", "/analyse"]:
         response = client.get(path)
         assert response.status_code == 200, path
+
+
+def test_analyse_page_shows_economic_summary_and_charts(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "100"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card = db.query(Card).filter(Card.card_id == "a").one()
+    card.created_at = dt.datetime(2026, 1, 15)
+    db.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 15), price=80, fees=5))
+    db.commit()
+    db.close()
+
+    response = client.get("/analyse")
+    assert response.status_code == 200
+    text = response.text
+    assert "Netto investert" in text
+    assert "85 kr" in text  # 80 kjøpspris + 5 gebyr
+    assert "Nåværende verdi" in text
+    assert "Papirgevinst" in text or "Papirtap" in text or "Tap" in text or "Gevinst" in text
+    assert 'class="viz-chart"' in text
+    assert "Vis som tabell" in text
+    assert "2026-01" in text
+
+
+def test_analyse_page_handles_no_transactions_or_dated_cards(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/analyse")
+    assert response.status_code == 200
+    assert "Ingen registrerte transaksjoner" in response.text
 
 
 def test_wiki_page_documents_the_main_features(client):

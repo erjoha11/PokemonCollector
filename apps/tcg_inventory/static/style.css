@@ -579,3 +579,40 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 }
 .folder-members form { display: inline-flex; }
 .folder-members button { padding: 0.25rem 0.55rem; font-size: 0.78rem; }
+
+/* Analyse page -- hand-rolled inline-SVG charts, no JS charting library.
+   Colors are the app's own validated categorical palette (see the KPI tiles'
+   --kpi-accent cycle): slot 1 blue, slot 2 orange, in fixed order per series
+   identity (Kjøp always slot 1, Salg always slot 2). */
+.viz-root {
+  --viz-series-1: #2a78d6;
+  --viz-series-2: #eb6834;
+  --viz-grid: #e1e0d9;
+  --viz-axis-text: #898781;
+}
+.viz-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 0.5rem;
+  overflow: visible;
+}
+.viz-gridline { stroke: var(--viz-grid); stroke-width: 1; }
+.viz-axis-label { fill: var(--viz-axis-text); font-size: 10px; }
+.viz-line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.viz-area { opacity: 0.1; }
+.viz-end-label { fill: var(--ink); font-size: 11px; font-weight: 600; }
+.viz-dot { cursor: default; }
+.viz-hit { cursor: default; }
+.viz-legend {
+  display: flex;
+  gap: 1.1rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}
+.viz-legend-item { display: flex; align-items: center; gap: 0.4rem; }
+.viz-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.viz-caveat { margin: 0.3rem 0 0; font-size: 0.78rem; }
+.viz-delta-gain { color: #0ca30c; }
+.viz-delta-loss { color: #d03b3b; }

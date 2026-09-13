@@ -24,6 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import auth
+import charts
 import dropbox_client
 import queries
 from db import SessionLocal, init_db
@@ -911,6 +912,41 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # has to land in Vercel's runtime logs to be debuggable at all.
         print(f"[cron/dropbox-sync] failed: {exc}")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Analyse -- economic development over time
+# --------------------------------------------------------------------------
+@app.get("/analyse")
+def analyse(request: Request):
+    db = get_db_session()
+    try:
+        value_growth = queries.collection_value_growth(db)
+        cash_flow = queries.cash_flow_by_month(db)
+
+        value_chart = charts.build_line_chart(
+            labels=[row["label"] for row in value_growth],
+            values=[row["cumulative_value"] for row in value_growth],
+        )
+        cash_chart = charts.build_grouped_bar_chart(
+            labels=[row["label"] for row in cash_flow],
+            series=[[row["bought"] for row in cash_flow], [row["sold"] for row in cash_flow]],
+        )
+
+        return templates.TemplateResponse(
+            request,
+            "analyse.html",
+            {
+                "summary": queries.economic_summary(db),
+                "headline": queries.headline_summary(db),
+                "value_growth": value_growth,
+                "cash_flow": cash_flow,
+                "value_chart": value_chart,
+                "cash_chart": cash_chart,
+            },
+        )
     finally:
         db.close()
 

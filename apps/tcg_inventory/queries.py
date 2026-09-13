@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Card, FavoritePokemon, PokemonAlias, SetReleaseOrder
+from models import Card, FavoritePokemon, PokemonAlias, SetReleaseOrder, Transaction
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -345,3 +345,85 @@ def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
         .limit(limit)
         .all()
     )
+
+
+# --------------------------------------------------------------------------
+# Economic analysis -- development over time
+# --------------------------------------------------------------------------
+_UNTRACKED_MONTH = "Før sporing"  # cards imported before created_at existed
+
+
+def collection_value_growth(db: Session, cards: list[Card] | None = None) -> list[dict]:
+    """Cumulative unique_value of the collection, month by month, using each
+    card's `created_at` as its "added" date. This is an approximation, not a
+    real historical price series: it applies TODAY's reference_price to the
+    month a card was added, since Dex gives no historical price snapshots.
+    It answers "how has my collection's assessed value grown as I added
+    cards", not "what was it actually worth back then". Cards with no
+    created_at (imported before that column existed) are bucketed into one
+    "Før sporing" (before tracking) starting point rather than guessing a
+    date, so the running total still ends at today's real unique_value.
+    """
+    cards = all_cards_with_collections(db) if cards is None else cards
+
+    by_month: dict[str, float] = {}
+    for card in cards:
+        label = card.created_at.strftime("%Y-%m") if card.created_at else _UNTRACKED_MONTH
+        by_month[label] = by_month.get(label, 0.0) + card.unique_value
+
+    ordered_labels = sorted(by_month, key=lambda label: "" if label == _UNTRACKED_MONTH else label)
+
+    running = 0.0
+    result = []
+    for label in ordered_labels:
+        running += by_month[label]
+        result.append({"label": label, "added_value": by_month[label], "cumulative_value": running})
+    return result
+
+
+def cash_flow_by_month(db: Session) -> list[dict]:
+    """Actual money in (kjøp, price + fees) and money out (salg, price) per
+    calendar month, straight from the Transaction log -- real history, not
+    an estimate (unlike collection_value_growth above).
+    """
+    txs = db.query(Transaction).all()
+    by_month: dict[str, dict[str, float]] = {}
+    for tx in txs:
+        label = tx.date.strftime("%Y-%m")
+        bucket = by_month.setdefault(label, {"bought": 0.0, "sold": 0.0})
+        if tx.type == "kjøp":
+            bucket["bought"] += tx.price + (tx.fees or 0.0)
+        elif tx.type == "salg":
+            bucket["sold"] += tx.price
+
+    result = []
+    cumulative_invested = 0.0
+    for label in sorted(by_month):
+        bucket = by_month[label]
+        cumulative_invested += bucket["bought"] - bucket["sold"]
+        result.append(
+            {
+                "label": label,
+                "bought": bucket["bought"],
+                "sold": bucket["sold"],
+                "cumulative_invested": cumulative_invested,
+            }
+        )
+    return result
+
+
+def economic_summary(db: Session) -> dict:
+    """Total real money in/out across every registered transaction, plus the
+    "paper" gain/loss against today's collection value (unique_value, so
+    duplicates don't inflate it) -- unrealized, since it compares a real
+    amount paid against today's reference price, not a sale.
+    """
+    txs = db.query(Transaction).all()
+    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "kjøp")
+    total_sold = sum(t.price for t in txs if t.type == "salg")
+    net_invested = total_bought - total_sold
+    return {
+        "total_bought": total_bought,
+        "total_sold": total_sold,
+        "net_invested": net_invested,
+    }
