@@ -9,21 +9,23 @@
   {% elif files is not none %}
   <form hx-post="/import/dropbox/sync" hx-target="#dropbox-sync-result" hx-swap="innerHTML">
     <input type="hidden" name="folder" value="{{ folder }}">
-    <table>
-      <thead><tr><th></th><th>Fil</th><th>Endret</th><th>Størrelse</th></tr></thead>
-      <tbody>
-        {% for f in files %}
-        <tr>
-          <td><input type="checkbox" name="paths" value="{{ f.path_lower }}"></td>
-          <td>{{ f.name }}</td>
-          <td>{{ f.client_modified[:10] }}</td>
-          <td>{{ (f.size / 1024) | round(1) }} kB</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" class="muted">Ingen CSV-filer funnet i "{{ folder }}".</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th></th><th>Fil</th><th>Endret</th><th>Størrelse</th></tr></thead>
+        <tbody>
+          {% for f in files %}
+          <tr>
+            <td><input type="checkbox" name="paths" value="{{ f.path_lower }}"></td>
+            <td>{{ f.name }}</td>
+            <td>{{ f.client_modified[:10] }}</td>
+            <td>{{ (f.size / 1024) | round(1) }} kB</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="muted">Ingen CSV-filer funnet i "{{ folder }}".</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     <p>
       <label>
         <input type="checkbox" name="full_load" value="true">
