@@ -96,10 +96,16 @@
   <h2 id="transactions">Transactions</h2>
   <p>
     Registrer kjøp og salg her. "Kort lagt til" grupperer kort etter datoen de først ble
-    importert, med et raskt skjema for å registrere kjøpesum direkte på hvert kort -- fylles
-    automatisk ut på nytt om du allerede har registrert én pris for det kortet. Kort uten kjent
-    importdato (fra før denne funksjonen fantes) samles i en hermetisk "Ukjent dato"-seksjon
-    nederst.
+    importert, med et raskt skjema for å registrere kjøpesum (og valgfri Kjøps-ID) direkte på
+    hvert kort -- fylles automatisk ut på nytt om du allerede har registrert én pris for det
+    kortet. Kort uten kjent importdato (fra før denne funksjonen fantes) samles i en hermetisk
+    "Ukjent dato"-seksjon nederst.
+  </p>
+  <p>
+    "Historikk" viser hver registrerte transaksjon som en kompakt rad (dato, kort, type,
+    pris, platform). Transaksjoner som deler samme Kjøps-ID -- typisk flere kort kjøpt sammen
+    i et lot -- samles i en egen sammenleggbar gruppe med antall og sum, i stedet for å vises
+    som separate rader. Transaksjoner uten Kjøps-ID vises for seg under "Enkeltregistrert".
   </p>
 </div>
 

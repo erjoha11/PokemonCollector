@@ -99,47 +99,47 @@
 <p class="muted">Ingen kort med kjent dato enda.</p>
 {% endfor %}
 
-<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Transaksjoner med samme Kjøps-ID (kort kjøpt sammen, f.eks. et lot) grupperes under en egen overskrift med sum.') }}</h2>
+<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum.') }}</h2>
 
 {% macro tx_table(rows, empty_message) %}
 <div class="table-scroll">
-  <table>
+  <table class="tx-table">
     <thead>
       <tr>
         <th>{{ sort_th('Dato', 'date', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Kort', 'name', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Variant', 'variant', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Rarity', 'rarity', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Serie', 'series', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Sett', 'set', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th class="num">{{ sort_th('Pris', 'price', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Platform', 'platform', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th class="num">{{ sort_th('Gebyr', 'fees', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Kjøps-ID', 'purchase_id', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
-        <th>{{ sort_th('Trans ID', 'id', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
       </tr>
     </thead>
     <tbody>
       {% for tx in rows %}
       <tr>
-        <td>{{ tx.date }}</td>
-        <td>{{ tx.type }}</td>
-        <td><a href="https://app.dextcg.com/cards/{{ tx.card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ tx.card.name }}</a> ({{ tx.card.card_id }})</td>
-        <td>{{ tx.card.variant or '' }}</td>
-        <td>{{ tx.card.rarity or '' }}</td>
-        <td>{{ tx.card.series or '' }}</td>
-        <td>{{ tx.card.set or '' }}</td>
-        <td>{{ tx.card.number or '' }}</td>
-        <td class="num">{{ tx.price | kr }}</td>
-        <td>{{ tx.platform or '' }}</td>
-        <td class="num">{{ tx.fees | kr if tx.fees is not none else '' }}</td>
-        <td>{{ tx.purchase_id if tx.purchase_id is not none else '' }}</td>
-        <td>{{ tx.id }}</td>
+        <td class="muted">
+          {{ tx.date }}
+          <span class="tx-id" title="Transaksjon-ID">#{{ tx.id }}</span>
+        </td>
+        <td>
+          <a href="https://app.dextcg.com/cards/{{ tx.card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ tx.card.name }}</a>
+          <div class="tx-card-meta">
+            {%- set meta = [] -%}
+            {%- if tx.card.variant %}{% set _ = meta.append(tx.card.variant) %}{% endif -%}
+            {%- if tx.card.rarity %}{% set _ = meta.append(tx.card.rarity) %}{% endif -%}
+            {%- if tx.card.set %}{% set _ = meta.append(tx.card.set) %}{% endif -%}
+            {%- if tx.card.number %}{% set _ = meta.append('#' + tx.card.number) %}{% endif -%}
+            {{ meta | join(' · ') }}
+          </div>
+        </td>
+        <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'salg' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
+        <td class="num tx-price">
+          {{ tx.price | kr }}
+          {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} gebyr</div>{% endif %}
+        </td>
+        <td class="muted">{{ tx.platform or '' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="13" class="muted">{{ empty_message }}</td></tr>
+      <tr><td colspan="5" class="muted">{{ empty_message }}</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -147,14 +147,14 @@
 {% endmacro %}
 
 {% for group in purchase_groups %}
-<div class="card" style="margin-bottom: 1.25rem;">
-  <h3>Kjøp #{{ group.purchase_id }}
+<details class="collapsible" style="margin-bottom: 0.75rem;">
+  <summary>Kjøp #{{ group.purchase_id }}
     <span class="muted">
       ({{ group.transactions | length }} kort · {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %})
     </span>
-  </h3>
+  </summary>
   {{ tx_table(group.transactions, 'Ingen transaksjoner i dette kjøpet.') }}
-</div>
+</details>
 {% endfor %}
 
 {% if purchase_groups %}
