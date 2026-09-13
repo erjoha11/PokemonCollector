@@ -47,16 +47,24 @@ templates.env.filters["kr"] = lambda v: f"{v:,.0f} kr".replace(",", " ") if v is
 templates.env.globals["auth_enabled"] = auth.is_configured
 
 
-def _sort_url(request: Request, sort_param: str, dir_param: str, field: str, current_sort: str, current_dir: str) -> str:
-    """Build a dashboard link that sorts one breakdown table by `field`,
-    toggling direction on repeat clicks, while preserving every other query
-    param as-is (including the other tables' own sort state).
+def _sort_url(
+    request: Request,
+    sort_param: str,
+    dir_param: str,
+    field: str,
+    current_sort: str,
+    current_dir: str,
+    path: str = "/",
+) -> str:
+    """Build a link that sorts one table by `field`, toggling direction on
+    repeat clicks, while preserving every other query param as-is (including
+    other tables' own sort state on the same page).
     """
     next_dir = "desc" if current_sort == field and current_dir == "asc" else "asc"
     params = dict(request.query_params)
     params[sort_param] = field
     params[dir_param] = next_dir
-    return "/?" + urlencode(params)
+    return path + "?" + urlencode(params)
 
 
 templates.env.globals["sort_url"] = _sort_url
@@ -334,42 +342,27 @@ def inventory(
 
 
 # --------------------------------------------------------------------------
-# Added -- when each card was first imported
+# Transactions -- also shows when each card was first imported (merged from
+# the former standalone "Lagt til" page, since the two were always used
+# together: see a newly-synced card, then register what it cost).
 # --------------------------------------------------------------------------
-@app.get("/added")
-def added_cards(request: Request):
-    db = get_db_session()
-    try:
-        cards = (
-            db.query(Card)
-            .order_by(Card.created_at.desc().nullslast(), Card.id.desc())
-            .all()
-        )
-        known_count = sum(1 for c in cards if c.created_at is not None)
-
-        # Group consecutive cards under the same calendar date -- cheap since
-        # `cards` is already sorted by created_at desc; unknown-date cards
-        # (created_at is None, pre-dates this column) form their own trailing
-        # group.
-        groups: list[dict] = []
-        for card in cards:
-            label = card.created_at.date().isoformat() if card.created_at else "Ukjent dato"
-            if not groups or groups[-1]["label"] != label:
-                groups.append({"label": label, "cards": []})
-            groups[-1]["cards"].append(card)
-
-        return templates.TemplateResponse(
-            request,
-            "added.html",
-            {"groups": groups, "known_count": known_count, "total_count": len(cards)},
-        )
-    finally:
-        db.close()
+TRANSACTION_SORT_KEYS = {
+    "id": lambda t: t.id,
+    "purchase_id": lambda t: t.purchase_id if t.purchase_id is not None else -1,
+    "date": lambda t: t.date,
+    "type": lambda t: t.type,
+    "name": lambda t: t.card.name.lower(),
+    "variant": lambda t: (t.card.variant or "").lower(),
+    "rarity": lambda t: (t.card.rarity or "").lower(),
+    "series": lambda t: (t.card.series or "").lower(),
+    "set": lambda t: (t.card.set or "").lower(),
+    "number": lambda t: t.card.number_int if t.card.number_int is not None else 999999,
+    "price": lambda t: t.price,
+    "platform": lambda t: (t.platform or "").lower(),
+    "fees": lambda t: t.fees if t.fees is not None else -1,
+}
 
 
-# --------------------------------------------------------------------------
-# Transactions
-# --------------------------------------------------------------------------
 def _recently_added_cards(db):
     return (
         db.query(Card)
@@ -380,25 +373,55 @@ def _recently_added_cards(db):
     )
 
 
+def _cards_grouped_by_added_date(db):
+    cards = (
+        db.query(Card)
+        .order_by(Card.created_at.desc().nullslast(), Card.id.desc())
+        .all()
+    )
+    known_count = sum(1 for c in cards if c.created_at is not None)
+
+    # Group consecutive cards under the same calendar date -- cheap since
+    # `cards` is already sorted by created_at desc; unknown-date cards
+    # (created_at is None, pre-dates this column) form their own trailing
+    # group.
+    groups: list[dict] = []
+    for card in cards:
+        label = card.created_at.date().isoformat() if card.created_at else "Ukjent dato"
+        if not groups or groups[-1]["label"] != label:
+            groups.append({"label": label, "cards": []})
+        groups[-1]["cards"].append(card)
+    return groups, known_count, len(cards)
+
+
+def _transactions_context(db, request: Request, tsort: str, tdir: str, error: str | None = None) -> dict:
+    txs = (
+        db.query(Transaction)
+        .options(selectinload(Transaction.card))
+        .order_by(Transaction.date.desc(), Transaction.id.desc())
+        .all()
+    )
+    txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
+    groups, known_count, total_count = _cards_grouped_by_added_date(db)
+    return {
+        "transactions": txs,
+        "error": error,
+        "today": dt.date.today().isoformat(),
+        "recent_cards": _recently_added_cards(db),
+        "tsort": tsort,
+        "tdir": tdir,
+        "groups": groups,
+        "known_count": known_count,
+        "total_count": total_count,
+    }
+
+
 @app.get("/transactions")
-def list_transactions(request: Request):
+def list_transactions(request: Request, tsort: str = "date", tdir: str = "desc"):
     db = get_db_session()
     try:
-        txs = (
-            db.query(Transaction)
-            .options(selectinload(Transaction.card))
-            .order_by(Transaction.date.desc(), Transaction.id.desc())
-            .all()
-        )
         return templates.TemplateResponse(
-            request,
-            "transactions.html",
-            {
-                "transactions": txs,
-                "error": None,
-                "today": dt.date.today().isoformat(),
-                "recent_cards": _recently_added_cards(db),
-            },
+            request, "transactions.html", _transactions_context(db, request, tsort, tdir)
         )
     finally:
         db.close()
@@ -440,21 +463,12 @@ def create_transaction(
     try:
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
-            txs = (
-                db.query(Transaction)
-                .options(selectinload(Transaction.card))
-                .order_by(Transaction.date.desc(), Transaction.id.desc())
-                .all()
-            )
             return templates.TemplateResponse(
                 request,
                 "transactions.html",
-                {
-                    "transactions": txs,
-                    "error": "Fant ikke kortet -- velg et kort fra søkeresultatene.",
-                    "today": dt.date.today().isoformat(),
-                    "recent_cards": _recently_added_cards(db),
-                },
+                _transactions_context(
+                    db, request, "date", "desc", error="Fant ikke kortet -- velg et kort fra søkeresultatene."
+                ),
             )
 
         tx = Transaction(
