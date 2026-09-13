@@ -6,15 +6,24 @@
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
 {% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
-{% macro card_leaf_row(card, css_class, group_id, show_total_value=true) %}
+{% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false) %}
 <tr class="{{ css_class }}" data-group="{{ group_id }}" hidden>
   <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</td>
+  {% if show_set_series %}
+  <td>{% if card.set %}{{ filter_link('set', card.set) }}{% else %}-{% endif %}</td>
+  <td>{% if card.series %}{{ filter_link('series', card.series) }}{% else %}-{% endif %}</td>
+  {% endif %}
   <td class="num">{{ 1 if card.qty > 0 else 0 }}</td>
   <td class="num">{{ card.duplicates }}</td>
   <td class="num">{{ card.qty }}</td>
   <td class="num">{{ card.unique_value | kr }}</td>
   {% if show_total_value %}<td class="num">{{ card.total_value | kr }}</td>{% endif %}
 </tr>
+{% endmacro %}
+
+{% macro bucket_set_series_cells(bucket) %}
+<td>{% if bucket.distinct_sets | length == 1 %}{{ bucket.distinct_sets[0] }}{% elif bucket.distinct_sets | length > 1 %}<span class="muted" title="{{ bucket.distinct_sets | join(', ') }}">Flere</span>{% else %}-{% endif %}</td>
+<td>{% if bucket.distinct_series | length == 1 %}{{ bucket.distinct_series[0] }}{% elif bucket.distinct_series | length > 1 %}<span class="muted" title="{{ bucket.distinct_series | join(', ') }}">Flere</span>{% else %}-{% endif %}</td>
 {% endmacro %}
 
 {% block content %}
@@ -217,6 +226,8 @@
       <thead>
         <tr>
           <th>Navn</th>
+          <th>Sett</th>
+          <th>Serie</th>
           <th class="num">Unike</th>
           <th class="num">Duplikater</th>
           <th class="num">Total</th>
@@ -234,13 +245,14 @@
             </form>
             {% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}
           </td>
+          {{ bucket_set_series_cells(p) }}
           <td class="num">{{ p.unique_count }}</td>
           <td class="num">{{ p.duplicates }}</td>
           <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>
           <td class="num">{{ p.unique_value | kr }}</td>
         </tr>
         {% for card in p.cards %}
-        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
+        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false, show_set_series=true) }}
         {% endfor %}
         {% endfor %}
       </tbody>
@@ -252,6 +264,8 @@
       <thead>
         <tr>
           <th>{{ sort_th('Navn', 'name', 'psort', 'pdir', psort, pdir) }}</th>
+          <th>Sett</th>
+          <th>Serie</th>
           <th class="num">{{ sort_th('Unike', 'unique', 'psort', 'pdir', psort, pdir) }}</th>
           <th class="num">{{ sort_th('Duplikater', 'duplicates', 'psort', 'pdir', psort, pdir) }}</th>
           <th class="num">{{ sort_th('Total', 'qty', 'psort', 'pdir', psort, pdir) }}</th>
@@ -270,13 +284,14 @@
             </form>
             {% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}
           </td>
+          {{ bucket_set_series_cells(p) }}
           <td class="num">{{ p.unique_count }}</td>
           <td class="num">{{ p.duplicates }}</td>
           <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>
           <td class="num">{{ p.unique_value | kr }}</td>
         </tr>
         {% for card in p.cards %}
-        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
+        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false, show_set_series=true) }}
         {% endfor %}
         {% endfor %}
       </tbody>
