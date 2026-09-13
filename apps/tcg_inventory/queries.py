@@ -231,6 +231,25 @@ def by_rarity_breakdown(db: Session) -> list[Bucket]:
     return sorted(buckets.values(), key=_rank)
 
 
+def by_pokemon_breakdown(db: Session) -> list[Bucket]:
+    """Every card sharing the same name (e.g. all Sableye you own, across
+    every set/variant) grouped into one bucket -- "how much Sableye do I
+    have" rather than "how much of this exact print". Alphabetical, since
+    there's no natural priority order for a Pokemon the way there is for
+    rarity tiers or set release dates.
+    """
+    cards = _all_cards_with_collections(db)
+    buckets: dict[str, Bucket] = {}
+    for card in cards:
+        bucket = buckets.setdefault(card.name, Bucket(name=card.name))
+        bucket.add(card)
+
+    for bucket in buckets.values():
+        bucket.cards.sort(key=_card_sort_key)
+
+    return sorted(buckets.values(), key=lambda b: b.name.lower())
+
+
 @dataclass
 class BinderBucket:
     name: str

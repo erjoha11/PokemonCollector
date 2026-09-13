@@ -462,6 +462,29 @@ def test_dashboard_rarity_row_drills_down_to_individual_cards(client):
     assert 'data-group="rarity-1"' in text  # the only rarity bucket in this test
 
 
+def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Sableye", "set": "Vivid Voltage", "variant": "Normal"},
+            {"id": "b", "name": "Sableye", "set": "Triplet Beat", "variant": "Holo"},
+            {"id": "c", "name": "Magikarp", "set": "Paldea Evolved"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    text = dashboard.text
+    assert "Pokemon" in text
+    pokemon_section = text.split("<h2>Pokemon</h2>", 1)[1]
+    assert "Sableye" in pokemon_section
+    assert "Magikarp" in pokemon_section
+    # Both Sableye prints (Normal + Holo, two different sets) count under one
+    # "Sableye" bucket -- 2 unique, not two separate one-card rows.
+    row = pokemon_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
+    assert "<td class=\"num\">2</td>" in row
+
+
 def test_dashboard_series_set_row_drills_down_to_individual_cards(client):
     main = make_csv(
         "My Collection", [{"id": "a", "name": "Pikachu", "series": "Original", "set": "Base Set"}]
