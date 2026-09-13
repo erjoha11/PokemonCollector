@@ -491,9 +491,13 @@ def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
 
     dashboard = client.get("/")
     text = dashboard.text
-    assert 'class="row-toggle-name"' in text
-    assert ">Original</a>" not in text  # no longer a plain link to Inventory
-    assert "Base Set" in text  # the nested set row is rendered (hidden until expanded)
+    # Scope to the Serie card itself -- the Pokemon card's own drill-down
+    # rows legitimately link to Inventory by series/set (see the Sett/Serie
+    # columns), so "Original</a>" can validly appear elsewhere on the page.
+    series_card = text.split("<h2>Serie</h2>", 1)[1].split("<h2>", 1)[0]
+    assert 'class="row-toggle-name"' in series_card
+    assert ">Original</a>" not in series_card  # no longer a plain link to Inventory
+    assert "Base Set" in series_card  # the nested set row is rendered (hidden until expanded)
 
 
 def test_dashboard_collection_row_drills_down_to_individual_cards(client):
@@ -549,6 +553,41 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     top10_section = pokemon_section.split("Topp 10", 1)[1]
     row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "<td class=\"num\">2</td>" in row
+
+
+def test_dashboard_pokemon_table_shows_set_and_series_for_a_single_print(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Magikarp", "series": "Scarlet & Violet", "set": "Paldea Evolved"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    row = top10_section.split("Magikarp", 1)[1].split("</tr>", 1)[0]
+    assert "<td>Paldea Evolved</td>" in row or "Paldea Evolved</a>" in row
+    assert "<td>Scarlet &amp; Violet</td>" in row or "Scarlet &amp; Violet</a>" in row
+
+
+def test_dashboard_pokemon_table_shows_flere_when_bucket_spans_multiple_sets(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Sableye", "set": "Vivid Voltage", "variant": "Normal"},
+            {"id": "b", "name": "Sableye", "set": "Triplet Beat", "variant": "Holo"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    bucket_row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
+    assert "Flere" in bucket_row
+    # But drilling down into the individual prints still shows each one's own set.
+    assert "Vivid Voltage" in top10_section
+    assert "Triplet Beat" in top10_section
 
 
 def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):

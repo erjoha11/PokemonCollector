@@ -61,6 +61,19 @@ class Bucket:
         """
         return self.qty - self.duplicates
 
+    @property
+    def distinct_sets(self) -> list[str]:
+        """Every set among this bucket's cards, e.g. a Pokemon folder that
+        spans several prints/species (Sableye across two sets, or a merged
+        Slowpoke/Slowbro/Slowking folder) has more than one -- the template
+        decides how to show that ambiguity, this just reports the raw set.
+        """
+        return sorted({card.set for card in self.cards if card.set})
+
+    @property
+    def distinct_series(self) -> list[str]:
+        return sorted({card.series for card in self.cards if card.series})
+
 
 def _card_sort_key(card: Card):
     # Default order for cards nested inside a dashboard bucket: most
