@@ -1,0 +1,14 @@
+<div class="autocomplete-results">
+  {% for name in results %}
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <span>{{ name }}</span>
+    <form method="post" action="/pokemon/favorite" style="display:inline;">
+      <input type="hidden" name="name" value="{{ name }}">
+      <button type="submit" class="favorite-star{{ ' active' if name in favorite_pokemon else '' }}"
+              title="{{ 'Fjern som favoritt' if name in favorite_pokemon else 'Sett som favoritt' }}">{{ '★' if name in favorite_pokemon else '☆' }}</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="muted">Ingen treff</div>
+  {% endfor %}
+</div>
