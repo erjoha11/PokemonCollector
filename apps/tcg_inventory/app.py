@@ -184,6 +184,8 @@ def dashboard(
     sdir: str = "desc",
     rsort: str = "value",
     rdir: str = "desc",
+    psort: str = "value",
+    pdir: str = "desc",
     tsort: str = "reference_price",
     tdir: str = "desc",
 ):
@@ -194,15 +196,17 @@ def dashboard(
         series_breakdown = queries.by_series_breakdown(db)
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db)
+        pokemon_breakdown = queries.by_pokemon_breakdown(db)
 
-        # Bucket rows (collection, series, set, rarity) always keep their
-        # default order from queries.py -- clicking a column header only
-        # re-sorts the cards nested inside each bucket, never the buckets
-        # themselves.
+        # Bucket rows (collection, series, set, rarity, pokemon) always keep
+        # their default order from queries.py -- clicking a column header
+        # only re-sorts the cards nested inside each bucket, never the
+        # buckets themselves.
         collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
         _sort_cards_in_buckets(collection_rows, csort, cdir)
         _sort_cards_in_series(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
+        _sort_cards_in_buckets(pokemon_breakdown, psort, pdir)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
 
         # Highlights for the KPI row -- the single most valuable named
@@ -222,6 +226,7 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
+                "pokemon_breakdown": pokemon_breakdown,
                 "top_collection": top_collection,
                 "top_series": top_series,
                 "csort": csort,
@@ -230,6 +235,8 @@ def dashboard(
                 "sdir": sdir,
                 "rsort": rsort,
                 "rdir": rdir,
+                "psort": psort,
+                "pdir": pdir,
                 "tsort": tsort,
                 "tdir": tdir,
             },

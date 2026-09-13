@@ -163,6 +163,38 @@
     </table>
   </div>
   </div>
+
+  <div class="card-pair">
+  <div class="card">
+    <h2>Pokemon</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Navn', 'name', 'psort', 'pdir', psort, pdir) }}</th>
+          <th class="num">{{ sort_th('Unike', 'unique', 'psort', 'pdir', psort, pdir) }}</th>
+          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'psort', 'pdir', psort, pdir) }}</th>
+          <th class="num">{{ sort_th('Total', 'qty', 'psort', 'pdir', psort, pdir) }}</th>
+          <th class="num">{{ sort_th('Verdi', 'value', 'psort', 'pdir', psort, pdir) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in pokemon_breakdown %}
+        {% set row_id = 'pokemon-' ~ loop.index %}
+        <tr>
+          <td>{% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}</td>
+          <td class="num">{{ p.unique_count }}</td>
+          <td class="num">{{ p.duplicates }}</td>
+          <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>
+          <td class="num">{{ p.unique_value | kr }}</td>
+        </tr>
+        {% for card in p.cards %}
+        {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
 </div>
 
 <script>
