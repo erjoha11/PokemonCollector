@@ -14,6 +14,16 @@
     <input type="hidden" id="card_id" name="card_id" required>
   </div>
 
+  <select id="recent_card_select" style="width: 320px;"
+          onchange="if(!this.value)return; var opt=this.options[this.selectedIndex]; document.getElementById('card_id').value=this.value; document.getElementById('card_search').value=opt.dataset.label;">
+    <option value="">Eller velg et nylig lagt til kort...</option>
+    {% for card in recent_cards %}
+    <option value="{{ card.id }}" data-label="{{ card.name }} ({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})">
+      {{ card.name }} — {{ card.set }}{% if card.variant %} ({{ card.variant }}){% endif %} · {{ card.created_at.date().isoformat() }}
+    </option>
+    {% endfor %}
+  </select>
+
   <div class="filters">
     <select name="type" required>
       <option value="kjøp">Kjøp</option>

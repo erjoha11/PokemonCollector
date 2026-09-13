@@ -101,6 +101,33 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
     assert response.text.count("<td>5</td>") == 2  # both transactions tagged to the same purchase
 
 
+def test_transactions_page_offers_recently_added_cards_in_a_dropdown(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu = db.query(Card).filter(Card.card_id == "a").one()
+    pikachu.created_at = dt.datetime(2026, 1, 1)
+    charizard = db.query(Card).filter(Card.card_id == "b").one()
+    charizard.created_at = None  # simulates a card that predates the created_at column
+    db.commit()
+    db.close()
+
+    response = client.get("/transactions")
+    assert 'id="recent_card_select"' in response.text
+    assert "Pikachu" in response.text.split('id="recent_card_select"', 1)[1].split("</select>", 1)[0]
+    # Charizard has no created_at -- not a "recently added" card, so it's excluded.
+    assert "Charizard" not in response.text.split('id="recent_card_select"', 1)[1].split("</select>", 1)[0]
+
+
 def test_added_page_groups_cards_by_date_added(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
