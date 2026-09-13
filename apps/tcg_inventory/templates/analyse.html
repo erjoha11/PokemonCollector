@@ -32,11 +32,17 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  <div class="card">
+  <div class="card" id="value-growth-card">
     <h2>Samlingens verdiutvikling {{ info('Bruker dagens referansepris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
     <div class="viz-filter">
       {% for key, label in metric_options %}
-      <a href="/analyse?metric={{ key }}" class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
+      <a href="/analyse?metric={{ key }}"
+         hx-get="/analyse?metric={{ key }}"
+         hx-select="#value-growth-card"
+         hx-target="#value-growth-card"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
       {% endfor %}
     </div>
     {% if value_chart.points %}
