@@ -2,6 +2,7 @@
 {% block title %}Dashboard – TCG Inventory{% endblock %}
 
 {% from "partials/macros.html" import sort_th with context %}
+{% from "partials/macros.html" import info %}
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
@@ -34,7 +35,7 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   <div class="card">
-    <h2>Inventory</h2>
+    <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = referansepris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -74,7 +75,7 @@
   </div>
 
   <div class="card">
-    <h2>Topp 10 mest verdifulle kort</h2>
+    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest referansepris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -100,7 +101,7 @@
 
   <div class="card-pair">
   <div class="card">
-    <h2>Serie</h2>
+    <h2>Serie {{ info('Gruppert etter serie, sortert etter utgivelsesrekkefølge (eldste først). Klikk en rad for å se sett, og et sett for å se kortene i det.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -143,7 +144,7 @@
   </div>
 
   <div class="card">
-    <h2>Rarity</h2>
+    <h2>Rarity {{ info('Gruppert etter sjeldenhetsgrad, sortert fra Common til de sjeldneste (moderne tier-rekkefølge). Ukjente rarity-navn sorteres alfabetisk sist.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -175,7 +176,7 @@
 
   <div class="card-pair">
   <div class="card">
-    <h2>Pokemon</h2>
+    <h2>Pokemon {{ info('Gruppert etter Pokemon-navn på tvers av alle print du eier. "Flere" i Sett/Serie betyr at bucketen spenner over mer enn ett sett/serie -- hold musepekeren over cellen for å se hvilke.', below=true) }}</h2>
     <div class="autocomplete" style="max-width: 320px; margin-bottom: 1.1rem;">
       <input type="text" id="pokemon_search" name="q" placeholder="Søk Pokemon for å legge til i favoritter..." autocomplete="off"
              hx-get="/pokemon/search" hx-trigger="keyup changed delay:250ms" hx-target="#pokemon-search-results">

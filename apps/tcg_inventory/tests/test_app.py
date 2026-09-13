@@ -29,7 +29,7 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
     text = dashboard.text
     # Scope to the KPI card itself -- both collection names also appear in
     # the Inventory breakdown table further down the page.
-    card = text.split("<h3>Mest verdifulle collection</h3>", 1)[1].split("<h3>", 1)[0]
+    card = text.split("<h3>Mest verdifulle collection ", 1)[1].split("<h3>", 1)[0]
     assert "Single Card Collection" in card
     assert "Duplicated Collection" not in card  # not picked -- lower unique value
     assert "100 kr" in card  # the unique value shown, not 500 kr (its total_value)
@@ -70,6 +70,19 @@ def test_import_log_table_can_be_sorted_by_column(client):
 
     desc = _log_body(client.get("/import?lsort=files&ldir=desc").text)
     assert desc.index("zzz.csv") < desc.index("aaa.csv")
+
+
+def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    text = client.get("/").text
+    # One per KPI tile (Total, Verdi, Mest verdifulle kort/collection/serie)
+    # plus one per Dashboard section heading (Inventory, Topp 10, Serie,
+    # Rarity, Pokemon) -- a generous floor, not an exact count, so this
+    # doesn't need updating every time another tooltip is added.
+    assert text.count('class="info-icon') >= 10
+    assert "info-tooltip" in text
 
 
 def test_all_pages_render(client):
@@ -552,7 +565,7 @@ def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
     # Scope to the Serie card itself -- the Pokemon card's own drill-down
     # rows legitimately link to Inventory by series/set (see the Sett/Serie
     # columns), so "Original</a>" can validly appear elsewhere on the page.
-    series_card = text.split("<h2>Serie</h2>", 1)[1].split("<h2>", 1)[0]
+    series_card = text.split("<h2>Serie ", 1)[1].split("<h2>", 1)[0]
     assert 'class="row-toggle-name"' in series_card
     assert ">Original</a>" not in series_card  # no longer a plain link to Inventory
     assert "Base Set" in series_card  # the nested set row is rendered (hidden until expanded)
@@ -601,7 +614,7 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     dashboard = client.get("/")
     text = dashboard.text
     assert "Pokemon" in text
-    pokemon_section = text.split("<h2>Pokemon</h2>", 1)[1]
+    pokemon_section = text.split("<h2>Pokemon ", 1)[1]
     assert "Sableye" in pokemon_section
     assert "Magikarp" in pokemon_section
     # Both Sableye prints (Normal + Holo, two different sets) count under one
@@ -621,7 +634,7 @@ def test_dashboard_pokemon_table_shows_set_and_series_for_a_single_print(client)
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_section.split("Topp 10", 1)[1]
     row = top10_section.split("Magikarp", 1)[1].split("</tr>", 1)[0]
     assert "<td>Paldea Evolved</td>" in row or "Paldea Evolved</a>" in row
@@ -639,7 +652,7 @@ def test_dashboard_pokemon_table_shows_flere_when_bucket_spans_multiple_sets(cli
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_section.split("Topp 10", 1)[1]
     bucket_row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "Flere" in bucket_row
@@ -660,7 +673,7 @@ def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     # 11 distinct species exist, but only 10 rows show -- Species0 (3 unique)
     # always makes it in, so exactly one of Species1..10 is excluded.
     shown = sum(1 for i in range(11) if f">Species{i}<" in pokemon_section)
@@ -673,12 +686,12 @@ def test_pokemon_favorite_can_be_toggled_on_and_off(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     assert 'class="favorite-star active"' in pokemon_section
 
     # Toggling again removes it.
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     assert 'class="favorite-star active"' not in pokemon_section
     assert 'class="favorite-star"' in pokemon_section
 
@@ -711,7 +724,7 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
     client.post("/pokemon/favorite", data={"name": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
@@ -730,7 +743,7 @@ def test_pokemon_topp10_table_can_be_sorted_by_column(client):
     def _topp10(html: str) -> str:
         # Scope to the Pokemon card's own "Topp 10" table -- "Topp 10 mest
         # verdifulle kort" appears earlier on the page too.
-        pokemon_section = html.split("<h2>Pokemon</h2>", 1)[1]
+        pokemon_section = html.split("<h2>Pokemon ", 1)[1]
         return pokemon_section.split("Topp 10", 1)[1]
 
     asc = _topp10(client.get("/?psort=name&pdir=asc").text)
@@ -777,7 +790,7 @@ def test_merging_an_evolution_family_into_one_folder(client):
     client.post("/pokemon/merge", data={"name": "Slowking", "canonical": "Slowbro"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert top10_section.count('class="row-toggle-name"') == 1
     assert "Slowbro</button>" in top10_section
@@ -794,7 +807,7 @@ def test_merging_pokemon_groups_them_into_one_bucket(client):
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # "Dark Celebi" no longer has its own bucket -- both cards count under the
     # single "Celebi" bucket, with "Dark Celebi" still visible as a nested
@@ -816,7 +829,7 @@ def test_merging_pokemon_migrates_an_existing_favorite(client):
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
@@ -841,7 +854,7 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
     client.post("/pokemon/merge", data={"name": "Sandslash", "canonical": "Sand Rat"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # Only one bucket now -- neither alias name surfaces as its own top-level row.
     assert top10_section.count('class="row-toggle-name"') == 1
@@ -874,7 +887,7 @@ def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):
     assert response.status_code == 200
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # Still a single bucket, rooted at "Dark Celebi" (the first merge's
     # target) -- the reverse merge attempt changed nothing.
@@ -896,7 +909,7 @@ def test_unmerging_a_pokemon_restores_its_own_bucket(client):
     client.post("/pokemon/unmerge", data={"name": "Dark Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert "Dark Celebi" in top10_section
 
@@ -913,7 +926,7 @@ def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(
     client.post("/pokemon/favorite", data={"name": "Dark Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
@@ -962,7 +975,7 @@ def test_dashboard_column_sort_only_reorders_leaf_cards_not_buckets(client):
     # Scope to the Inventory table itself -- collection names can also appear
     # earlier on the page via the "Mest verdifulle collection" KPI highlight.
     def _inventory_table(html: str) -> str:
-        return html.split("<h2>Inventory</h2>", 1)[1]
+        return html.split("<h2>Inventory ", 1)[1]
 
     default = _inventory_table(client.get("/").text)
     by_qty_desc = _inventory_table(client.get("/?csort=qty&cdir=desc").text)

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Transactions – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import sort_th with context %}
+{% from "partials/macros.html" import info %}
 {% block content %}
 <h1>Transactions</h1>
 
@@ -41,7 +42,7 @@
   </div>
 </form>
 
-<h2>Kort lagt til</h2>
+<h2>Kort lagt til {{ info('Referansepris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra referanseprisen).') }}</h2>
 <p class="muted">
   {{ known_count }} kort har en kjent dato for når de ble lagt til -- disse er de faktisk nye
   kortene å prise. Datoen settes automatisk når et kort importeres for første gang.
@@ -95,7 +96,7 @@
 <p class="muted">Ingen kort med kjent dato enda.</p>
 {% endfor %}
 
-<h2 style="margin-top: 2rem;">Historikk</h2>
+<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris.') }}</h2>
 <div class="table-scroll">
   <table>
     <thead>
