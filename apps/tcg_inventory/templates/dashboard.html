@@ -56,19 +56,35 @@
           <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
           <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
         </tr>
-        {% for c in collection_rows %}
+        {% for c in collection_rows if c.filterable %}
         {% set row_id = 'coll-' ~ loop.index %}
         <tr class="child-row">
           <td>{% if c.cards %}{{ toggle_button(c.name, row_id) }}{% else %}{{ c.name }}{% endif %}</td>
           <td class="num">{{ c.unique_count }}</td>
           <td class="num">{{ c.duplicates }}</td>
-          <td class="num">{% if c.filterable %}{{ dup_link('collection', c.name, c.qty) }}{% else %}{{ c.qty }}{% endif %}</td>
+          <td class="num">{{ dup_link('collection', c.name, c.qty) }}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
         </tr>
         {% for card in c.cards %}
         {{ card_leaf_row(card, 'grandchild-row', row_id) }}
         {% endfor %}
+        {% endfor %}
+        {# Bulk (cards with no collection) is the complement of "Collections",
+           not a member of it -- shown at the same indentation level as the
+           "Collections" summary row above, not nested under it like a named
+           collection. #}
+        {% set bulk = collection_breakdown.bulk %}
+        <tr>
+          <td>{% if bulk.cards %}{{ toggle_button(bulk.name, 'coll-bulk') }}{% else %}{{ bulk.name }}{% endif %}</td>
+          <td class="num">{{ bulk.unique_count }}</td>
+          <td class="num">{{ bulk.duplicates }}</td>
+          <td class="num">{{ bulk.qty }}</td>
+          <td class="num">{{ bulk.unique_value | kr }}</td>
+          <td class="num">{{ bulk.total_value | kr }}</td>
+        </tr>
+        {% for card in bulk.cards %}
+        {{ card_leaf_row(card, 'grandchild-row', 'coll-bulk') }}
         {% endfor %}
       </tbody>
     </table>
