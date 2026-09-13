@@ -401,6 +401,64 @@ def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
     db.close()
 
 
+def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    # Quick-register through the "Kort lagt til" form (upsert=1, the only
+    # path that form ever posts through) tags a purchase_id too -- it used
+    # to be silently dropped since the upsert-correction branch only wrote
+    # date/price, and the field didn't even exist on that form.
+    client.post(
+        "/transactions",
+        data={
+            "card_id": pikachu_id,
+            "type": "kjøp",
+            "date": "2026-01-01",
+            "price": "15",
+            "purchase_id": "7",
+            "upsert": "1",
+        },
+    )
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.card_id == pikachu_id).one()
+    assert tx.purchase_id == 7
+    db.close()
+
+    # The quick-register row prefills that purchase_id for the next visit,
+    # same as it already does for price.
+    response = client.get("/transactions")
+    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    assert 'name="purchase_id"' in added_section
+    assert 'value="7"' in added_section
+
+    # Correcting the price again through the same upsert form updates the
+    # purchase_id in place too, instead of leaving the old value stuck.
+    client.post(
+        "/transactions",
+        data={
+            "card_id": pikachu_id,
+            "type": "kjøp",
+            "date": "2026-01-02",
+            "price": "20",
+            "purchase_id": "9",
+            "upsert": "1",
+        },
+    )
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.card_id == pikachu_id).one()
+    assert tx.price == 20
+    assert tx.purchase_id == 9
+    db.close()
+
+
 def test_inline_buy_form_does_not_guess_which_purchase_to_update_when_ambiguous(client):
     import db as db_module
     from models import Card, Transaction
