@@ -28,6 +28,7 @@ body {
 
 nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   align-items: center;
   padding: 1.1rem 0;
@@ -102,6 +103,25 @@ th a:hover { color: var(--accent); }
 
 tbody tr:nth-child(even) td { background: rgba(20, 22, 26, 0.015); }
 tbody tr:hover td { background: var(--accent-wash); }
+
+/* Any plain <table> wide enough to overflow its container (many columns, a
+   narrow/mobile viewport) scrolls sideways on its own instead of forcing the
+   whole page -- including the nav bar -- wider than the viewport. */
+.table-scroll { overflow-x: auto; }
+
+details.collapsible {
+  margin-top: 1.5rem;
+}
+details.collapsible summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--ink-secondary);
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+details.collapsible summary:hover { color: var(--ink); }
+details.collapsible[open] summary { margin-bottom: 0.9rem; }
 
 /* Inventory: the whole "big spreadsheet" list, no pagination -- a frozen
    header + independently-scrolling body (both axes) instead. */

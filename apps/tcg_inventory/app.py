@@ -374,24 +374,30 @@ def _recently_added_cards(db):
 
 
 def _cards_grouped_by_added_date(db):
-    cards = (
+    """Cards with a known `created_at`, grouped by calendar date -- these are
+    the actual "newly added" cards someone would come here to price. Cards
+    from before this column existed (`created_at` is None) have no real
+    added-date and are returned separately as a flat, unsorted-by-date bucket
+    for an optional/collapsed view, rather than dominating this list --
+    Inventory is already the place to browse the full collection.
+    """
+    known_cards = (
         db.query(Card)
-        .order_by(Card.created_at.desc().nullslast(), Card.id.desc())
+        .filter(Card.created_at.isnot(None))
+        .order_by(Card.created_at.desc(), Card.id.desc())
         .all()
     )
-    known_count = sum(1 for c in cards if c.created_at is not None)
+    unknown_cards = db.query(Card).filter(Card.created_at.is_(None)).order_by(Card.id.desc()).all()
 
     # Group consecutive cards under the same calendar date -- cheap since
-    # `cards` is already sorted by created_at desc; unknown-date cards
-    # (created_at is None, pre-dates this column) form their own trailing
-    # group.
+    # `known_cards` is already sorted by created_at desc.
     groups: list[dict] = []
-    for card in cards:
-        label = card.created_at.date().isoformat() if card.created_at else "Ukjent dato"
+    for card in known_cards:
+        label = card.created_at.date().isoformat()
         if not groups or groups[-1]["label"] != label:
             groups.append({"label": label, "cards": []})
         groups[-1]["cards"].append(card)
-    return groups, known_count, len(cards)
+    return groups, unknown_cards
 
 
 def _transactions_context(db, request: Request, tsort: str, tdir: str, error: str | None = None) -> dict:
@@ -402,7 +408,8 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
         .all()
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
-    groups, known_count, total_count = _cards_grouped_by_added_date(db)
+    groups, unknown_cards = _cards_grouped_by_added_date(db)
+    known_count = sum(len(g["cards"]) for g in groups)
     return {
         "transactions": txs,
         "error": error,
@@ -412,7 +419,8 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
         "tdir": tdir,
         "groups": groups,
         "known_count": known_count,
-        "total_count": total_count,
+        "unknown_cards": unknown_cards,
+        "total_count": known_count + len(unknown_cards),
     }
 
 
