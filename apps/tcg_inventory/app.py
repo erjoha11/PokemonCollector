@@ -370,6 +370,16 @@ def added_cards(request: Request):
 # --------------------------------------------------------------------------
 # Transactions
 # --------------------------------------------------------------------------
+def _recently_added_cards(db):
+    return (
+        db.query(Card)
+        .filter(Card.created_at.isnot(None))
+        .order_by(Card.created_at.desc(), Card.id.desc())
+        .limit(100)
+        .all()
+    )
+
+
 @app.get("/transactions")
 def list_transactions(request: Request):
     db = get_db_session()
@@ -383,7 +393,12 @@ def list_transactions(request: Request):
         return templates.TemplateResponse(
             request,
             "transactions.html",
-            {"transactions": txs, "error": None, "today": dt.date.today().isoformat()},
+            {
+                "transactions": txs,
+                "error": None,
+                "today": dt.date.today().isoformat(),
+                "recent_cards": _recently_added_cards(db),
+            },
         )
     finally:
         db.close()
@@ -438,6 +453,7 @@ def create_transaction(
                     "transactions": txs,
                     "error": "Fant ikke kortet -- velg et kort fra søkeresultatene.",
                     "today": dt.date.today().isoformat(),
+                    "recent_cards": _recently_added_cards(db),
                 },
             )
 
