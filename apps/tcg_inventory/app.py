@@ -227,8 +227,17 @@ def dashboard(
         # (by unique prints owned, the fixed cutoff), and a column click
         # re-orders those same 10 buckets -- same pattern as "Topp 10 mest
         # verdifulle kort" above, not the bucket-hierarchy tables.
-        pokemon_top = sorted(queries.by_pokemon_breakdown(db), key=lambda b: b.unique_count, reverse=True)[:10]
+        all_pokemon = queries.by_pokemon_breakdown(db)
+        pokemon_top = sorted(all_pokemon, key=lambda b: b.unique_count, reverse=True)[:10]
         pokemon_top = _sorted_rows(pokemon_top, psort, pdir, POKEMON_BUCKET_SORT_KEYS)
+
+        # Favorited Pokemon always show here regardless of the top-10 cutoff
+        # above -- that's the whole point of favoriting one that isn't
+        # already in your most-unique-prints list.
+        favorite_names = _favorite_pokemon_names(db)
+        favorite_breakdown = sorted(
+            (b for b in all_pokemon if b.name in favorite_names), key=lambda b: b.name.lower()
+        )
 
         # Highlights for the KPI row -- the single most valuable named
         # collection/series (Bulk isn't a collection, so excluded). The
@@ -248,7 +257,8 @@ def dashboard(
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
                 "pokemon_top": pokemon_top,
-                "favorite_pokemon": _favorite_pokemon_names(db),
+                "favorite_pokemon": favorite_names,
+                "favorite_breakdown": favorite_breakdown,
                 "top_collection": top_collection,
                 "top_series": top_series,
                 "csort": csort,
@@ -262,6 +272,31 @@ def dashboard(
                 "tsort": tsort,
                 "tdir": tdir,
             },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/pokemon/search")
+def pokemon_search(request: Request, q: str = ""):
+    db = get_db_session()
+    try:
+        results = []
+        if q and len(q) >= 2:
+            like = f"%{q.lower()}%"
+            results = [
+                row[0]
+                for row in db.query(Card.name)
+                .filter(func.lower(Card.name).like(like))
+                .distinct()
+                .order_by(Card.name)
+                .limit(20)
+                .all()
+            ]
+        return templates.TemplateResponse(
+            request,
+            "partials/pokemon_search_results.html",
+            {"results": results, "favorite_pokemon": _favorite_pokemon_names(db)},
         )
     finally:
         db.close()

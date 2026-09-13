@@ -537,7 +537,7 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     dashboard = client.get("/")
     text = dashboard.text
     assert "Pokemon" in text
-    pokemon_section = text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1]
+    pokemon_section = text.split("<h2>Pokemon</h2>", 1)[1]
     assert "Sableye" in pokemon_section
     assert "Magikarp" in pokemon_section
     # Both Sableye prints (Normal + Holo, two different sets) count under one
@@ -558,7 +558,7 @@ def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
     # 11 distinct species exist, but only 10 rows show -- Species0 (3 unique)
     # always makes it in, so exactly one of Species1..10 is excluded.
     shown = sum(1 for i in range(11) if f">Species{i}<" in pokemon_section)
@@ -571,14 +571,51 @@ def test_pokemon_favorite_can_be_toggled_on_and_off(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
     assert 'class="favorite-star active"' in pokemon_section
 
     # Toggling again removes it.
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
     assert 'class="favorite-star active"' not in pokemon_section
     assert 'class="favorite-star"' in pokemon_section
+
+
+def test_pokemon_search_finds_a_name_to_favorite(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Sableye"}, {"id": "b", "name": "Slowbro"}, {"id": "c", "name": "Onix"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/pokemon/search?q=slow")
+    assert "Slowbro" in response.text
+    assert "Sableye" not in response.text
+    assert "Onix" not in response.text
+    # A search result is itself a one-click favorite form.
+    assert '<form method="post" action="/pokemon/favorite">' in response.text or "action=\"/pokemon/favorite\"" in response.text
+
+
+def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
+    # 10 other species each with more unique prints than Celebi (1), so
+    # Celebi would never make the "Topp 10 (unike)" cutoff on its own.
+    rows = [{"id": "celebi", "name": "Celebi"}]
+    for i in range(10):
+        for p in range(2):
+            rows.append({"id": f"filler{i}-{p}", "name": f"Filler{i}", "number": f"{i}{p}/999"})
+    main = make_csv("My Collection", rows)
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    client.post("/pokemon/favorite", data={"name": "Celebi"})
+
+    dashboard = client.get("/")
+    pokemon_card = dashboard.text.split("<h2>Pokemon</h2>", 1)[1].split("<h2>", 1)[0]
+    assert "Favoritter" in pokemon_card
+    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Celebi" in favorites_section
+
+    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    assert "Celebi" not in top10_section  # confirms it really was excluded from the cutoff
 
 
 def test_dashboard_series_set_row_drills_down_to_individual_cards(client):
