@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Transactions – TCG Inventory{% endblock %}
-{% macro sort_th(label, field) %}<a href="{{ sort_url(request, 'tsort', 'tdir', field, tsort, tdir, '/transactions') }}">{{ label }}{% if tsort == field %} {{ '▲' if tdir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
+{% from "partials/macros.html" import sort_th with context %}
 {% block content %}
 <h1>Transactions</h1>
 
@@ -54,13 +54,13 @@
     <table class="inventory-table">
       <thead>
         <tr>
-          <th>Navn</th>
-          <th>Variant</th>
-          <th>Serie</th>
-          <th>Sett</th>
-          <th class="num">Referansepris</th>
-          <th>Card ID</th>
-          <th class="num">Registrert pris</th>
+          <th>{{ sort_th('Navn', 'name', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th>{{ sort_th('Serie', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th>{{ sort_th('Sett', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th class="num">{{ sort_th('Registrert pris', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>Registrer kjøp</th>
         </tr>
       </thead>
@@ -100,19 +100,19 @@
   <table>
     <thead>
       <tr>
-        <th>{{ sort_th('Dato', 'date') }}</th>
-        <th>{{ sort_th('Type', 'type') }}</th>
-        <th>{{ sort_th('Kort', 'name') }}</th>
-        <th>{{ sort_th('Variant', 'variant') }}</th>
-        <th>{{ sort_th('Rarity', 'rarity') }}</th>
-        <th>{{ sort_th('Serie', 'series') }}</th>
-        <th>{{ sort_th('Sett', 'set') }}</th>
-        <th>{{ sort_th('Nr', 'number') }}</th>
-        <th class="num">{{ sort_th('Pris', 'price') }}</th>
-        <th>{{ sort_th('Platform', 'platform') }}</th>
-        <th class="num">{{ sort_th('Gebyr', 'fees') }}</th>
-        <th>{{ sort_th('Kjøps-ID', 'purchase_id') }}</th>
-        <th>{{ sort_th('Trans ID', 'id') }}</th>
+        <th>{{ sort_th('Dato', 'date', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Kort', 'name', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Variant', 'variant', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Rarity', 'rarity', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Serie', 'series', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Sett', 'set', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th class="num">{{ sort_th('Pris', 'price', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Platform', 'platform', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th class="num">{{ sort_th('Gebyr', 'fees', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Kjøps-ID', 'purchase_id', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th>{{ sort_th('Trans ID', 'id', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -145,12 +145,12 @@
     <table class="inventory-table">
       <thead>
         <tr>
-          <th>Navn</th>
-          <th>Variant</th>
-          <th>Serie</th>
-          <th>Sett</th>
-          <th class="num">Referansepris</th>
-          <th>Card ID</th>
+          <th>{{ sort_th('Navn', 'name', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th>{{ sort_th('Variant', 'variant', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th>{{ sort_th('Serie', 'series', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th>{{ sort_th('Sett', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
         </tr>
       </thead>
       <tbody>

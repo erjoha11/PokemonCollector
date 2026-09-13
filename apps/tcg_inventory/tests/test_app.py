@@ -53,6 +53,23 @@ def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
     assert '<div class="table-scroll">' in log_section
 
 
+def test_import_log_table_can_be_sorted_by_column(client):
+    zebra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    abra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("zzz.csv", zebra, "text/csv"))])
+    client.post("/import", files=[("files", ("aaa.csv", abra, "text/csv"))])
+
+    def _log_body(html: str) -> str:
+        section = html.split('id="import-log"', 1)[1]
+        return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _log_body(client.get("/import?lsort=files&ldir=asc").text)
+    assert asc.index("aaa.csv") < asc.index("zzz.csv")
+
+    desc = _log_body(client.get("/import?lsort=files&ldir=desc").text)
+    assert desc.index("zzz.csv") < desc.index("aaa.csv")
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)
@@ -320,7 +337,7 @@ def test_transactions_table_can_be_sorted_by_column(client):
     def _table_body(html: str) -> str:
         # The historikk table is the only one wrapped in .table-scroll --
         # the "Kort lagt til" and collapsed unknown-date tables above/below
-        # it have their own unsorted <tbody> blocks.
+        # it have their own separately-sortable <tbody> blocks (gsort/usort).
         history = html.split('<div class="table-scroll">', 1)[1]
         return history.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
@@ -329,6 +346,50 @@ def test_transactions_table_can_be_sorted_by_column(client):
 
     text_desc = _table_body(client.get("/transactions?tsort=price&tdir=desc").text)
     assert text_desc.index("Zebra") < text_desc.index("Abra")  # 100 kr before 50 kr
+
+
+def test_kort_lagt_til_groups_can_be_sorted_by_column(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    def _group_body(html: str) -> str:
+        section = html.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+        return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _group_body(client.get("/transactions?gsort=name&gdir=asc").text)
+    assert asc.index("Abra") < asc.index("Zebra")
+
+    desc = _group_body(client.get("/transactions?gsort=name&gdir=desc").text)
+    assert desc.index("Zebra") < desc.index("Abra")
+
+
+def test_ukjent_dato_table_can_be_sorted_by_column(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    db.query(Card).update({"created_at": None})  # move both into "Ukjent dato"
+    db.commit()
+    db.close()
+
+    def _unknown_body(html: str) -> str:
+        section = html.split("<details class=\"collapsible\">", 1)[1]
+        return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _unknown_body(client.get("/transactions?usort=name&udir=asc").text)
+    assert asc.index("Abra") < asc.index("Zebra")
+
+    desc = _unknown_body(client.get("/transactions?usort=name&udir=desc").text)
+    assert desc.index("Zebra") < desc.index("Abra")
 
 
 def test_import_then_dashboard_reflects_the_sync(client):
@@ -476,13 +537,48 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     dashboard = client.get("/")
     text = dashboard.text
     assert "Pokemon" in text
-    pokemon_section = text.split("<h2>Pokemon</h2>", 1)[1]
+    pokemon_section = text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1]
     assert "Sableye" in pokemon_section
     assert "Magikarp" in pokemon_section
     # Both Sableye prints (Normal + Holo, two different sets) count under one
     # "Sableye" bucket -- 2 unique, not two separate one-card rows.
     row = pokemon_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "<td class=\"num\">2</td>" in row
+
+
+def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
+    rows = []
+    for i in range(11):
+        # Pokemon 0 has 3 unique prints, Pokemon 1-10 have 1 each -- Pokemon 0
+        # should always make the cut regardless of tie-breaking among the rest.
+        prints = 3 if i == 0 else 1
+        for p in range(prints):
+            rows.append({"id": f"p{i}-{p}", "name": f"Species{i}", "number": f"{i}{p}/999"})
+    main = make_csv("My Collection", rows)
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    dashboard = client.get("/")
+    pokemon_section = dashboard.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    # 11 distinct species exist, but only 10 rows show -- Species0 (3 unique)
+    # always makes it in, so exactly one of Species1..10 is excluded.
+    shown = sum(1 for i in range(11) if f">Species{i}<" in pokemon_section)
+    assert shown == 10
+    assert ">Species0<" in pokemon_section
+
+
+def test_pokemon_favorite_can_be_toggled_on_and_off(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Sableye"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
+    pokemon_section = response.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    assert 'class="favorite-star active"' in pokemon_section
+
+    # Toggling again removes it.
+    response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
+    pokemon_section = response.text.split("<h2>Topp 10 Pokemon (unike)</h2>", 1)[1].split("<h2>", 1)[0]
+    assert 'class="favorite-star active"' not in pokemon_section
+    assert 'class="favorite-star"' in pokemon_section
 
 
 def test_dashboard_series_set_row_drills_down_to_individual_cards(client):

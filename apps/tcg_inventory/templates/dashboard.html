@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Dashboard – TCG Inventory{% endblock %}
 
+{% from "partials/macros.html" import sort_th with context %}
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
-{% macro sort_th(label, field, sort_param, dir_param, current_sort, current_dir) %}<a href="{{ sort_url(request, sort_param, dir_param, field, current_sort, current_dir) }}">{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
 {% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true) %}
@@ -166,7 +166,7 @@
 
   <div class="card-pair">
   <div class="card">
-    <h2>Pokemon</h2>
+    <h2>Topp 10 Pokemon (unike)</h2>
     <table>
       <thead>
         <tr>
@@ -178,10 +178,17 @@
         </tr>
       </thead>
       <tbody>
-        {% for p in pokemon_breakdown %}
+        {% for p in pokemon_top %}
         {% set row_id = 'pokemon-' ~ loop.index %}
         <tr>
-          <td>{% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}</td>
+          <td>
+            <form method="post" action="/pokemon/favorite" style="display:inline;">
+              <input type="hidden" name="name" value="{{ p.name }}">
+              <button type="submit" class="favorite-star{{ ' active' if p.name in favorite_pokemon else '' }}"
+                      title="{{ 'Fjern som favoritt' if p.name in favorite_pokemon else 'Sett som favoritt' }}">{{ '★' if p.name in favorite_pokemon else '☆' }}</button>
+            </form>
+            {% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}
+          </td>
           <td class="num">{{ p.unique_count }}</td>
           <td class="num">{{ p.duplicates }}</td>
           <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>

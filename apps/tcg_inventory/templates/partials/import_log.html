@@ -1,3 +1,4 @@
+{% from "partials/macros.html" import sort_th with context %}
 <div class="card" id="import-log" style="margin-top: 1.5rem;">
   <h2>Synk-logg</h2>
   {% if logs %}
@@ -5,16 +6,16 @@
     <table>
       <thead>
         <tr>
-          <th>Tidspunkt</th>
-          <th>Kilde</th>
-          <th>Filer</th>
-          <th class="num">Opprettet</th>
-          <th class="num">Oppdatert</th>
-          <th class="num">Flagget</th>
-          <th class="num">Slettet</th>
-          <th class="num">Advarsler</th>
-          <th>Collections</th>
-          <th>Bindere</th>
+          <th>{{ sort_th('Tidspunkt', 'ran_at', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th>{{ sort_th('Kilde', 'source', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th>{{ sort_th('Filer', 'files', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th class="num">{{ sort_th('Opprettet', 'cards_created', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th class="num">{{ sort_th('Oppdatert', 'cards_updated', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th class="num">{{ sort_th('Flagget', 'cards_flagged_missing', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th class="num">{{ sort_th('Slettet', 'cards_deleted', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th class="num">{{ sort_th('Advarsler', 'warnings_count', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th>{{ sort_th('Collections', 'collections_touched', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th>{{ sort_th('Bindere', 'binders_touched', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
         </tr>
       </thead>
       <tbody>
