@@ -8,7 +8,7 @@ Vercel deployment -- see README.md "Deploying to Vercel + Supabase".
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -66,7 +66,30 @@ def get_db():
         db.close()
 
 
+def _add_missing_columns():
+    """`create_all()` only ever creates whole new tables -- it silently does
+    nothing for a column added to a model whose table already exists (e.g.
+    on an already-deployed Supabase database). This adds any column that's
+    on a model but missing from its live table, so a new nullable column
+    never needs a manual `ALTER TABLE` against production. Only ever adds
+    columns, never drops/renames/retypes one -- anything beyond that still
+    needs a deliberate, reviewed migration.
+    """
+    inspector = inspect(engine)
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not inspector.has_table(table.name):
+                continue  # brand new table -- create_all() above already made it
+            existing_columns = {col["name"] for col in inspector.get_columns(table.name)}
+            for column in table.columns:
+                if column.name in existing_columns:
+                    continue
+                ddl_type = column.type.compile(dialect=conn.dialect)
+                conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {ddl_type}'))
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    _add_missing_columns()

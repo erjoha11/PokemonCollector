@@ -65,6 +65,9 @@ class Card(Base):
     series: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     set: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     variant: Mapped[str | None] = mapped_column(String, nullable=True)
+    # From Dex's "Locale" column -- which language/region print this physical
+    # card is (e.g. "ENG", "JPN", "KOR"), not a UI display language.
+    language: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     rarity: Mapped[str | None] = mapped_column(String, nullable=True)
     illustrator: Mapped[str | None] = mapped_column(String, nullable=True)
 

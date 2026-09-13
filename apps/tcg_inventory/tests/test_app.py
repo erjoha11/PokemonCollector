@@ -481,6 +481,55 @@ def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):
     assert "1 kort" in response.text
 
 
+def test_inventory_accepts_an_empty_dup_query_value(client):
+    # The filter form's hidden "dup" input submits an empty string when
+    # unchecked, and hx-include="closest form" on every other dropdown
+    # (series/set/collection/binder/language) resubmits it too -- so ?dup=
+    # (empty, not absent) must not 422.
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/inventory?dup=&series=&language=")
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+
+
+def test_inventory_shows_and_filters_by_language(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "locale": "ENG"},
+            {"id": "b", "name": "Charizard", "locale": "JPN"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    full = client.get("/inventory").text
+    assert "Språk" in full
+    assert "ENG" in full and "JPN" in full
+
+    eng_only = client.get("/inventory?language=ENG").text
+    assert "Pikachu" in eng_only
+    assert "Charizard" not in eng_only
+
+
+def test_inventory_can_be_sorted_by_language(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Zubat", "locale": "JPN"},
+            {"id": "b", "name": "Abra", "locale": "ENG"},
+        ],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    def _rows(html: str) -> str:
+        return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _rows(client.get("/inventory?sort=language&direction=asc").text)
+    assert asc.index("Abra") < asc.index("Zubat")  # ENG before JPN
+
+
 def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
     from urllib.parse import quote
 

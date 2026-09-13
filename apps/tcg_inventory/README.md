@@ -99,9 +99,13 @@ Type;Category;Locale;Series;Set;Id;Number;Name;Variant;Rarity;Illustrator;Quanti
 
 Each file is one Dex folder/category export (the `Category` column is
 constant per file). Upload as many category files as you have for one sync
-— `Note 1`–`Note 5` are concatenated into `notes` when present. Routing
-(My Collection / binder / collection / excluded) is applied per the rules
-above based on each row's `Category` value.
+— `Note 1`–`Note 5` are concatenated into `notes` when present, and `Locale`
+(which language/region print, e.g. `ENG`/`JPN`) is stored as `language` and
+shown/filterable/sortable as "Språk" in Inventory. Routing (My Collection /
+binder / collection / excluded) is applied per the rules above based on
+each row's `Category` value. `Type` is read but unused — every real Dex
+export sets it to the constant `Card` on every row, so it carries no
+per-card information.
 
 ## Dropbox import setup
 

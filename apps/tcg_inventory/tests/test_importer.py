@@ -150,6 +150,21 @@ def test_my_collection_creates_cards_with_core_fields(db_session):
     assert card.reference_price == 150.5
 
 
+def test_my_collection_parses_locale_into_language(db_session):
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "locale": "ENG"},
+            {"id": "b", "name": "Charizard", "locale": "JPN"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    cards = {c.card_id: c for c in db_session.query(Card).all()}
+    assert cards["a"].language == "ENG"
+    assert cards["b"].language == "JPN"
+
+
 def test_new_card_gets_created_at_but_existing_card_keeps_its_own(db_session):
     csv = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])
