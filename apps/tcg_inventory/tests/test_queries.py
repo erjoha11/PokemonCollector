@@ -198,3 +198,76 @@ def test_merge_pokemon_is_reusable_at_the_queries_layer(db_session):
     assert queries.pokemon_alias_map(db_session) == {"Dark Celebi": "Celebi"}
     bucket = next(b for b in queries.by_pokemon_breakdown(db_session) if b.name == "Celebi")
     assert bucket.unique_count == 2
+
+
+def test_collection_value_growth_buckets_by_created_at_month(db_session):
+    import datetime as dt
+
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "price": "100"},
+            {"id": "b", "name": "Charizard", "price": "50"},
+            {"id": "c", "name": "Magikarp", "price": "10"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    cards = {c.card_id: c for c in db_session.query(Card).all()}
+    cards["a"].created_at = dt.datetime(2026, 1, 10)
+    cards["b"].created_at = dt.datetime(2026, 1, 20)  # same month as "a"
+    cards["c"].created_at = None  # predates created_at tracking
+    db_session.commit()
+
+    growth = queries.collection_value_growth(db_session)
+    labels = [row["label"] for row in growth]
+    assert labels == ["Før sporing", "2026-01"]
+    assert growth[0]["added_value"] == 10  # Magikarp, untracked
+    assert growth[1]["added_value"] == 150  # Pikachu + Charizard, same month
+    assert growth[1]["cumulative_value"] == 160  # running total across both buckets
+
+
+def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):
+    import datetime as dt
+
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+
+    db_session.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 5), price=100, fees=10))
+    db_session.add(Transaction(card_id=card.id, type="salg", date=dt.date(2026, 2, 1), price=60))
+    db_session.commit()
+
+    flow = queries.cash_flow_by_month(db_session)
+    assert flow[0]["label"] == "2026-01"
+    assert flow[0]["bought"] == 110  # price + fees
+    assert flow[0]["sold"] == 0
+    assert flow[0]["cumulative_invested"] == 110
+
+    assert flow[1]["label"] == "2026-02"
+    assert flow[1]["bought"] == 0
+    assert flow[1]["sold"] == 60
+    assert flow[1]["cumulative_invested"] == 50  # 110 bought - 60 sold
+
+
+def test_economic_summary_computes_net_invested(db_session):
+    import datetime as dt
+
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+
+    db_session.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 5), price=100, fees=10))
+    db_session.add(Transaction(card_id=card.id, type="salg", date=dt.date(2026, 2, 1), price=60))
+    db_session.commit()
+
+    summary = queries.economic_summary(db_session)
+    assert summary["total_bought"] == 110
+    assert summary["total_sold"] == 60
+    assert summary["net_invested"] == 50
