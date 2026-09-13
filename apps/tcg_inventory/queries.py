@@ -353,23 +353,40 @@ def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
 _UNTRACKED_MONTH = "Før sporing"  # cards imported before created_at existed
 
 
-def collection_value_growth(db: Session, cards: list[Card] | None = None) -> list[dict]:
-    """Cumulative unique_value of the collection, month by month, using each
-    card's `created_at` as its "added" date. This is an approximation, not a
-    real historical price series: it applies TODAY's reference_price to the
-    month a card was added, since Dex gives no historical price snapshots.
-    It answers "how has my collection's assessed value grown as I added
-    cards", not "what was it actually worth back then". Cards with no
-    created_at (imported before that column existed) are bucketed into one
-    "Før sporing" (before tracking) starting point rather than guessing a
-    date, so the running total still ends at today's real unique_value.
+# Same three numbers as the Dashboard KPI's Verdi / Verdi duplikater / Total
+# verdi -- "unique" never double-counts a duplicate, "duplicates" is just the
+# extra value tied up in the copies beyond the first, "total" is both together.
+VALUE_GROWTH_METRICS: dict[str, tuple[str, callable]] = {
+    "unique": ("Unik samling", lambda card: card.unique_value),
+    "duplicates": ("Duplikater", lambda card: card.total_value - card.unique_value),
+    "total": ("Total", lambda card: card.total_value),
+}
+
+
+def collection_value_growth(
+    db: Session, cards: list[Card] | None = None, metric: str = "unique"
+) -> list[dict]:
+    """Cumulative value of the collection, month by month, using each card's
+    `created_at` as its "added" date. This is an approximation, not a real
+    historical price series: it applies TODAY's reference_price to the month
+    a card was added, since Dex gives no historical price snapshots. It
+    answers "how has my collection's assessed value grown as I added cards",
+    not "what was it actually worth back then". Cards with no created_at
+    (imported before that column existed) are bucketed into one "Før
+    sporing" (before tracking) starting point rather than guessing a date,
+    so the running total still ends at today's real value for that metric.
+
+    `metric` picks which of the three value shown -- see VALUE_GROWTH_METRICS.
     """
+    if metric not in VALUE_GROWTH_METRICS:
+        raise ValueError(f"unknown metric: {metric!r} (expected one of {sorted(VALUE_GROWTH_METRICS)})")
+    _, value_of = VALUE_GROWTH_METRICS[metric]
     cards = all_cards_with_collections(db) if cards is None else cards
 
     by_month: dict[str, float] = {}
     for card in cards:
         label = card.created_at.strftime("%Y-%m") if card.created_at else _UNTRACKED_MONTH
-        by_month[label] = by_month.get(label, 0.0) + card.unique_value
+        by_month[label] = by_month.get(label, 0.0) + value_of(card)
 
     ordered_labels = sorted(by_month, key=lambda label: "" if label == _UNTRACKED_MONTH else label)
 

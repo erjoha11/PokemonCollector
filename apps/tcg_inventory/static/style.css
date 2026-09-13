@@ -614,5 +614,18 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-legend-item { display: flex; align-items: center; gap: 0.4rem; }
 .viz-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .viz-caveat { margin: 0.3rem 0 0; font-size: 0.78rem; }
+.viz-filter { display: flex; gap: 0.4rem; margin: 0.6rem 0; }
+.viz-filter-pill {
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.viz-filter-pill:hover { background: var(--accent-wash); color: var(--ink); }
+.viz-filter-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .viz-delta-gain { color: #0ca30c; }
 .viz-delta-loss { color: #d03b3b; }
