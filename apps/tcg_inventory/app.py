@@ -406,17 +406,12 @@ def _cards_grouped_by_added_date(db):
     return groups, unknown_cards
 
 
-def _registered_purchase_prices(txs) -> dict[int, str]:
-    """card_id -> already-registered "kjøp" price(s), formatted for display --
-    so the "Kort lagt til" list can show what's already been priced instead
-    of risking a duplicate registration. A card bought more than once shows
-    every price, comma-joined.
-    """
+def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     by_card: dict[int, list[float]] = {}
     for tx in txs:
         if tx.type == "kjøp":
             by_card.setdefault(tx.card_id, []).append(tx.price)
-    return {card_id: ", ".join(_format_kr(p) for p in prices) for card_id, prices in by_card.items()}
+    return by_card
 
 
 def _transactions_context(db, request: Request, tsort: str, tdir: str, error: str | None = None) -> dict:
@@ -429,6 +424,7 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     groups, unknown_cards = _cards_grouped_by_added_date(db)
     known_count = sum(len(g["cards"]) for g in groups)
+    purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     return {
         "transactions": txs,
         "error": error,
@@ -440,7 +436,15 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
         "known_count": known_count,
         "unknown_cards": unknown_cards,
         "total_count": known_count + len(unknown_cards),
-        "registered_prices": _registered_purchase_prices(txs),
+        # Display string (every price, comma-joined, if bought more than
+        # once) -- vs. the single raw value below, only present when there's
+        # exactly one to safely prefill/overwrite in the quick-register form.
+        "registered_prices": {
+            card_id: ", ".join(_format_kr(p) for p in prices) for card_id, prices in purchase_prices_by_card.items()
+        },
+        "single_registered_price": {
+            card_id: prices[0] for card_id, prices in purchase_prices_by_card.items() if len(prices) == 1
+        },
     }
 
 
@@ -486,6 +490,7 @@ def create_transaction(
     platform: str = Form(""),
     fees: float | None = Form(None),
     purchase_id: int | None = Form(None),
+    upsert: bool = Form(False),
 ):
     db = get_db_session()
     try:
@@ -499,16 +504,36 @@ def create_transaction(
                 ),
             )
 
-        tx = Transaction(
-            card_id=card.id,
-            type=type,
-            date=dt.date.fromisoformat(date),
-            price=price,
-            platform=platform or None,
-            fees=fees,
-            purchase_id=purchase_id,
-        )
-        db.add(tx)
+        # `upsert` comes only from the "Kort lagt til" quick-register form --
+        # re-submitting a price there is meant to correct the one already
+        # registered, not add a second "kjøp" for the same card. Only
+        # auto-update when there's exactly one existing kjøp to correct;
+        # with zero or several (a genuine re-buy already on record), fall
+        # back to inserting a new row rather than guessing which to change.
+        existing = None
+        if upsert and type == "kjøp":
+            candidates = (
+                db.query(Transaction)
+                .filter(Transaction.card_id == card.id, Transaction.type == "kjøp")
+                .all()
+            )
+            if len(candidates) == 1:
+                existing = candidates[0]
+
+        if existing is not None:
+            existing.date = dt.date.fromisoformat(date)
+            existing.price = price
+        else:
+            tx = Transaction(
+                card_id=card.id,
+                type=type,
+                date=dt.date.fromisoformat(date),
+                price=price,
+                platform=platform or None,
+                fees=fees,
+                purchase_id=purchase_id,
+            )
+            db.add(tx)
         db.commit()
         return RedirectResponse("/transactions", status_code=303)
     finally:
