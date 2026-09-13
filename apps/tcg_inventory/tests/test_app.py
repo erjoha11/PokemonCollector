@@ -214,6 +214,46 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
     assert response.text.count("<td>5</td>") == 2  # both transactions tagged to the same purchase
 
 
+def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}, {"id": "c", "name": "Eevee"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    for card_id, price in ((ids["a"], "10"), (ids["b"], "15")):
+        client.post(
+            "/transactions",
+            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price, "purchase_id": "7"},
+        )
+    # Eevee is registered on its own -- no purchase_id, so it should not be
+    # folded into the "Kjøp #7" group below.
+    client.post(
+        "/transactions",
+        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-01-02", "price": "20"},
+    )
+
+    response = client.get("/transactions")
+    text = response.text
+    assert "Kjøp #7" in text
+    assert "2 kort" in text
+    assert "25 kr" in text  # 10 + 15, the group's subtotal
+    assert "Enkeltregistrert" in text
+    group_section = text.split("Kjøp #7", 1)[1].split("Enkeltregistrert", 1)[0]
+    assert "Pikachu" in group_section
+    assert "Charizard" in group_section
+    assert "Eevee" not in group_section
+    ungrouped_section = text.split("Enkeltregistrert", 1)[1]
+    assert "Eevee" in ungrouped_section
+
+
 def test_transactions_page_offers_recently_added_cards_in_a_dropdown(client):
     import datetime as dt
 
