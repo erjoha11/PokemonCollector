@@ -23,6 +23,7 @@
     <input type="number" step="0.01" name="price" placeholder="Pris" required>
     <input type="text" name="platform" placeholder="Platform (valgfritt)">
     <input type="number" step="0.01" name="fees" placeholder="Gebyr (valgfritt)">
+    <input type="number" step="1" name="purchase_id" placeholder="Kjøps-ID (valgfritt)" title="Samme tall på flere transaksjoner = kjøpt sammen">
     <button type="submit">Registrer</button>
   </div>
 </form>
@@ -30,7 +31,7 @@
 <table>
   <thead>
     <tr>
-      <th>Trans ID</th><th>Dato</th><th>Type</th><th>Kort</th><th>Variant</th>
+      <th>Trans ID</th><th>Kjøps-ID</th><th>Dato</th><th>Type</th><th>Kort</th><th>Variant</th>
       <th>Rarity</th><th>Serie</th><th>Sett</th><th>Nr</th>
       <th class="num">Pris</th><th>Platform</th><th class="num">Gebyr</th>
     </tr>
@@ -39,6 +40,7 @@
     {% for tx in transactions %}
     <tr>
       <td>{{ tx.id }}</td>
+      <td>{{ tx.purchase_id if tx.purchase_id is not none else '' }}</td>
       <td>{{ tx.date }}</td>
       <td>{{ tx.type }}</td>
       <td><a href="https://app.dextcg.com/cards/{{ tx.card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ tx.card.name }}</a> ({{ tx.card.card_id }})</td>
@@ -52,7 +54,7 @@
       <td class="num">{{ tx.fees | kr if tx.fees is not none else '' }}</td>
     </tr>
     {% else %}
-    <tr><td colspan="12" class="muted">Ingen transaksjoner registrert enda.</td></tr>
+    <tr><td colspan="13" class="muted">Ingen transaksjoner registrert enda.</td></tr>
     {% endfor %}
   </tbody>
 </table>

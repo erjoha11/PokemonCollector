@@ -123,6 +123,10 @@ class Transaction(Base):
     price: Mapped[float] = mapped_column(Float, nullable=False)
     platform: Mapped[str | None] = mapped_column(String, nullable=True)
     fees: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # A user-assigned tag grouping transactions bought together in the same
+    # order/session -- distinct from `id` (this row's own identity). Purely
+    # informational: never set automatically, only ever what the user assigns.
+    purchase_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
 
