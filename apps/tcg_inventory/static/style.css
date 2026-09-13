@@ -19,6 +19,11 @@
 
 body {
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  /* Never left to the browser default (16px) -- every other element in the
+     app (tables, nav, buttons, form inputs) already sits in this smaller,
+     deliberately tuned scale; without this, plain paragraphs and .muted
+     notes rendered visibly larger than the section headings above them. */
+  font-size: 0.9rem;
   margin: 0;
   padding: 0 1.75rem 3rem;
   color: var(--ink);
