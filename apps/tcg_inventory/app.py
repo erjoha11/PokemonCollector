@@ -43,7 +43,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="TCG Inventory", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
-templates.env.filters["kr"] = lambda v: f"{v:,.0f} kr".replace(",", " ") if v is not None else "-"
+
+
+def _format_kr(v: float | None) -> str:
+    return f"{v:,.0f} kr".replace(",", " ") if v is not None else "-"
+
+
+templates.env.filters["kr"] = _format_kr
 templates.env.globals["auth_enabled"] = auth.is_configured
 
 
@@ -400,6 +406,19 @@ def _cards_grouped_by_added_date(db):
     return groups, unknown_cards
 
 
+def _registered_purchase_prices(txs) -> dict[int, str]:
+    """card_id -> already-registered "kjøp" price(s), formatted for display --
+    so the "Kort lagt til" list can show what's already been priced instead
+    of risking a duplicate registration. A card bought more than once shows
+    every price, comma-joined.
+    """
+    by_card: dict[int, list[float]] = {}
+    for tx in txs:
+        if tx.type == "kjøp":
+            by_card.setdefault(tx.card_id, []).append(tx.price)
+    return {card_id: ", ".join(_format_kr(p) for p in prices) for card_id, prices in by_card.items()}
+
+
 def _transactions_context(db, request: Request, tsort: str, tdir: str, error: str | None = None) -> dict:
     txs = (
         db.query(Transaction)
@@ -421,6 +440,7 @@ def _transactions_context(db, request: Request, tsort: str, tdir: str, error: st
         "known_count": known_count,
         "unknown_cards": unknown_cards,
         "total_count": known_count + len(unknown_cards),
+        "registered_prices": _registered_purchase_prices(txs),
     }
 
 

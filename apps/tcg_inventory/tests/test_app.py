@@ -205,32 +205,23 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     assert tx.price == 25
     db.close()
 
+    # And the "Kort lagt til" row now shows that already-registered price,
+    # so a second visit doesn't risk double-registering the same card.
+    response = client.get("/transactions")
+    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    assert "25 kr" in added_section
 
-def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
-    import db as db_module
-    from models import Card, Transaction
 
+def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
-    db = db_module.SessionLocal()
-    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
-    db.close()
-
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1]
-    assert f'value="{pikachu_id}"' in added_section
-    assert 'name="price"' in added_section
-
-    # Submitting that inline form is just a normal /transactions POST.
-    client.post(
-        "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "25"},
-    )
-    db = db_module.SessionLocal()
-    tx = db.query(Transaction).filter(Transaction.card_id == pikachu_id).one()
-    assert tx.price == 25
-    db.close()
+    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    assert "Registrert pris" in added_section
+    # The Registrert pris cell is empty (unlike Referansepris, which does
+    # show a value) -- no purchase has been registered for this card yet.
+    assert '<td class="num"></td>' in added_section
 
 
 def test_transactions_table_can_be_sorted_by_column(client):
