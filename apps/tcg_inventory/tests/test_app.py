@@ -589,6 +589,29 @@ def test_dashboard_collection_row_drills_down_to_individual_cards(client):
     assert 'data-group="coll-1"' in text
 
 
+def test_dashboard_bulk_row_is_not_nested_under_collections(client):
+    # Bulk (no collection) is the complement of "Collections", not a member
+    # of it -- it must not render with the same indentation/class as a
+    # named collection's child-row.
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    collection = make_csv("My Named Collection", [{"id": "a"}])
+    client.post(
+        "/import",
+        files=[
+            ("files", ("main.csv", main, "text/csv")),
+            ("files", ("collection.csv", collection, "text/csv")),
+        ],
+    )
+    main2 = make_csv("My Collection", [{"id": "b", "name": "Magikarp"}])
+    client.post("/import", files=[("files", ("main2.csv", main2, "text/csv"))])
+
+    text = client.get("/").text
+    inventory_card = text.split("<h2>Inventory", 1)[1].split("<h2>", 1)[0]
+    bulk_row = inventory_card.split(">Bulk<", 1)[0].rsplit("<tr", 1)[1]
+    assert 'class="child-row"' not in bulk_row
+    assert 'data-group="coll-bulk"' in inventory_card
+
+
 def test_dashboard_rarity_row_drills_down_to_individual_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "rarity": "Rare"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
