@@ -10,7 +10,7 @@
   </div>
 
   <div class="kpi-card">
-    <h3>Verdi {{ info('Verdi = referansepris for hvert unikt kort (duplikater teller ikke ekstra). Total verdi legger til verdien av duplikatene også.') }}</h3>
+    <h3>Verdi {{ info('Verdi = pris for hvert unikt kort (duplikater teller ikke ekstra). Total verdi legger til verdien av duplikatene også.') }}</h3>
     <!-- Verdi = value of unique cards only; Total verdi = unique + duplicates
          (same convention as the Inventory/Serie/Rarity tables' Verdi/Total
          verdi columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
@@ -22,7 +22,7 @@
   </div>
 
   <div class="kpi-card">
-    <h3>Mest verdifulle kort {{ info('Enkeltkortet med høyest referansepris i hele samlingen -- uavhengig av hvor mange du eier av det.') }}</h3>
+    <h3>Mest verdifulle kort {{ info('Enkeltkortet med høyest pris i hele samlingen -- uavhengig av hvor mange du eier av det.') }}</h3>
     {% if top_cards %}
     <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}{% if top_cards[0].rarity %} · {{ top_cards[0].rarity }}{% endif %}</div>

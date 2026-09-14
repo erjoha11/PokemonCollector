@@ -264,7 +264,7 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
     response = client.get("/transactions")
     # The shared purchase_id shows as the group's own heading (with a
     # subtotal), not a repeated per-row column -- see the grouping test below.
-    assert "Kjøp #5" in response.text
+    assert "Ordre #5" in response.text
     assert "2 kort" in response.text
 
 
@@ -288,7 +288,7 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
             data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price, "purchase_id": "7"},
         )
     # Eevee is registered on its own -- no purchase_id, so it should not be
-    # folded into the "Kjøp #7" group below.
+    # folded into the "Ordre #7" group below.
     client.post(
         "/transactions",
         data={"card_id": ids["c"], "type": "kjøp", "date": "2026-01-02", "price": "20"},
@@ -296,11 +296,11 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
 
     response = client.get("/transactions")
     text = response.text
-    assert "Kjøp #7" in text
+    assert "Ordre #7" in text
     assert "2 kort" in text
     assert "25 kr" in text  # 10 + 15, the group's subtotal
     assert "Enkeltregistrert" in text
-    group_section = text.split("Kjøp #7", 1)[1].split("Enkeltregistrert", 1)[0]
+    group_section = text.split("Ordre #7", 1)[1].split("Enkeltregistrert", 1)[0]
     assert "Pikachu" in group_section
     assert "Charizard" in group_section
     assert "Eevee" not in group_section
@@ -308,7 +308,7 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
     assert "Eevee" in ungrouped_section
 
 
-def test_purchase_groups_rank_items_by_price_and_order_groups_by_date(client):
+def test_purchase_groups_rank_items_by_price_and_order_groups_by_purchase_id(client):
     import db as db_module
     from models import Card
 
@@ -322,25 +322,25 @@ def test_purchase_groups_rank_items_by_price_and_order_groups_by_date(client):
     ids = {c.card_id: c.id for c in db.query(Card).all()}
     db.close()
 
-    # Purchase 2 was tagged with the lower purchase_id, but it actually
-    # happened later (2026-02-01) -- Kjøp #<id> ordering must follow the
-    # date, not the purchase_id number.
+    # Purchase 2 has the earlier date (2026-01-01) and purchase 1 the later
+    # one (2026-02-01) -- deliberately reversed from date order, since Ordre
+    # #<n> ordering must follow purchase_id descending, not the date.
     for card_id, price in ((ids["a"], "10"), (ids["b"], "50")):
         client.post(
             "/transactions",
-            data={"card_id": card_id, "type": "kjøp", "date": "2026-02-01", "price": price, "purchase_id": "2"},
+            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price, "purchase_id": "2"},
         )
     client.post(
         "/transactions",
-        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-01-01", "price": "5", "purchase_id": "1"},
+        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-02-01", "price": "5", "purchase_id": "1"},
     )
 
     text = client.get("/transactions").text
-    assert text.index("Kjøp #1") < text.index("Kjøp #2")
+    assert text.index("Ordre #2") < text.index("Ordre #1")
 
-    # Within "Kjøp #2", the pricier card (Charizard, 50) ranks above the
+    # Within "Ordre #2", the pricier card (Charizard, 50) ranks above the
     # cheaper one (Pikachu, 10) regardless of registration order.
-    group_section = text.split("Kjøp #2", 1)[1]
+    group_section = text.split("Ordre #2", 1)[1]
     assert group_section.index("Charizard") < group_section.index("Pikachu")
 
 
@@ -380,7 +380,7 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     # Registrert (60) + avtalt (100) + diff (40) -- the normal-print cards
     # not priced individually yet are the still-unaccounted-for 40 kr.
     text = client.get("/transactions").text
-    group_section = text.split("Kjøp #4", 1)[1]
+    group_section = text.split("Ordre #4", 1)[1]
     assert "registrert 60 kr" in group_section
     assert "avtalt 100 kr" in group_section
     assert 'diff <span class="tx-diff-open">40 kr</span>' in group_section
@@ -421,7 +421,7 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     db.close()
 
     text = client.get("/transactions").text
-    group_section = text.split("Kjøp #1", 1)[1]
+    group_section = text.split("Ordre #1", 1)[1]
     assert "registrert 1 000 kr" in group_section
     assert "frakt 76 kr" in group_section
     assert "avtalt 1 076 kr" in group_section
@@ -446,7 +446,7 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
 
     # No declared total yet -- no diff shown, just what's registered.
     text = client.get("/transactions").text
-    group_section = text.split("Kjøp #6", 1)[1]
+    group_section = text.split("Ordre #6", 1)[1]
     assert "avtalt" not in group_section.split("</summary>", 1)[0]
 
     response = client.post(
@@ -461,7 +461,7 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
 
     # Registrert equals avtalt now -- diff is 0, shown as "cleared" not flagged.
     text = client.get("/transactions").text
-    group_section = text.split("Kjøp #6", 1)[1]
+    group_section = text.split("Ordre #6", 1)[1]
     assert "avtalt 10 kr" in group_section
     assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
 
@@ -541,7 +541,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
 
     # And Historikk groups them together under that shared purchase_id.
     history = client.get("/transactions").text
-    assert "Kjøp #3" in history
+    assert "Ordre #3" in history
     assert "2 kort" in history
 
 
@@ -768,7 +768,7 @@ def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     response = client.get("/transactions")
     added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
     assert "Registrert pris" in added_section
-    # The Registrert pris cell is empty (unlike Referansepris, which does
+    # The Registrert pris cell is empty (unlike Pris, which does
     # show a value) -- no purchase has been registered for this card yet.
     assert '<td class="num"></td>' in added_section
 

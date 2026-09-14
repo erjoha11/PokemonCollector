@@ -14,7 +14,7 @@
 </div>
 <div id="purchase-cart-container"></div>
 
-<h2>Recently Added {{ info('Referansepris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra referanseprisen).') }}</h2>
+<h2>Recently Added {{ info('Pris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra prisen).') }}</h2>
 <p class="muted">
   {{ known_count }} kort har en kjent dato for når de ble lagt til -- disse er de faktisk nye
   kortene å prise. Datoen settes automatisk når et kort importeres for første gang.
@@ -30,7 +30,7 @@
           <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Serie', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Sett', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+          <th class="num">{{ sort_th('Pris', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th class="num">{{ sort_th('Registrert pris', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>Registrer kjøp</th>
@@ -70,7 +70,7 @@
   </div>
 </div>
 
-<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum. Sett en avtalt totalsum og frakt på gruppen for å se diff mot det du faktisk har registrert kort for -- nyttig for å spore opp normalkort du ikke har priset individuelt ennå.') }}</h2>
+<h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin pris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum. Sett en avtalt totalsum og frakt på gruppen for å se diff mot det du faktisk har registrert kort for -- nyttig for å spore opp normalkort du ikke har priset individuelt ennå.') }}</h2>
 
 {% macro tx_table(rows, empty_message, sortable=True) %}
 <div class="table-scroll">
@@ -158,7 +158,7 @@
           <th>{{ sort_th('Variant', 'variant', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th>{{ sort_th('Serie', 'series', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th>{{ sort_th('Sett', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th class="num">{{ sort_th('Pris', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
         </tr>
       </thead>
