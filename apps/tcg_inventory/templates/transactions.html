@@ -14,19 +14,18 @@
 </div>
 <div id="purchase-cart-container"></div>
 
-<h2>Kort lagt til {{ info('Referansepris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra referanseprisen).') }}</h2>
+<h2>Recently Added {{ info('Referansepris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra referanseprisen).') }}</h2>
 <p class="muted">
   {{ known_count }} kort har en kjent dato for når de ble lagt til -- disse er de faktisk nye
   kortene å prise. Datoen settes automatisk når et kort importeres for første gang.
 </p>
 
-{% for group in groups %}
 <div class="card" style="margin-bottom: 1.25rem;">
-  <h3>{{ group.label }} <span class="muted">({{ group.cards | length }} kort)</span></h3>
   <div class="inventory-table-wrap" style="max-height: 400px;">
     <table class="inventory-table">
       <thead>
         <tr>
+          <th>{{ sort_th('Dato', 'date', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Navn', 'name', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Serie', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
@@ -38,8 +37,9 @@
         </tr>
       </thead>
       <tbody>
-        {% for card in group.cards %}
+        {% for card in known_cards %}
         <tr>
+          <td class="muted">{{ card.created_at.date().isoformat() }}</td>
           <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
           <td>{{ card.variant or '' }}</td>
           <td>{{ card.series or '' }}</td>
@@ -62,14 +62,13 @@
             </form>
           </td>
         </tr>
+        {% else %}
+        <tr><td colspan="9" class="muted">Ingen kort med kjent dato enda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
-{% else %}
-<p class="muted">Ingen kort med kjent dato enda.</p>
-{% endfor %}
 
 <h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum.') }}</h2>
 
