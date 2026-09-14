@@ -344,6 +344,86 @@ def test_purchase_groups_rank_items_by_price_and_order_groups_by_date(client):
     assert group_section.index("Charizard") < group_section.index("Pikachu")
 
 
+def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    response = client.post(
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-01-01",
+            "purchase_id": "4",
+            "purchase_total": "100",
+            "card_id": [str(ids["a"]), str(ids["b"])],
+            "price": ["10", "50"],
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 4).all()
+    assert all(t.purchase_total == 100 for t in txs)
+    db.close()
+
+    # Registrert (60) + avtalt (100) + diff (40) -- the normal-print cards
+    # not priced individually yet are the still-unaccounted-for 40 kr.
+    text = client.get("/transactions").text
+    group_section = text.split("Kjøp #4", 1)[1]
+    assert "registrert 60 kr" in group_section
+    assert "avtalt 100 kr" in group_section
+    assert 'diff <span class="tx-diff-open">40 kr</span>' in group_section
+
+
+def test_purchase_total_can_be_set_on_an_existing_purchase(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    client.post(
+        "/transactions",
+        data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
+    )
+
+    # No declared total yet -- no diff shown, just what's registered.
+    text = client.get("/transactions").text
+    group_section = text.split("Kjøp #6", 1)[1]
+    assert "avtalt" not in group_section.split("</summary>", 1)[0]
+
+    response = client.post(
+        "/transactions/purchase/6/total", data={"purchase_total": "10"}, follow_redirects=True
+    )
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.purchase_id == 6).one()
+    assert tx.purchase_total == 10
+    db.close()
+
+    # Registrert equals avtalt now -- diff is 0, shown as "cleared" not flagged.
+    text = client.get("/transactions").text
+    group_section = text.split("Kjøp #6", 1)[1]
+    assert "avtalt 10 kr" in group_section
+    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+
+
 def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     import datetime as dt
 

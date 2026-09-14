@@ -652,17 +652,28 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
             ungrouped.append(tx)
         else:
             groups.setdefault(tx.purchase_id, []).append(tx)
-    purchase_groups = [
-        {
-            "purchase_id": pid,
-            "transactions": sorted(group_txs, key=lambda t: t.price, reverse=True),
-            "total_price": sum(t.price for t in group_txs),
-            "total_fees": sum(t.fees or 0 for t in group_txs),
-            "min_date": min(t.date for t in group_txs),
-            "min_id": min(t.id for t in group_txs),
-        }
-        for pid, group_txs in groups.items()
-    ]
+    purchase_groups = []
+    for pid, group_txs in groups.items():
+        total_price = sum(t.price for t in group_txs)
+        # Every row in a group carries its own copy of the same value (same
+        # redundant-per-row pattern as date/platform) -- take whichever one
+        # isn't null, since not all of a group's rows are guaranteed to have
+        # it set (e.g. rows added before this field existed).
+        purchase_total = next((t.purchase_total for t in group_txs if t.purchase_total is not None), None)
+        purchase_groups.append(
+            {
+                "purchase_id": pid,
+                "transactions": sorted(group_txs, key=lambda t: t.price, reverse=True),
+                "total_price": total_price,
+                "total_fees": sum(t.fees or 0 for t in group_txs),
+                "purchase_total": purchase_total,
+                # What's left unaccounted for -- e.g. normal-print cards not
+                # priced individually yet. None when no declared total is set.
+                "diff": (purchase_total - total_price) if purchase_total is not None else None,
+                "min_date": min(t.date for t in group_txs),
+                "min_id": min(t.id for t in group_txs),
+            }
+        )
     purchase_groups.sort(key=lambda g: (g["min_date"], g["min_id"]))
     return purchase_groups, ungrouped
 
@@ -817,6 +828,7 @@ def create_purchase(
     date: str = Form(...),
     platform: str = Form(""),
     purchase_id: int = Form(...),
+    purchase_total: float | None = Form(None),
     card_id: list[int] = Form(default=[]),
     price: list[float] = Form(default=[]),
 ):
@@ -840,8 +852,27 @@ def create_purchase(
                     price=p,
                     platform=platform or None,
                     purchase_id=purchase_id,
+                    purchase_total=purchase_total,
                 )
             )
+        db.commit()
+        return RedirectResponse("/transactions", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/transactions/purchase/{purchase_id}/total")
+def set_purchase_total(purchase_id: int, purchase_total: float | None = Form(None)):
+    """Sets (or clears) the declared total for every row already sharing
+    this purchase_id -- the "avtalt" half of the registrert/avtalt/diff line
+    in Historikk, editable after the fact for purchases built up piecemeal
+    (e.g. via direct reconciliation) rather than through the cart form.
+    """
+    db = get_db_session()
+    try:
+        db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(
+            {"purchase_total": purchase_total}
+        )
         db.commit()
         return RedirectResponse("/transactions", status_code=303)
     finally:
