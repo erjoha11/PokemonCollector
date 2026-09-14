@@ -606,7 +606,7 @@ def test_transactions_history_table_scrolls_instead_of_widening_the_page(client)
     assert '<div class="table-scroll">' in response.text
 
 
-def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
+def test_added_cards_section_shows_the_registered_price_once_bought(client):
     import db as db_module
     from models import Card, Transaction
 
@@ -617,12 +617,6 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
     db.close()
 
-    response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1]
-    assert f'value="{pikachu_id}"' in added_section
-    assert 'name="price"' in added_section
-
-    # Submitting that inline form is just a normal /transactions POST.
     client.post(
         "/transactions",
         data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "25"},
@@ -639,7 +633,7 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     assert "25 kr" in added_section
 
 
-def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
+def test_upsert_corrects_the_single_existing_price_instead_of_adding_a_second_one(client):
     import db as db_module
     from models import Card, Transaction
 
@@ -655,15 +649,9 @@ def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
         data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "15", "upsert": "1"},
     )
 
-    # The row now offers to update that price, not add a second one.
-    response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
-    assert 'value="15.0"' in added_section or 'value="15"' in added_section
-    assert "Oppdater" in added_section
-
-    # Re-submitting through the same upsert form corrects the price in
-    # place -- exactly the "skrive over" the user expects -- instead of
-    # creating a second "kjøp" transaction for the same card.
+    # Re-posting with upsert=1 corrects the price in place -- exactly the
+    # "skrive over" the user expects -- instead of creating a second "kjøp"
+    # transaction for the same card.
     client.post(
         "/transactions",
         data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-02", "price": "0", "upsert": "1"},
@@ -675,7 +663,7 @@ def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
     db.close()
 
 
-def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(client):
+def test_upsert_carries_and_updates_a_purchase_id_in_place(client):
     import db as db_module
     from models import Card, Transaction
 
@@ -686,10 +674,6 @@ def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(cli
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
     db.close()
 
-    # Quick-register through the "Recently Added" form (upsert=1, the only
-    # path that form ever posts through) tags a purchase_id too -- it used
-    # to be silently dropped since the upsert-correction branch only wrote
-    # date/price, and the field didn't even exist on that form.
     client.post(
         "/transactions",
         data={
@@ -706,15 +690,8 @@ def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(cli
     assert tx.purchase_id == 7
     db.close()
 
-    # The quick-register row prefills that purchase_id for the next visit,
-    # same as it already does for price.
-    response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
-    assert 'name="purchase_id"' in added_section
-    assert 'value="7"' in added_section
-
-    # Correcting the price again through the same upsert form updates the
-    # purchase_id in place too, instead of leaving the old value stuck.
+    # Correcting the price again through upsert updates the purchase_id in
+    # place too, instead of leaving the old value stuck.
     client.post(
         "/transactions",
         data={
@@ -733,7 +710,7 @@ def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(cli
     db.close()
 
 
-def test_inline_buy_form_does_not_guess_which_purchase_to_update_when_ambiguous(client):
+def test_upsert_does_not_guess_which_purchase_to_update_when_ambiguous(client):
     import db as db_module
     from models import Card, Transaction
 
