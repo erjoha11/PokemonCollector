@@ -386,6 +386,48 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     assert 'diff <span class="tx-diff-open">40 kr</span>' in group_section
 
 
+def test_purchase_shipping_is_subtracted_from_the_diff(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    # 1000 kr for the card + 76 kr shipping = 1076 kr avtalt. Once shipping
+    # is accounted for, the diff should be 0, not 76 -- shipping isn't a
+    # missing card.
+    response = client.post(
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-01-01",
+            "purchase_id": "1",
+            "purchase_total": "1076",
+            "purchase_shipping": "76",
+            "card_id": [str(card_id)],
+            "price": ["1000"],
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.purchase_id == 1).one()
+    assert tx.purchase_shipping == 76
+    db.close()
+
+    text = client.get("/transactions").text
+    group_section = text.split("Kjøp #1", 1)[1]
+    assert "registrert 1 000 kr" in group_section
+    assert "frakt 76 kr" in group_section
+    assert "avtalt 1 076 kr" in group_section
+    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+
+
 def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     import db as db_module
     from models import Card, Transaction

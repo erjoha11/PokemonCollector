@@ -660,6 +660,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
         # isn't null, since not all of a group's rows are guaranteed to have
         # it set (e.g. rows added before this field existed).
         purchase_total = next((t.purchase_total for t in group_txs if t.purchase_total is not None), None)
+        purchase_shipping = next((t.purchase_shipping for t in group_txs if t.purchase_shipping is not None), None)
         purchase_groups.append(
             {
                 "purchase_id": pid,
@@ -667,9 +668,14 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "total_price": total_price,
                 "total_fees": sum(t.fees or 0 for t in group_txs),
                 "purchase_total": purchase_total,
-                # What's left unaccounted for -- e.g. normal-print cards not
-                # priced individually yet. None when no declared total is set.
-                "diff": (purchase_total - total_price) if purchase_total is not None else None,
+                "purchase_shipping": purchase_shipping,
+                # What's left unaccounted for once both the card prices and
+                # any declared shipping are subtracted -- e.g. normal-print
+                # cards not priced individually yet. None when no declared
+                # total is set (shipping alone doesn't imply a diff).
+                "diff": (
+                    (purchase_total - total_price - (purchase_shipping or 0)) if purchase_total is not None else None
+                ),
                 "min_date": min(t.date for t in group_txs),
                 "min_id": min(t.id for t in group_txs),
             }
@@ -829,6 +835,7 @@ def create_purchase(
     platform: str = Form(""),
     purchase_id: int = Form(...),
     purchase_total: float | None = Form(None),
+    purchase_shipping: float | None = Form(None),
     card_id: list[int] = Form(default=[]),
     price: list[float] = Form(default=[]),
 ):
@@ -853,6 +860,7 @@ def create_purchase(
                     platform=platform or None,
                     purchase_id=purchase_id,
                     purchase_total=purchase_total,
+                    purchase_shipping=purchase_shipping,
                 )
             )
         db.commit()
@@ -862,16 +870,19 @@ def create_purchase(
 
 
 @app.post("/transactions/purchase/{purchase_id}/total")
-def set_purchase_total(purchase_id: int, purchase_total: float | None = Form(None)):
-    """Sets (or clears) the declared total for every row already sharing
-    this purchase_id -- the "avtalt" half of the registrert/avtalt/diff line
-    in Historikk, editable after the fact for purchases built up piecemeal
-    (e.g. via direct reconciliation) rather than through the cart form.
+def set_purchase_total(
+    purchase_id: int, purchase_total: float | None = Form(None), purchase_shipping: float | None = Form(None)
+):
+    """Sets (or clears) the declared total and shipping cost for every row
+    already sharing this purchase_id -- the "avtalt"/frakt half of the
+    registrert/frakt/avtalt/diff line in Historikk, editable after the fact
+    for purchases built up piecemeal (e.g. via direct reconciliation)
+    rather than through the cart form.
     """
     db = get_db_session()
     try:
         db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(
-            {"purchase_total": purchase_total}
+            {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping}
         )
         db.commit()
         return RedirectResponse("/transactions", status_code=303)

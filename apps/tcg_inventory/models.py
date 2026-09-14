@@ -137,6 +137,10 @@ class Transaction(Base):
     # individually later, never bulk-estimated) show up as an unaccounted
     # remainder instead of silently vanishing.
     purchase_total: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Shipping cost for the whole purchase -- same redundant-per-row pattern
+    # as purchase_total, and subtracted alongside it when computing the diff
+    # above, so shipping doesn't masquerade as an unpriced card.
+    purchase_shipping: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
 
