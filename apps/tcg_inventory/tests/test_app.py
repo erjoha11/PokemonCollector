@@ -832,7 +832,9 @@ def test_import_then_dashboard_reflects_the_sync(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     response = client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
     assert response.status_code == 200
-    assert "Kort opprettet</td><td>1" in response.text
+    # The Synk-logg page is log-only now (no inline result summary) -- the
+    # sync still shows up as a new row in the log table.
+    assert "main.csv" in response.text
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
