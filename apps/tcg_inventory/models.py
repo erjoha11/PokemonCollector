@@ -130,6 +130,13 @@ class Transaction(Base):
     # order/session -- distinct from `id` (this row's own identity). Purely
     # informational: never set automatically, only ever what the user assigns.
     purchase_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # The agreed/full price for the whole purchase this row belongs to (same
+    # value redundantly stored on every row sharing a purchase_id, same
+    # pattern as date/platform above) -- lets Historikk show a "registrert
+    # vs. avtalt" diff per purchase, so missing normal-print cards (priced
+    # individually later, never bulk-estimated) show up as an unaccounted
+    # remainder instead of silently vanishing.
+    purchase_total: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
 

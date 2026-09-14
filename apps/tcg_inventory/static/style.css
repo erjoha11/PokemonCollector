@@ -147,6 +147,12 @@ tbody tr:hover td { background: var(--accent-wash); }
 .tx-badge-buy { background: rgba(42, 120, 214, 0.12); color: #1d5bb0; }
 .tx-badge-sell { background: rgba(235, 104, 52, 0.14); color: #b8501f; }
 
+/* Registrert-vs-avtalt diff on a purchase group -- flagged when nonzero
+   (money still unaccounted for, e.g. normal-print cards not priced yet),
+   neutral once the two sums match. */
+.tx-diff-open { color: #d03b3b; font-weight: 600; }
+.tx-diff-clear { color: var(--muted); }
+
 details.collapsible {
   margin-top: 1.5rem;
 }
