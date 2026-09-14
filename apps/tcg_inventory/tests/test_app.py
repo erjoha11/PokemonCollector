@@ -308,6 +308,42 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
     assert "Eevee" in ungrouped_section
 
 
+def test_purchase_groups_rank_items_by_price_and_order_groups_by_date(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}, {"id": "c", "name": "Bulbasaur"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    # Purchase 2 was tagged with the lower purchase_id, but it actually
+    # happened later (2026-02-01) -- Kjøp #<id> ordering must follow the
+    # date, not the purchase_id number.
+    for card_id, price in ((ids["a"], "10"), (ids["b"], "50")):
+        client.post(
+            "/transactions",
+            data={"card_id": card_id, "type": "kjøp", "date": "2026-02-01", "price": price, "purchase_id": "2"},
+        )
+    client.post(
+        "/transactions",
+        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-01-01", "price": "5", "purchase_id": "1"},
+    )
+
+    text = client.get("/transactions").text
+    assert text.index("Kjøp #1") < text.index("Kjøp #2")
+
+    # Within "Kjøp #2", the pricier card (Charizard, 50) ranks above the
+    # cheaper one (Pikachu, 10) regardless of registration order.
+    group_section = text.split("Kjøp #2", 1)[1]
+    assert group_section.index("Charizard") < group_section.index("Pikachu")
+
+
 def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     import datetime as dt
 
