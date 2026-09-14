@@ -109,6 +109,33 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     assert "50 kr" in first_pair  # the chart's end-label / tooltip value
 
 
+def test_dashboard_value_growth_chart_mirrors_the_analyse_pages_metric_filter(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu", "qty": 3, "price": "50"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    # Pills preserve every other table's sort state, not just the metric --
+    # same "keep everything else as-is" idiom sort_th links already use.
+    text = client.get("/?csort=name&cdir=asc").text
+    assert "Unik samling" in text
+    assert "Duplikater" in text
+    assert "Total" in text
+    assert 'class="viz-filter-pill active"' in text  # unique selected by default
+    assert "csort=name" in text
+    assert "metric=total" in text
+
+    total_page = client.get("/?metric=total&csort=name&cdir=asc")
+    assert total_page.status_code == 200
+    assert "Kumulativ verdi (Total)" in total_page.text
+    assert "150 kr" in total_page.text  # 3 * 50, the "total" metric's value
+
+    fallback_page = client.get("/?metric=not-a-real-metric")
+    assert fallback_page.status_code == 200
+    assert "Kumulativ verdi (Unik samling)" in fallback_page.text
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import", "/wiki", "/analyse"]:
         response = client.get(path)
