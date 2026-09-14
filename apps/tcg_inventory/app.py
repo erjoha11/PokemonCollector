@@ -571,13 +571,13 @@ TRANSACTION_SORT_KEYS = {
 }
 
 
-def _cards_grouped_by_added_date(db):
-    """Cards with a known `created_at`, grouped by calendar date -- these are
-    the actual "newly added" cards someone would come here to price. Cards
-    from before this column existed (`created_at` is None) have no real
-    added-date and are returned separately as a flat, unsorted-by-date bucket
-    for an optional/collapsed view, rather than dominating this list --
-    Inventory is already the place to browse the full collection.
+def _cards_with_known_added_date(db):
+    """Cards with a known `created_at` -- these are the actual "recently
+    added" cards someone would come here to price. Cards from before this
+    column existed (`created_at` is None) have no real added-date and are
+    returned separately as a flat, unsorted-by-date bucket for an
+    optional/collapsed view, rather than dominating this list -- Inventory
+    is already the place to browse the full collection.
     """
     known_cards = (
         db.query(Card)
@@ -586,16 +586,7 @@ def _cards_grouped_by_added_date(db):
         .all()
     )
     unknown_cards = db.query(Card).filter(Card.created_at.is_(None)).order_by(Card.id.desc()).all()
-
-    # Group consecutive cards under the same calendar date -- cheap since
-    # `known_cards` is already sorted by created_at desc.
-    groups: list[dict] = []
-    for card in known_cards:
-        label = card.created_at.date().isoformat()
-        if not groups or groups[-1]["label"] != label:
-            groups.append({"label": label, "cards": []})
-        groups[-1]["cards"].append(card)
-    return groups, unknown_cards
+    return known_cards, unknown_cards
 
 
 def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
@@ -615,9 +606,10 @@ def _registered_purchase_ids_by_card(txs) -> dict[int, list[int | None]]:
 
 
 def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None = None) -> dict:
-    """Sort keys for a flat list of Card rows -- used by both the "Kort lagt
-    til" date groups and the "Ukjent dato" table. `registered_price` is only
-    meaningful where that column is actually shown (Kort lagt til).
+    """Sort keys for a flat list of Card rows -- used by both the "Recently
+    Added" table and the "Ukjent dato" table. `registered_price` and `date`
+    are only meaningful where those columns are actually shown (Recently
+    Added).
     """
     keys = {
         "name": lambda c: c.name.lower(),
@@ -629,14 +621,14 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
     }
     if purchase_prices_by_card is not None:
         keys["registered_price"] = lambda c: max(purchase_prices_by_card.get(c.id, [-1]))
+        keys["date"] = lambda c: c.created_at
     return keys
 
 
 def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict], list[Transaction]]:
     """Split a transaction list into purchase-id groups (cards bought/sold
     together under a shared purchase_id, e.g. a lot) plus the remaining
-    ungrouped ones -- mirrors the "Kort lagt til" date-groups pattern, but
-    keyed on purchase_id instead of created_at.
+    ungrouped ones, keyed on purchase_id instead of created_at.
 
     Fixed display order, independent of the page's own tsort/tdir (which
     still governs the ungrouped table): each group's own cards rank by
@@ -683,8 +675,8 @@ def _transactions_context(
     request: Request,
     tsort: str,
     tdir: str,
-    gsort: str = "name",
-    gdir: str = "asc",
+    gsort: str = "date",
+    gdir: str = "desc",
     usort: str = "name",
     udir: str = "asc",
     error: str | None = None,
@@ -697,14 +689,13 @@ def _transactions_context(
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs)
-    groups, unknown_cards = _cards_grouped_by_added_date(db)
-    known_count = sum(len(g["cards"]) for g in groups)
+    known_cards, unknown_cards = _cards_with_known_added_date(db)
+    known_count = len(known_cards)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     purchase_ids_by_card = _registered_purchase_ids_by_card(txs)
 
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
-    for group in groups:
-        group["cards"] = _sorted_rows(group["cards"], gsort, gdir, card_keys)
+    known_cards = _sorted_rows(known_cards, gsort, gdir, card_keys)
     unknown_cards = _sorted_rows(unknown_cards, usort, udir, _card_field_sort_keys())
 
     return {
@@ -719,7 +710,7 @@ def _transactions_context(
         "gdir": gdir,
         "usort": usort,
         "udir": udir,
-        "groups": groups,
+        "known_cards": known_cards,
         "known_count": known_count,
         "unknown_cards": unknown_cards,
         "total_count": known_count + len(unknown_cards),
@@ -749,8 +740,8 @@ def list_transactions(
     request: Request,
     tsort: str = "date",
     tdir: str = "desc",
-    gsort: str = "name",
-    gdir: str = "asc",
+    gsort: str = "date",
+    gdir: str = "desc",
     usort: str = "name",
     udir: str = "asc",
 ):
@@ -903,7 +894,7 @@ def create_transaction(
                 ),
             )
 
-        # `upsert` comes only from the "Kort lagt til" quick-register form --
+        # `upsert` comes only from the "Recently Added" quick-register form --
         # re-submitting a price there is meant to correct the one already
         # registered, not add a second "kjøp" for the same card. Only
         # auto-update when there's exactly one existing kjøp to correct;

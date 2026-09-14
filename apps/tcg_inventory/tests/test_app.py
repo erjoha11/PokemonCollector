@@ -519,7 +519,7 @@ def test_transactions_page_groups_added_cards_by_date(client):
 
     response = client.get("/transactions")
     assert response.status_code == 200
-    assert "Kort lagt til" in response.text
+    assert "Recently Added" in response.text
     assert "Pikachu" in response.text
     assert "1 kort har en kjent dato" in response.text
 
@@ -545,7 +545,7 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     text = response.text
     # Collapsed by default (no `open` attribute) so the old back-catalog
     # doesn't dominate the page -- Pikachu (known date) sits in the always-
-    # visible "Kort lagt til" section, Charizard (no date) is tucked away.
+    # visible "Recently Added" section, Charizard (no date) is tucked away.
     assert "<details class=\"collapsible\">" in text
     assert "Resten av samlingen uten kjent dato (1 kort)" in text
     collapsed_section = text.split("<details class=\"collapsible\">", 1)[1]
@@ -576,7 +576,7 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     db.close()
 
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1]
+    added_section = response.text.split("Recently Added", 1)[1]
     assert f'value="{pikachu_id}"' in added_section
     assert 'name="price"' in added_section
 
@@ -590,10 +590,10 @@ def test_added_cards_section_has_an_inline_form_to_register_a_purchase(client):
     assert tx.price == 25
     db.close()
 
-    # And the "Kort lagt til" row now shows that already-registered price,
+    # And the "Recently Added" row now shows that already-registered price,
     # so a second visit doesn't risk double-registering the same card.
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
     assert "25 kr" in added_section
 
 
@@ -615,7 +615,7 @@ def test_inline_buy_form_prefills_and_updates_the_single_existing_price(client):
 
     # The row now offers to update that price, not add a second one.
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
     assert 'value="15.0"' in added_section or 'value="15"' in added_section
     assert "Oppdater" in added_section
 
@@ -644,7 +644,7 @@ def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(cli
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
     db.close()
 
-    # Quick-register through the "Kort lagt til" form (upsert=1, the only
+    # Quick-register through the "Recently Added" form (upsert=1, the only
     # path that form ever posts through) tags a purchase_id too -- it used
     # to be silently dropped since the upsert-correction branch only wrote
     # date/price, and the field didn't even exist on that form.
@@ -667,7 +667,7 @@ def test_inline_buy_form_carries_a_purchase_id_and_prefills_it_on_correction(cli
     # The quick-register row prefills that purchase_id for the next visit,
     # same as it already does for price.
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
     assert 'name="purchase_id"' in added_section
     assert 'value="7"' in added_section
 
@@ -724,7 +724,7 @@ def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
-    added_section = response.text.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
     assert "Registrert pris" in added_section
     # The Registrert pris cell is empty (unlike Referansepris, which does
     # show a value) -- no purchase has been registered for this card yet.
@@ -753,7 +753,7 @@ def test_transactions_table_can_be_sorted_by_column(client):
 
     def _table_body(html: str) -> str:
         # The historikk table is the only one wrapped in .table-scroll --
-        # the "Kort lagt til" and collapsed unknown-date tables above/below
+        # the "Recently Added" and collapsed unknown-date tables above/below
         # it have their own separately-sortable <tbody> blocks (gsort/usort).
         history = html.split('<div class="table-scroll">', 1)[1]
         return history.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
@@ -765,7 +765,7 @@ def test_transactions_table_can_be_sorted_by_column(client):
     assert text_desc.index("Zebra") < text_desc.index("Abra")  # 100 kr before 50 kr
 
 
-def test_kort_lagt_til_groups_can_be_sorted_by_column(client):
+def test_recently_added_table_can_be_sorted_by_column(client):
     main = make_csv(
         "My Collection",
         [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
@@ -773,7 +773,7 @@ def test_kort_lagt_til_groups_can_be_sorted_by_column(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     def _group_body(html: str) -> str:
-        section = html.split("Kort lagt til", 1)[1].split("Historikk", 1)[0]
+        section = html.split("Recently Added", 1)[1].split("Historikk", 1)[0]
         return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
     asc = _group_body(client.get("/transactions?gsort=name&gdir=asc").text)
