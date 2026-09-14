@@ -35,6 +35,63 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   <div class="card">
+    <h2>Verdiutvikling {{ info('Bruker dagens referansepris anvendt på datoen hvert kort ble lagt til -- en tilnærming, ikke en nøyaktig historisk verdi. Se Analyse for filter (unik/duplikater/total) og full oversikt.', below=true) }}</h2>
+    <div class="viz-root">
+    {% if value_chart.points %}
+    <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Kumulativ verdiutvikling over tid">
+      {% for y, label in value_chart.y_ticks %}
+      <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ value_chart.width - 16 }}" y2="{{ y }}"></line>
+      <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
+      {% endfor %}
+      {% for x, label in value_chart.x_labels %}
+      <text class="viz-axis-label" x="{{ x }}" y="{{ value_chart.height - 8 }}" text-anchor="middle">{{ label }}</text>
+      {% endfor %}
+      <path class="viz-area" d="{{ value_chart.area_path }}" fill="var(--viz-series-1)"></path>
+      <path class="viz-line" d="{{ value_chart.line_path }}" stroke="var(--viz-series-1)" fill="none"></path>
+      {% for x, y in value_chart.points %}
+      {% set row = value_growth[loop.index0] %}
+      <circle class="viz-hit" cx="{{ x }}" cy="{{ y }}" r="9" fill="transparent">
+        <title>{{ row.label }}: {{ row.cumulative_value | kr }}</title>
+      </circle>
+      {% endfor %}
+      {% if value_chart.end_point %}
+      <circle class="viz-dot" cx="{{ value_chart.end_point[0] }}" cy="{{ value_chart.end_point[1] }}" r="5" fill="var(--viz-series-1)" stroke="var(--surface)" stroke-width="2"></circle>
+      <text class="viz-end-label" x="{{ value_chart.end_point[0] }}" y="{{ value_chart.end_point[1] - 10 }}" text-anchor="end">{{ value_chart.end_label }} kr</text>
+      {% endif %}
+    </svg>
+    {% else %}
+    <p class="muted">Ingen data ennå.</p>
+    {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest referansepris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in top_cards %}
+        <tr>
+          <td>{{ dex_link(card) }}</td>
+          <td>{{ card.number or '' }}</td>
+          <td>{{ filter_link('set', card.set) }}</td>
+          <td class="num">{{ card.reference_price | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  </div>
+
+  <div class="card-pair">
+  <div class="card">
     <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = referansepris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
     <table>
       <thead>
@@ -85,30 +142,6 @@
         </tr>
         {% for card in bulk.cards %}
         {{ card_leaf_row(card, 'grandchild-row', 'coll-bulk') }}
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <div class="card">
-    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest referansepris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for card in top_cards %}
-        <tr>
-          <td>{{ dex_link(card) }}</td>
-          <td>{{ card.number or '' }}</td>
-          <td>{{ filter_link('set', card.set) }}</td>
-          <td class="num">{{ card.reference_price | kr }}</td>
-        </tr>
         {% endfor %}
       </tbody>
     </table>
