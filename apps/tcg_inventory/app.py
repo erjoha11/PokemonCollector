@@ -225,6 +225,14 @@ def dashboard(
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
+        # Compact preview of the Analyse page's value-growth chart -- always
+        # the "unique" metric, no filter controls (see /analyse for that).
+        value_growth = queries.collection_value_growth(db, cards)
+        value_chart = charts.build_line_chart(
+            labels=[row["label"] for row in value_growth],
+            values=[row["cumulative_value"] for row in value_growth],
+        )
+
         # Bucket rows (collection, series, set, rarity) always keep their
         # default order from queries.py -- clicking a column header only
         # re-sorts the cards nested inside each bucket, never the buckets
@@ -282,6 +290,8 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
+                "value_growth": value_growth,
+                "value_chart": value_chart,
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
                 "favorite_breakdown": favorite_breakdown,

@@ -85,6 +85,30 @@ def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
     assert "info-tooltip" in text
 
 
+def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_below(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "50"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    db.query(Card).update({"created_at": dt.datetime(2026, 1, 10)})
+    db.commit()
+    db.close()
+
+    text = client.get("/").text
+    assert "Verdiutvikling" in text
+    # Verdiutvikling is paired with "Topp 10 mest verdifulle kort" (both come
+    # before Inventory, which now gets its own full-width row below them).
+    first_pair = text.split("Verdiutvikling", 1)[1].split("Inventory", 1)[0]
+    assert "Topp 10 mest verdifulle kort" in first_pair
+    assert 'class="viz-chart"' in first_pair
+    assert "50 kr" in first_pair  # the chart's end-label / tooltip value
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import", "/wiki", "/analyse"]:
         response = client.get(path)
