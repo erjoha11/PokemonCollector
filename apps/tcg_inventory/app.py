@@ -653,6 +653,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
         # it set (e.g. rows added before this field existed).
         purchase_total = next((t.purchase_total for t in group_txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in group_txs if t.purchase_shipping is not None), None)
+        note = next((t.note for t in group_txs if t.note), None)
         purchase_groups.append(
             {
                 "purchase_id": pid,
@@ -661,6 +662,9 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "total_fees": sum(t.fees or 0 for t in group_txs),
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
+                "note": note,
+                "type": group_txs[0].type,
+                "platform": next((t.platform for t in group_txs if t.platform), None),
                 # What's left unaccounted for once both the card prices and
                 # any declared shipping are subtracted -- e.g. normal-print
                 # cards not priced individually yet. None when no declared
@@ -779,6 +783,51 @@ def purchase_cart_start(request: Request, type: str = "kjøp"):
                 "type": type if type in ("kjøp", "salg") else "kjøp",
                 "purchase_id": _next_purchase_id(db),
                 "today": dt.date.today().isoformat(),
+                "editing": False,
+                "platform": "",
+                "purchase_total": None,
+                "purchase_shipping": None,
+                "note": "",
+                "rows": [],
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/transactions/purchase/{purchase_id}/edit")
+def purchase_cart_edit(request: Request, purchase_id: int):
+    """Re-opens an existing Kjøp/Salg group in the same cart UI used to
+    create one -- every row carries its transaction id (see
+    purchase_cart_row.html) so the submit back to create_purchase can tell
+    "update this row" apart from "insert a new one" and drop any row the
+    user removes with "Fjern" while editing.
+    """
+    db = get_db_session()
+    try:
+        txs = (
+            db.query(Transaction)
+            .options(selectinload(Transaction.card))
+            .filter(Transaction.purchase_id == purchase_id)
+            .order_by(Transaction.price.desc())
+            .all()
+        )
+        if not txs:
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_cart.html",
+            {
+                "type": txs[0].type,
+                "purchase_id": purchase_id,
+                "today": dt.date.today().isoformat(),
+                "editing": True,
+                "date": txs[0].date.isoformat(),
+                "platform": next((t.platform for t in txs if t.platform), "") or "",
+                "purchase_total": next((t.purchase_total for t in txs if t.purchase_total is not None), None),
+                "purchase_shipping": next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None),
+                "note": next((t.note for t in txs if t.note), "") or "",
+                "rows": txs,
             },
         )
     finally:
@@ -827,9 +876,18 @@ def create_purchase(
     purchase_id: int = Form(...),
     purchase_total: float | None = Form(None),
     purchase_shipping: float | None = Form(None),
+    note: str = Form(""),
+    tx_id: list[str] = Form(default=[]),
     card_id: list[int] = Form(default=[]),
     price: list[float] = Form(default=[]),
 ):
+    """Creates a new purchase/sale group, or -- when the cart was opened via
+    purchase_cart_edit -- updates one already on record. Each row carries an
+    optional tx_id (see purchase_cart_row.html): blank means "insert", a
+    number means "update that transaction". Any row that belonged to this
+    purchase_id before the submit but isn't in the submitted set anymore was
+    removed with "Fjern" while editing, so it's deleted here.
+    """
     db = get_db_session()
     try:
         if len(card_id) != len(price) or not card_id:
@@ -841,9 +899,24 @@ def create_purchase(
                 ),
             )
         tx_date = dt.date.fromisoformat(date)
-        for cid, p in zip(card_id, price):
-            db.add(
-                Transaction(
+        note_value = note.strip() or None
+        if not tx_id:
+            tx_id = [""] * len(card_id)
+        kept_ids: list[int] = []
+        for tid, cid, p in zip(tx_id, card_id, price):
+            existing = db.query(Transaction).filter(Transaction.id == int(tid)).one_or_none() if tid else None
+            if existing is not None:
+                existing.card_id = cid
+                existing.type = type
+                existing.date = tx_date
+                existing.price = p
+                existing.platform = platform or None
+                existing.purchase_total = purchase_total
+                existing.purchase_shipping = purchase_shipping
+                existing.note = note_value
+                kept_ids.append(existing.id)
+            else:
+                new_tx = Transaction(
                     card_id=cid,
                     type=type,
                     date=tx_date,
@@ -852,29 +925,16 @@ def create_purchase(
                     purchase_id=purchase_id,
                     purchase_total=purchase_total,
                     purchase_shipping=purchase_shipping,
+                    note=note_value,
                 )
-            )
-        db.commit()
-        return RedirectResponse("/transactions", status_code=303)
-    finally:
-        db.close()
-
-
-@app.post("/transactions/purchase/{purchase_id}/total")
-def set_purchase_total(
-    purchase_id: int, purchase_total: float | None = Form(None), purchase_shipping: float | None = Form(None)
-):
-    """Sets (or clears) the declared total and shipping cost for every row
-    already sharing this purchase_id -- the "avtalt"/frakt half of the
-    registrert/frakt/avtalt/diff line in Historikk, editable after the fact
-    for purchases built up piecemeal (e.g. via direct reconciliation)
-    rather than through the cart form.
-    """
-    db = get_db_session()
-    try:
-        db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(
-            {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping}
-        )
+                db.add(new_tx)
+                db.flush()
+                kept_ids.append(new_tx.id)
+        # Editing an existing group: drop any of its rows the user removed
+        # via "Fjern" that didn't come back in this submit.
+        db.query(Transaction).filter(
+            Transaction.purchase_id == purchase_id, Transaction.id.notin_(kept_ids)
+        ).delete(synchronize_session=False)
         db.commit()
         return RedirectResponse("/transactions", status_code=303)
     finally:

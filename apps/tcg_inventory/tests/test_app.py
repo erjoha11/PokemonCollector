@@ -428,42 +428,113 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
 
 
-def test_purchase_total_can_be_set_on_an_existing_purchase(client):
+def test_purchase_edit_button_opens_a_prefilled_cart_for_an_existing_purchase(client):
     import db as db_module
-    from models import Card, Transaction
+    from models import Card
 
-    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
-    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
     db.close()
 
     client.post(
-        "/transactions",
-        data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-01-01",
+            "platform": "Kortmesse",
+            "purchase_id": "6",
+            "purchase_total": "10",
+            "note": "Kjøpt av Bård",
+            "card_id": [str(ids["a"])],
+            "price": ["10"],
+        },
     )
 
-    # No declared total yet -- no diff shown, just what's registered.
-    text = client.get("/transactions").text
-    group_section = text.split("Kjøp #6", 1)[1]
-    assert "avtalt" not in group_section.split("</summary>", 1)[0]
+    # History shows the note straight away, without opening the editor.
+    history = client.get("/transactions").text
+    group_section = history.split("Kjøp #6", 1)[1]
+    assert "Kjøpt av Bård" in group_section
 
+    edit = client.get("/transactions/purchase/6/edit")
+    assert edit.status_code == 200
+    assert "Rediger kjøp" in edit.text
+    assert "Kortmesse" in edit.text
+    assert "Kjøpt av Bård" in edit.text
+    assert "Avtalt totalsum" in edit.text
+    assert 'name="purchase_total"' in edit.text
+    assert 'value="10.0"' in edit.text  # the declared total prefilled
+    assert "Pikachu" in edit.text
+    assert f'name="card_id" value="{ids["a"]}"' in edit.text
+    tx_id_match = re.search(r'name="tx_id" value="(\d+)"', edit.text)
+    assert tx_id_match is not None
+
+
+def test_editing_a_purchase_updates_its_rows_and_drops_removed_ones(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    client.post(
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-01-01",
+            "purchase_id": "9",
+            "card_id": [str(ids["a"]), str(ids["b"])],
+            "price": ["10", "20"],
+        },
+    )
+    db = db_module.SessionLocal()
+    kept_id = db.query(Transaction).filter(Transaction.card_id == ids["a"]).one().id
+    db.close()
+
+    # Re-submit as an edit: correct the kept row's price, drop the other
+    # (simulating "Fjern" during editing), and add a note + declared total.
     response = client.post(
-        "/transactions/purchase/6/total", data={"purchase_total": "10"}, follow_redirects=True
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-01-02",
+            "purchase_id": "9",
+            "purchase_total": "15",
+            "note": "Rettet i etterkant",
+            "tx_id": [str(kept_id)],
+            "card_id": [str(ids["a"])],
+            "price": ["15"],
+        },
+        follow_redirects=True,
     )
     assert response.status_code == 200
 
     db = db_module.SessionLocal()
-    tx = db.query(Transaction).filter(Transaction.purchase_id == 6).one()
-    assert tx.purchase_total == 10
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 9).all()
+    assert len(txs) == 1
+    assert txs[0].id == kept_id  # updated in place, not deleted + recreated
+    assert txs[0].price == 15
+    assert txs[0].date.isoformat() == "2026-01-02"
+    assert txs[0].purchase_total == 15
+    assert txs[0].note == "Rettet i etterkant"
     db.close()
 
-    # Registrert equals avtalt now -- diff is 0, shown as "cleared" not flagged.
     text = client.get("/transactions").text
-    group_section = text.split("Kjøp #6", 1)[1]
-    assert "avtalt 10 kr" in group_section
-    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+    group_section = text.split("Kjøp #9", 1)[1].split("</details>", 1)[0]
+    assert "Charizard" not in group_section
+    assert "Rettet i etterkant" in group_section
 
 
 def test_purchase_cart_start_shows_the_next_free_purchase_id(client):

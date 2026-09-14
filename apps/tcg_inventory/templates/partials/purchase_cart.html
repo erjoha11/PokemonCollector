@@ -1,17 +1,32 @@
 <div class="card" style="margin-bottom: 1.5rem;">
-  <h2>Nytt {{ 'kjøp' if type == 'kjøp' else 'salg' }} <span class="muted">(Kjøps-ID {{ purchase_id }})</span></h2>
+  <h2>{{ 'Rediger' if editing else 'Nytt' }} {{ 'kjøp' if type == 'kjøp' else 'salg' }} <span class="muted">(Kjøps-ID {{ purchase_id }})</span></h2>
   <form method="post" action="/transactions/purchase">
     <input type="hidden" name="type" value="{{ type }}">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
-      <input type="date" name="date" value="{{ today }}" required>
-      <input type="text" name="platform" placeholder="Platform (valgfritt)">
-      <input type="number" step="0.01" name="purchase_total" placeholder="Avtalt totalsum (valgfritt)"
-             title="Hele beløpet du betalte for kjøpet -- brukes til å vise diff mot summen av det du faktisk har registrert kort for.">
-      <input type="number" step="0.01" name="purchase_shipping" placeholder="Frakt (valgfritt)"
-             title="Fraktkostnad for hele kjøpet -- trekkes fra sammen med kortsummen når diff mot avtalt totalsum regnes ut.">
+      <label class="field-label">Dato
+        <input type="date" name="date" value="{{ date or today }}" required>
+      </label>
+      <label class="field-label">Platform
+        <input type="text" name="platform" placeholder="Valgfritt" value="{{ platform or '' }}">
+      </label>
+      <label class="field-label">Avtalt totalsum
+        <input type="number" step="0.01" name="purchase_total" placeholder="Valgfritt"
+               title="Hele beløpet du betalte for kjøpet -- brukes til å vise diff mot summen av det du faktisk har registrert kort for."
+               value="{{ purchase_total if purchase_total is not none else '' }}">
+      </label>
+      <label class="field-label">Frakt
+        <input type="number" step="0.01" name="purchase_shipping" placeholder="Valgfritt"
+               title="Fraktkostnad for hele kjøpet -- trekkes fra sammen med kortsummen når diff mot avtalt totalsum regnes ut."
+               value="{{ purchase_shipping if purchase_shipping is not none else '' }}">
+      </label>
     </div>
+
+    <label class="field-label field-label-wide" style="margin: 0.6rem 0;">Notat
+      <textarea name="note" placeholder="Valgfritt -- f.eks. selger eller kontekst rundt kjøpet"
+                style="width: 100%; min-height: 3rem;">{{ note or '' }}</textarea>
+    </label>
 
     <div class="autocomplete" style="max-width: 420px; margin: 0.75rem 0;">
       <input type="text" placeholder="Søk kort å legge til (navn eller card id)..." autocomplete="off"
@@ -25,6 +40,12 @@
         <tr><th>Kort</th><th class="num">Pris</th><th></th></tr>
       </thead>
       <tbody id="cart-body">
+        {% for tx in rows %}
+        {% set card = tx.card %}
+        {% set tx_id = tx.id %}
+        {% set price = tx.price %}
+        {% include "partials/purchase_cart_row.html" %}
+        {% endfor %}
       </tbody>
     </table>
 
@@ -33,7 +54,7 @@
       <button type="button" onclick="distributeRemaining()">Fordel jevnt på tomme priser</button>
     </div>
 
-    <button type="submit">Registrer {{ 'kjøpet' if type == 'kjøp' else 'salget' }}</button>
+    <button type="submit">{{ 'Lagre endringer' if editing else ('Registrer kjøpet' if type == 'kjøp' else 'Registrer salget') }}</button>
     <button type="button" onclick="document.getElementById('purchase-cart-container').innerHTML=''">Avbryt</button>
   </form>
 </div>

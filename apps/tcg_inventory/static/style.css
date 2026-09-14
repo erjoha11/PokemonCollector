@@ -509,6 +509,18 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 3px var(--accent-wash);
 }
 
+/* A tiny caption above a filter-row input, for forms where several fields
+   look identical once filled in (e.g. two currency inputs side by side)
+   and a placeholder alone can no longer tell them apart. */
+.field-label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.field-label.field-label-wide { display: flex; }
+
 .warnings {
   background: #fff8ea;
   border: 1px solid #f0d999;

@@ -132,13 +132,11 @@
       ({{ group.transactions | length }} kort · registrert {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %}{% if group.purchase_shipping %} · frakt {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · avtalt {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %})
     </span>
   </summary>
-  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;">
-    <input type="number" step="0.01" name="purchase_total" placeholder="Avtalt totalsum"
-           value="{{ group.purchase_total if group.purchase_total is not none else '' }}" style="width: 160px;">
-    <input type="number" step="0.01" name="purchase_shipping" placeholder="Frakt"
-           value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" style="width: 130px;">
-    <button type="submit">{{ 'Oppdater' if group.purchase_total is not none or group.purchase_shipping is not none else 'Sett' }} totalsum/frakt</button>
-  </form>
+  <div class="filters" style="margin-bottom: 0.6rem;">
+    <button type="button" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit" hx-target="#purchase-cart-container" hx-swap="innerHTML"
+            onclick="document.getElementById('purchase-cart-container').scrollIntoView({behavior: 'smooth'})">Rediger kjøp</button>
+    {% if group.note %}<span class="muted">📝 {{ group.note }}</span>{% endif %}
+  </div>
   {{ tx_table(group.transactions, 'Ingen transaksjoner i dette kjøpet.', sortable=False) }}
 </details>
 {% endfor %}

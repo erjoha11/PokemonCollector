@@ -141,6 +141,9 @@ class Transaction(Base):
     # as purchase_total, and subtracted alongside it when computing the diff
     # above, so shipping doesn't masquerade as an unpriced card.
     purchase_shipping: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Free-text note about the whole purchase (e.g. seller, context) -- same
+    # redundant-per-row pattern as purchase_total/purchase_shipping.
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
 
