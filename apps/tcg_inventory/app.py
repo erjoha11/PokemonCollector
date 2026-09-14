@@ -196,6 +196,16 @@ def get_db_session() -> Session:
 # --------------------------------------------------------------------------
 # Dashboard
 # --------------------------------------------------------------------------
+def _metric_url(request: Request, metric_key: str) -> str:
+    """A dashboard link that switches the Verdiutvikling chart's metric,
+    preserving every other query param (each table's own sort state) --
+    same "keep everything else as-is" idiom as `_sort_url` above.
+    """
+    params = dict(request.query_params)
+    params["metric"] = metric_key
+    return "/?" + urlencode(params)
+
+
 @app.get("/")
 def dashboard(
     request: Request,
@@ -211,7 +221,10 @@ def dashboard(
     fdir: str = "asc",
     tsort: str = "reference_price",
     tdir: str = "desc",
+    metric: str = "unique",
 ):
+    if metric not in queries.VALUE_GROWTH_METRICS:
+        metric = "unique"
     db = get_db_session()
     try:
         # Loaded once and threaded through every breakdown below, instead of
@@ -225,13 +238,18 @@ def dashboard(
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
-        # Compact preview of the Analyse page's value-growth chart -- always
-        # the "unique" metric, no filter controls (see /analyse for that).
-        value_growth = queries.collection_value_growth(db, cards)
+        # Mirrors the Analyse page's value-growth chart, filter pills
+        # included -- see /analyse for the full economic breakdown this is
+        # a compact preview of.
+        value_growth = queries.collection_value_growth(db, cards, metric=metric)
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
             values=[row["cumulative_value"] for row in value_growth],
         )
+        metric_label = queries.VALUE_GROWTH_METRICS[metric][0]
+        metric_options = [
+            (key, label, _metric_url(request, key)) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
+        ]
 
         # Bucket rows (collection, series, set, rarity) always keep their
         # default order from queries.py -- clicking a column header only
@@ -292,6 +310,9 @@ def dashboard(
                 "rarity_breakdown": rarity_breakdown,
                 "value_growth": value_growth,
                 "value_chart": value_chart,
+                "metric": metric,
+                "metric_label": metric_label,
+                "metric_options": metric_options,
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
                 "favorite_breakdown": favorite_breakdown,
