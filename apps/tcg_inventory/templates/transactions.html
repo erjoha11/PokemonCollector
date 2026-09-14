@@ -127,7 +127,7 @@
 
 {% for group in purchase_groups %}
 <details class="collapsible" style="margin-bottom: 0.75rem;">
-  <summary>Kjøp #{{ group.purchase_id }}
+  <summary>Ordre #{{ group.purchase_id }}
     <span class="muted">
       ({{ group.transactions | length }} kort · registrert {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %}{% if group.purchase_shipping %} · frakt {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · avtalt {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %})
     </span>
