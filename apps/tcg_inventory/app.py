@@ -23,6 +23,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+APP_DIR = Path(__file__).resolve().parent
+load_dotenv(APP_DIR / ".env")
+
 import auth
 import charts
 import dropbox_client
@@ -39,9 +42,6 @@ from models import (
     SetReleaseOrder,
     Transaction,
 )
-
-APP_DIR = Path(__file__).resolve().parent
-load_dotenv(APP_DIR / ".env")
 
 
 @asynccontextmanager
@@ -632,10 +632,10 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
 
     Fixed display order, independent of the page's own tsort/tdir (which
     still governs the ungrouped table): each group's own cards rank by
-    price, priciest first, and the groups themselves are ordered
-    chronologically by (earliest date, earliest transaction id) in that
-    group -- so "Kjøp #1" is whichever purchase actually happened first,
-    not whichever has the lowest purchase_id number.
+    price, priciest first, and the groups themselves are ordered by
+    purchase_id descending -- so the highest-numbered (most recent)
+    purchase shows first, letting the user renumber purchase_id to
+    control display order directly.
     """
     groups: dict[int, list[Transaction]] = {}
     ungrouped: list[Transaction] = []
@@ -672,7 +672,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "min_id": min(t.id for t in group_txs),
             }
         )
-    purchase_groups.sort(key=lambda g: (g["min_date"], g["min_id"]))
+    purchase_groups.sort(key=lambda g: g["purchase_id"], reverse=True)
     return purchase_groups, ungrouped
 
 

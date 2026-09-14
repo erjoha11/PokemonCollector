@@ -5,3 +5,6 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 *.db
+.claude/settings.local.json
+apps/tcg_inventory/.env.local
+apps/tcg_inventory/.vercel/
