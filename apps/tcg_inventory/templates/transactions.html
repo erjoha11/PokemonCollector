@@ -7,40 +7,12 @@
 
 {% if error %}<p class="warnings">{{ error }}</p>{% endif %}
 
-<form method="post" action="/transactions" class="filters" style="align-items:flex-start; flex-direction:column;">
-  <div class="filters" style="width: 100%;">
-    <div class="autocomplete" style="width: 320px;">
-      <input type="text" id="card_search" placeholder="Søk kort (navn eller card id)" autocomplete="off"
-             hx-get="/transactions/card-search" hx-trigger="keyup changed delay:250ms" hx-target="#card-search-results"
-             name="q">
-      <div id="card-search-results"></div>
-      <input type="hidden" id="card_id" name="card_id" required>
-    </div>
-    <span class="muted">eller</span>
-    <select id="recent_card_select" style="width: 320px;"
-            onchange="if(!this.value)return; var opt=this.options[this.selectedIndex]; document.getElementById('card_id').value=this.value; document.getElementById('card_search').value=opt.dataset.label;">
-      <option value="">Velg et nylig lagt til kort...</option>
-      {% for card in recent_cards %}
-      <option value="{{ card.id }}" data-label="{{ card.name }} ({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})">
-        {{ card.name }} — {{ card.set }}{% if card.variant %} ({{ card.variant }}){% endif %} · {{ card.created_at.date().isoformat() }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-
-  <div class="filters">
-    <select name="type" required>
-      <option value="kjøp">Kjøp</option>
-      <option value="salg">Salg</option>
-    </select>
-    <input type="date" name="date" value="{{ today }}" required>
-    <input type="number" step="0.01" name="price" placeholder="Pris" required>
-    <input type="text" name="platform" placeholder="Platform (valgfritt)">
-    <input type="number" step="0.01" name="fees" placeholder="Gebyr (valgfritt)">
-    <input type="number" step="1" name="purchase_id" placeholder="Kjøps-ID (valgfritt)" title="Samme tall på flere transaksjoner = kjøpt sammen">
-    <button type="submit">Registrer</button>
-  </div>
-</form>
+<div class="filters" style="margin-bottom: 1rem;">
+  <button type="button" hx-get="/transactions/purchase/start?type=kjøp" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ Nytt kjøp</button>
+  <button type="button" hx-get="/transactions/purchase/start?type=salg" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ Nytt salg</button>
+  <span class="muted">Søk opp hvert kort som var med i handelen og legg dem til én og én -- de deler automatisk samme Kjøps-ID.</span>
+</div>
+<div id="purchase-cart-container"></div>
 
 <h2>Kort lagt til {{ info('Referansepris = Dex sin markedspris. Registrert pris = det du faktisk har registrert at du betalte for kortet (kan avvike fra referanseprisen).') }}</h2>
 <p class="muted">
@@ -193,4 +165,24 @@
     </table>
   </div>
 </details>
+
+<script>
+// Splits the "Sum for resten" amount evenly across every still-empty price
+// input in the purchase-cart table -- the "one lump sum, fordel automatisk"
+// half of registering a purchase (the other half: type a known price
+// straight into a row as you add it, and that row is left untouched here).
+function distributeRemaining() {
+  var sumInput = document.getElementById('remaining_sum');
+  var sum = parseFloat(sumInput.value);
+  if (isNaN(sum)) return;
+  var empties = Array.prototype.filter.call(
+    document.querySelectorAll('#cart-body input[name="price"]'),
+    function (el) { return el.value.trim() === ''; }
+  );
+  if (empties.length === 0) return;
+  var each = Math.round((sum / empties.length) * 100) / 100;
+  empties.forEach(function (el) { el.value = each; });
+  sumInput.value = '';
+}
+</script>
 {% endblock %}
