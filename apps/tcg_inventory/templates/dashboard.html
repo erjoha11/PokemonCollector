@@ -35,7 +35,7 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   <div class="card viz-root" id="dashboard-value-growth-card">
-    <h2>Verdiutvikling {{ info('Bruker dagens referansepris anvendt på datoen hvert kort ble lagt til -- en tilnærming, ikke en nøyaktig historisk verdi. Se Analyse for full økonomisk oversikt.', below=true) }}</h2>
+    <h2>Verdiutvikling {{ info('Bruker dagens pris anvendt på datoen hvert kort ble lagt til -- en tilnærming, ikke en nøyaktig historisk verdi. Se Analyse for full økonomisk oversikt.', below=true) }}</h2>
     <div class="viz-filter">
       {% for key, label, href in metric_options %}
       <a href="{{ href }}"
@@ -86,14 +86,14 @@
   </div>
 
   <div class="card">
-    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest referansepris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
+    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest pris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
           <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
           <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
           <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th class="num">{{ sort_th('Referansepris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th class="num">{{ sort_th('Pris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
         </tr>
       </thead>
       <tbody>
@@ -112,7 +112,7 @@
 
   <div class="card-pair">
   <div class="card">
-    <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = referansepris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
+    <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = pris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
     <table>
       <thead>
         <tr>

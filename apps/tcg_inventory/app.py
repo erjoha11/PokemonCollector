@@ -114,6 +114,7 @@ SORT_COLUMNS = {
     "set": Card.set,
     "reference_price": Card.reference_price,
     "qty": Card.qty,
+    "total_value": Card.qty * func.coalesce(Card.reference_price, 0),
     "rarity": Card.rarity,
     "illustrator": Card.illustrator,
     "language": Card.language,

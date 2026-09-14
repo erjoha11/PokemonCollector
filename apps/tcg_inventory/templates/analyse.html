@@ -22,7 +22,7 @@
 
   <div class="kpi-card">
     {% set delta = headline.unique_value - summary.net_invested %}
-    <h3>Papirgevinst/tap {{ info('Nåværende verdi minus netto investert. Ikke realisert -- sammenligner dagens referansepris med det du faktisk betalte, ikke et faktisk salg.', align_right=true) }}</h3>
+    <h3>Papirgevinst/tap {{ info('Nåværende verdi minus netto investert. Ikke realisert -- sammenligner dagens pris med det du faktisk betalte, ikke et faktisk salg.', align_right=true) }}</h3>
     <div class="kpi-hero"><span class="value {{ 'viz-delta-gain' if delta >= 0 else 'viz-delta-loss' }}">{{ delta | kr }}</span></div>
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">{{ 'Gevinst (på papiret)' if delta >= 0 else 'Tap (på papiret)' }}</span></div>
@@ -33,7 +33,7 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   <div class="card" id="value-growth-card">
-    <h2>Samlingens verdiutvikling {{ info('Bruker dagens referansepris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
+    <h2>Samlingens verdiutvikling {{ info('Bruker dagens pris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
     <div class="viz-filter">
       {% for key, label in metric_options %}
       <a href="/analyse?metric={{ key }}"
