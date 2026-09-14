@@ -821,7 +821,7 @@ def test_dashboard_pokemon_table_shows_set_and_series_for_a_single_print(client)
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_section.split("Topp 10", 1)[1]
     row = top10_section.split("Magikarp", 1)[1].split("</tr>", 1)[0]
     assert "<td>Paldea Evolved</td>" in row or "Paldea Evolved</a>" in row
@@ -839,7 +839,7 @@ def test_dashboard_pokemon_table_shows_flere_when_bucket_spans_multiple_sets(cli
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_section.split("Topp 10", 1)[1]
     bucket_row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "Flere" in bucket_row
@@ -860,7 +860,7 @@ def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
     # 11 distinct species exist, but only 10 rows show -- Species0 (3 unique)
     # always makes it in, so exactly one of Species1..10 is excluded.
     shown = sum(1 for i in range(11) if f">Species{i}<" in pokemon_section)
@@ -873,12 +873,12 @@ def test_pokemon_favorite_can_be_toggled_on_and_off(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1]
     assert 'class="favorite-star active"' in pokemon_section
 
     # Toggling again removes it.
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
-    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_section = response.text.split("<h2>Pokemon ", 1)[1]
     assert 'class="favorite-star active"' not in pokemon_section
     assert 'class="favorite-star"' in pokemon_section
 
@@ -911,7 +911,7 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
     client.post("/pokemon/favorite", data={"name": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
@@ -977,7 +977,7 @@ def test_merging_an_evolution_family_into_one_folder(client):
     client.post("/pokemon/merge", data={"name": "Slowking", "canonical": "Slowbro"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert top10_section.count('class="row-toggle-name"') == 1
     assert "Slowbro</button>" in top10_section
@@ -994,7 +994,7 @@ def test_merging_pokemon_groups_them_into_one_bucket(client):
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # "Dark Celebi" no longer has its own bucket -- both cards count under the
     # single "Celebi" bucket, with "Dark Celebi" still visible as a nested
@@ -1016,7 +1016,7 @@ def test_merging_pokemon_migrates_an_existing_favorite(client):
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
@@ -1041,7 +1041,7 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
     client.post("/pokemon/merge", data={"name": "Sandslash", "canonical": "Sand Rat"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # Only one bucket now -- neither alias name surfaces as its own top-level row.
     assert top10_section.count('class="row-toggle-name"') == 1
@@ -1074,7 +1074,7 @@ def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):
     assert response.status_code == 200
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     # Still a single bucket, rooted at "Dark Celebi" (the first merge's
     # target) -- the reverse merge attempt changed nothing.
@@ -1096,7 +1096,7 @@ def test_unmerging_a_pokemon_restores_its_own_bucket(client):
     client.post("/pokemon/unmerge", data={"name": "Dark Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert "Dark Celebi" in top10_section
 
@@ -1113,7 +1113,7 @@ def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(
     client.post("/pokemon/favorite", data={"name": "Dark Celebi"})
 
     dashboard = client.get("/")
-    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1].split("<h2>", 1)[0]
+    pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     assert "Favoritter" in pokemon_card
     favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
     assert "Celebi" in favorites_section
