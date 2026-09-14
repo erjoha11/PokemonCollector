@@ -72,16 +72,24 @@
 
 <h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin referansepris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum.') }}</h2>
 
-{% macro tx_table(rows, empty_message) %}
+{% macro tx_table(rows, empty_message, sortable=True) %}
 <div class="table-scroll">
   <table class="tx-table">
     <thead>
       <tr>
+        {% if sortable %}
         <th>{{ sort_th('Dato', 'date', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Kort', 'name', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th class="num">{{ sort_th('Pris', 'price', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Platform', 'platform', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        {% else %}
+        <th>Dato</th>
+        <th>Kort</th>
+        <th>Type</th>
+        <th class="num">Pris ▼</th>
+        <th>Platform</th>
+        {% endif %}
       </tr>
     </thead>
     <tbody>
@@ -124,7 +132,7 @@
       ({{ group.transactions | length }} kort · {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %})
     </span>
   </summary>
-  {{ tx_table(group.transactions, 'Ingen transaksjoner i dette kjøpet.') }}
+  {{ tx_table(group.transactions, 'Ingen transaksjoner i dette kjøpet.', sortable=False) }}
 </details>
 {% endfor %}
 
