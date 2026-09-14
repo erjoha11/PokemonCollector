@@ -598,14 +598,6 @@ def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     return by_card
 
 
-def _registered_purchase_ids_by_card(txs) -> dict[int, list[int | None]]:
-    by_card: dict[int, list[int | None]] = {}
-    for tx in txs:
-        if tx.type == "kjøp":
-            by_card.setdefault(tx.card_id, []).append(tx.purchase_id)
-    return by_card
-
-
 def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None = None) -> dict:
     """Sort keys for a flat list of Card rows -- used by both the "Recently
     Added" table and the "Ukjent dato" table. `registered_price` and `date`
@@ -699,7 +691,6 @@ def _transactions_context(
     known_cards, unknown_cards = _cards_with_known_added_date(db)
     known_count = len(known_cards)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
-    purchase_ids_by_card = _registered_purchase_ids_by_card(txs)
 
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
     known_cards = _sorted_rows(known_cards, gsort, gdir, card_keys)
@@ -726,18 +717,6 @@ def _transactions_context(
         # exactly one to safely prefill/overwrite in the quick-register form.
         "registered_prices": {
             card_id: ", ".join(_format_kr(p) for p in prices) for card_id, prices in purchase_prices_by_card.items()
-        },
-        "single_registered_price": {
-            card_id: prices[0] for card_id, prices in purchase_prices_by_card.items() if len(prices) == 1
-        },
-        # Prefills the quick-register form's Kjøps-ID field when correcting
-        # the one existing purchase -- same "exactly one kjøp" condition as
-        # single_registered_price above, and empty when that purchase never
-        # got tagged with a purchase_id.
-        "single_registered_purchase_id": {
-            card_id: pids[0]
-            for card_id, pids in purchase_ids_by_card.items()
-            if len(pids) == 1 and pids[0] is not None
         },
     }
 
@@ -906,9 +885,8 @@ def create_transaction(
                 ),
             )
 
-        # `upsert` comes only from the "Recently Added" quick-register form --
-        # re-submitting a price there is meant to correct the one already
-        # registered, not add a second "kjøp" for the same card. Only
+        # `upsert`: correct the one existing "kjøp" for this card instead of
+        # adding a second one for the same card. Only
         # auto-update when there's exactly one existing kjøp to correct;
         # with zero or several (a genuine re-buy already on record), fall
         # back to inserting a new row rather than guessing which to change.

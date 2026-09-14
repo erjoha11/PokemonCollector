@@ -33,7 +33,7 @@
           <th class="num">{{ sort_th('Pris', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
           <th class="num">{{ sort_th('Registrert pris', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>Registrer kjøp</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -48,18 +48,11 @@
           <td>{{ card.card_id }}</td>
           <td class="num">{{ registered_prices.get(card.id, '') }}</td>
           <td>
-            <form method="post" action="/transactions" class="inline-buy-form">
-              <input type="hidden" name="card_id" value="{{ card.id }}">
-              <input type="hidden" name="type" value="kjøp">
-              <input type="hidden" name="date" value="{{ today }}">
-              <input type="hidden" name="upsert" value="1">
-              <input type="number" step="0.01" name="price" placeholder="Pris" required
-                     {% if card.id in single_registered_price %}value="{{ single_registered_price[card.id] }}"{% endif %}>
-              <input type="number" step="1" name="purchase_id" placeholder="Kjøps-ID" style="width: 6rem;"
-                     title="Samme tall på flere kort = kjøpt sammen"
-                     {% if card.id in single_registered_purchase_id %}value="{{ single_registered_purchase_id[card.id] }}"{% endif %}>
-              <button type="submit">{{ 'Oppdater' if card.id in single_registered_price else 'Legg til' }}</button>
-            </form>
+            <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}"
+                    hx-target="#cart-body" hx-swap="beforeend"
+                    title="Åpne et kjøp eller salg over først (+ Nytt kjøp / + Nytt salg), så legger denne knappen kortet inn i den ordren.">
+              + Legg til i ordre
+            </button>
           </td>
         </tr>
         {% else %}
