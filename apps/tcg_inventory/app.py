@@ -633,12 +633,17 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
 
 
 def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict], list[Transaction]]:
-    """Split an already tsort/tdir-ordered transaction list into purchase-id
-    groups (cards bought/sold together under a shared purchase_id, e.g. a
-    lot) plus the remaining ungrouped ones -- mirrors the "Kort lagt til"
-    date-groups pattern, but keyed on purchase_id instead of created_at.
-    Group order follows first appearance in `txs`, so the default
-    date-desc sort naturally puts the most recent purchase first.
+    """Split a transaction list into purchase-id groups (cards bought/sold
+    together under a shared purchase_id, e.g. a lot) plus the remaining
+    ungrouped ones -- mirrors the "Kort lagt til" date-groups pattern, but
+    keyed on purchase_id instead of created_at.
+
+    Fixed display order, independent of the page's own tsort/tdir (which
+    still governs the ungrouped table): each group's own cards rank by
+    price, priciest first, and the groups themselves are ordered
+    chronologically by (earliest date, earliest transaction id) in that
+    group -- so "Kjøp #1" is whichever purchase actually happened first,
+    not whichever has the lowest purchase_id number.
     """
     groups: dict[int, list[Transaction]] = {}
     ungrouped: list[Transaction] = []
@@ -650,12 +655,15 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
     purchase_groups = [
         {
             "purchase_id": pid,
-            "transactions": group_txs,
+            "transactions": sorted(group_txs, key=lambda t: t.price, reverse=True),
             "total_price": sum(t.price for t in group_txs),
             "total_fees": sum(t.fees or 0 for t in group_txs),
+            "min_date": min(t.date for t in group_txs),
+            "min_id": min(t.id for t in group_txs),
         }
         for pid, group_txs in groups.items()
     ]
+    purchase_groups.sort(key=lambda g: (g["min_date"], g["min_id"]))
     return purchase_groups, ungrouped
 
 
