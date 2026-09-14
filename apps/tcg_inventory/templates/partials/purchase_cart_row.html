@@ -1,0 +1,9 @@
+<tr>
+  <td>
+    <a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>
+    <span class="muted">({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %}{% if card.rarity %}, {{ card.rarity }}{% endif %})</span>
+    <input type="hidden" name="card_id" value="{{ card.id }}">
+  </td>
+  <td class="num"><input type="number" step="0.01" name="price" placeholder="Pris" required style="width: 90px;"></td>
+  <td><button type="button" onclick="this.closest('tr').remove()">Fjern</button></td>
+</tr>

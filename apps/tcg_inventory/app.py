@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -679,10 +679,6 @@ def _transactions_context(
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs)
     groups, unknown_cards = _cards_grouped_by_added_date(db)
-    # Capture recency order before the per-group sort below (gsort/gdir may
-    # reorder each group's own cards e.g. by name) -- same cards, same
-    # created_at-desc order `_recently_added_cards` used to re-query for.
-    recent_cards = [card for group in groups for card in group["cards"]][:100]
     known_count = sum(len(g["cards"]) for g in groups)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     purchase_ids_by_card = _registered_purchase_ids_by_card(txs)
@@ -698,7 +694,6 @@ def _transactions_context(
         "ungrouped_transactions": ungrouped_transactions,
         "error": error,
         "today": dt.date.today().isoformat(),
-        "recent_cards": recent_cards,
         "tsort": tsort,
         "tdir": tdir,
         "gsort": gsort,
@@ -749,8 +744,33 @@ def list_transactions(
         db.close()
 
 
-@app.get("/transactions/card-search")
-def card_search(request: Request, q: str = ""):
+def _next_purchase_id(db: Session) -> int:
+    """The purchase_id a new cart will be registered under -- one past the
+    highest one in use, so cards bought/sold together always land in a
+    fresh, never-before-used group.
+    """
+    return (db.query(func.max(Transaction.purchase_id)).scalar() or 0) + 1
+
+
+@app.get("/transactions/purchase/start")
+def purchase_cart_start(request: Request, type: str = "kjøp"):
+    db = get_db_session()
+    try:
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_cart.html",
+            {
+                "type": type if type in ("kjøp", "salg") else "kjøp",
+                "purchase_id": _next_purchase_id(db),
+                "today": dt.date.today().isoformat(),
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/transactions/purchase/search")
+def purchase_cart_search(request: Request, q: str = ""):
     db = get_db_session()
     try:
         results = []
@@ -764,8 +784,58 @@ def card_search(request: Request, q: str = ""):
                 .all()
             )
         return templates.TemplateResponse(
-            request, "partials/card_search_results.html", {"results": results}
+            request, "partials/purchase_cart_search_results.html", {"results": results}
         )
+    finally:
+        db.close()
+
+
+@app.get("/transactions/purchase/add-row")
+def purchase_cart_add_row(request: Request, card_id: int):
+    db = get_db_session()
+    try:
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        if card is None:
+            return HTMLResponse("")
+        return templates.TemplateResponse(request, "partials/purchase_cart_row.html", {"card": card})
+    finally:
+        db.close()
+
+
+@app.post("/transactions/purchase")
+def create_purchase(
+    request: Request,
+    type: str = Form(...),
+    date: str = Form(...),
+    platform: str = Form(""),
+    purchase_id: int = Form(...),
+    card_id: list[int] = Form(default=[]),
+    price: list[float] = Form(default=[]),
+):
+    db = get_db_session()
+    try:
+        if len(card_id) != len(price) or not card_id:
+            return templates.TemplateResponse(
+                request,
+                "transactions.html",
+                _transactions_context(
+                    db, request, "date", "desc", error="Ingen kort lagt til kjøpet -- søk opp minst ett kort først."
+                ),
+            )
+        tx_date = dt.date.fromisoformat(date)
+        for cid, p in zip(card_id, price):
+            db.add(
+                Transaction(
+                    card_id=cid,
+                    type=type,
+                    date=tx_date,
+                    price=p,
+                    platform=platform or None,
+                    purchase_id=purchase_id,
+                )
+            )
+        db.commit()
+        return RedirectResponse("/transactions", status_code=303)
     finally:
         db.close()
 

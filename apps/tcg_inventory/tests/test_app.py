@@ -308,31 +308,93 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
     assert "Eevee" in ungrouped_section
 
 
-def test_transactions_page_offers_recently_added_cards_in_a_dropdown(client):
+def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     import datetime as dt
 
     import db as db_module
-    from models import Card
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    # No transactions yet -- the cart starts at purchase_id 1.
+    response = client.get("/transactions/purchase/start?type=kjøp")
+    assert response.status_code == 200
+    assert "Kjøps-ID 1" in response.text
+    assert "Nytt kjøp" in response.text
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.add(Transaction(card_id=card_id, type="kjøp", date=dt.date.today(), price=10, purchase_id=7))
+    db.commit()
+    db.close()
+
+    # One purchase already on record at id 7 -- the next cart reserves 8,
+    # not 1, so it never collides with an existing group.
+    response = client.get("/transactions/purchase/start?type=salg")
+    assert "Kjøps-ID 8" in response.text
+    assert "Nytt salg" in response.text
+
+
+def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transactions(client):
+    import db as db_module
+    from models import Card, Transaction
 
     main = make_csv(
         "My Collection",
-        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+        [{"id": "a", "name": "Charizard ex"}, {"id": "b", "name": "Blastoise ex"}],
     )
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
-    pikachu = db.query(Card).filter(Card.card_id == "a").one()
-    pikachu.created_at = dt.datetime(2026, 1, 1)
-    charizard = db.query(Card).filter(Card.card_id == "b").one()
-    charizard.created_at = None  # simulates a card that predates the created_at column
-    db.commit()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
     db.close()
 
-    response = client.get("/transactions")
-    assert 'id="recent_card_select"' in response.text
-    assert "Pikachu" in response.text.split('id="recent_card_select"', 1)[1].split("</select>", 1)[0]
-    # Charizard has no created_at -- not a "recently added" card, so it's excluded.
-    assert "Charizard" not in response.text.split('id="recent_card_select"', 1)[1].split("</select>", 1)[0]
+    search = client.get("/transactions/purchase/search?q=charizard")
+    assert "Charizard ex" in search.text
+    assert f"add-row?card_id={ids['a']}" in search.text
+
+    add_row = client.get(f"/transactions/purchase/add-row?card_id={ids['a']}")
+    assert add_row.status_code == 200
+    assert "Charizard ex" in add_row.text
+    assert f'name="card_id" value="{ids["a"]}"' in add_row.text
+    assert 'name="price"' in add_row.text
+
+    response = client.post(
+        "/transactions/purchase",
+        data={
+            "type": "kjøp",
+            "date": "2026-06-01",
+            "platform": "Kortmesse",
+            "purchase_id": "3",
+            "card_id": [str(ids["a"]), str(ids["b"])],
+            "price": ["15", "20"],
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    txs = sorted(db.query(Transaction).filter(Transaction.purchase_id == 3).all(), key=lambda t: t.card_id)
+    assert len(txs) == 2
+    assert {t.price for t in txs} == {15, 20}
+    assert all(t.type == "kjøp" and t.platform == "Kortmesse" for t in txs)
+    db.close()
+
+    # And Historikk groups them together under that shared purchase_id.
+    history = client.get("/transactions").text
+    assert "Kjøp #3" in history
+    assert "2 kort" in history
+
+
+def test_purchase_cart_rejects_submitting_with_no_cards(client):
+    response = client.post(
+        "/transactions/purchase",
+        data={"type": "kjøp", "date": "2026-06-01", "purchase_id": "1", "card_id": [], "price": []},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert "minst ett kort" in response.text
 
 
 def test_transactions_page_groups_added_cards_by_date(client):
