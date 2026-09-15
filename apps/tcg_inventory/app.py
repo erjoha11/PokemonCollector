@@ -224,6 +224,7 @@ def dashboard(
     tsort: str = "reference_price",
     tdir: str = "desc",
     metric: str = "unique",
+    open_pokemon_folder: bool = False,
 ):
     if metric not in queries.VALUE_GROWTH_METRICS:
         metric = "unique"
@@ -334,6 +335,7 @@ def dashboard(
                 "fdir": fdir,
                 "tsort": tsort,
                 "tdir": tdir,
+                "open_pokemon_folder": open_pokemon_folder,
             },
         )
     finally:
@@ -392,7 +394,7 @@ def merge_pokemon(name: str = Form(...), canonical: str = Form(...)):
     try:
         queries.merge_pokemon(db, name, canonical)
         db.commit()
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/?open_pokemon_folder=1", status_code=303)
     finally:
         db.close()
 
@@ -405,7 +407,7 @@ def unmerge_pokemon(name: str = Form(...)):
         if alias is not None:
             db.delete(alias)
             db.commit()
-        return RedirectResponse("/", status_code=303)
+        return RedirectResponse("/?open_pokemon_folder=1", status_code=303)
     finally:
         db.close()
 
@@ -680,6 +682,7 @@ def _transactions_context(
     usort: str = "name",
     udir: str = "asc",
     error: str | None = None,
+    open_order: int | None = None,
 ) -> dict:
     txs = (
         db.query(Transaction)
@@ -709,6 +712,7 @@ def _transactions_context(
         "gdir": gdir,
         "usort": usort,
         "udir": udir,
+        "open_order": open_order,
         "known_cards": known_cards,
         "known_count": known_count,
         "unknown_cards": unknown_cards,
@@ -731,11 +735,14 @@ def list_transactions(
     gdir: str = "desc",
     usort: str = "name",
     udir: str = "asc",
+    open_order: int | None = None,
 ):
     db = get_db_session()
     try:
         return templates.TemplateResponse(
-            request, "transactions.html", _transactions_context(db, request, tsort, tdir, gsort, gdir, usort, udir)
+            request,
+            "transactions.html",
+            _transactions_context(db, request, tsort, tdir, gsort, gdir, usort, udir, open_order=open_order),
         )
     finally:
         db.close()
@@ -857,7 +864,7 @@ def set_purchase_total(
             {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping}
         )
         db.commit()
-        return RedirectResponse("/transactions", status_code=303)
+        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
     finally:
         db.close()
 
