@@ -7,14 +7,24 @@
 
 {% if error %}<p class="warnings">{{ error }}</p>{% endif %}
 
-<div class="filters" style="margin-bottom: 1rem;">
-  <button type="button" hx-get="/transactions/purchase/start?type=purchase" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ New Purchase</button>
-  <button type="button" hx-get="/transactions/purchase/start?type=sale" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ New Sale</button>
+<div class="filters" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
   <span class="muted">Search for each card that was part of the deal and add them one by one — they automatically share the same Order ID.</span>
+  <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ New Order</button>
 </div>
 <div id="purchase-cart-container"></div>
 
-<h2>Recently Added {{ info("Market price = Dex's market price. Paid price = what you actually recorded paying for the card (can differ from the market price).") }}</h2>
+<div class="tx-kpi-bar">
+  <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span></div>
+  <div><span class="tx-kpi-label">Current value</span><span class="tx-kpi-value">{{ kpi.unique_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Paper gain/loss {{ info("Current value minus net invested. Not realized — compares today's price with what you actually paid, not an actual sale.") }}</span><span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span></div>
+</div>
+
+<details class="collapsible" hx-get="/transactions/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
+  <summary>View charts</summary>
+  <div id="tx-charts"><p class="muted">Loading charts…</p></div>
+</details>
+
+<h2 style="margin-top: 2rem;">Recently Added {{ info("Market price = Dex's market price. Paid price = what you actually recorded paying for the card (can differ from the market price).") }}</h2>
 <p class="muted">
   Cards with a known "added" date: {{ known_count }}. These are the actual new cards to price.
   The date is set automatically the first time a card is imported.
@@ -50,7 +60,7 @@
           <td>
             <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}"
                     hx-target="#cart-body" hx-swap="beforeend"
-                    title="Open a purchase or sale above first (+ New Purchase / + New Sale) — this button then adds the card into that order.">
+                    title="Open a new order above first (+ New Order) — this button then adds the card into that order.">
               + Add to order
             </button>
           </td>
@@ -62,17 +72,6 @@
     </table>
   </div>
 </div>
-
-<div class="tx-kpi-bar">
-  <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span></div>
-  <div><span class="tx-kpi-label">Current value</span><span class="tx-kpi-value">{{ kpi.unique_value | kr }}</span></div>
-  <div><span class="tx-kpi-label">Paper gain/loss {{ info("Current value minus net invested. Not realized — compares today's price with what you actually paid, not an actual sale.") }}</span><span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span></div>
-</div>
-
-<details class="collapsible" hx-get="/transactions/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
-  <summary>View charts</summary>
-  <div id="tx-charts"><p class="muted">Loading charts…</p></div>
-</details>
 
 <h2 style="margin-top: 2rem;">History {{ info("Each row is one recorded purchase or sale transaction. Price is what you actually entered for the transaction — not Dex's price. Cards bought together (same Order ID, e.g. a lot) are grouped into a collapsible group with a total. Set an agreed total and shipping on the group to see the diff against what you've actually recorded cards for — useful for tracking down common cards you haven't priced individually yet.") }}</h2>
 

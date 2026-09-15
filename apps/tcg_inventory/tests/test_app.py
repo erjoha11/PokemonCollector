@@ -511,10 +511,11 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     # No transactions yet -- the cart starts at purchase_id 1.
-    response = client.get("/transactions/purchase/start?type=purchase")
+    response = client.get("/transactions/purchase/start")
     assert response.status_code == 200
     assert "Order ID 1" in response.text
-    assert "New Purchase" in response.text
+    assert "New Order" in response.text
+    assert '<option value="purchase" selected>' in response.text
 
     db = db_module.SessionLocal()
     card_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -526,7 +527,7 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     # not 1, so it never collides with an existing group.
     response = client.get("/transactions/purchase/start?type=sale")
     assert "Order ID 8" in response.text
-    assert "New Sale" in response.text
+    assert '<option value="sale" selected>' in response.text
 
 
 def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transactions(client):

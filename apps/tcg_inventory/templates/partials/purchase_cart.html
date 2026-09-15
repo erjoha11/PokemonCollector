@@ -1,10 +1,13 @@
 <div class="card" style="margin-bottom: 1.5rem;">
-  <h2>New {{ 'Purchase' if type == 'purchase' else 'Sale' }} <span class="muted">(Order ID {{ purchase_id }})</span></h2>
+  <h2>New Order <span class="muted">(Order ID {{ purchase_id }})</span></h2>
   <form method="post" action="/transactions/purchase">
-    <input type="hidden" name="type" value="{{ type }}">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
+      <select name="type">
+        <option value="purchase" {{ 'selected' if type == 'purchase' }}>Purchase</option>
+        <option value="sale" {{ 'selected' if type == 'sale' }}>Sale</option>
+      </select>
       <input type="date" name="date" value="{{ today }}" required>
       <input type="text" name="platform" placeholder="Platform (optional)">
       <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total (optional)"
@@ -33,7 +36,7 @@
       <button type="button" onclick="distributeRemaining()">Distribute evenly across empty prices</button>
     </div>
 
-    <button type="submit">Register {{ 'purchase' if type == 'purchase' else 'sale' }}</button>
+    <button type="submit">Register</button>
     <button type="button" onclick="document.getElementById('purchase-cart-container').innerHTML=''">Cancel</button>
   </form>
 </div>
