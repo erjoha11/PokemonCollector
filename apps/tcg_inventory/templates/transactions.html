@@ -7,6 +7,8 @@
 
 {% if error %}<p class="warnings">{{ error }}</p>{% endif %}
 
+{% include "partials/kpi_module.html" %}
+
 <div class="filters" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
   <span class="muted">Search for each card that was part of the deal and add them one by one — they automatically share the same Order ID.</span>
   <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ New Order</button>

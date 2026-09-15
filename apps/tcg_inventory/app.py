@@ -240,6 +240,11 @@ def dashboard(
         headline = queries.headline_summary(db, cards)
         collection_breakdown = queries.collection_bulk_breakdown(db, cards)
         series_breakdown = queries.by_series_breakdown(db, cards)
+        invested_by_card = queries.net_invested_by_card(db)
+        queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+        queries.assign_bucket_investment(series_breakdown, invested_by_card)
+        for series_bucket in series_breakdown:
+            queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
@@ -247,9 +252,13 @@ def dashboard(
         # same module Transactions uses -- see /transactions for the full
         # economic breakdown this is a compact preview of.
         value_growth = queries.collection_value_growth(db, cards, metric=metric)
+        comparison_metric = "total" if metric == "unique" else "unique"
+        comparison_growth = queries.collection_value_growth(db, cards, metric=comparison_metric)
+        comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
             values=[row["cumulative_value"] for row in value_growth],
+            comparison_values=[comparison_by_label.get(row["label"], 0) for row in value_growth],
         )
         metric_label = queries.VALUE_GROWTH_METRICS[metric][0]
         metric_options = [
@@ -302,12 +311,14 @@ def dashboard(
         # collection highlight ranks by unique_value (not total_value) so
         # duplicates can't inflate which collection looks "most valuable".
         top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
+        economic = queries.economic_summary(db)
 
         return templates.TemplateResponse(
             request,
             "dashboard.html",
             {
                 "headline": headline,
+                "net_invested": economic["net_invested"],
                 "collection_breakdown": collection_breakdown,
                 "collection_rows": collection_rows,
                 "series_breakdown": series_breakdown,
@@ -317,6 +328,7 @@ def dashboard(
                 "value_chart": value_chart,
                 "metric": metric,
                 "metric_label": metric_label,
+                "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],
                 "metric_options": metric_options,
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
@@ -540,10 +552,16 @@ def inventory(
             # filter keystroke/select change.
             collection_breakdown = queries.collection_bulk_breakdown(db)
             series_breakdown = queries.by_series_breakdown(db)
+            invested_by_card = queries.net_invested_by_card(db)
+            queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+            queries.assign_bucket_investment(series_breakdown, invested_by_card)
+            for series_bucket in series_breakdown:
+                queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
             top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
             context.update(
                 {
                     "headline": queries.headline_summary(db),
+                    "net_invested": queries.economic_summary(db)["net_invested"],
                     "top_cards": queries.top_valuable_cards(db, limit=10),
                     "top_collection": top_collection,
                     "top_series": top_series,
@@ -708,7 +726,16 @@ def _transactions_context(
     # charts below it, which are lazy-loaded via /transactions/charts
     # instead so they aren't rebuilt on every column-sort click.
     economic = queries.economic_summary(db)
-    headline = queries.headline_summary(db)
+    cards = queries.all_cards_with_collections(db)
+    headline = queries.headline_summary(db, cards)
+    collection_breakdown = queries.collection_bulk_breakdown(db, cards)
+    series_breakdown = queries.by_series_breakdown(db, cards)
+    invested_by_card = queries.net_invested_by_card(db)
+    queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+    queries.assign_bucket_investment(series_breakdown, invested_by_card)
+    for series_bucket in series_breakdown:
+        queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
+    top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
     kpi = {
         "net_invested": economic["net_invested"],
         "unique_value": headline["unique_value"],
@@ -717,6 +744,10 @@ def _transactions_context(
 
     return {
         "transactions": txs,
+        "headline": headline,
+        "top_cards": queries.top_valuable_cards(db, limit=10),
+        "top_collection": top_collection,
+        "top_series": top_series,
         "kpi": kpi,
         "purchase_groups": purchase_groups,
         "ungrouped_transactions": ungrouped_transactions,
@@ -1142,12 +1173,16 @@ def transactions_charts(request: Request, metric: str = "unique"):
     db = get_db_session()
     try:
         value_growth = queries.collection_value_growth(db, metric=metric)
+        comparison_metric = "total" if metric == "unique" else "unique"
+        comparison_growth = queries.collection_value_growth(db, metric=comparison_metric)
+        comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
         real_history = queries.real_value_history(db, metric=metric)
         cash_flow = queries.cash_flow_by_month(db)
 
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
             values=[row["cumulative_value"] for row in value_growth],
+            comparison_values=[comparison_by_label.get(row["label"], 0) for row in value_growth],
         )
         real_chart = charts.build_line_chart(
             labels=[row["label"] for row in real_history],
@@ -1170,6 +1205,7 @@ def transactions_charts(request: Request, metric: str = "unique"):
                 "cash_chart": cash_chart,
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
+                "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],
                 "metric_options": [
                     (key, label, _metric_url(request, key, path="/transactions/charts"))
                     for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()

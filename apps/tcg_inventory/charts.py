@@ -44,9 +44,16 @@ class LineChart:
     x_labels: list[tuple[float, str]] = field(default_factory=list)
     end_point: tuple[float, float] | None = None
     end_label: str | None = None
+    comparison_points: list[tuple[float, float]] = field(default_factory=list)
+    comparison_line_path: str = ""
+    comparison_end_point: tuple[float, float] | None = None
+    comparison_end_label: str | None = None
 
 
-def build_line_chart(labels: list[str], values: list[float], width: int = 640, height: int = 220) -> LineChart:
+def build_line_chart(
+    labels: list[str], values: list[float], width: int = 640, height: int = 220,
+    comparison_values: list[float] | None = None,
+) -> LineChart:
     plot_w = width - _PAD_LEFT - _PAD_RIGHT
     plot_h = height - _PAD_TOP - _PAD_BOTTOM
     baseline_y = _PAD_TOP + plot_h
@@ -54,7 +61,7 @@ def build_line_chart(labels: list[str], values: list[float], width: int = 640, h
     if not values:
         return LineChart(width, height, baseline_y)
 
-    max_v = _nice_max(max(values))
+    max_v = _nice_max(max(values + (comparison_values or [])))
     n = len(values)
 
     def x_at(i: int) -> float:
@@ -80,6 +87,16 @@ def build_line_chart(labels: list[str], values: list[float], width: int = 640, h
         idxs = sorted({round(i * step) for i in range(6)})
     x_labels = [(points[i][0], labels[i]) for i in idxs]
 
+    comparison_points = []
+    comparison_line_path = ""
+    comparison_end_point = None
+    comparison_end_label = None
+    if comparison_values:
+        comparison_points = [(round(x_at(i), 1), round(y_at(v), 1)) for i, v in enumerate(comparison_values)]
+        comparison_line_path = "M " + " L ".join(f"{x},{y}" for x, y in comparison_points)
+        comparison_end_point = comparison_points[-1]
+        comparison_end_label = _format_kr(comparison_values[-1])
+
     return LineChart(
         width,
         height,
@@ -91,6 +108,10 @@ def build_line_chart(labels: list[str], values: list[float], width: int = 640, h
         x_labels=x_labels,
         end_point=points[-1],
         end_label=_format_kr(values[-1]),
+        comparison_points=comparison_points,
+        comparison_line_path=comparison_line_path,
+        comparison_end_point=comparison_end_point,
+        comparison_end_label=comparison_end_label,
     )
 
 

@@ -1,48 +1,76 @@
 {% from "partials/macros.html" import info %}
 <div class="kpi-grid">
   <div class="kpi-card">
-    <h3>Total {{ info('Physical cards = everything you own, duplicates included. Unique = each card counted once, no matter how many copies you have.') }}</h3>
+    <h3>Total Cards {{ info('Total Cards = everything you own, duplicates included. Unique Cards = each card counted once, no matter how many copies you have.') }}</h3>
     <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">physical cards</span></div>
     <div class="kpi-support">
+      <div class="stat-row"><span class="stat-label">Unique Cards</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
       <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ headline.duplicates }}</span></div>
-      <div class="stat-row"><span class="stat-label">Unique</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
     </div>
   </div>
 
   <div class="kpi-card">
-    <h3>Value {{ info("Value = price of each unique card (duplicates don't add extra). Total value also includes the value of duplicates.") }}</h3>
+    <h3>Total Value</h3>
     <!-- Value = value of unique cards only; Total value = unique + duplicates
          (same convention as the Inventory/Series/Rarity tables' Value/Total
          value columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
-    <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
+    <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span><span class="label">total value</span></div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Total value</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ (net_invested if net_invested is defined else (kpi.net_invested if kpi is defined else 0)) | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
     </div>
   </div>
 
+  {% if request.url.path == '/' %}
   <div class="kpi-card">
-    <h3>Most valuable card {{ info('The single card with the highest price in the whole collection — regardless of how many copies you own.') }}</h3>
+    <h3>Most valuable cards {{ info('The three individual cards with the highest price in the whole collection — not adjusted for how many copies you own.') }}</h3>
     {% if top_cards %}
-    <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}{% if top_cards[0].rarity %} · {{ top_cards[0].rarity }}{% endif %}</div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Average per unique card</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Average per physical card</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
+    <div class="top-card-ranking">
+      {% set first_card = top_cards[0] %}
+      <div class="top-card-rank top-card-rank-first">
+        <span class="top-card-place">1.</span>
+        <img class="top-card-image" src="https://assets.tcgdex.net/en/{{ first_card.card_id.rsplit('-', 1)[0].split('_')[-1] }}/{{ first_card.number.split('/')[0] }}/high.webp" alt="{{ first_card.name }}" loading="lazy">
+        <div class="top-card-details">
+          <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}</div>
+          {% if first_card.rarity %}<div class="top-card-meta">{{ first_card.rarity }}</div>{% endif %}
+        </div>
+        <span class="top-card-price">{{ first_card.reference_price | kr }}</span>
+      </div>
+      {% if top_cards|length > 1 %}
+      <div class="top-card-runners-up">
+        {% for card in top_cards[1:3] %}
+        <div class="top-card-rank">
+          <span class="top-card-place">{{ loop.index + 1 }}.</span>
+          <img class="top-card-image" src="https://assets.tcgdex.net/en/{{ card.card_id.rsplit('-', 1)[0].split('_')[-1] }}/{{ card.number.split('/')[0] }}/high.webp" alt="{{ card.name }}" loading="lazy">
+          <div class="top-card-details">
+            <div class="top-card-name" title="{{ card.name }}">{{ card.name }}</div>
+            {% if card.rarity %}<div class="top-card-meta">{{ card.rarity }}</div>{% endif %}
+          </div>
+          <span class="top-card-price">{{ card.reference_price | kr }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% else %}
     <div class="kpi-caption muted">No data</div>
     {% endif %}
   </div>
+  {% endif %}
 
   <div class="kpi-card">
     <h3>Most valuable collection {{ info("Ranked by the value of unique cards in the collection (duplicates don't add extra). Bulk doesn't count as a collection here.") }}</h3>
     {% if top_collection %}
-    <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
+    <div class="kpi-hero kpi-highlight-hero">
+      <div><span class="value">{{ top_collection.unique_value | kr }}</span><div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div></div>
+      <div class="kpi-card-count"><span class="value">{{ top_collection.qty }}</span><span class="label">Total Cards</span></div>
+    </div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_collection.qty }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
+      <div class="stat-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ top_collection.net_invested | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ top_collection.unique_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Total Duplicates</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
+      <div class="stat-row duplicate-value"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ (top_collection.total_value - top_collection.unique_value) | kr }}</span></div>
     </div>
     {% else %}
     <div class="kpi-caption muted">No data</div>
@@ -52,11 +80,14 @@
   <div class="kpi-card">
     <h3>Most valuable series {{ info('Ranked by total value in the series, duplicates included.', align_right=true) }}</h3>
     {% if top_series %}
-    <div class="kpi-hero"><span class="value">{{ top_series.total_value | kr }}</span></div>
-    <div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div>
+    <div class="kpi-hero kpi-highlight-hero">
+      <div><span class="value">{{ top_series.total_value | kr }}</span><div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div></div>
+      <div class="kpi-card-count"><span class="value">{{ top_series.qty }}</span><span class="label">Total Cards</span></div>
+    </div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_series.qty }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
+      <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ top_series.unique_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Total Duplicates</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
+      <div class="stat-row duplicate-value"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ (top_series.total_value - top_series.unique_value) | kr }}</span></div>
     </div>
     {% else %}
     <div class="kpi-caption muted">No data</div>

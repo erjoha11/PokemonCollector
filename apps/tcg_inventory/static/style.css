@@ -292,6 +292,104 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   font-size: 0.72rem;
   color: var(--muted);
 }
+.kpi-highlight-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.75rem;
+}
+.kpi-highlight-hero > div:first-child {
+  min-width: 0;
+}
+.kpi-highlight-hero .kpi-caption {
+  margin-top: 0.35rem;
+}
+.kpi-card-count {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+.kpi-card-count .value {
+  font-size: 1.4rem;
+}
+.kpi-card-count .label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.kpi-card-count .duplicate-cards {
+  position: relative;
+  top: -0.45em;
+  margin-left: 0.08rem;
+  font-size: 0.58em;
+  font-style: normal;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.top-card-ranking {
+  display: grid;
+  gap: 0.55rem;
+}
+.top-card-rank-first {
+  grid-template-columns: 1.25rem 64px minmax(0, 1fr) auto;
+  min-height: 82px;
+}
+.top-card-runners-up {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+.top-card-rank {
+  display: grid;
+  grid-template-columns: 1.25rem 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 48px;
+}
+.top-card-place {
+  color: var(--kpi-accent, var(--accent));
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: right;
+}
+.top-card-image {
+  width: 38px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 4px;
+  background: var(--accent-wash);
+}
+.top-card-rank-first .top-card-image {
+  width: 64px;
+  height: 86px;
+}
+.top-card-details {
+  min-width: 0;
+}
+.top-card-name,
+.top-card-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-card-name {
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}
+.top-card-meta {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+.top-card-price {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 
 /* Supporting numbers ride below a hairline, smaller and quieter than the
    hero -- never competing with it for attention. */
@@ -299,9 +397,9 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   margin-top: 0.5rem;
   padding-top: 0.4rem;
   border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
 }
 .kpi-support .stat-row {
   display: flex;
@@ -309,6 +407,9 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   align-items: baseline;
   gap: 0.5rem;
   font-size: 0.76rem;
+}
+.kpi-support .stat-row.full-row {
+  grid-column: 1 / -1;
 }
 .kpi-support .stat-label {
   color: var(--ink-secondary);
@@ -670,6 +771,7 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-gridline { stroke: var(--viz-grid); stroke-width: 1; }
 .viz-axis-label { fill: var(--viz-axis-text); font-size: 10px; }
 .viz-line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.viz-line-comparison { stroke-dasharray: 6 4; }
 .viz-area { opacity: 0.1; }
 .viz-end-label { fill: var(--ink); font-size: 11px; font-weight: 600; }
 .viz-dot { cursor: default; }
@@ -683,6 +785,9 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 }
 .viz-legend-item { display: flex; align-items: center; gap: 0.4rem; }
 .viz-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.viz-legend-primary { background: var(--viz-series-1); }
+.viz-legend-comparison { background: var(--viz-series-2); }
+.viz-end-label-comparison { fill: var(--viz-series-2); }
 .viz-caveat { margin: 0.3rem 0 0; font-size: 0.78rem; }
 .viz-filter { display: flex; gap: 0.4rem; margin: 0.6rem 0; }
 .viz-filter-pill {

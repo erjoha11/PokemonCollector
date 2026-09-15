@@ -40,6 +40,7 @@ class Bucket:
     duplicates: int = 0
     unique_value: float = 0.0
     total_value: float = 0.0
+    net_invested: float = 0.0
     # False only for the synthetic "Bulk" bucket (cards with no collection at
     # all) -- there's no real collection to filter Inventory by, so its qty
     # cell is plain text instead of a link. Every other bucket is filterable.
@@ -69,6 +70,10 @@ class Bucket:
         regardless of how many copies it has (min(card.qty, 1)).
         """
         return self.qty - self.duplicates
+
+    @property
+    def gain_loss(self) -> float:
+        return self.unique_value - self.net_invested
 
     @property
     def distinct_sets(self) -> list[str]:
@@ -474,3 +479,23 @@ def economic_summary(db: Session) -> dict:
         "total_sold": total_sold,
         "net_invested": net_invested,
     }
+
+
+def net_invested_by_card(db: Session) -> dict[int, float]:
+    """Return actual net investment per card using economic-summary rules."""
+    invested: dict[int, float] = {}
+    for tx in db.query(Transaction).all():
+        if tx.type == "purchase":
+            amount = tx.price + (tx.fees or 0.0)
+        elif tx.type == "sale":
+            amount = -tx.price
+        else:
+            amount = 0.0
+        invested[tx.card_id] = invested.get(tx.card_id, 0.0) + amount
+    return invested
+
+
+def assign_bucket_investment(buckets, invested_by_card: dict[int, float]) -> None:
+    """Attach transaction totals to buckets without changing value rules."""
+    for bucket in buckets:
+        bucket.net_invested = sum(invested_by_card.get(card.id, 0.0) for card in bucket.cards)

@@ -46,6 +46,12 @@
        class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
     {% endfor %}
   </div>
+  {% if value_chart.comparison_line_path %}
+  <div class="viz-legend" aria-label="Chart series">
+    <span class="viz-legend-item"><span class="viz-legend-swatch viz-legend-primary"></span>{{ metric_label }}</span>
+    <span class="viz-legend-item"><span class="viz-legend-swatch viz-legend-comparison"></span>{{ comparison_label }}</span>
+  </div>
+  {% endif %}
   {% if value_chart.points %}
   <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Cumulative value growth over time ({{ metric_label }})">
     {% for y, label in value_chart.y_ticks %}
@@ -57,6 +63,7 @@
     {% endfor %}
     <path class="viz-area" d="{{ value_chart.area_path }}" fill="var(--viz-series-1)"></path>
     <path class="viz-line" d="{{ value_chart.line_path }}" stroke="var(--viz-series-1)" fill="none"></path>
+    {% if value_chart.comparison_line_path %}<path class="viz-line viz-line-comparison" d="{{ value_chart.comparison_line_path }}" stroke="var(--viz-series-2)" fill="none"></path>{% endif %}
     {% for x, y in value_chart.points %}
     {% set row = value_growth[loop.index0] %}
     <circle class="viz-hit" cx="{{ x }}" cy="{{ y }}" r="9" fill="transparent">
@@ -67,6 +74,7 @@
     <circle class="viz-dot" cx="{{ value_chart.end_point[0] }}" cy="{{ value_chart.end_point[1] }}" r="5" fill="var(--viz-series-1)" stroke="var(--surface)" stroke-width="2"></circle>
     <text class="viz-end-label" x="{{ value_chart.end_point[0] }}" y="{{ value_chart.end_point[1] - 10 }}" text-anchor="end">{{ value_chart.end_label }} kr</text>
     {% endif %}
+    {% if value_chart.comparison_end_point %}<circle class="viz-dot" cx="{{ value_chart.comparison_end_point[0] }}" cy="{{ value_chart.comparison_end_point[1] }}" r="5" fill="var(--viz-series-2)" stroke="var(--surface)" stroke-width="2"></circle><text class="viz-end-label viz-end-label-comparison" x="{{ value_chart.comparison_end_point[0] }}" y="{{ value_chart.comparison_end_point[1] + 16 }}" text-anchor="end">{{ value_chart.comparison_end_label }} kr</text>{% endif %}
   </svg>
   <details>
     <summary>View as table</summary>

@@ -144,6 +144,8 @@
           <th class="num">{{ series_sort('Total', 'qty') }}</th>
           <th class="num">{{ series_sort('Value', 'value') }}</th>
           <th class="num">{{ series_sort('Total value', 'total_value') }}</th>
+          <th class="num">Net invested</th>
+          <th class="num">Gain/loss</th>
         </tr>
       </thead>
       <tbody>
@@ -156,6 +158,8 @@
           <td class="num">{{ dup_link('series', s.name, s.qty) }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
+          <td class="num">{{ s.net_invested | kr }}</td>
+          <td class="num">{{ s.gain_loss | kr }}</td>
         </tr>
         {% for set_b in s.child_sets %}
         {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
@@ -166,6 +170,8 @@
           <td class="num">{{ dup_link('set', set_b.name, set_b.qty) }}</td>
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
+          <td class="num">{{ set_b.net_invested | kr }}</td>
+          <td class="num">{{ set_b.gain_loss | kr }}</td>
         </tr>
         {% for card in set_b.cards %}
         {{ card_leaf_row(card, 'grandchild-row', set_row_id) }}
