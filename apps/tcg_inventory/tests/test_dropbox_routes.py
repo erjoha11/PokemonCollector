@@ -87,6 +87,7 @@ def test_cron_sync_accepts_correct_secret(client, monkeypatch):
     body = response.json()
     assert body["cards_created"] == 1
     assert body["files_synced"] == ["main.csv"]
+    assert body["cards_snapshotted"] == 1  # snapshot written right after the sync
 
     inventory = client.get("/inventory")
     assert "Pikachu" in inventory.text
@@ -122,7 +123,9 @@ def test_cron_sync_works_without_secret_configured(client, monkeypatch):
 
     response = client.get("/cron/dropbox-sync")
     assert response.status_code == 200
-    assert response.json()["message"] == "No CSV files found"
+    body = response.json()
+    assert body["message"] == "No CSV files found"
+    assert body["cards_snapshotted"] == 0  # snapshot still runs, just nothing to snapshot yet
 
 
 def test_cron_sync_reports_dropbox_not_configured(client):

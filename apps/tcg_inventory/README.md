@@ -32,8 +32,9 @@ run).
 ## Data model
 
 `cards`, `collections`, `card_collections` (many-to-many), `binders`,
-`transactions`, plus `set_release_order` (a lookup table for chronological
-sorting — see "Chronological sorting" below).
+`transactions`, `card_snapshots` (see "Value history" below), plus
+`set_release_order` (a lookup table for chronological sorting — see
+"Chronological sorting" below).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -234,6 +235,19 @@ collection + Vintage + whatever else you track) — each cron run syncs
 whatever's in there at the time, same as selecting every file on the
 Import page manually.
 
+### Value history
+
+`collection_value_growth` (used by the Analyse page) is an *approximation*:
+it applies today's price retroactively to each card's `created_at` month,
+because Dex gives no historical prices. `card_snapshots` fixes that going
+forward — the cron job above writes one row per card (`qty` +
+`reference_price` as of that day) right after every successful sync, so
+`queries.real_value_history` can report what the collection was *actually*
+worth on a given date, not an estimate. It's empty until snapshots
+accumulate (starts from whenever this table was added — there's no way to
+backfill history for dates before it existed) and is currently
+backend-only; nothing on the Analyse page consumes it yet.
+
 ## Project layout
 
 - `app.py` — FastAPI app, routes, entrypoint (`python app.py`).
@@ -244,6 +258,7 @@ Import page manually.
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
 - `queries.py` — dashboard aggregation queries.
+- `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
 - `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.

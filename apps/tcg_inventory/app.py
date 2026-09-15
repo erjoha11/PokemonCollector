@@ -30,6 +30,7 @@ import auth
 import charts
 import dropbox_client
 import queries
+import snapshots
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
 from models import (
@@ -1055,16 +1056,27 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         dbx = dropbox_client.build_client_from_env()
         files = dropbox_client.list_csv_files(dbx, folder)
         if not files:
-            return {"status": "ok", "folder": folder, "message": "No CSV files found"}
+            snapshotted = snapshots.record_daily_snapshot(db)
+            return {
+                "status": "ok",
+                "folder": folder,
+                "message": "No CSV files found",
+                "cards_snapshotted": snapshotted,
+            }
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
         result = import_dex_csv_files(db, payload, full_load=False, source="cron")
+        # Snapshot after the sync, not before -- a cron run should always
+        # record today's post-sync qty/price, never yesterday's leftover
+        # state (see snapshots.record_daily_snapshot / README "Value history").
+        snapshotted = snapshots.record_daily_snapshot(db)
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
             f"created={result.cards_created} updated={result.cards_updated} "
             f"flagged={result.cards_flagged_missing} "
             f"collections={sorted(result.collections_touched)} "
             f"binders={sorted(result.binders_touched)} "
-            f"warnings={len(result.warnings)}"
+            f"warnings={len(result.warnings)} "
+            f"snapshotted={snapshotted}"
         )
         return {
             "status": "ok",
@@ -1076,6 +1088,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             "collections_touched": sorted(result.collections_touched),
             "binders_touched": sorted(result.binders_touched),
             "warnings": result.warnings,
+            "cards_snapshotted": snapshotted,
         }
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         # Cron runs unattended -- nobody's watching a response body, so this
