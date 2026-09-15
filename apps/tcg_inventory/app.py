@@ -1142,11 +1142,16 @@ def transactions_charts(request: Request, metric: str = "unique"):
     db = get_db_session()
     try:
         value_growth = queries.collection_value_growth(db, metric=metric)
+        real_history = queries.real_value_history(db, metric=metric)
         cash_flow = queries.cash_flow_by_month(db)
 
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
             values=[row["cumulative_value"] for row in value_growth],
+        )
+        real_chart = charts.build_line_chart(
+            labels=[row["label"] for row in real_history],
+            values=[row["cumulative_value"] for row in real_history],
         )
         cash_chart = charts.build_grouped_bar_chart(
             labels=[row["label"] for row in cash_flow],
@@ -1158,8 +1163,10 @@ def transactions_charts(request: Request, metric: str = "unique"):
             "partials/transactions_charts.html",
             {
                 "value_growth": value_growth,
+                "real_history": real_history,
                 "cash_flow": cash_flow,
                 "value_chart": value_chart,
+                "real_chart": real_chart,
                 "cash_chart": cash_chart,
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],

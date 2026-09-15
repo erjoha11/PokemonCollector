@@ -47,4 +47,10 @@
     {% endif %}
   </div>
 </div>
+
+<div class="card-pair">
+  {% set tx_real_history_heading %}Real value history {{ info('The collection\'s actual value on each date a daily snapshot was taken — real historical prices, not today\'s price applied retroactively like the chart above. Empty until at least one day of snapshots has accumulated.') }}{% endset %}
+  {{ value_growth_chart('real-value-history-card', tx_real_history_heading, real_chart, real_history, metric_options, metric, metric_label, date_column_label='Date', show_added=false) }}
+</div>
+</div>
 </div>

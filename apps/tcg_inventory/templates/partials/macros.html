@@ -32,7 +32,7 @@
    that doesn't already sit inside a `.viz-root` ancestor (Dashboard's card
    is the page's only chart; Analyse wraps its whole page in one `.viz-root`
    instead) opt the card itself into the `--viz-series-*` CSS vars. #}
-{% macro value_growth_chart(card_id, heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='') %}
+{% macro value_growth_chart(card_id, heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='', date_column_label='Month', show_added=true) %}
 <div class="card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
   <h2>{{ heading | safe }}</h2>
   <div class="viz-filter">
@@ -71,10 +71,10 @@
   <details>
     <summary>View as table</summary>
     <table style="margin-top: 0.6rem;">
-      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <thead><tr><th>{{ date_column_label }}</th>{% if show_added %}<th class="num">Added ({{ metric_label }})</th>{% endif %}<th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
       <tbody>
         {% for row in value_growth %}
-        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        <tr><td>{{ row.label }}</td>{% if show_added %}<td class="num">{{ row.added_value | kr }}</td>{% endif %}<td class="num">{{ row.cumulative_value | kr }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

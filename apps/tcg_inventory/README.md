@@ -240,16 +240,19 @@ Import page manually.
 
 ### Value history
 
-`collection_value_growth` (used by Transactions' "Vis grafer" section) is an *approximation*:
-it applies today's price retroactively to each card's `created_at` month,
-because Dex gives no historical prices. `card_snapshots` fixes that going
-forward — the cron job above writes one row per card (`qty` +
-`reference_price` as of that day) right after every successful sync, so
+`collection_value_growth` (Transactions' "View charts" section, top chart) is an
+*approximation*: it applies today's price retroactively to each card's
+`created_at` month, because Dex gives no historical prices. `card_snapshots`
+fixes that going forward — the cron job above writes one row per card (`qty`
++ `reference_price` as of that day) right after every successful sync, so
 `queries.real_value_history` can report what the collection was *actually*
-worth on a given date, not an estimate. It's empty until snapshots
+worth on a given date, not an estimate. It's rendered as its own "Real value
+history" chart, right below the approximation, using the same
+unique/duplicates/total metric filter. It's empty until snapshots
 accumulate (starts from whenever this table was added — there's no way to
-backfill history for dates before it existed) and is currently
-backend-only; nothing in Transactions' charts consumes it yet.
+backfill history for dates before it existed), and only the automated
+Dropbox cron sync writes snapshots — a manual CSV upload via `/import` does
+not.
 
 ## Project layout
 
