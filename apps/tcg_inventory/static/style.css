@@ -1,12 +1,24 @@
 :root {
-  color-scheme: light dark;
+  /* `light` only, not `light dark` -- there is no dark palette below, and
+     declaring dark support without one lets the browser render native
+     widgets (scrollbars, checkboxes) in dark styling on top of this
+     always-light page, producing exactly the kind of mismatched-contrast
+     combo this file is trying to avoid. Revisit once a real dark palette
+     exists. */
+  color-scheme: light;
   --page: #f4f5f7;
   --surface: #ffffff;
   --border: #e2e4e9;
   --border-strong: #cdd1d9;
   --ink: #14161a;
   --ink-secondary: #52565f;
-  --muted: #868b96;
+  /* WCAG AA requires >=4.5:1 for normal text (most --muted uses are well
+     under the 14pt/bold-18.66px large-text threshold, e.g. 0.68-0.78rem
+     table headers and KPI labels). #868b96 was ~3.4:1 against --surface --
+     below AA. #63696f keeps the same cool-gray hue but reaches ~5.1:1
+     against --surface and ~5.6:1 against --page, while staying lighter
+     (less emphasized) than --ink-secondary's ~7.3:1. */
+  --muted: #63696f;
   --accent: #2a63d6;
   --accent-wash: rgba(42, 99, 214, 0.08);
   --accent-wash-strong: rgba(42, 99, 214, 0.14);

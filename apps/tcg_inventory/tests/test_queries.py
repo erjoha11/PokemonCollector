@@ -254,6 +254,40 @@ def test_collection_value_growth_metric_switches_unique_duplicates_total(db_sess
         queries.collection_value_growth(db_session, metric="not-a-real-metric")
 
 
+def test_real_value_history_sums_snapshots_by_date_not_approximated(db_session):
+    import datetime as dt
+
+    import snapshots
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu", "qty": 2, "price": "100"}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1))
+    card.qty = 3
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 2))
+
+    unique = queries.real_value_history(db_session, metric="unique")
+    total = queries.real_value_history(db_session, metric="total")
+
+    assert [row["label"] for row in unique] == ["2026-01-01", "2026-01-02"]
+    assert unique[0]["cumulative_value"] == 100  # unique_value unaffected by qty
+    assert total[0]["cumulative_value"] == 200  # qty=2 * 100
+    assert total[1]["cumulative_value"] == 300  # qty=3 * 100
+
+    with pytest.raises(ValueError):
+        queries.real_value_history(db_session, metric="not-a-real-metric")
+
+
+def test_real_value_history_empty_with_no_snapshots(db_session):
+    assert queries.real_value_history(db_session) == []
+
+
 def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):
     import datetime as dt
 

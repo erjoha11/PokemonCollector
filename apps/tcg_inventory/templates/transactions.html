@@ -119,13 +119,15 @@
 {% endmacro %}
 
 {% for group in purchase_groups %}
-<details class="collapsible" style="margin-bottom: 0.75rem;">
+<details class="collapsible" id="order-{{ group.purchase_id }}" style="margin-bottom: 0.75rem;"{% if open_order == group.purchase_id %} open{% endif %}>
   <summary>Ordre #{{ group.purchase_id }}
     <span class="muted">
       ({{ group.transactions | length }} kort · registrert {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} gebyr{% endif %}{% if group.purchase_shipping %} · frakt {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · avtalt {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %})
     </span>
   </summary>
-  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;">
+  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;"
+        hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
+        hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML">
     <input type="number" step="0.01" name="purchase_total" placeholder="Avtalt totalsum"
            value="{{ group.purchase_total if group.purchase_total is not none else '' }}" style="width: 160px;">
     <input type="number" step="0.01" name="purchase_shipping" placeholder="Frakt"
