@@ -454,6 +454,11 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     )
     assert response.status_code == 200
 
+    # The redirect reopens the very <details> group just edited -- a full
+    # navigation used to always collapse it back.
+    order_details = response.text.split('id="order-6"', 1)[1].split(">", 1)[0]
+    assert "open" in order_details
+
     db = db_module.SessionLocal()
     tx = db.query(Transaction).filter(Transaction.purchase_id == 6).one()
     assert tx.purchase_total == 10
@@ -1349,6 +1354,27 @@ def test_unmerging_a_pokemon_restores_its_own_bucket(client):
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
     top10_section = pokemon_card.split("Topp 10", 1)[1]
     assert "Dark Celebi" in top10_section
+
+
+def test_merging_a_pokemon_reopens_the_folder_details_after_redirect(client):
+    # Full-page reloads used to always collapse the "Legg Pokemon i samme
+    # mappe" <details> -- merge/unmerge now redirect with a flag telling the
+    # dashboard to render it open, so the section you just used stays open.
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
+    )
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    response = client.post(
+        "/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"}, follow_redirects=True
+    )
+    folder_details = response.text.split("Legg Pokemon i samme mappe", 1)[0].rsplit("<details", 1)[1]
+    assert "open" in folder_details
+
+    response = client.post("/pokemon/unmerge", data={"name": "Dark Celebi"}, follow_redirects=True)
+    folder_details = response.text.split("Legg Pokemon i samme mappe", 1)[0].rsplit("<details", 1)[1]
+    assert "open" in folder_details
 
 
 def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(client):
