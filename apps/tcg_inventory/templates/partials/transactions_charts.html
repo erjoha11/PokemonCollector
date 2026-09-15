@@ -1,40 +1,10 @@
-{% extends "base.html" %}
-{% block title %}Analysis – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info %}
 {% from "partials/macros.html" import value_growth_chart %}
-{% block content %}
 <div class="viz-root">
-<h1>Analysis {{ info('Real purchase/sale figures come from Transactions. The value growth is an approximation — see the note under that chart.') }}</h1>
-
-<div class="kpi-grid" style="margin-bottom: 1.75rem;">
-  <div class="kpi-card">
-    <h3>Net invested {{ info('Sum of purchase price + fees, minus sum of sale price — real figures from Transactions.') }}</h3>
-    <div class="kpi-hero"><span class="value">{{ summary.net_invested | kr }}</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Bought for</span><span class="stat-value">{{ summary.total_bought | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Sold for</span><span class="stat-value">{{ summary.total_sold | kr }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Current value {{ info("Value of unique cards you own right now — same figure as the Dashboard's Value card.") }}</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
-  </div>
-
-  <div class="kpi-card">
-    {% set delta = headline.unique_value - summary.net_invested %}
-    <h3>Paper gain/loss {{ info("Current value minus net invested. Not realized — compares today's price with what you actually paid, not an actual sale.", align_right=true) }}</h3>
-    <div class="kpi-hero"><span class="value {{ 'viz-delta-gain' if delta >= 0 else 'viz-delta-loss' }}">{{ delta | kr }}</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">{{ 'Gain (on paper)' if delta >= 0 else 'Loss (on paper)' }}</span></div>
-    </div>
-  </div>
-</div>
-
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set analyse_value_growth_heading %}Collection value growth {{ info("Uses today's price applied to the date each card was added — Dex provides no historical price data, so this approximates growth, not an exact historical value. Cards added before the date was recorded are grouped under a Before tracking starting point.") }}{% endset %}
-  {{ value_growth_chart('value-growth-card', analyse_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label) }}
+  {% set tx_value_growth_heading %}Collection value growth {{ info("Uses today's price applied to the date each card was added — Dex provides no historical price data, so this approximates growth, not an exact historical value. Cards added before the date was recorded are grouped under a Before tracking starting point.") }}{% endset %}
+  {{ value_growth_chart('value-growth-card', tx_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label) }}
 
   <div class="card">
     <h2>Purchases and sales per month {{ info('Real figures from Transactions, not an approximation.', align_right=true) }}</h2>
@@ -76,7 +46,5 @@
     <p class="muted">No transactions recorded yet.</p>
     {% endif %}
   </div>
-  </div>
 </div>
 </div>
-{% endblock %}

@@ -244,8 +244,8 @@ def dashboard(
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
         # Renders via the shared value_growth_chart macro (macros.html), the
-        # same module Analyse uses -- see /analyse for the full economic
-        # breakdown this is a compact preview of.
+        # same module Transactions uses -- see /transactions for the full
+        # economic breakdown this is a compact preview of.
         value_growth = queries.collection_value_growth(db, cards, metric=metric)
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
@@ -702,8 +702,22 @@ def _transactions_context(
     known_cards = _sorted_rows(known_cards, gsort, gdir, card_keys)
     unknown_cards = _sorted_rows(unknown_cards, usort, udir, _card_field_sort_keys())
 
+    # Compact economic snapshot, folded in from the former standalone
+    # Analyse page -- cheap enough (in-memory sums over already-fetched
+    # rows) to compute on every load, unlike the value-growth/cash-flow
+    # charts below it, which are lazy-loaded via /transactions/charts
+    # instead so they aren't rebuilt on every column-sort click.
+    economic = queries.economic_summary(db)
+    headline = queries.headline_summary(db)
+    kpi = {
+        "net_invested": economic["net_invested"],
+        "unique_value": headline["unique_value"],
+        "delta": headline["unique_value"] - economic["net_invested"],
+    }
+
     return {
         "transactions": txs,
+        "kpi": kpi,
         "purchase_groups": purchase_groups,
         "ungrouped_transactions": ungrouped_transactions,
         "error": error,
@@ -1109,10 +1123,20 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 
 
 # --------------------------------------------------------------------------
-# Analyse -- economic development over time
+# Transactions charts -- the former standalone Analyse page's value-growth
+# and cash-flow charts, now a collapsible section on Transactions
+# (folded in since the two were always read together). Its own endpoint,
+# fetched lazily via hx-get on first expand, so the two SVG charts aren't
+# rebuilt on every /transactions page load or column-sort click while
+# collapsed -- see transactions.html's "Vis grafer" <details>.
 # --------------------------------------------------------------------------
 @app.get("/analyse")
-def analyse(request: Request, metric: str = "unique"):
+def analyse_redirect():
+    return RedirectResponse("/transactions", status_code=308)
+
+
+@app.get("/transactions/charts")
+def transactions_charts(request: Request, metric: str = "unique"):
     if metric not in queries.VALUE_GROWTH_METRICS:
         metric = "unique"
     db = get_db_session()
@@ -1131,10 +1155,8 @@ def analyse(request: Request, metric: str = "unique"):
 
         return templates.TemplateResponse(
             request,
-            "analyse.html",
+            "partials/transactions_charts.html",
             {
-                "summary": queries.economic_summary(db),
-                "headline": queries.headline_summary(db),
                 "value_growth": value_growth,
                 "cash_flow": cash_flow,
                 "value_chart": value_chart,
@@ -1142,7 +1164,7 @@ def analyse(request: Request, metric: str = "unique"):
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
                 "metric_options": [
-                    (key, label, _metric_url(request, key, path="/analyse"))
+                    (key, label, _metric_url(request, key, path="/transactions/charts"))
                     for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
                 ],
             },

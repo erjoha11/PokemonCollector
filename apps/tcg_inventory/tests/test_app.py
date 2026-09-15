@@ -109,7 +109,7 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     assert "50 kr" in first_pair  # the chart's end-label / tooltip value
 
 
-def test_dashboard_value_growth_chart_mirrors_the_analyse_pages_metric_filter(client):
+def test_dashboard_value_growth_chart_mirrors_transactions_metric_filter(client):
     main = make_csv(
         "My Collection",
         [{"id": "a", "name": "Pikachu", "qty": 3, "price": "50"}],
@@ -137,12 +137,18 @@ def test_dashboard_value_growth_chart_mirrors_the_analyse_pages_metric_filter(cl
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import", "/wiki", "/analyse"]:
+    for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
         response = client.get(path)
         assert response.status_code == 200, path
 
 
-def test_analyse_page_shows_economic_summary_and_charts(client):
+def test_analyse_redirects_to_transactions(client):
+    response = client.get("/analyse", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/transactions"
+
+
+def test_transactions_page_shows_economic_kpi_strip(client):
     import datetime as dt
 
     import db as db_module
@@ -158,41 +164,65 @@ def test_analyse_page_shows_economic_summary_and_charts(client):
     db.commit()
     db.close()
 
-    response = client.get("/analyse")
+    response = client.get("/transactions")
     assert response.status_code == 200
     text = response.text
     assert "Net invested" in text
     assert "85 kr" in text  # 80 purchase price + 5 fee
     assert "Current value" in text
     assert "Paper gain" in text or "Paper loss" in text or "Loss" in text or "Gain" in text
+    assert "View charts" in text
+    # The charts themselves are lazy-loaded, not rendered on the initial page.
+    assert 'class="viz-chart"' not in text
+
+
+def test_transactions_charts_endpoint_shows_growth_and_cash_flow_charts(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "100"}])
+    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card = db.query(Card).filter(Card.card_id == "a").one()
+    card.created_at = dt.datetime(2026, 1, 15)
+    db.add(Transaction(card_id=card.id, type="purchase", date=dt.date(2026, 1, 15), price=80, fees=5))
+    db.commit()
+    db.close()
+
+    response = client.get("/transactions/charts")
+    assert response.status_code == 200
+    text = response.text
     assert 'class="viz-chart"' in text
     assert "View as table" in text
     assert "2026-01" in text
 
 
-def test_analyse_page_handles_no_transactions_or_dated_cards(client):
+def test_transactions_charts_endpoint_handles_no_transactions_or_dated_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/analyse")
+    response = client.get("/transactions/charts")
     assert response.status_code == 200
     assert "No transactions recorded yet" in response.text
 
 
-def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
+def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_chart(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "10"}])
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
-    default_page = client.get("/analyse")
+    default_page = client.get("/transactions/charts")
     assert "Unique collection" in default_page.text
     assert "Duplicates" in default_page.text
     assert "Total" in default_page.text
-    assert 'href="/analyse?metric=unique"' in default_page.text
-    assert 'href="/analyse?metric=duplicates"' in default_page.text
-    assert 'href="/analyse?metric=total"' in default_page.text
+    assert 'href="/transactions/charts?metric=unique"' in default_page.text
+    assert 'href="/transactions/charts?metric=duplicates"' in default_page.text
+    assert 'href="/transactions/charts?metric=total"' in default_page.text
     assert 'class="viz-filter-pill active"' in default_page.text  # unique selected by default
 
-    total_page = client.get("/analyse?metric=total")
+    total_page = client.get("/transactions/charts?metric=total")
     assert total_page.status_code == 200
     assert "Cumulative value (Total)" in total_page.text
     # unique_value=10, total_value=30 for this card -- the chosen metric
@@ -200,7 +230,7 @@ def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
     assert "30 kr" in total_page.text
 
     # An unknown metric falls back to the default instead of erroring.
-    fallback_page = client.get("/analyse?metric=not-a-real-metric")
+    fallback_page = client.get("/transactions/charts?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
     assert "Cumulative value (Unique collection)" in fallback_page.text
 
