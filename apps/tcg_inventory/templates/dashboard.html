@@ -7,6 +7,17 @@
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
 {% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
+{# Dashboard always renders the full page (no partial-on-htmx-request route
+   like Inventory/Dropbox have), so every sort column here extracts and
+   swaps back just its own card via hx_select+outerHTML instead of the
+   plain hx_target+innerHTML pattern -- otherwise a sort click would nest
+   the entire page inside the card. #}
+{% macro top_sort(label, field) %}{{ sort_th(label, field, 'tsort', 'tdir', tsort, tdir, hx_target='#dashboard-top-cards-card', hx_select='#dashboard-top-cards-card', hx_swap='outerHTML') }}{% endmacro %}
+{% macro coll_sort(label, field) %}{{ sort_th(label, field, 'csort', 'cdir', csort, cdir, hx_target='#dashboard-inventory-card', hx_select='#dashboard-inventory-card', hx_swap='outerHTML') }}{% endmacro %}
+{% macro series_sort(label, field) %}{{ sort_th(label, field, 'ssort', 'sdir', ssort, sdir, hx_target='#dashboard-series-card', hx_select='#dashboard-series-card', hx_swap='outerHTML') }}{% endmacro %}
+{% macro rarity_sort(label, field) %}{{ sort_th(label, field, 'rsort', 'rdir', rsort, rdir, hx_target='#dashboard-rarity-card', hx_select='#dashboard-rarity-card', hx_swap='outerHTML') }}{% endmacro %}
+{% macro fav_sort(label, field) %}{{ sort_th(label, field, 'fsort', 'fdir', fsort, fdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
+{% macro top10_sort(label, field) %}{{ sort_th(label, field, 'psort', 'pdir', psort, pdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false) %}
 <tr class="{{ css_class }}" data-group="{{ group_id }}" hidden>
   <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</td>
@@ -85,15 +96,15 @@
     {% endif %}
   </div>
 
-  <div class="card">
+  <div class="card" id="dashboard-top-cards-card">
     <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest pris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Navn', 'name', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th>{{ sort_th('Nr', 'number', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th>{{ sort_th('Set', 'set', 'tsort', 'tdir', tsort, tdir) }}</th>
-          <th class="num">{{ sort_th('Pris', 'reference_price', 'tsort', 'tdir', tsort, tdir) }}</th>
+          <th>{{ top_sort('Navn', 'name') }}</th>
+          <th>{{ top_sort('Nr', 'number') }}</th>
+          <th>{{ top_sort('Set', 'set') }}</th>
+          <th class="num">{{ top_sort('Pris', 'reference_price') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -111,17 +122,17 @@
   </div>
 
   <div class="card-pair">
-  <div class="card">
+  <div class="card" id="dashboard-inventory-card">
     <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = pris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Navn', 'name', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Total', 'qty', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Verdi', 'value', 'csort', 'cdir', csort, cdir) }}</th>
-          <th class="num">{{ sort_th('Total verdi', 'total_value', 'csort', 'cdir', csort, cdir) }}</th>
+          <th>{{ coll_sort('Navn', 'name') }}</th>
+          <th class="num">{{ coll_sort('Unike', 'unique') }}</th>
+          <th class="num">{{ coll_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ coll_sort('Total', 'qty') }}</th>
+          <th class="num">{{ coll_sort('Verdi', 'value') }}</th>
+          <th class="num">{{ coll_sort('Total verdi', 'total_value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -169,17 +180,17 @@
   </div>
 
   <div class="card-pair">
-  <div class="card">
+  <div class="card" id="dashboard-series-card">
     <h2>Serie {{ info('Gruppert etter serie, sortert etter utgivelsesrekkefølge (eldste først). Klikk en rad for å se sett, og et sett for å se kortene i det.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Serie', 'name', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Total', 'qty', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Verdi', 'value', 'ssort', 'sdir', ssort, sdir) }}</th>
-          <th class="num">{{ sort_th('Total verdi', 'total_value', 'ssort', 'sdir', ssort, sdir) }}</th>
+          <th>{{ series_sort('Serie', 'name') }}</th>
+          <th class="num">{{ series_sort('Unike', 'unique') }}</th>
+          <th class="num">{{ series_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ series_sort('Total', 'qty') }}</th>
+          <th class="num">{{ series_sort('Verdi', 'value') }}</th>
+          <th class="num">{{ series_sort('Total verdi', 'total_value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -212,16 +223,16 @@
     </table>
   </div>
 
-  <div class="card">
+  <div class="card" id="dashboard-rarity-card">
     <h2>Rarity {{ info('Gruppert etter sjeldenhetsgrad, sortert fra Common til de sjeldneste (moderne tier-rekkefølge). Ukjente rarity-navn sorteres alfabetisk sist.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Rarity', 'name', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Total', 'qty', 'rsort', 'rdir', rsort, rdir) }}</th>
-          <th class="num">{{ sort_th('Verdi', 'value', 'rsort', 'rdir', rsort, rdir) }}</th>
+          <th>{{ rarity_sort('Rarity', 'name') }}</th>
+          <th class="num">{{ rarity_sort('Unike', 'unique') }}</th>
+          <th class="num">{{ rarity_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ rarity_sort('Total', 'qty') }}</th>
+          <th class="num">{{ rarity_sort('Verdi', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -243,7 +254,7 @@
   </div>
   </div>
 
-  <div class="card-pair">
+  <div class="card-pair" id="dashboard-pokemon-cards">
   <div class="card">
     <h2>Pokemon {{ info('Gruppert etter Pokemon-navn på tvers av alle print du eier. "Flere" i Sett/Serie betyr at bucketen spenner over mer enn ett sett/serie -- hold musepekeren over cellen for å se hvilke.', below=true) }}</h2>
     <div class="autocomplete" style="max-width: 320px; margin-bottom: 1.1rem;">
@@ -252,12 +263,13 @@
       <div id="pokemon-search-results"></div>
     </div>
 
-    <details style="margin-bottom: 1.1rem;">
+    <details style="margin-bottom: 1.1rem;"{% if open_pokemon_folder %} open{% endif %}>
       <summary>Legg Pokemon i samme mappe (f.eks. Celebi + Dark Celebi, eller Slowpoke + Slowbro)</summary>
       <p class="muted" style="margin: 0.5rem 0;">
         Dette endrer kun visningen her på Dashboardet -- kortene, prisene og eksporten dine påvirkes ikke.
       </p>
-      <form method="post" action="/pokemon/merge" class="merge-form">
+      <form method="post" action="/pokemon/merge" class="merge-form"
+            hx-post="/pokemon/merge" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
         <input type="text" name="name" list="pokemon-names-list" placeholder="Navn som skal flyttes (f.eks. Slowpoke)" required>
         <span>i samme mappe som</span>
         <input type="text" name="canonical" list="pokemon-names-list" placeholder="Mappenavn (f.eks. Slowbro)" required>
@@ -277,7 +289,8 @@
             {% for alias in members %}
             <li>
               <span>{{ alias.name }}</span>
-              <form method="post" action="/pokemon/unmerge">
+              <form method="post" action="/pokemon/unmerge"
+                    hx-post="/pokemon/unmerge" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
                 <input type="hidden" name="name" value="{{ alias.name }}">
                 <button type="submit" title="Fjern fra mappen">Angre</button>
               </form>
@@ -295,13 +308,13 @@
     <table style="margin-bottom: 1.5rem;">
       <thead>
         <tr>
-          <th>{{ sort_th('Navn', 'name', 'fsort', 'fdir', fsort, fdir) }}</th>
+          <th>{{ fav_sort('Navn', 'name') }}</th>
           <th>Sett</th>
           <th>Serie</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'fsort', 'fdir', fsort, fdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'fsort', 'fdir', fsort, fdir) }}</th>
-          <th class="num">{{ sort_th('Total', 'qty', 'fsort', 'fdir', fsort, fdir) }}</th>
-          <th class="num">{{ sort_th('Verdi', 'value', 'fsort', 'fdir', fsort, fdir) }}</th>
+          <th class="num">{{ fav_sort('Unike', 'unique') }}</th>
+          <th class="num">{{ fav_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ fav_sort('Total', 'qty') }}</th>
+          <th class="num">{{ fav_sort('Verdi', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -309,7 +322,8 @@
         {% set row_id = 'favorite-' ~ loop.index %}
         <tr>
           <td>
-            <form method="post" action="/pokemon/favorite" style="display:inline;">
+            <form method="post" action="/pokemon/favorite" style="display:inline;"
+                  hx-post="/pokemon/favorite" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
               <input type="hidden" name="name" value="{{ p.name }}">
               <button type="submit" class="favorite-star active" title="Fjern som favoritt">★</button>
             </form>
@@ -335,13 +349,13 @@
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Navn', 'name', 'psort', 'pdir', psort, pdir) }}</th>
+          <th>{{ top10_sort('Navn', 'name') }}</th>
           <th>Sett</th>
           <th>Serie</th>
-          <th class="num">{{ sort_th('Unike', 'unique', 'psort', 'pdir', psort, pdir) }}</th>
-          <th class="num">{{ sort_th('Duplikater', 'duplicates', 'psort', 'pdir', psort, pdir) }}</th>
-          <th class="num">{{ sort_th('Total', 'qty', 'psort', 'pdir', psort, pdir) }}</th>
-          <th class="num">{{ sort_th('Verdi', 'value', 'psort', 'pdir', psort, pdir) }}</th>
+          <th class="num">{{ top10_sort('Unike', 'unique') }}</th>
+          <th class="num">{{ top10_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ top10_sort('Total', 'qty') }}</th>
+          <th class="num">{{ top10_sort('Verdi', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -349,7 +363,8 @@
         {% set row_id = 'pokemon-' ~ loop.index %}
         <tr>
           <td>
-            <form method="post" action="/pokemon/favorite" style="display:inline;">
+            <form method="post" action="/pokemon/favorite" style="display:inline;"
+                  hx-post="/pokemon/favorite" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
               <input type="hidden" name="name" value="{{ p.name }}">
               <button type="submit" class="favorite-star{{ ' active' if p.name in favorite_pokemon else '' }}"
                       title="{{ 'Fjern som favoritt' if p.name in favorite_pokemon else 'Sett som favoritt' }}">{{ '★' if p.name in favorite_pokemon else '☆' }}</button>
