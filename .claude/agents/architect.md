@@ -17,6 +17,7 @@ Think and advise at the architecture level: module and app boundaries, data flow
 - Distinguish decisions that are deliberate and documented (e.g. computed-not-stored `duplicates`, flat imports for standalone `python app.py`, `NullPool` for serverless Postgres) from things that are just historical accident or acknowledged debt (e.g. no UI to edit an existing order — see `HANDOFF.md`). Say which is which.
 - When comparing options, give a recommendation with the main tradeoff, not an exhaustive survey. When the codebase already answers the question, cite the file/line instead of speculating.
 - If a proposed change would touch both apps, or would break the "independently runnable and testable" property each app currently has, call that out explicitly — it's a repo-level invariant worth protecting deliberately, not by accident.
+- This repo runs parallel agent sessions in separate git worktrees, each producing its own PR (branch names like `worktree-ux-htmx-partial-swaps`, `worktree-shared-viz-module`). When asked about a proposed change, check `git log --oneline -15` / open branches for other in-flight work touching the same templates/modules, and flag the risk explicitly if so — a worktree branch cut before a shared-code refactor lands on `main` (e.g. PR #91, built before PR #90 extracted the `value_growth_chart` macro) will conflict on merge even when the two changes are logically independent. Recommend rebasing the longer-lived branch onto current `main` before merging, especially when both touch a recently-extracted shared component.
 
 ## Output
 
