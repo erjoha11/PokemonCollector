@@ -30,6 +30,7 @@ import auth
 import charts
 import dropbox_client
 import queries
+import snapshots
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
 from models import (
@@ -197,14 +198,16 @@ def get_db_session() -> Session:
 # --------------------------------------------------------------------------
 # Dashboard
 # --------------------------------------------------------------------------
-def _metric_url(request: Request, metric_key: str) -> str:
-    """A dashboard link that switches the Verdiutvikling chart's metric,
-    preserving every other query param (each table's own sort state) --
-    same "keep everything else as-is" idiom as `_sort_url` above.
+def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
+    """A link that switches the shared Verdiutvikling chart's metric (see
+    `value_growth_chart` in macros.html), preserving every other query param
+    (each table's own sort state on Dashboard) -- same "keep everything else
+    as-is" idiom as `_sort_url` above. `path` is the page the chart lives on
+    (Dashboard vs Analyse).
     """
     params = dict(request.query_params)
     params["metric"] = metric_key
-    return "/?" + urlencode(params)
+    return f"{path}?" + urlencode(params)
 
 
 @app.get("/")
@@ -240,9 +243,9 @@ def dashboard(
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
-        # Mirrors the Analyse page's value-growth chart, filter pills
-        # included -- see /analyse for the full economic breakdown this is
-        # a compact preview of.
+        # Renders via the shared value_growth_chart macro (macros.html), the
+        # same module Analyse uses -- see /analyse for the full economic
+        # breakdown this is a compact preview of.
         value_growth = queries.collection_value_growth(db, cards, metric=metric)
         value_chart = charts.build_line_chart(
             labels=[row["label"] for row in value_growth],
@@ -1062,16 +1065,27 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         dbx = dropbox_client.build_client_from_env()
         files = dropbox_client.list_csv_files(dbx, folder)
         if not files:
-            return {"status": "ok", "folder": folder, "message": "No CSV files found"}
+            snapshotted = snapshots.record_daily_snapshot(db)
+            return {
+                "status": "ok",
+                "folder": folder,
+                "message": "No CSV files found",
+                "cards_snapshotted": snapshotted,
+            }
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
         result = import_dex_csv_files(db, payload, full_load=False, source="cron")
+        # Snapshot after the sync, not before -- a cron run should always
+        # record today's post-sync qty/price, never yesterday's leftover
+        # state (see snapshots.record_daily_snapshot / README "Value history").
+        snapshotted = snapshots.record_daily_snapshot(db)
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
             f"created={result.cards_created} updated={result.cards_updated} "
             f"flagged={result.cards_flagged_missing} "
             f"collections={sorted(result.collections_touched)} "
             f"binders={sorted(result.binders_touched)} "
-            f"warnings={len(result.warnings)}"
+            f"warnings={len(result.warnings)} "
+            f"snapshotted={snapshotted}"
         )
         return {
             "status": "ok",
@@ -1083,6 +1097,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             "collections_touched": sorted(result.collections_touched),
             "binders_touched": sorted(result.binders_touched),
             "warnings": result.warnings,
+            "cards_snapshotted": snapshotted,
         }
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         # Cron runs unattended -- nobody's watching a response body, so this
@@ -1127,7 +1142,8 @@ def analyse(request: Request, metric: str = "unique"):
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
                 "metric_options": [
-                    (key, label) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
+                    (key, label, _metric_url(request, key, path="/analyse"))
+                    for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
                 ],
             },
         )

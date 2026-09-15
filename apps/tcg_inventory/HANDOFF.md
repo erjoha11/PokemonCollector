@@ -189,3 +189,72 @@ favorite forms in `dashboard.html`.
 
 Full test suite green (169 passed) after updating every test assertion
 that checked the old Norwegian strings/DB values.
+
+## UX agent review — 2026-09-15 session
+
+Ran the project's `ux` agent for a broad usability pass over the whole app
+(all templates + `static/style.css`, cross-checked against this file and
+`README.md`). Nothing below has been implemented yet — logging it here so
+a follow-up session (planned to be a different chat) has the full list
+without re-running the review. Ordered by the agent's own priority:
+
+1. ~~**Full-page reloads discard exploration state.** `/pokemon/favorite`,
+   `/pokemon/merge`, `/pokemon/unmerge` (`app.py` ~lines 372–408) and
+   `/transactions/purchase/{id}/total` (~lines 844–860) all end in a
+   `RedirectResponse` instead of an htmx partial swap, even though the app
+   already has the pattern elsewhere (`partials/macros.html`'s `sort_th`
+   macro supports `hx_target`; Inventory's sort and the Dashboard's
+   "Verdiutvikling" filter already use `hx-select`/`outerHTML`). Effect:
+   expanding Dashboard drill-down rows or a Transactions `<details>` group,
+   then favoriting/merging/sorting/editing a purchase total, collapses
+   everything and resets scroll — for the purchase-total case, it closes
+   the very `<details>` group you just edited. Dashboard's sort-column
+   `<a href>` links (e.g. `templates/dashboard.html` lines 93–96, 119–124,
+   177–183, 220–225, 298–304, 338–344) have the same issue. Pure
+   template/route rewiring, no schema change — good candidate to pick up
+   first.~~ **Addressed 2026-09-15** (PR #89, same-day session): every form/
+   route listed now swaps its own section via `hx-select`/`hx-target`/
+   `hx-swap="outerHTML"` instead of a full-page redirect; merge/unmerge and
+   the purchase-total edit also reopen the `<details>` group just used. A
+   third missed instance (the Pokemon-search dropdown's favorite-star form)
+   was found and fixed in the 2026-09-15 translation session below.
+2. ~~**In-app Wiki is stale.** `templates/wiki.html`'s `#import` section
+   (lines 126–135) still describes the old manual-CSV-upload/Dropbox-browser
+   Import page and labels it "Import / Sync" in the ToC (line 15), but #87
+   above already turned that page into the read-only "Synk-logg". Also
+   cheap, no schema change.~~ **Addressed 2026-09-15** (translation session
+   below): rewritten to describe the current read-only "Sync Log" page.
+3. **Synk-logg's "Advarsler" column is a dead end.** `partials/import_log.html`
+   line 16 shows a warning *count*, but the actual warning text is never
+   persisted (`models.py` `ImportLog.warnings_count` only stores the count;
+   `app.py` ~line 1090 passes `result.warnings` into a one-off response,
+   never stored). On Vercel there's currently no way from inside the app to
+   ever see what a past sync's warnings said. **Has data-model
+   implications** (new column or related table to store raw warning text) —
+   check with the `architect` agent on storage shape before implementing,
+   unlike #1/#2 above.
+4. ~~**Accessibility: `--muted` (`static/style.css` line 9, `#868b96`) is
+   under WCAG AA contrast (~3.4:1) at the small sizes it's actually used**
+   (table headers, KPI labels, Historikk dates/metadata). Also
+   `color-scheme: light dark` is declared with no actual dark-mode
+   palette — worth toggling OS dark mode once to check for bad contrast
+   combos.~~ **Addressed 2026-09-16**: `--muted` changed to `#63696f`
+   (~5.1:1 vs `--surface`, ~5.6:1 vs `--page` — both clear AA passes, while
+   staying lighter than `--ink-secondary`'s ~7.3:1 so the visual hierarchy
+   is unchanged). `color-scheme` changed from `light dark` to `light` since
+   there's still no real dark palette — declaring `dark` support was letting
+   the browser render native widgets in dark styling on an always-light
+   page, which was the actual source of the "bad contrast combos" risk, not
+   something a toggle-and-check would have fixed on its own. A real dark
+   theme is still a separate, unbuilt feature.
+5. **Minor: several inputs rely on placeholder-only labeling** with no
+   `<label>`/`aria-label` — notably the Pokemon merge form
+   (`templates/dashboard.html` lines 261–263), which becomes visually
+   ambiguous once both fields are filled in and the placeholders disappear.
+6. **Minor: Inventory's 5 filter dropdowns** (series/set/collection/binder/
+   language) **have no single "clear all"**, unlike the `dup`/`rarity`
+   filters which do have explicit "Fjern filter" links.
+
+Explicitly *not* re-raised (already covered above): the "+ Legg til i
+ordre" no-op, the "Pris"/"Registrert pris" ambiguity, and the missing
+order-edit UI.

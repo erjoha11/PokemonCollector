@@ -23,3 +23,64 @@
    overflow, so an upward tooltip there gets cut off by the card's own top
    edge. #}
 {% macro info(text, align_right=false, below=false) %}<span class="info-icon{{ ' align-right' if align_right else '' }}{{ ' below' if below else '' }}" tabindex="0" role="note" aria-label="{{ text }}">i<span class="info-tooltip">{{ text }}</span></span>{% endmacro %}
+
+{# The cumulative value-growth line chart -- one module shared by Dashboard
+   (compact preview) and Analyse (full page), so a change to the chart only
+   ever needs to happen here. `heading` is pre-rendered HTML (build it with
+   `{% set heading %}...{% endset %}` so it can embed the `info()` macro)
+   since the two pages' tooltip text differs. `extra_class` lets a caller
+   that doesn't already sit inside a `.viz-root` ancestor (Dashboard's card
+   is the page's only chart; Analyse wraps its whole page in one `.viz-root`
+   instead) opt the card itself into the `--viz-series-*` CSS vars. #}
+{% macro value_growth_chart(card_id, heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='') %}
+<div class="card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
+  <h2>{{ heading | safe }}</h2>
+  <div class="viz-filter">
+    {% for key, label, href in metric_options %}
+    <a href="{{ href }}"
+       hx-get="{{ href }}"
+       hx-select="#{{ card_id }}"
+       hx-target="#{{ card_id }}"
+       hx-swap="outerHTML"
+       hx-push-url="true"
+       class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
+    {% endfor %}
+  </div>
+  {% if value_chart.points %}
+  <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Cumulative value growth over time ({{ metric_label }})">
+    {% for y, label in value_chart.y_ticks %}
+    <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ value_chart.width - 16 }}" y2="{{ y }}"></line>
+    <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
+    {% endfor %}
+    {% for x, label in value_chart.x_labels %}
+    <text class="viz-axis-label" x="{{ x }}" y="{{ value_chart.height - 8 }}" text-anchor="middle">{{ label }}</text>
+    {% endfor %}
+    <path class="viz-area" d="{{ value_chart.area_path }}" fill="var(--viz-series-1)"></path>
+    <path class="viz-line" d="{{ value_chart.line_path }}" stroke="var(--viz-series-1)" fill="none"></path>
+    {% for x, y in value_chart.points %}
+    {% set row = value_growth[loop.index0] %}
+    <circle class="viz-hit" cx="{{ x }}" cy="{{ y }}" r="9" fill="transparent">
+      <title>{{ row.label }}: {{ row.cumulative_value | kr }}</title>
+    </circle>
+    {% endfor %}
+    {% if value_chart.end_point %}
+    <circle class="viz-dot" cx="{{ value_chart.end_point[0] }}" cy="{{ value_chart.end_point[1] }}" r="5" fill="var(--viz-series-1)" stroke="var(--surface)" stroke-width="2"></circle>
+    <text class="viz-end-label" x="{{ value_chart.end_point[0] }}" y="{{ value_chart.end_point[1] - 10 }}" text-anchor="end">{{ value_chart.end_label }} kr</text>
+    {% endif %}
+  </svg>
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <tbody>
+        {% for row in value_growth %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% else %}
+  <p class="muted">No data yet.</p>
+  {% endif %}
+</div>
+{% endmacro %}

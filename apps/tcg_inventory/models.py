@@ -116,6 +116,44 @@ class Card(Base):
         return min(self.collections, key=lambda c: c.priority_rank)
 
 
+class CardSnapshot(Base):
+    """One row per (card, date): that card's qty and reference_price as of
+    that date. Written once a day by `snapshots.record_daily_snapshot`,
+    called from the `/cron/dropbox-sync` cron job right after a successful
+    sync (see app.py). Stores the same raw inputs Card's computed properties
+    use (never a derived total, same reasoning as Card above) -- so
+    duplicates/unique_value/total_value can be computed the same way, but
+    as of a past date instead of today. Without this table there is no way
+    to answer "what was the collection worth on date X" -- see
+    queries.real_value_history and HANDOFF.md.
+    """
+
+    __tablename__ = "card_snapshots"
+    __table_args__ = (
+        UniqueConstraint("card_id", "date", name="uq_card_snapshots_card_id_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    @property
+    def duplicates(self) -> int:
+        return max(self.qty - 1, 0)
+
+    @property
+    def unique_value(self) -> float:
+        return self.reference_price or 0.0
+
+    @property
+    def total_value(self) -> float:
+        return self.qty * (self.reference_price or 0.0)
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 
