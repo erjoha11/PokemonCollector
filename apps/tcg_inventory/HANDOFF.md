@@ -274,3 +274,31 @@ visual/screenshot review was done since this environment has no browser,
 so the actual look (color cycle against 8 sections, pill-row wrap at
 narrow widths) hasn't been eyeballed. Worth a quick look before/after
 merging if that matters.
+
+## 2026-09-16 session — Wiki-staleness process recommendations, implemented
+
+This branch merged `origin/main` (which by now included `CLAUDE.md` and
+`.claude/agents/`, both mid-edit/uncommitted last session) and then acted
+on the two process recommendations above that were previously blocked on
+that file landing:
+
+- `CLAUDE.md`: added a rule next to the `templates/` bullet — a route
+  rename or user-facing behavior change should update the matching
+  `templates/wiki.html` section in the same PR, same discipline as the
+  existing importer.py/README.md rule. Also noted there and on the `ux`
+  agent's own bullet that the mechanical nav-label test only catches
+  renames, not behavior drifting under an unchanged label.
+- `.claude/agents/ux.md`: added an explicit instruction to cross-check
+  `templates/wiki.html` against current page behavior during a broad,
+  whole-app review pass (not a scoped single-page one) — this is the
+  actual agent-prompt file, a more direct fix than only noting it in
+  `CLAUDE.md`.
+- Also resolved a real merge conflict in this file: `origin/main` had
+  independently landed the same "UX agent review — 2026-09-15 session"
+  section this branch's two Wiki entries were appended after. Merged them
+  in original order and marked items #1 (htmx partial swaps, PR #89) and
+  #2 (this branch's wiki fixes) as addressed, since leaving that list
+  stale would be ironic for a wiki-staleness fix.
+
+Verified: full suite green (182 passed) after the merge and the two doc
+edits above. No app code changed this entry — docs/process only.

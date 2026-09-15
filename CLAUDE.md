@@ -62,7 +62,7 @@ FastAPI app with flat imports (`from db import ...`, not a relative package) so 
 - `snapshots.py` — writes one `card_snapshots` row per card (qty + `reference_price`) each time the daily cron completes a sync, so `queries.real_value_history` can report actual historical value instead of `collection_value_growth`'s today's-price-applied-retroactively approximation. See `apps/tcg_inventory/README.md` "Value history". Backend-only so far — no dashboard/Analyse UI consumes it yet.
 - `dropbox_client.py` / `dropbox_setup.py` — read-only Dropbox integration for pulling Dex CSV exports directly, optional.
 - `api/index.py` + `vercel.json` — Vercel entrypoint; `api/index.py` just re-exports `app` from `app.py`, all routes live in the one place. `vercel.json` also schedules the daily Dropbox auto-sync cron (`GET /cron/dropbox-sync`), which only ever does a normal sync (flags missing cards, never deletes).
-- `templates/` + `static/` — Jinja2/HTMX frontend, no build step, no CDN dependency (HTMX is vendored).
+- `templates/` + `static/` — Jinja2/HTMX frontend, no build step, no CDN dependency (HTMX is vendored). `templates/wiki.html` documents what the other pages do for the end user — **a route rename or user-facing behavior change should update the matching `wiki.html` section in the same PR**, same discipline as the importer.py/README.md rule above. `tests/test_app.py::test_wiki_page_reflects_current_nav_labels` mechanically catches a renamed nav label going undocumented, but it can't catch behavior changing under an unchanged label (see `apps/tcg_inventory/HANDOFF.md`'s "Wiki staleness fix" entry for a real example) — that kind needs a human or the `ux` agent to actually notice.
 
 Data model: `cards`, `collections`, `card_collections` (many-to-many), `binders`, `transactions`, `set_release_order` (chronological-sort lookup table, ships empty until seeded).
 
@@ -75,7 +75,7 @@ There is no UI yet to edit an already-registered order (retype/relink/move/merge
 Besides the default coding agent, two project-scoped advisory agents live in `.claude/agents/` — read-only (no Edit/Write), so they analyze and recommend rather than implement:
 
 - **architect** — system-architecture-level thinking: module/app boundaries, data flow, deployment topology, coupling, design tradeoffs. Consult before a change that ripples across the system or touches a documented decision (see e.g. the computed-vs-stored discussion above).
-- **ux** — usability/visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS: page flows, interaction consistency, accessibility, aesthetic polish.
+- **ux** — usability/visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS: page flows, interaction consistency, accessibility, aesthetic polish. Its periodic full-app passes should also cross-check `templates/wiki.html` against current page behavior, not just against `README.md` — it's the one place behavioral wiki drift (an unchanged label describing changed behavior) is likely to get caught.
 
 Neither agent edits files — their output is analysis for the default agent (or the user) to act on. When a task needs input from both (e.g. a UX change with schema implications), the orchestrating session keeps each agent's spawned instance alive and relays findings between them rather than re-explaining context from scratch each time.
 
