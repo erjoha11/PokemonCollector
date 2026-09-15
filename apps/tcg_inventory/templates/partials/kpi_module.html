@@ -1,65 +1,65 @@
 {% from "partials/macros.html" import info %}
 <div class="kpi-grid">
   <div class="kpi-card">
-    <h3>Total {{ info('Fysiske kort = alt du eier, duplikater inkludert. Unike = hvert kort telt én gang, uansett hvor mange du har av det.') }}</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">fysiske kort</span></div>
+    <h3>Total {{ info('Physical cards = everything you own, duplicates included. Unique = each card counted once, no matter how many copies you have.') }}</h3>
+    <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">physical cards</span></div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ headline.duplicates }}</span></div>
-      <div class="stat-row"><span class="stat-label">Unike</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ headline.duplicates }}</span></div>
+      <div class="stat-row"><span class="stat-label">Unique</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
     </div>
   </div>
 
   <div class="kpi-card">
-    <h3>Verdi {{ info('Verdi = pris for hvert unikt kort (duplikater teller ikke ekstra). Total verdi legger til verdien av duplikatene også.') }}</h3>
-    <!-- Verdi = value of unique cards only; Total verdi = unique + duplicates
-         (same convention as the Inventory/Serie/Rarity tables' Verdi/Total
-         verdi columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
+    <h3>Value {{ info("Value = price of each unique card (duplicates don't add extra). Total value also includes the value of duplicates.") }}</h3>
+    <!-- Value = value of unique cards only; Total value = unique + duplicates
+         (same convention as the Inventory/Series/Rarity tables' Value/Total
+         value columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
     <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Total verdi</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Verdi duplikater</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Total value</span><span class="stat-value">{{ headline.total_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
     </div>
   </div>
 
   <div class="kpi-card">
-    <h3>Mest verdifulle kort {{ info('Enkeltkortet med høyest pris i hele samlingen -- uavhengig av hvor mange du eier av det.') }}</h3>
+    <h3>Most valuable card {{ info('The single card with the highest price in the whole collection — regardless of how many copies you own.') }}</h3>
     {% if top_cards %}
     <div class="kpi-hero"><span class="value">{{ top_cards[0].reference_price | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_cards[0].name }}">{{ top_cards[0].name }}{% if top_cards[0].rarity %} · {{ top_cards[0].rarity }}{% endif %}</div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Snitt per unikt kort</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Snitt per fysisk kort</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Average per unique card</span><span class="stat-value">{{ headline.avg_unique_value | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Average per physical card</span><span class="stat-value">{{ headline.avg_physical_value | kr }}</span></div>
     </div>
     {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
+    <div class="kpi-caption muted">No data</div>
     {% endif %}
   </div>
 
   <div class="kpi-card">
-    <h3>Mest verdifulle collection {{ info('Rangert etter verdien av unike kort i collection (duplikater teller ikke ekstra). Bulk regnes ikke som en collection her.') }}</h3>
+    <h3>Most valuable collection {{ info("Ranked by the value of unique cards in the collection (duplicates don't add extra). Bulk doesn't count as a collection here.") }}</h3>
     {% if top_collection %}
     <div class="kpi-hero"><span class="value">{{ top_collection.unique_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div>
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_collection.qty }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ top_collection.duplicates }}</span></div>
     </div>
     {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
+    <div class="kpi-caption muted">No data</div>
     {% endif %}
   </div>
 
   <div class="kpi-card">
-    <h3>Mest verdifulle serie {{ info('Rangert etter total verdi i serien, duplikater inkludert.', align_right=true) }}</h3>
+    <h3>Most valuable series {{ info('Ranked by total value in the series, duplicates included.', align_right=true) }}</h3>
     {% if top_series %}
     <div class="kpi-hero"><span class="value">{{ top_series.total_value | kr }}</span></div>
     <div class="kpi-caption" title="{{ top_series.name }}">{{ top_series.name }}</div>
     <div class="kpi-support">
       <div class="stat-row"><span class="stat-label">Total</span><span class="stat-value">{{ top_series.qty }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplikater</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
+      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ top_series.duplicates }}</span></div>
     </div>
     {% else %}
-    <div class="kpi-caption muted">Ingen data</div>
+    <div class="kpi-caption muted">No data</div>
     {% endif %}
   </div>
 </div>

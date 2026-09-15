@@ -88,8 +88,31 @@ def _add_missing_columns():
                 conn.execute(text(f'ALTER TABLE {table.name} ADD COLUMN "{column.name}" {ddl_type}'))
 
 
+_LEGACY_TRANSACTION_TYPES = {"kjøp": "purchase", "salg": "sale", "bytte": "trade"}
+
+
+def _normalize_legacy_transaction_types():
+    """One-time data cleanup: `transactions.type` used to store Norwegian
+    values ("kjøp"/"salg"/"bytte") from before the app's UI was translated
+    to English. Idempotent (the WHERE clause only ever matches the old
+    values, so this is a no-op on every run after the first) -- safe to
+    call unconditionally on every startup, same spirit as
+    `_add_missing_columns()` above, just normalizing data instead of schema.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("transactions"):
+        return  # brand new database -- nothing to normalize
+    with engine.begin() as conn:
+        for old, new in _LEGACY_TRANSACTION_TYPES.items():
+            conn.execute(
+                text("UPDATE transactions SET type = :new WHERE type = :old"),
+                {"new": new, "old": old},
+            )
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
+    _normalize_legacy_transaction_types()

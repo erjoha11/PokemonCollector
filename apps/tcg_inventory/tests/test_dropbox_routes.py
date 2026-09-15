@@ -52,7 +52,7 @@ def test_dropbox_sync_downloads_selected_files_and_imports_them(client, monkeypa
         data={"folder": "/exports", "paths": ["/exports/main.csv"], "full_load": "false"},
     )
     assert response.status_code == 200
-    assert "Kort opprettet</td><td>1" in response.text
+    assert "Cards created</td><td>1" in response.text
     assert fake.downloaded_paths == ["/exports/main.csv"]
 
     inventory = client.get("/inventory")
@@ -62,7 +62,7 @@ def test_dropbox_sync_downloads_selected_files_and_imports_them(client, monkeypa
 def test_dropbox_sync_without_selection_shows_error(client):
     response = client.post("/import/dropbox/sync", data={"folder": "/exports"})
     assert response.status_code == 200
-    assert "Velg minst én fil" in response.text
+    assert "Select at least one file" in response.text
 
 
 def test_cron_sync_requires_secret_when_configured(client, monkeypatch):

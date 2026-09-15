@@ -1,20 +1,20 @@
 <div class="card" style="margin-bottom: 1.5rem;">
-  <h2>Nytt {{ 'kjøp' if type == 'kjøp' else 'salg' }} <span class="muted">(Kjøps-ID {{ purchase_id }})</span></h2>
+  <h2>New {{ 'Purchase' if type == 'purchase' else 'Sale' }} <span class="muted">(Order ID {{ purchase_id }})</span></h2>
   <form method="post" action="/transactions/purchase">
     <input type="hidden" name="type" value="{{ type }}">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
       <input type="date" name="date" value="{{ today }}" required>
-      <input type="text" name="platform" placeholder="Platform (valgfritt)">
-      <input type="number" step="0.01" name="purchase_total" placeholder="Avtalt totalsum (valgfritt)"
-             title="Hele beløpet du betalte for kjøpet -- brukes til å vise diff mot summen av det du faktisk har registrert kort for.">
-      <input type="number" step="0.01" name="purchase_shipping" placeholder="Frakt (valgfritt)"
-             title="Fraktkostnad for hele kjøpet -- trekkes fra sammen med kortsummen når diff mot avtalt totalsum regnes ut.">
+      <input type="text" name="platform" placeholder="Platform (optional)">
+      <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total (optional)"
+             title="The full amount you paid for the order — used to show the diff against the sum of what you've actually recorded cards for.">
+      <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping (optional)"
+             title="Shipping cost for the whole order — subtracted along with the card total when the diff against the agreed total is calculated.">
     </div>
 
     <div class="autocomplete" style="max-width: 420px; margin: 0.75rem 0;">
-      <input type="text" placeholder="Søk kort å legge til (navn eller card id)..." autocomplete="off"
+      <input type="text" placeholder="Search for a card to add (name or card ID)..." autocomplete="off"
              hx-get="/transactions/purchase/search" hx-trigger="keyup changed delay:250ms" hx-target="#cart-search-results"
              name="q">
       <div id="cart-search-results"></div>
@@ -22,18 +22,18 @@
 
     <table style="margin-bottom: 0.75rem;">
       <thead>
-        <tr><th>Kort</th><th class="num">Pris</th><th></th></tr>
+        <tr><th>Card</th><th class="num">Price</th><th></th></tr>
       </thead>
       <tbody id="cart-body">
       </tbody>
     </table>
 
     <div class="filters" style="margin-bottom: 0.9rem;">
-      <input type="number" step="0.01" id="remaining_sum" placeholder="Sum for resten (valgfritt)" style="width: 200px;">
-      <button type="button" onclick="distributeRemaining()">Fordel jevnt på tomme priser</button>
+      <input type="number" step="0.01" id="remaining_sum" placeholder="Remaining amount (optional)" style="width: 200px;">
+      <button type="button" onclick="distributeRemaining()">Distribute evenly across empty prices</button>
     </div>
 
-    <button type="submit">Registrer {{ 'kjøpet' if type == 'kjøp' else 'salget' }}</button>
-    <button type="button" onclick="document.getElementById('purchase-cart-container').innerHTML=''">Avbryt</button>
+    <button type="submit">Register {{ 'purchase' if type == 'purchase' else 'sale' }}</button>
+    <button type="button" onclick="document.getElementById('purchase-cart-container').innerHTML=''">Cancel</button>
   </form>
 </div>

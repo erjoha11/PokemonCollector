@@ -595,7 +595,7 @@ def _cards_with_known_added_date(db):
 def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     by_card: dict[int, list[float]] = {}
     for tx in txs:
-        if tx.type == "kjøp":
+        if tx.type == "purchase":
             by_card.setdefault(tx.card_id, []).append(tx.price)
     return by_card
 
@@ -756,14 +756,14 @@ def _next_purchase_id(db: Session) -> int:
 
 
 @app.get("/transactions/purchase/start")
-def purchase_cart_start(request: Request, type: str = "kjøp"):
+def purchase_cart_start(request: Request, type: str = "purchase"):
     db = get_db_session()
     try:
         return templates.TemplateResponse(
             request,
             "partials/purchase_cart.html",
             {
-                "type": type if type in ("kjøp", "salg") else "kjøp",
+                "type": type if type in ("purchase", "sale") else "purchase",
                 "purchase_id": _next_purchase_id(db),
                 "today": dt.date.today().isoformat(),
             },
@@ -824,7 +824,7 @@ def create_purchase(
                 request,
                 "transactions.html",
                 _transactions_context(
-                    db, request, "date", "desc", error="Ingen kort lagt til kjøpet -- søk opp minst ett kort først."
+                    db, request, "date", "desc", error="No cards added to the order yet — search for at least one card first."
                 ),
             )
         tx_date = dt.date.fromisoformat(date)
@@ -852,9 +852,9 @@ def set_purchase_total(
     purchase_id: int, purchase_total: float | None = Form(None), purchase_shipping: float | None = Form(None)
 ):
     """Sets (or clears) the declared total and shipping cost for every row
-    already sharing this purchase_id -- the "avtalt"/frakt half of the
-    registrert/frakt/avtalt/diff line in Historikk, editable after the fact
-    for purchases built up piecemeal (e.g. via direct reconciliation)
+    already sharing this purchase_id — the "agreed"/shipping half of the
+    registered/shipping/agreed/diff line in History, editable after the
+    fact for purchases built up piecemeal (e.g. via direct reconciliation)
     rather than through the cart form.
     """
     db = get_db_session()
@@ -888,20 +888,20 @@ def create_transaction(
                 request,
                 "transactions.html",
                 _transactions_context(
-                    db, request, "date", "desc", error="Fant ikke kortet -- velg et kort fra søkeresultatene."
+                    db, request, "date", "desc", error="Card not found — pick one from the search results."
                 ),
             )
 
-        # `upsert`: correct the one existing "kjøp" for this card instead of
-        # adding a second one for the same card. Only
-        # auto-update when there's exactly one existing kjøp to correct;
-        # with zero or several (a genuine re-buy already on record), fall
-        # back to inserting a new row rather than guessing which to change.
+        # `upsert`: correct the one existing "purchase" for this card instead
+        # of adding a second one for the same card. Only auto-update when
+        # there's exactly one existing purchase to correct; with zero or
+        # several (a genuine re-buy already on record), fall back to
+        # inserting a new row rather than guessing which to change.
         existing = None
-        if upsert and type == "kjøp":
+        if upsert and type == "purchase":
             candidates = (
                 db.query(Transaction)
-                .filter(Transaction.card_id == card.id, Transaction.type == "kjøp")
+                .filter(Transaction.card_id == card.id, Transaction.type == "purchase")
                 .all()
             )
             if len(candidates) == 1:
@@ -1016,7 +1016,7 @@ def import_dropbox_sync(
             {
                 "folder": folder,
                 "files": None,
-                "error": "Velg minst én fil å synke.",
+                "error": "Select at least one file to sync.",
                 "dsort": "client_modified",
                 "ddir": "desc",
             },

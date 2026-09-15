@@ -4,172 +4,175 @@
 <h1>Wiki</h1>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <p style="margin: 0 0 0.5rem;"><strong>Innhold</strong></p>
+  <p style="margin: 0 0 0.5rem;"><strong>Contents</strong></p>
   <ul style="margin: 0; padding-left: 1.2rem; columns: 2; column-gap: 2rem;">
-    <li><a href="#oversikt">Oversikt</a></li>
+    <li><a href="#oversikt">Overview</a></li>
     <li><a href="#dashboard">Dashboard</a></li>
-    <li><a href="#pokemon-mapper">Pokemon-mapper (favoritter og sammenslåing)</a></li>
-    <li><a href="#sortering">Sortering</a></li>
+    <li><a href="#pokemon-mapper">Pokemon folders (favorites and merging)</a></li>
+    <li><a href="#sortering">Sorting</a></li>
     <li><a href="#inventory">Inventory</a></li>
     <li><a href="#transactions">Transactions</a></li>
-    <li><a href="#import">Import / Sync</a></li>
-    <li><a href="#analyse">Analyse</a></li>
-    <li><a href="#faq">Ofte stilte spørsmål</a></li>
+    <li><a href="#import">Sync Log</a></li>
+    <li><a href="#analyse">Analysis</a></li>
+    <li><a href="#faq">Frequently asked questions</a></li>
   </ul>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="oversikt">Oversikt</h2>
+  <h2 id="oversikt">Overview</h2>
   <p>
-    TCG Inventory er en personlig samlingstracker for Pokémon-kort. Du importerer CSV-eksporter
-    fra Dex (manuelt eller via Dropbox-synk), og appen regner ut alt annet -- unike kort,
-    duplikater, verdi og samling/rarity/serie-fordelinger -- direkte fra det du faktisk eier.
-    Ingenting av dette lagres dobbelt: alt regnes ut på nytt fra kortene dine hver gang en
-    side lastes, slik at duplikat-antall og total verdi aldri kan komme ut av synk med
-    hverandre.
+    TCG Inventory is a personal collection tracker for Pokémon cards. You import CSV exports
+    from Dex (manually or via Dropbox sync), and the app computes everything else — unique
+    cards, duplicates, value, and collection/rarity/series breakdowns — directly from what you
+    actually own. None of this is stored twice: everything is recalculated from your cards
+    every time a page loads, so duplicate counts and total value can never drift out of sync
+    with each other.
   </p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
   <h2 id="dashboard">Dashboard</h2>
-  <p>Forsiden viser samlingen din fordelt på flere måter samtidig:</p>
+  <p>The front page shows your collection broken down several ways at once:</p>
   <ul>
-    <li><strong>Verdiutvikling</strong> -- en forenklet versjon av grafen på
-      <a href="/analyse">Analyse</a> (kun "Unik samling"-metrikken, ingen filter). Se Analyse for
-      full oversikt.</li>
-    <li><strong>Topp 10 mest verdifulle kort</strong> -- de ti dyreste enkeltkortene dine
-      etter pris.</li>
-    <li><strong>Inventory</strong> -- Collections (navngitte samlinger) og Bulk (kort uten
-      collection) side om side, med en total-rad øverst.</li>
-    <li><strong>Serie</strong> -- fordeling per serie (f.eks. Scarlet &amp; Violet), sortert
-      etter utgivelsesrekkefølge. Klikk en serierad for å se settene i den serien, og klikk et
-      sett for å se kortene i det settet.</li>
-    <li><strong>Rarity</strong> -- fordeling per sjeldenhetsgrad, sortert fra Common til de
-      sjeldneste (Secret Rare øverst i sjeldenhet).</li>
-    <li><strong>Pokemon</strong> -- se <a href="#pokemon-mapper">Pokemon-mapper</a> under.</li>
+    <li><strong>Value growth</strong> — a simplified version of the chart on
+      <a href="/analyse">Analysis</a> (only the "Unique collection" metric, no filter). See
+      Analysis for the full picture.</li>
+    <li><strong>Top 10 most valuable cards</strong> — your ten most expensive individual cards
+      by price.</li>
+    <li><strong>Inventory</strong> — Collections (named groupings) and Bulk (cards with no
+      collection) side by side, with a total row at the top.</li>
+    <li><strong>Series</strong> — breakdown per series (e.g. Scarlet &amp; Violet), sorted by
+      release order. Click a series row to see the sets in that series, and a set to see the
+      cards in it.</li>
+    <li><strong>Rarity</strong> — breakdown per rarity tier, sorted from Common to the rarest
+      (Secret Rare at the top of the rarity scale).</li>
+    <li><strong>Pokemon</strong> — see <a href="#pokemon-mapper">Pokemon folders</a> below.</li>
   </ul>
   <p>
-    Hver rad kan klikkes ut ("▶") for å se de enkelte kortene bak tallet -- praktisk for å se
-    nøyaktig hvilke print som utgjør en samling, et sett eller en rarity-gruppe.
+    Every row can be expanded ("▶") to see the individual cards behind the number — useful for
+    seeing exactly which prints make up a collection, a set, or a rarity group.
   </p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="pokemon-mapper">Pokemon-mapper (favoritter og sammenslåing)</h2>
+  <h2 id="pokemon-mapper">Pokemon folders (favorites and merging)</h2>
   <p>
-    Pokemon-kortet på Dashboardet grupperer alle kortene dine etter Pokemon-navn, ikke etter
-    eksakt print -- "hvor mye Sableye har jeg", ikke "hvor mye av akkurat dette settet".
+    The Pokemon card on the Dashboard groups all your cards by Pokemon name, not by exact
+    print — "how much Sableye do I have", not "how much of this exact set".
   </p>
-  <p><strong>Favoritter:</strong> søk opp en Pokemon i søkefeltet øverst i kortet og klikk
-    stjernen for å legge den til i Favoritter-tabellen, som alltid vises uansett om Pokemonen
-    er i topp 10 eller ikke. Klikk stjernen igjen for å fjerne den.</p>
-  <p><strong>Slå sammen i en mappe:</strong> under "Legg Pokemon i samme mappe" kan du putte
-    flere navn i samme mappe -- enten fordi de er samme Pokemon under et annet trykk-navn
-    (f.eks. Celebi og Dark Celebi), eller fordi du vil se en hel evolusjonsfamilie samlet
-    (f.eks. Slowpoke, Slowbro og Slowking i én mappe). Dette endrer <em>kun</em> visningen her
-    på Dashboardet -- kortene dine, prisene og CSV-eksporten din påvirkes aldri. Hver
-    sammenslåing kan angres med "Angre"-knappen i mappelisten.</p>
-  <p>Om en mappe inneholder kort fra flere ulike sett/serier, viser Sett-/Serie-kolonnen
-    "Flere" (hold musepekeren over for å se hvilke) i stedet for ett enkelt navn.</p>
+  <p><strong>Favorites:</strong> search for a Pokemon in the search box at the top of the card
+    and click the star to add it to the Favorites table, which always shows regardless of
+    whether the Pokemon is in the top 10 or not. Click the star again to remove it.</p>
+  <p><strong>Merge into a folder:</strong> under "Put Pokemon in the same folder" you can put
+    several names into the same folder — either because they're the same Pokemon under a
+    different print name (e.g. Celebi and Dark Celebi), or because you want to see a whole
+    evolution family together (e.g. Slowpoke, Slowbro, and Slowking in one folder). This only
+    changes the display here on the Dashboard — your cards, prices, and CSV export are never
+    affected. Every merge can be undone with the "Undo" button in the folder list.</p>
+  <p>If a folder contains cards from several different sets/series, the Set/Series column shows
+    "Multiple" (hover to see which) instead of a single name.</p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="sortering">Sortering</h2>
+  <h2 id="sortering">Sorting</h2>
   <p>
-    Alle tabeller i appen sorteres på samme måte: klikk en kolonneoverskrift for å sortere
-    stigende, klikk igjen for synkende (pilen ▲/▼ viser gjeldende retning). For tabeller med
-    utvidbare rader (Collections, Serie, Rarity) endrer kolonnesortering bare rekkefølgen på
-    kortene <em>inni</em> en rad -- selve radene (samling/serie/sett/rarity) beholder alltid
-    sin faste rekkefølge. For flate topplister (Topp 10 mest verdifulle kort, Pokemon Topp 10)
-    sorterer klikk radene selv.
+    Every table in the app sorts the same way: click a column header to sort ascending, click
+    again for descending (the arrow ▲/▼ shows the current direction). For tables with
+    expandable rows (Collections, Series, Rarity), sorting a column only reorders the cards
+    <em>inside</em> a row — the rows themselves (collection/series/set/rarity) always keep
+    their fixed order. For flat top lists (Top 10 most valuable cards, Pokemon Top 10), sorting
+    reorders the rows themselves.
   </p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
   <h2 id="inventory">Inventory</h2>
   <p>
-    Hele samlingen din som én stor, søkbar tabell. Søkefeltet matcher navn, kort-ID, nummer og
-    illustratør. Nedtrekkslistene filtrerer på serie, sett, collection, binder og språk (f.eks.
-    ENG/JPN -- hvilket språk/region-trykk kortet er). "Bare duplikater"-lenker fra Dashboardet
-    tar deg hit forhåndsfiltrert. Kortnavn lenker videre til kortet på Dex.
+    Your whole collection as one big, searchable table. The search box matches name, card ID,
+    number, and illustrator. The dropdowns filter by series, set, collection, binder, and
+    language (e.g. ENG/JPN — which language/region print the card is). "Duplicates only" links
+    from the Dashboard bring you here pre-filtered. Card names link on to the card on Dex.
   </p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
   <h2 id="transactions">Transactions</h2>
   <p>
-    <strong>Nytt kjøp/salg:</strong> trykk knappen for å starte -- appen reserverer neste ledige
-    Kjøps-ID automatisk. Søk deretter opp hvert kort som var med i handelen og legg dem til én og
-    én; hver rad kan prises for seg, eller la stå tom og bruk "Fordel jevnt på tomme priser" til å
-    dele et restbeløp likt utover kortene uten pris ennå. "Fjern" tar et kort ut av handelen igjen
-    før du registrerer. Alle kortene i listen deler samme Kjøps-ID og dato/platform når du trykker
-    "Registrer". Et valgfritt "Avtalt totalsum" kan også settes ved registrering, eller senere
-    inne i selve kjøpsgruppen i Historikk -- den vises da som "registrert / avtalt / diff", så du
-    kan se hvor mye av det du faktisk betalte som ennå ikke er tilordnet et spesifikt kort (typisk
-    normalkort som ikke er priset individuelt ennå).
+    <strong>New Purchase/Sale:</strong> click the button to start — the app reserves the next
+    free Order ID automatically. Then search for each card that was part of the deal and add
+    them one by one; each row can be priced individually, or left blank and use "Distribute
+    evenly across empty prices" to split a remaining amount equally across the cards without a
+    price yet. "Remove" takes a card back out of the order before you register. Every card in
+    the list shares the same Order ID and date/platform when you click "Register". An optional
+    "Agreed total" can also be set at registration time, or later from inside the order group
+    itself in History — it then shows as "registered / agreed / diff", so you can see how much
+    of what you actually paid isn't yet assigned to a specific card (typically common cards not
+    priced individually yet).
   </p>
   <p>
-    "Recently Added" viser kort med en Dato-kolonne for når de først ble
-    importert, med et raskt skjema for å registrere kjøpesum (og valgfri Kjøps-ID) direkte på
-    hvert kort -- fylles automatisk ut på nytt om du allerede har registrert én pris for det
-    kortet. Kort uten kjent importdato (fra før denne funksjonen fantes) samles i en hermetisk
-    "Ukjent dato"-seksjon nederst.
+    "Recently Added" shows cards with a Date column for when they were first imported, with a
+    quick form to register the purchase price (and an optional Order ID) directly on each
+    card — pre-filled again if you've already registered one price for that card. Cards with no
+    known import date (from before this feature existed) are grouped in a sealed "Unknown date"
+    section at the bottom.
   </p>
   <p>
-    "Historikk" viser hver registrerte transaksjon som en kompakt rad (dato, kort, type,
-    pris, platform). Transaksjoner som deler samme Kjøps-ID -- typisk flere kort kjøpt sammen
-    i et lot -- samles i en egen sammenleggbar gruppe med antall og sum, i stedet for å vises
-    som separate rader. Transaksjoner uten Kjøps-ID vises for seg under "Enkeltregistrert".
-  </p>
-</div>
-
-<div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="import">Import / Sync</h2>
-  <p>
-    Last opp Dex-CSV-eksporter manuelt, eller koble til Dropbox for automatisk henting fra en
-    valgt mappe (også en daglig Vercel Cron-jobb, se README for oppsett). En vanlig synk
-    <em>flagger</em> kort som mangler i eksporten i stedet for å slette dem -- bare "Full
-    load" faktisk sletter kort som ikke lenger finnes i "My Collection"-eksporten. Synk-loggen
-    nederst på siden viser historikk for hver kjøring.
+    "History" shows every recorded transaction as a compact row (date, card, type, price,
+    platform). Transactions sharing the same Order ID — typically several cards bought together
+    in a lot — are grouped into their own collapsible group with a count and total, instead of
+    showing as separate rows. Transactions without an Order ID show separately under
+    "Individually registered".
   </p>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="analyse">Analyse</h2>
+  <h2 id="import">Sync Log</h2>
   <p>
-    Økonomisk oversikt over samlingen. Netto investert, kjøpt for og solgt for kommer fra
-    faktiske registrerte transaksjoner -- ikke estimater. "Samlingens verdiutvikling" er
-    derimot en tilnærming: den bruker dagens pris på datoen hvert kort ble lagt til,
-    siden Dex ikke gir historisk prisdata -- den viser altså veksten i antall/type kort du
-    eier, ikke en nøyaktig historisk markedsverdi. "Papirgevinst/tap" er heller ikke realisert
-    -- det sammenligner dagens verdi med det du faktisk betalte. Grafen "Samlingens
-    verdiutvikling" har et filter øverst (Unik samling / Duplikater / Total) som bytter
-    mellom å vise verdien av kun unike kort, kun duplikatene, eller summen av begge. Begge
-    grafene har en "Vis som tabell"-lenke med de underliggende tallene.
+    This page shows the history of sync runs — daily automatically via a Vercel Cron job
+    against Dropbox, or triggered manually by an administrator (see README for setup). It's
+    read-only: uploading a CSV or browsing Dropbox no longer happens from this page, only from
+    the underlying API routes the cron and an administrator use directly. A normal sync
+    <em>flags</em> cards missing from the export instead of deleting them — only a "Full load"
+    actually deletes cards no longer in the "My Collection" export.
+  </p>
+</div>
+
+<div class="result-box" style="margin-bottom: 1.5rem;">
+  <h2 id="analyse">Analysis</h2>
+  <p>
+    A financial overview of the collection. Net invested, bought for, and sold for come from
+    actual recorded transactions — not estimates. "Collection value growth", on the other hand,
+    is an approximation: it applies today's price to the date each card was added, since Dex
+    provides no historical price data — so it shows growth in the number/type of cards you own,
+    not an exact historical market value. "Paper gain/loss" is also unrealized — it compares
+    today's value with what you actually paid. The "Collection value growth" chart has a filter
+    at the top (Unique collection / Duplicates / Total) that switches between showing the value
+    of unique cards only, duplicates only, or the sum of both. Both charts have a "View as
+    table" link with the underlying numbers.
   </p>
 </div>
 
 <div class="result-box">
-  <h2 id="faq">Ofte stilte spørsmål</h2>
+  <h2 id="faq">Frequently asked questions</h2>
   <dl>
-    <dt><strong>Hvorfor stemmer ikke duplikat-antallet med det jeg forventer?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Duplikater regnes som antall - 1 per unikt kort
-      (card_id + variant). To ulike varianter av samme kort (f.eks. "Normal" og "Poké Ball
-      Holo") telles som to separate kort, ikke duplikater av hverandre.</dd>
+    <dt><strong>Why doesn't the duplicate count match what I expect?</strong></dt>
+    <dd style="margin: 0.3rem 0 1rem;">Duplicates are counted as quantity − 1 per unique card
+      (card_id + variant). Two different variants of the same card (e.g. "Normal" and "Poké
+      Ball Holo") count as two separate cards, not duplicates of each other.</dd>
 
-    <dt><strong>Jeg slo sammen feil Pokemon -- kan jeg angre?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Ja -- åpne "Legg Pokemon i samme mappe" og klikk
-      "Angre" ved siden av navnet du vil løsrive igjen.</dd>
+    <dt><strong>I merged the wrong Pokemon — can I undo it?</strong></dt>
+    <dd style="margin: 0.3rem 0 1rem;">Yes — open "Put Pokemon in the same folder" and click
+      "Undo" next to the name you want to separate back out.</dd>
 
-    <dt><strong>Hvorfor er en kolonne ikke sorterbar?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Noen kolonner viser en verdi som ikke er entydig per
-      rad (f.eks. Sett/Serie når en Pokemon-mappe spenner over flere sett) og er derfor ren
-      tekst i stedet for en sorteringslenke.</dd>
+    <dt><strong>Why isn't a column sortable?</strong></dt>
+    <dd style="margin: 0.3rem 0 1rem;">Some columns show a value that isn't unambiguous per row
+      (e.g. Set/Series when a Pokemon folder spans several sets) and are therefore plain text
+      instead of a sort link.</dd>
 
-    <dt><strong>Hvor kjører den daglige synkroniseringen?</strong></dt>
-    <dd style="margin: 0.3rem 0;">Som en Vercel Cron-jobb mot <code>/cron/dropbox-sync</code>,
-      beskyttet av en hemmelighet i miljøvariabelen <code>CRON_SECRET</code> -- se README for
-      oppsett.</dd>
+    <dt><strong>Where does the daily sync run?</strong></dt>
+    <dd style="margin: 0.3rem 0;">As a Vercel Cron job against <code>/cron/dropbox-sync</code>,
+      protected by a secret in the <code>CRON_SECRET</code> environment variable — see README
+      for setup.</dd>
   </dl>
 </div>
 {% endblock %}

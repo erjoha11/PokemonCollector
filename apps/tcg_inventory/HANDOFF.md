@@ -123,6 +123,69 @@ plus this file and the conversation transcript.
   user as the single biggest real gap; they said current scope is fine and
   declined to prioritize it, but it'll very likely come up again.
 - The "+ Legg til i ordre" silent-no-op-when-no-cart-is-open issue (see #86
-  above).
+  above) — **addressed below** (renamed to "+ Add to order", behavior
+  itself unchanged).
 - The "Pris" / "Registrert pris" side-by-side naming ambiguity (see #85
-  above).
+  above) — **addressed below**, renamed to "Market price" / "Paid price".
+
+## Full English translation + transaction-type data migration — 2026-09-15 session
+
+Branch `i18n-english-professional`. The user asked to translate the whole
+`tcg_inventory` UI from Norwegian to professional English. Ran the `ux`
+agent first for a full audit (every Norwegian string, a glossary, tone
+flags, and a list of non-obvious traps) before touching any code — that
+audit is not preserved anywhere durable, so if a translation choice below
+looks wrong and you want the reasoning, re-run a similar `ux` review rather
+than assuming one exists somewhere.
+
+**Terminology decisions (asked the user explicitly, not guessed):**
+- "Kjøps-ID" → **"Order ID"** everywhere (not literal "Purchase ID") — fixes
+  a pre-existing inconsistency: the group heading was already generalized to
+  "Ordre #N" in #84 since a group can be a sale/trade too, but the field
+  name never followed.
+- "Pris" / "Registrert pris" (the ambiguous pair flagged in #85 and above)
+  → **"Market price" / "Paid price"**, in the one place both appear
+  side by side (Transactions "Recently Added"). Elsewhere, the lone `Pris`
+  column is just "Price" (no ambiguity without the pairing).
+- Number formatting (space thousands-separator, "1 234 kr") — **left
+  as-is**, the user chose not to switch to English comma convention.
+
+**Data migration — `transactions.type` values, not just UI copy.** The
+DB stored `type` as literal Norwegian values (`"kjøp"` / `"salg"` / `"bytte"`,
+the latter added directly against prod per this file's own log above, e.g.
+the Mega Venusaur `bytte` transaction id 56). The user chose to actually
+**rename the stored values to English** (`"purchase"` / `"sale"` /
+`"trade"`) rather than keep the Norwegian values internally with just a
+display-mapping layer. This is a real data change, not a template edit —
+handled as an **idempotent migration in `db.py`'s `init_db()`**
+(`_normalize_legacy_transaction_types()`, modeled on the existing
+`_add_missing_columns()` pattern): `UPDATE transactions SET type = ... WHERE
+type = '<old value>'`, safe to run on every startup since the `WHERE`
+only ever matches legacy rows. **No manual script was run against prod
+Supabase this session** — the migration ships as code and applies itself
+automatically the next time the deployed app starts (i.e. on the next
+deploy), the same way `_add_missing_columns()` already does for schema.
+Every `== "kjøp"` / `== "salg"` comparison in `app.py`/`queries.py`, every
+`?type=kjøp` URL, and `purchase_cart.html`'s type-branching were updated to
+match. **Verify after the next prod deploy** that old rows actually got
+normalized (e.g. `SELECT DISTINCT type FROM transactions` should show only
+`purchase`/`sale`/`trade`) — this session only verified it against local
+SQLite via the test suite, not against the live Supabase database.
+
+**Wiki content correction bundled in (not just translation):** the
+"Import / Sync" section still described the old manual-CSV-upload/
+Dropbox-browser UI that #87 already removed from that page. Rewrote it to
+match the current read-only "Sync Log" page while translating, per the
+`ux` agent's own flag that translating stale content as-is would just ship
+an accurate-sounding English description of something no longer true.
+
+**Bonus fix, same bug class as the htmx work above:** found a third
+"Sett som favoritt" star-button form (in `partials/pokemon_search_results.html`,
+the Dashboard's Pokemon-search dropdown) still doing a full-page
+`RedirectResponse` — missed in that earlier session since it wasn't one of
+the forms the `ux` agent's review happened to flag. Given the same
+`hx-select`/`hx-target`/`hx-swap="outerHTML"` treatment as the other two
+favorite forms in `dashboard.html`.
+
+Full test suite green (169 passed) after updating every test assertion
+that checked the old Norwegian strings/DB values.

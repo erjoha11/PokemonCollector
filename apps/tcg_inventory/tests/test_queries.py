@@ -224,7 +224,7 @@ def test_collection_value_growth_buckets_by_created_at_month(db_session):
 
     growth = queries.collection_value_growth(db_session)
     labels = [row["label"] for row in growth]
-    assert labels == ["Før sporing", "2026-01"]
+    assert labels == ["Before tracking", "2026-01"]
     assert growth[0]["added_value"] == 10  # Magikarp, untracked
     assert growth[1]["added_value"] == 150  # Pikachu + Charizard, same month
     assert growth[1]["cumulative_value"] == 160  # running total across both buckets
@@ -263,8 +263,8 @@ def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):
     import_dex_csv_files(db_session, [("main.csv", main)])
     card = db_session.query(Card).filter(Card.card_id == "a").one()
 
-    db_session.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 5), price=100, fees=10))
-    db_session.add(Transaction(card_id=card.id, type="salg", date=dt.date(2026, 2, 1), price=60))
+    db_session.add(Transaction(card_id=card.id, type="purchase", date=dt.date(2026, 1, 5), price=100, fees=10))
+    db_session.add(Transaction(card_id=card.id, type="sale", date=dt.date(2026, 2, 1), price=60))
     db_session.commit()
 
     flow = queries.cash_flow_by_month(db_session)
@@ -288,8 +288,8 @@ def test_economic_summary_computes_net_invested(db_session):
     import_dex_csv_files(db_session, [("main.csv", main)])
     card = db_session.query(Card).filter(Card.card_id == "a").one()
 
-    db_session.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 5), price=100, fees=10))
-    db_session.add(Transaction(card_id=card.id, type="salg", date=dt.date(2026, 2, 1), price=60))
+    db_session.add(Transaction(card_id=card.id, type="purchase", date=dt.date(2026, 1, 5), price=100, fees=10))
+    db_session.add(Transaction(card_id=card.id, type="sale", date=dt.date(2026, 2, 1), price=60))
     db_session.commit()
 
     summary = queries.economic_summary(db_session)

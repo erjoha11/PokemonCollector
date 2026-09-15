@@ -52,9 +52,9 @@ def login(email: str, password: str) -> dict:
         # crashing deep inside httpx's header encoding with a raw
         # UnicodeEncodeError and a bare 500.
         raise AuthError(
-            "SUPABASE_ANON_KEY inneholder ugyldige tegn. Kopier nøkkelen på nytt "
-            "direkte fra Supabase (Settings -> API -> anon key) og lim den inn på "
-            "nytt i Vercel."
+            "SUPABASE_ANON_KEY contains invalid characters. Re-copy the key "
+            "directly from Supabase (Settings -> API -> anon key) and paste it "
+            "again in Vercel."
         )
     try:
         response = httpx.post(
@@ -64,10 +64,10 @@ def login(email: str, password: str) -> dict:
             timeout=10,
         )
     except httpx.HTTPError as exc:
-        raise AuthError(f"Klarte ikke å nå Supabase: {exc}") from exc
+        raise AuthError(f"Could not reach Supabase: {exc}") from exc
 
     if response.status_code != 200:
-        detail = response.json().get("error_description") or response.json().get("msg") or "Feil e-post eller passord."
+        detail = response.json().get("error_description") or response.json().get("msg") or "Incorrect email or password."
         raise AuthError(detail)
     return response.json()
 
@@ -109,7 +109,7 @@ def verify_access_token(token: str) -> dict:
             raise AuthError(str(exc)) from exc
 
     if not SUPABASE_JWT_SECRET:
-        raise AuthError("Kunne ikke verifisere sesjonen (ingen signeringsnøkkel tilgjengelig).")
+        raise AuthError("Could not verify the session (no signing key available).")
     try:
         return jwt.decode(
             token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated"

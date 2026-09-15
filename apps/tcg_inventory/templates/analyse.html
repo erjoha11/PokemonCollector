@@ -1,31 +1,31 @@
 {% extends "base.html" %}
-{% block title %}Analyse – TCG Inventory{% endblock %}
+{% block title %}Analysis – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info %}
 {% block content %}
 <div class="viz-root">
-<h1>Analyse {{ info('Reelle kjøps-/salgstall kommer fra Transactions. Verdiutviklingen er en tilnærming -- se eget hint under den grafen.') }}</h1>
+<h1>Analysis {{ info('Real purchase/sale figures come from Transactions. The value growth is an approximation — see the note under that chart.') }}</h1>
 
 <div class="kpi-grid" style="margin-bottom: 1.75rem;">
   <div class="kpi-card">
-    <h3>Netto investert {{ info('Sum kjøpspris + gebyr, minus sum salgspris -- reelle tall fra Transactions.') }}</h3>
+    <h3>Net invested {{ info('Sum of purchase price + fees, minus sum of sale price — real figures from Transactions.') }}</h3>
     <div class="kpi-hero"><span class="value">{{ summary.net_invested | kr }}</span></div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Kjøpt for</span><span class="stat-value">{{ summary.total_bought | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Solgt for</span><span class="stat-value">{{ summary.total_sold | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Bought for</span><span class="stat-value">{{ summary.total_bought | kr }}</span></div>
+      <div class="stat-row"><span class="stat-label">Sold for</span><span class="stat-value">{{ summary.total_sold | kr }}</span></div>
     </div>
   </div>
 
   <div class="kpi-card">
-    <h3>Nåværende verdi {{ info('Verdi av unike kort du eier akkurat nå -- samme tall som Dashboardets Verdi-kort.') }}</h3>
+    <h3>Current value {{ info("Value of unique cards you own right now — same figure as the Dashboard's Value card.") }}</h3>
     <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
   </div>
 
   <div class="kpi-card">
     {% set delta = headline.unique_value - summary.net_invested %}
-    <h3>Papirgevinst/tap {{ info('Nåværende verdi minus netto investert. Ikke realisert -- sammenligner dagens pris med det du faktisk betalte, ikke et faktisk salg.', align_right=true) }}</h3>
+    <h3>Paper gain/loss {{ info("Current value minus net invested. Not realized — compares today's price with what you actually paid, not an actual sale.", align_right=true) }}</h3>
     <div class="kpi-hero"><span class="value {{ 'viz-delta-gain' if delta >= 0 else 'viz-delta-loss' }}">{{ delta | kr }}</span></div>
     <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">{{ 'Gevinst (på papiret)' if delta >= 0 else 'Tap (på papiret)' }}</span></div>
+      <div class="stat-row"><span class="stat-label">{{ 'Gain (on paper)' if delta >= 0 else 'Loss (on paper)' }}</span></div>
     </div>
   </div>
 </div>
@@ -33,7 +33,7 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   <div class="card" id="value-growth-card">
-    <h2>Samlingens verdiutvikling {{ info('Bruker dagens pris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
+    <h2>Collection value growth {{ info("Uses today's price applied to the date each card was added — Dex provides no historical price data, so this approximates growth, not an exact historical value. Cards added before the date was recorded are grouped under a Before tracking starting point.") }}</h2>
     <div class="viz-filter">
       {% for key, label in metric_options %}
       <a href="/analyse?metric={{ key }}"
@@ -46,7 +46,7 @@
       {% endfor %}
     </div>
     {% if value_chart.points %}
-    <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Kumulativ verdiutvikling over tid ({{ metric_label }})">
+    <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Cumulative value growth over time ({{ metric_label }})">
       {% for y, label in value_chart.y_ticks %}
       <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ value_chart.width - 16 }}" y2="{{ y }}"></line>
       <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
@@ -68,9 +68,9 @@
       {% endif %}
     </svg>
     <details>
-      <summary>Vis som tabell</summary>
+      <summary>View as table</summary>
       <table style="margin-top: 0.6rem;">
-        <thead><tr><th>Måned</th><th class="num">Lagt til ({{ metric_label }})</th><th class="num">Kumulativ verdi ({{ metric_label }})</th></tr></thead>
+        <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
         <tbody>
           {% for row in value_growth %}
           <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
@@ -79,18 +79,18 @@
       </table>
     </details>
     {% else %}
-    <p class="muted">Ingen data ennå.</p>
+    <p class="muted">No data yet.</p>
     {% endif %}
   </div>
 
   <div class="card">
-    <h2>Kjøp og salg per måned {{ info('Reelle tall fra Transactions, ikke en tilnærming.', align_right=true) }}</h2>
+    <h2>Purchases and sales per month {{ info('Real figures from Transactions, not an approximation.', align_right=true) }}</h2>
     {% if cash_chart.groups %}
     <div class="viz-legend">
-      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-1);"></span>Kjøp</span>
-      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-2);"></span>Salg</span>
+      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-1);"></span>Purchases</span>
+      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-2);"></span>Sales</span>
     </div>
-    <svg class="viz-chart" viewBox="0 0 {{ cash_chart.width }} {{ cash_chart.height }}" role="img" aria-label="Kjøp og salg per måned">
+    <svg class="viz-chart" viewBox="0 0 {{ cash_chart.width }} {{ cash_chart.height }}" role="img" aria-label="Purchases and sales per month">
       {% for y, label in cash_chart.y_ticks %}
       <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ cash_chart.width - 16 }}" y2="{{ y }}"></line>
       <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
@@ -101,17 +101,17 @@
       {% set sold_bar = group.bars[1] %}
       <text class="viz-axis-label" x="{{ (bought_bar[0] + sold_bar[0] + sold_bar[2]) / 2 }}" y="{{ cash_chart.height - 8 }}" text-anchor="middle">{{ group.label }}</text>
       <rect x="{{ bought_bar[0] }}" y="{{ bought_bar[1] }}" width="{{ bought_bar[2] }}" height="{{ bought_bar[3] }}" rx="4" fill="var(--viz-series-1)">
-        <title>{{ group.label }} · Kjøp: {{ row.bought | kr }}</title>
+        <title>{{ group.label }} · Purchases: {{ row.bought | kr }}</title>
       </rect>
       <rect x="{{ sold_bar[0] }}" y="{{ sold_bar[1] }}" width="{{ sold_bar[2] }}" height="{{ sold_bar[3] }}" rx="4" fill="var(--viz-series-2)">
-        <title>{{ group.label }} · Salg: {{ row.sold | kr }}</title>
+        <title>{{ group.label }} · Sales: {{ row.sold | kr }}</title>
       </rect>
       {% endfor %}
     </svg>
     <details>
-      <summary>Vis som tabell</summary>
+      <summary>View as table</summary>
       <table style="margin-top: 0.6rem;">
-        <thead><tr><th>Måned</th><th class="num">Kjøp</th><th class="num">Salg</th><th class="num">Netto investert (kumulativt)</th></tr></thead>
+        <thead><tr><th>Month</th><th class="num">Purchases</th><th class="num">Sales</th><th class="num">Net invested (cumulative)</th></tr></thead>
         <tbody>
           {% for row in cash_flow %}
           <tr><td>{{ row.label }}</td><td class="num">{{ row.bought | kr }}</td><td class="num">{{ row.sold | kr }}</td><td class="num">{{ row.cumulative_invested | kr }}</td></tr>
@@ -120,7 +120,7 @@
       </table>
     </details>
     {% else %}
-    <p class="muted">Ingen registrerte transaksjoner ennå.</p>
+    <p class="muted">No transactions recorded yet.</p>
     {% endif %}
   </div>
   </div>

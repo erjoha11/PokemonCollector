@@ -6,7 +6,7 @@
 <div>
   <form hx-get="/import/dropbox/list" hx-target="#dropbox-section" hx-swap="innerHTML" class="filters">
     <input type="text" name="folder" value="{{ folder }}" placeholder="/Dex Exports" style="width: 280px;">
-    <button type="submit">Oppdater filliste</button>
+    <button type="submit">Refresh file list</button>
   </form>
 
   {% if error %}
@@ -16,7 +16,7 @@
     <input type="hidden" name="folder" value="{{ folder }}">
     <div class="table-scroll">
       <table>
-        <thead><tr><th></th><th>{{ sort_th_hx('Fil', 'name') }}</th><th>{{ sort_th_hx('Endret', 'client_modified') }}</th><th>{{ sort_th_hx('Størrelse', 'size') }}</th></tr></thead>
+        <thead><tr><th></th><th>{{ sort_th_hx('File', 'name') }}</th><th>{{ sort_th_hx('Modified', 'client_modified') }}</th><th>{{ sort_th_hx('Size', 'size') }}</th></tr></thead>
         <tbody>
           {% for f in files %}
           <tr>
@@ -26,7 +26,7 @@
             <td>{{ (f.size / 1024) | round(1) }} kB</td>
           </tr>
           {% else %}
-          <tr><td colspan="4" class="muted">Ingen CSV-filer funnet i "{{ folder }}".</td></tr>
+          <tr><td colspan="4" class="muted">No CSV files found in "{{ folder }}".</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -34,10 +34,10 @@
     <p>
       <label>
         <input type="checkbox" name="full_load" value="true">
-        Full load — slett kort som mangler i "My Collection"-eksporten i stedet for å bare flagge dem.
+        Full load — delete cards missing from the "My Collection" export instead of just flagging them.
       </label>
     </p>
-    <button type="submit">Hent valgte filer og synk</button>
+    <button type="submit">Fetch selected files and sync</button>
   </form>
   <div id="dropbox-sync-result"></div>
   {% endif %}

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="no">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -13,10 +13,10 @@
     <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
     <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' }}">Inventory</a>
     <a href="/transactions" class="{{ 'active' if request.url.path == '/transactions' }}">Transactions</a>
-    <a href="/analyse" class="{{ 'active' if request.url.path == '/analyse' }}">Analyse</a>
+    <a href="/analyse" class="{{ 'active' if request.url.path == '/analyse' }}">Analysis</a>
     <a href="/wiki" class="{{ 'active' if request.url.path == '/wiki' }}">Wiki</a>
-    <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">Synk-logg</a>
-    {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Logg ut</a>{% endif %}
+    <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">Sync Log</a>
+    {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Log out</a>{% endif %}
   </nav>
   <main>
     {% block content %}{% endblock %}

@@ -121,7 +121,7 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False)  # "kjøp" | "salg"
+    type: Mapped[str] = mapped_column(String, nullable=False)  # "purchase" | "sale" | "trade"
     date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
     platform: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -132,8 +132,8 @@ class Transaction(Base):
     purchase_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     # The agreed/full price for the whole purchase this row belongs to (same
     # value redundantly stored on every row sharing a purchase_id, same
-    # pattern as date/platform above) -- lets Historikk show a "registrert
-    # vs. avtalt" diff per purchase, so missing normal-print cards (priced
+    # pattern as date/platform above) -- lets History show a "registered
+    # vs. agreed" diff per purchase, so missing normal-print cards (priced
     # individually later, never bulk-estimated) show up as an unaccounted
     # remainder instead of silently vanishing.
     purchase_total: Mapped[float | None] = mapped_column(Float, nullable=True)

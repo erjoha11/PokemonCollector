@@ -26,9 +26,9 @@ def main() -> None:
     )
 
     authorize_url = flow.start()
-    print("\n1. Åpne denne URL-en i nettleseren og godkjenn tilgang:")
+    print("\n1. Open this URL in your browser and approve access:")
     print(f"   {authorize_url}")
-    print("2. Kopier koden Dropbox viser deg og lim den inn under.\n")
+    print("2. Copy the code Dropbox shows you and paste it below.\n")
 
     auth_code = input("Authorization code: ").strip()
 
@@ -39,20 +39,20 @@ def main() -> None:
         # response body -- that body is exactly what says *why* Dropbox
         # rejected the exchange (wrong App secret, expired/already-used code,
         # App key/secret mismatch, ...), so surface it instead of a bare 400.
-        body = exc.response.text if exc.response is not None else "(intet svar)"
-        print(f"\nDropbox avviste token-byttet: {exc}\nSvar fra Dropbox: {body}")
+        body = exc.response.text if exc.response is not None else "(no response)"
+        print(f"\nDropbox rejected the token exchange: {exc}\nResponse from Dropbox: {body}")
         print(
-            "\nVanligste årsaker: feil App key/secret (sjekk mot Dropbox App "
-            "Console), eller at koden rakk å utløpe/ble brukt allerede -- kjør "
-            "scriptet på nytt fra bunnen av (ny URL, ny kode, uten forsinkelse)."
+            "\nMost common causes: wrong App key/secret (check against the Dropbox "
+            "App Console), or the code expired/was already used -- rerun the "
+            "script from scratch (new URL, new code, without delay)."
         )
         raise SystemExit(1) from exc
 
-    print("\nFerdig. Legg dette inn i din .env-fil (se .env.example):\n")
+    print("\nDone. Add this to your .env file (see .env.example):\n")
     print(f"DROPBOX_APP_KEY={app_key}")
     print(f"DROPBOX_APP_SECRET={app_secret}")
     print(f"DROPBOX_REFRESH_TOKEN={result.refresh_token}")
-    print("\nRefresh-tokenet utløper ikke -- appen fornyer tilgangs-token automatisk.")
+    print("\nThe refresh token never expires -- the app renews the access token automatically.")
 
 
 if __name__ == "__main__":
