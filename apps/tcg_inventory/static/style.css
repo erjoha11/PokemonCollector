@@ -527,6 +527,25 @@ input:focus, select:focus, textarea:focus {
   box-shadow: var(--shadow);
 }
 
+/* Wiki: a small colored marker per topic section, echoing the KPI cards'
+   accent-dot motif (h2::before, style.css above) purely as a scannability
+   aid across a stack of otherwise-identical boxes -- these colors carry no
+   fixed category meaning the way the KPI hues do. */
+.wiki-section h2::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--wiki-accent, var(--accent));
+}
+.wiki-accent-1 { --wiki-accent: #2a78d6; }
+.wiki-accent-2 { --wiki-accent: #eb6834; }
+.wiki-accent-3 { --wiki-accent: #1baf7a; }
+.wiki-accent-4 { --wiki-accent: #eda100; }
+.wiki-accent-5 { --wiki-accent: #e87ba4; }
+
 .muted { color: var(--muted); }
 
 button, input[type=submit] {

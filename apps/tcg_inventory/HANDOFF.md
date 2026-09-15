@@ -165,3 +165,48 @@ the page by hand. Recommended instead:
      right tool — its brief already cross-checks against `README.md`; worth
      extending it to explicitly check `templates/wiki.html` against current
      templates too, next time it's run.
+
+## 2026-09-15 session (same day, follow-up) — Wiki visual "lift" pass
+
+User asked for a one-time visual polish of `templates/wiki.html` on top of
+the content fix above ("lifting and elevating" it) — the page looked
+plain/afterthought-y next to the rest of the app's richer design language
+(KPI cards, colored badges, collapsible sections). Ran the `ux` agent for a
+read-only design review first rather than guessing; implemented its
+ordered, reuse-existing-patterns recommendations:
+
+- ToC: was a boxed 2-column plain `<ul>` of underlined links — replaced
+  with a `.viz-filter`/`.viz-filter-pill` row (the same pill-nav component
+  Analyse already uses for its metric filter), sitting directly under
+  `<h1>` with no `.result-box` wrapper, matching how every other page pairs
+  its `<h1>` with a boxless module underneath.
+- Each of the 8 topic sections got a `.wiki-section` class + a
+  `.wiki-accent-{1..5}` class (cycling) — a small colored dot before the
+  `h2`, reusing the KPI cards' accent-dot CSS motif purely for scannability
+  across an otherwise-identical stack of gray boxes. **These colors are
+  arbitrary and carry no fixed meaning** (unlike the KPI hues, which are
+  tied to a specific category per the comment at `style.css` ~216-219) —
+  don't extend this pattern anywhere that implies otherwise.
+- FAQ's static `<dl>` (all 4 Q&As always expanded) became 4
+  `<details class="collapsible">` blocks, the exact idiom already used for
+  Historikk's purchase groups and the "Resten av samlingen uten kjent
+  dato" section in `transactions.html`.
+- New CSS lives right after `.result-box` in `static/style.css` (~10 lines:
+  `.wiki-section h2::before` + 5 `.wiki-accent-N` variables). No new
+  classes invented beyond that — everything else reuses `.viz-filter`,
+  `.viz-filter-pill`, and `.collapsible` verbatim.
+
+Deliberately **not** done (flagged by the `ux` agent as content
+restructuring, not decoration, and out of scope for a "visual lift"):
+pulling "Oversikt" out of the boxed-section pattern into a lead paragraph,
+and a sticky nav (the app has no sidebar-shell pattern anywhere to extend —
+would mean inventing new page structure, not reusing one).
+
+Verified: full test suite green (175 passed, including the two wiki tests
+from the earlier session), plus a manual `python app.py` + `curl /wiki`
+smoke test confirming the page still renders 200 with the expected new
+markup (9 pills, 4 collapsible FAQ entries, 8 accented sections) — no
+visual/screenshot review was done since this environment has no browser,
+so the actual look (color cycle against 8 sections, pill-row wrap at
+narrow widths) hasn't been eyeballed. Worth a quick look before/after
+merging if that matters.

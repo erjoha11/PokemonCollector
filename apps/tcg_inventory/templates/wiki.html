@@ -3,22 +3,19 @@
 {% block content %}
 <h1>Wiki</h1>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
-  <p style="margin: 0 0 0.5rem;"><strong>Innhold</strong></p>
-  <ul style="margin: 0; padding-left: 1.2rem; columns: 2; column-gap: 2rem;">
-    <li><a href="#oversikt">Oversikt</a></li>
-    <li><a href="#dashboard">Dashboard</a></li>
-    <li><a href="#pokemon-mapper">Pokemon-mapper (favoritter og sammenslåing)</a></li>
-    <li><a href="#sortering">Sortering</a></li>
-    <li><a href="#inventory">Inventory</a></li>
-    <li><a href="#transactions">Transactions</a></li>
-    <li><a href="#analyse">Analyse</a></li>
-    <li><a href="#import">Synk-logg</a></li>
-    <li><a href="#faq">Ofte stilte spørsmål</a></li>
-  </ul>
+<div class="viz-filter" style="margin-bottom: 1.75rem;">
+  <a href="#oversikt" class="viz-filter-pill">Oversikt</a>
+  <a href="#dashboard" class="viz-filter-pill">Dashboard</a>
+  <a href="#pokemon-mapper" class="viz-filter-pill">Pokemon-mapper</a>
+  <a href="#sortering" class="viz-filter-pill">Sortering</a>
+  <a href="#inventory" class="viz-filter-pill">Inventory</a>
+  <a href="#transactions" class="viz-filter-pill">Transactions</a>
+  <a href="#analyse" class="viz-filter-pill">Analyse</a>
+  <a href="#import" class="viz-filter-pill">Synk-logg</a>
+  <a href="#faq" class="viz-filter-pill">FAQ</a>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-1" style="margin-bottom: 1.5rem;">
   <h2 id="oversikt">Oversikt</h2>
   <p>
     TCG Inventory er en personlig samlingstracker for Pokémon-kort. CSV-eksporter fra Dex
@@ -31,7 +28,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-2" style="margin-bottom: 1.5rem;">
   <h2 id="dashboard">Dashboard</h2>
   <p>Forsiden viser samlingen din fordelt på flere måter samtidig:</p>
   <ul>
@@ -55,7 +52,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-3" style="margin-bottom: 1.5rem;">
   <h2 id="pokemon-mapper">Pokemon-mapper (favoritter og sammenslåing)</h2>
   <p>
     Pokemon-kortet på Dashboardet grupperer alle kortene dine etter Pokemon-navn, ikke etter
@@ -74,7 +71,7 @@
     "Flere" (hold musepekeren over for å se hvilke) i stedet for ett enkelt navn.</p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-4" style="margin-bottom: 1.5rem;">
   <h2 id="sortering">Sortering</h2>
   <p>
     Alle tabeller i appen sorteres på samme måte: klikk en kolonneoverskrift for å sortere
@@ -86,7 +83,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-5" style="margin-bottom: 1.5rem;">
   <h2 id="inventory">Inventory</h2>
   <p>
     Hele samlingen din som én stor, søkbar tabell. Søkefeltet matcher navn, kort-ID, nummer og
@@ -96,7 +93,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-1" style="margin-bottom: 1.5rem;">
   <h2 id="transactions">Transactions</h2>
   <p>
     <strong>Nytt kjøp/salg:</strong> trykk knappen for å starte -- appen reserverer neste ledige
@@ -126,7 +123,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-2" style="margin-bottom: 1.5rem;">
   <h2 id="analyse">Analyse</h2>
   <p>
     Økonomisk oversikt over samlingen. Netto investert, kjøpt for og solgt for kommer fra
@@ -141,7 +138,7 @@
   </p>
 </div>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
+<div class="result-box wiki-section wiki-accent-3" style="margin-bottom: 1.5rem;">
   <h2 id="import">Synk-logg</h2>
   <p>
     Historikk over CSV-synk-kjøringer fra Dex -- kjøres automatisk hver dag via en Vercel
@@ -156,25 +153,28 @@
 
 <div class="result-box">
   <h2 id="faq">Ofte stilte spørsmål</h2>
-  <dl>
-    <dt><strong>Hvorfor stemmer ikke duplikat-antallet med det jeg forventer?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Duplikater regnes som antall - 1 per unikt kort
+  <details class="collapsible" style="margin-top: 0; margin-bottom: 0.75rem;">
+    <summary>Hvorfor stemmer ikke duplikat-antallet med det jeg forventer?</summary>
+    <p style="margin: 0.3rem 0 0;">Duplikater regnes som antall - 1 per unikt kort
       (card_id + variant). To ulike varianter av samme kort (f.eks. "Normal" og "Poké Ball
-      Holo") telles som to separate kort, ikke duplikater av hverandre.</dd>
-
-    <dt><strong>Jeg slo sammen feil Pokemon -- kan jeg angre?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Ja -- åpne "Legg Pokemon i samme mappe" og klikk
-      "Angre" ved siden av navnet du vil løsrive igjen.</dd>
-
-    <dt><strong>Hvorfor er en kolonne ikke sorterbar?</strong></dt>
-    <dd style="margin: 0.3rem 0 1rem;">Noen kolonner viser en verdi som ikke er entydig per
+      Holo") telles som to separate kort, ikke duplikater av hverandre.</p>
+  </details>
+  <details class="collapsible" style="margin-bottom: 0.75rem;">
+    <summary>Jeg slo sammen feil Pokemon -- kan jeg angre?</summary>
+    <p style="margin: 0.3rem 0 0;">Ja -- åpne "Legg Pokemon i samme mappe" og klikk
+      "Angre" ved siden av navnet du vil løsrive igjen.</p>
+  </details>
+  <details class="collapsible" style="margin-bottom: 0.75rem;">
+    <summary>Hvorfor er en kolonne ikke sorterbar?</summary>
+    <p style="margin: 0.3rem 0 0;">Noen kolonner viser en verdi som ikke er entydig per
       rad (f.eks. Sett/Serie når en Pokemon-mappe spenner over flere sett) og er derfor ren
-      tekst i stedet for en sorteringslenke.</dd>
-
-    <dt><strong>Hvor kjører den daglige synkroniseringen?</strong></dt>
-    <dd style="margin: 0.3rem 0;">Som en Vercel Cron-jobb mot <code>/cron/dropbox-sync</code>,
+      tekst i stedet for en sorteringslenke.</p>
+  </details>
+  <details class="collapsible">
+    <summary>Hvor kjører den daglige synkroniseringen?</summary>
+    <p style="margin: 0.3rem 0 0;">Som en Vercel Cron-jobb mot <code>/cron/dropbox-sync</code>,
       beskyttet av en hemmelighet i miljøvariabelen <code>CRON_SECRET</code> -- se README for
-      oppsett.</dd>
-  </dl>
+      oppsett.</p>
+  </details>
 </div>
 {% endblock %}
