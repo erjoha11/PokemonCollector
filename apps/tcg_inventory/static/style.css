@@ -144,6 +144,17 @@ tbody tr:hover td { background: var(--accent-wash); }
    merged card cell (name + variant/rarity/set/number as muted subtext)
    instead of a column each, a colored type badge, and a de-emphasized
    transaction id inline with the date rather than its own wide column. */
+/* Real card photo (see card_images.py) shown next to every Dex-linked card
+   name (dex_link macro) -- small enough to sit inline in a dense table row,
+   absent entirely for a card whose image lookup never matched. */
+.card-thumb {
+  height: 32px;
+  width: auto;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+}
+
 .tx-table td { vertical-align: top; white-space: normal; }
 .tx-card-meta { font-size: 0.78em; color: var(--muted); margin-top: 0.1rem; }
 .tx-id { font-size: 0.75em; color: var(--muted); margin-left: 0.35rem; }
@@ -761,21 +772,11 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
   --viz-grid: #e1e0d9;
   --viz-axis-text: #898781;
 }
-.viz-chart {
-  width: 100%;
-  height: auto;
-  display: block;
+.viz-chart-wrap {
+  position: relative;
+  height: 220px;
   margin-top: 0.5rem;
-  overflow: visible;
 }
-.viz-gridline { stroke: var(--viz-grid); stroke-width: 1; }
-.viz-axis-label { fill: var(--viz-axis-text); font-size: 10px; }
-.viz-line { stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.viz-line-comparison { stroke-dasharray: 6 4; }
-.viz-area { opacity: 0.1; }
-.viz-end-label { fill: var(--ink); font-size: 11px; font-weight: 600; }
-.viz-dot { cursor: default; }
-.viz-hit { cursor: default; }
 .viz-legend {
   display: flex;
   gap: 1.1rem;
@@ -787,7 +788,6 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .viz-legend-primary { background: var(--viz-series-1); }
 .viz-legend-comparison { background: var(--viz-series-2); }
-.viz-end-label-comparison { fill: var(--viz-series-2); }
 .viz-caveat { margin: 0.3rem 0 0; font-size: 0.78rem; }
 .viz-filter { display: flex; gap: 0.4rem; margin: 0.6rem 0; }
 .viz-filter-pill {

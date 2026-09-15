@@ -27,7 +27,6 @@ APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
 
 import auth
-import charts
 import dropbox_client
 import queries
 import snapshots
@@ -199,11 +198,11 @@ def get_db_session() -> Session:
 # Dashboard
 # --------------------------------------------------------------------------
 def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
-    """A link that switches the shared Verdiutvikling chart's metric (see
-    `value_growth_chart` in macros.html), preserving every other query param
+    """A link that switches a shared value-growth chart's metric (see
+    `chart_card` in macros.html), preserving every other query param
     (each table's own sort state on Dashboard) -- same "keep everything else
-    as-is" idiom as `_sort_url` above. `path` is the page the chart lives on
-    (Dashboard vs Analyse).
+    as-is" idiom as `_sort_url` above. `path` is the page/endpoint the chart
+    lives on (Dashboard vs Transactions' `/transactions/charts`).
     """
     params = dict(request.query_params)
     params["metric"] = metric_key
@@ -248,18 +247,14 @@ def dashboard(
         top_cards = queries.top_valuable_cards(db, limit=10)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
-        # Renders via the shared value_growth_chart macro (macros.html), the
-        # same module Transactions uses -- see /transactions for the full
+        # Renders via the shared chart_card macro (macros.html), the same
+        # module Transactions uses -- see /transactions for the full
         # economic breakdown this is a compact preview of.
         value_growth = queries.collection_value_growth(db, cards, metric=metric)
         comparison_metric = "total" if metric == "unique" else "unique"
         comparison_growth = queries.collection_value_growth(db, cards, metric=comparison_metric)
         comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
-        value_chart = charts.build_line_chart(
-            labels=[row["label"] for row in value_growth],
-            values=[row["cumulative_value"] for row in value_growth],
-            comparison_values=[comparison_by_label.get(row["label"], 0) for row in value_growth],
-        )
+        comparison_values = [comparison_by_label.get(row["label"], 0) for row in value_growth]
         metric_label = queries.VALUE_GROWTH_METRICS[metric][0]
         metric_options = [
             (key, label, _metric_url(request, key)) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
@@ -325,7 +320,7 @@ def dashboard(
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
                 "value_growth": value_growth,
-                "value_chart": value_chart,
+                "comparison_values": comparison_values,
                 "metric": metric,
                 "metric_label": metric_label,
                 "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],
@@ -1176,33 +1171,18 @@ def transactions_charts(request: Request, metric: str = "unique"):
         comparison_metric = "total" if metric == "unique" else "unique"
         comparison_growth = queries.collection_value_growth(db, metric=comparison_metric)
         comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
+        comparison_values = [comparison_by_label.get(row["label"], 0) for row in value_growth]
         real_history = queries.real_value_history(db, metric=metric)
         cash_flow = queries.cash_flow_by_month(db)
-
-        value_chart = charts.build_line_chart(
-            labels=[row["label"] for row in value_growth],
-            values=[row["cumulative_value"] for row in value_growth],
-            comparison_values=[comparison_by_label.get(row["label"], 0) for row in value_growth],
-        )
-        real_chart = charts.build_line_chart(
-            labels=[row["label"] for row in real_history],
-            values=[row["cumulative_value"] for row in real_history],
-        )
-        cash_chart = charts.build_grouped_bar_chart(
-            labels=[row["label"] for row in cash_flow],
-            series=[[row["bought"] for row in cash_flow], [row["sold"] for row in cash_flow]],
-        )
 
         return templates.TemplateResponse(
             request,
             "partials/transactions_charts.html",
             {
                 "value_growth": value_growth,
+                "comparison_values": comparison_values,
                 "real_history": real_history,
                 "cash_flow": cash_flow,
-                "value_chart": value_chart,
-                "real_chart": real_chart,
-                "cash_chart": cash_chart,
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
                 "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],

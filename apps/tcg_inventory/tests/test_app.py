@@ -105,8 +105,8 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     # before Inventory, which now gets its own full-width row below them).
     first_pair = text.split("Value growth", 1)[1].split("Inventory", 1)[0]
     assert "Top 10 most valuable cards" in first_pair
-    assert 'class="viz-chart"' in first_pair
-    assert "50 kr" in first_pair  # the chart's end-label / tooltip value
+    assert "viz-chart-wrap" in first_pair
+    assert "50 kr" in first_pair  # the chart's "View as table" value
 
 
 def test_dashboard_value_growth_chart_mirrors_transactions_metric_filter(client):
@@ -173,7 +173,7 @@ def test_transactions_page_shows_economic_kpi_strip(client):
     assert "Paper gain" in text or "Paper loss" in text or "Loss" in text or "Gain" in text
     assert "View charts" in text
     # The charts themselves are lazy-loaded, not rendered on the initial page.
-    assert 'class="viz-chart"' not in text
+    assert "viz-chart-wrap" not in text
 
 
 def test_transactions_charts_endpoint_shows_growth_and_cash_flow_charts(client):
@@ -195,7 +195,7 @@ def test_transactions_charts_endpoint_shows_growth_and_cash_flow_charts(client):
     response = client.get("/transactions/charts")
     assert response.status_code == 200
     text = response.text
-    assert 'class="viz-chart"' in text
+    assert "viz-chart-wrap" in text
     assert "View as table" in text
     assert "2026-01" in text
 
@@ -206,7 +206,7 @@ def test_transactions_charts_endpoint_handles_no_transactions_or_dated_cards(cli
 
     response = client.get("/transactions/charts")
     assert response.status_code == 200
-    assert "No transactions recorded yet" in response.text
+    assert "No data yet" in response.text
 
 
 def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_chart(client):

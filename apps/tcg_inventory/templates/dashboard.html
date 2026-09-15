@@ -3,11 +3,11 @@
 
 {% from "partials/macros.html" import sort_th with context %}
 {% from "partials/macros.html" import info %}
-{% from "partials/macros.html" import value_growth_chart %}
+{% from "partials/macros.html" import chart_card %}
+{% from "partials/macros.html" import dex_link %}
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
 {% macro toggle_button(label, row_id) %}<button type="button" class="row-toggle-name" data-row-id="{{ row_id }}" aria-expanded="false" onclick="toggleRows('{{ row_id }}', this)"><span class="arrow">▶</span> {{ label }}</button>{% endmacro %}
-{% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
 {# Dashboard always renders the full page (no partial-on-htmx-request route
    like Inventory/Dropbox have), so every sort column here extracts and
    swaps back just its own card via hx_select+outerHTML instead of the
@@ -47,7 +47,23 @@
 <div class="breakdown-grid">
   <div class="card-pair">
   {% set dashboard_value_growth_heading %}Value growth {{ info("Uses today's price applied to the date each card was added — an approximation, not an exact historical value. See Transactions for the full financial picture.", below=true) }}{% endset %}
-  {{ value_growth_chart('dashboard-value-growth-card', dashboard_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='viz-root') }}
+  {% set dashboard_value_growth_datasets = [
+    {"label": metric_label, "data": value_growth | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
+    {"label": comparison_label, "data": comparison_values, "color": "#eb6834"},
+  ] %}
+  {% call chart_card('dashboard-value-growth-card', dashboard_value_growth_heading, 'line', value_growth | map(attribute="label") | list, dashboard_value_growth_datasets, metric_options, metric, extra_class='viz-root') %}
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <tbody>
+        {% for row in value_growth %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endcall %}
 
   <div class="card" id="dashboard-top-cards-card">
     <h2>Top 10 most valuable cards {{ info('The ten individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>

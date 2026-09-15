@@ -2,6 +2,7 @@
 {% block title %}Transactions – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import sort_th with context %}
 {% from "partials/macros.html" import info %}
+{% from "partials/macros.html" import dex_link %}
 {% block content %}
 <h1>Transactions</h1>
 
@@ -52,7 +53,7 @@
         {% for card in known_cards %}
         <tr>
           <td class="muted">{{ card.created_at.date().isoformat() }}</td>
-          <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
+          <td>{{ dex_link(card) }}</td>
           <td>{{ card.variant or '' }}</td>
           <td>{{ card.series or '' }}</td>
           <td>{{ card.set or '' }}</td>
@@ -105,7 +106,7 @@
           <span class="tx-id" title="Transaction ID">#{{ tx.id }}</span>
         </td>
         <td>
-          <a href="https://app.dextcg.com/cards/{{ tx.card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ tx.card.name }}</a>
+          {{ dex_link(tx.card) }}
           <div class="tx-card-meta">
             {%- set meta = [] -%}
             {%- if tx.card.variant %}{% set _ = meta.append(tx.card.variant) %}{% endif -%}
@@ -172,7 +173,7 @@
       <tbody>
         {% for card in unknown_cards %}
         <tr>
-          <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
+          <td>{{ dex_link(card) }}</td>
           <td>{{ card.variant or '' }}</td>
           <td>{{ card.series or '' }}</td>
           <td>{{ card.set or '' }}</td>

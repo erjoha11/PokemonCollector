@@ -11,10 +11,13 @@ from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import httpx
+
 from db import Base  # noqa: E402
 import models  # noqa: E402,F401  (registers tables on Base.metadata)
 import db as db_module  # noqa: E402
 import auth as auth_module  # noqa: E402
+import card_images  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -31,6 +34,24 @@ def no_jwks_network_calls(monkeypatch):
             raise jwt.PyJWKClientError("no matching key")
 
     monkeypatch.setattr(auth_module, "_get_jwks_client", lambda: NoMatch())
+
+
+@pytest.fixture(autouse=True)
+def no_card_image_network_calls(monkeypatch):
+    """Every CSV import calls card_images.fetch_image_url for cards missing
+    one (see importer.py), which otherwise hits the real Pokemon TCG API.
+    Stubbed at the httpx.get boundary (not fetch_image_url itself) so
+    fetch_image_url's own query-building/parsing logic still runs -- a
+    simulated connection failure exercises the same "lookup didn't work"
+    path a real offline/rate-limited run would. test_card_images.py's own
+    tests override httpx.get again with their own fakes to test success
+    cases; everything else just gets a fast, offline None.
+    """
+
+    def no_network(*args, **kwargs):
+        raise httpx.ConnectError("network disabled in tests")
+
+    monkeypatch.setattr(card_images.httpx, "get", no_network)
 
 
 @pytest.fixture()

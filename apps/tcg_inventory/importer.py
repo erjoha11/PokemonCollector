@@ -21,10 +21,18 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
+import card_images
 import constants
 from models import Binder, Card, Collection, ImportLog
 
 MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
+
+# One network round-trip per card without a cached image is too slow for a
+# large first-time import (and risks exceeding Vercel's serverless function
+# timeout on the cron/manual sync route) -- capped per import call instead.
+# Any card left without an image this run picks up again on the next sync,
+# since the condition below is "still missing one", not "just created".
+_MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 
 
 @dataclass
@@ -184,6 +192,7 @@ def import_dex_csv_files(
         }
         existing = db.query(Card).filter(Card.card_id.in_(row_ids)).all() if row_ids else []
         cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
+        image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -215,6 +224,10 @@ def import_dex_csv_files(
             if notes:
                 card.notes = notes
             card.flagged_missing_since = None  # it's back, un-flag it
+
+            if card.image_url is None and image_lookup_budget > 0:
+                card.image_url = card_images.fetch_image_url(card.name, card.set, card.number)
+                image_lookup_budget -= 1
 
             if is_new:
                 result.cards_created += 1

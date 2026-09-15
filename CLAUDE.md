@@ -75,7 +75,7 @@ There is no UI yet to edit an already-registered order (retype/relink/move/merge
 Besides the default coding agent, two project-scoped advisory agents live in `.claude/agents/` — read-only (no Edit/Write), so they analyze and recommend rather than implement:
 
 - **architect** — system-architecture-level thinking: module/app boundaries, data flow, deployment topology, coupling, design tradeoffs. Consult before a change that ripples across the system or touches a documented decision (see e.g. the computed-vs-stored discussion above).
-- **ux** — usability/visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS: page flows, interaction consistency, accessibility, aesthetic polish.
+- **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`, not `finn_ad_scraper`): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish.
 
 Neither agent edits files — their output is analysis for the default agent (or the user) to act on. When a task needs input from both (e.g. a UX change with schema implications), the orchestrating session keeps each agent's spawned instance alive and relays findings between them rather than re-explaining context from scratch each time.
 

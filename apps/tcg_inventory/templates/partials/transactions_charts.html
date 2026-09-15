@@ -1,56 +1,64 @@
 {% from "partials/macros.html" import info %}
-{% from "partials/macros.html" import value_growth_chart %}
+{% from "partials/macros.html" import chart_card %}
 <div class="viz-root">
 <div class="breakdown-grid">
   <div class="card-pair">
   {% set tx_value_growth_heading %}Collection value growth {{ info("Uses today's price applied to the date each card was added — Dex provides no historical price data, so this approximates growth, not an exact historical value. Cards added before the date was recorded are grouped under a Before tracking starting point.") }}{% endset %}
-  {{ value_growth_chart('value-growth-card', tx_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label) }}
+  {% set tx_value_growth_datasets = [
+    {"label": metric_label, "data": value_growth | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
+    {"label": comparison_label, "data": comparison_values, "color": "#eb6834"},
+  ] %}
+  {% call chart_card('value-growth-card', tx_value_growth_heading, 'line', value_growth | map(attribute="label") | list, tx_value_growth_datasets, metric_options, metric) %}
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <tbody>
+        {% for row in value_growth %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endcall %}
 
-  <div class="card">
-    <h2>Purchases and sales per month {{ info('Real figures from Transactions, not an approximation.', align_right=true) }}</h2>
-    {% if cash_chart.groups %}
-    <div class="viz-legend">
-      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-1);"></span>Purchases</span>
-      <span class="viz-legend-item"><span class="viz-legend-swatch" style="background: var(--viz-series-2);"></span>Sales</span>
-    </div>
-    <svg class="viz-chart" viewBox="0 0 {{ cash_chart.width }} {{ cash_chart.height }}" role="img" aria-label="Purchases and sales per month">
-      {% for y, label in cash_chart.y_ticks %}
-      <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ cash_chart.width - 16 }}" y2="{{ y }}"></line>
-      <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
-      {% endfor %}
-      {% for group in cash_chart.groups %}
-      {% set row = cash_flow[loop.index0] %}
-      {% set bought_bar = group.bars[0] %}
-      {% set sold_bar = group.bars[1] %}
-      <text class="viz-axis-label" x="{{ (bought_bar[0] + sold_bar[0] + sold_bar[2]) / 2 }}" y="{{ cash_chart.height - 8 }}" text-anchor="middle">{{ group.label }}</text>
-      <rect x="{{ bought_bar[0] }}" y="{{ bought_bar[1] }}" width="{{ bought_bar[2] }}" height="{{ bought_bar[3] }}" rx="4" fill="var(--viz-series-1)">
-        <title>{{ group.label }} · Purchases: {{ row.bought | kr }}</title>
-      </rect>
-      <rect x="{{ sold_bar[0] }}" y="{{ sold_bar[1] }}" width="{{ sold_bar[2] }}" height="{{ sold_bar[3] }}" rx="4" fill="var(--viz-series-2)">
-        <title>{{ group.label }} · Sales: {{ row.sold | kr }}</title>
-      </rect>
-      {% endfor %}
-    </svg>
-    <details>
-      <summary>View as table</summary>
-      <table style="margin-top: 0.6rem;">
-        <thead><tr><th>Month</th><th class="num">Purchases</th><th class="num">Sales</th><th class="num">Net invested (cumulative)</th></tr></thead>
-        <tbody>
-          {% for row in cash_flow %}
-          <tr><td>{{ row.label }}</td><td class="num">{{ row.bought | kr }}</td><td class="num">{{ row.sold | kr }}</td><td class="num">{{ row.cumulative_invested | kr }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </details>
-    {% else %}
-    <p class="muted">No transactions recorded yet.</p>
-    {% endif %}
-  </div>
+  {% set cash_flow_datasets = [
+    {"label": "Purchases", "data": cash_flow | map(attribute="bought") | list, "color": "#2a78d6"},
+    {"label": "Sales", "data": cash_flow | map(attribute="sold") | list, "color": "#eb6834"},
+  ] %}
+  {% call chart_card('cash-flow-card', "Purchases and sales per month " ~ info('Real figures from Transactions, not an approximation.', align_right=true), 'bar', cash_flow | map(attribute="label") | list, cash_flow_datasets) %}
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Month</th><th class="num">Purchases</th><th class="num">Sales</th><th class="num">Net invested (cumulative)</th></tr></thead>
+      <tbody>
+        {% for row in cash_flow %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.bought | kr }}</td><td class="num">{{ row.sold | kr }}</td><td class="num">{{ row.cumulative_invested | kr }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endcall %}
 </div>
 
 <div class="card-pair">
   {% set tx_real_history_heading %}Real value history {{ info('The collection\'s actual value on each date a daily snapshot was taken — real historical prices, not today\'s price applied retroactively like the chart above. Empty until at least one day of snapshots has accumulated.') }}{% endset %}
-  {{ value_growth_chart('real-value-history-card', tx_real_history_heading, real_chart, real_history, metric_options, metric, metric_label, date_column_label='Date', show_added=false) }}
+  {% set tx_real_history_datasets = [
+    {"label": metric_label, "data": real_history | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
+  ] %}
+  {% call chart_card('real-value-history-card', tx_real_history_heading, 'line', real_history | map(attribute="label") | list, tx_real_history_datasets, metric_options, metric) %}
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Date</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <tbody>
+        {% for row in real_history %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endcall %}
 </div>
 </div>
 </div>

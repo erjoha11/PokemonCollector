@@ -1,4 +1,5 @@
 {% from "partials/macros.html" import sort_th with context %}
+{% from "partials/macros.html" import dex_link %}
 {% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
 
 <div id="inventory-results">
@@ -30,7 +31,7 @@
     <tbody>
       {% for card in cards %}
       <tr>
-        <td><a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a></td>
+        <td>{{ dex_link(card) }}</td>
         <td>{{ card.number or '' }}</td>
         <td>{{ card.series or '' }}</td>
         <td>{{ card.set or '' }}</td>

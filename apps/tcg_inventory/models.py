@@ -70,6 +70,14 @@ class Card(Base):
     language: Mapped[str | None] = mapped_column(String, nullable=True, index=True)
     rarity: Mapped[str | None] = mapped_column(String, nullable=True)
     illustrator: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Real card photo, looked up once at import time from the Pokemon TCG API
+    # (api.pokemontcg.io -- Dex itself doesn't expose card images) via
+    # card_images.fetch_image_url, keyed by name/set/number since Dex's own
+    # `card_id` doesn't correspond to that API's card IDs. Null when no
+    # confident match was found, or the lookup failed/was skipped (e.g.
+    # offline) -- never retried automatically, since a card's image never
+    # changes once printed.
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

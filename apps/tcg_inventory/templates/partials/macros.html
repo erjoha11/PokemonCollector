@@ -14,6 +14,14 @@
 <a href="{{ href }}"{% if hx_target %} hx-get="{{ href }}" hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}"{% if hx_select %} hx-select="{{ hx_select }}"{% endif %}{% if hx_push_url %} hx-push-url="true"{% endif %}{% endif %}>{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>
 {%- endmacro %}
 
+{# A card's name, linked out to its Dex page, with its real photo as a small
+   thumbnail when one was found at import time (see card_images.py --
+   Dex itself has no image, so this can be empty for a card whose lookup
+   never matched or hasn't run yet). Shared by every card-listing table
+   (Dashboard, Inventory, Transactions) so a card only ever needs one place
+   to look right. #}
+{% macro dex_link(card) %}{% if card.image_url %}<img src="{{ card.image_url }}" alt="" class="card-thumb" loading="lazy">{% endif %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
+
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does
    this mean" note on a KPI tile or section heading. `align_right` flips the
    tooltip to open leftward instead of centered, for icons near the page's
@@ -24,17 +32,27 @@
    edge. #}
 {% macro info(text, align_right=false, below=false) %}<span class="info-icon{{ ' align-right' if align_right else '' }}{{ ' below' if below else '' }}" tabindex="0" role="note" aria-label="{{ text }}">i<span class="info-tooltip">{{ text }}</span></span>{% endmacro %}
 
-{# The cumulative value-growth line chart -- one module shared by Dashboard
-   (compact preview) and Analyse (full page), so a change to the chart only
-   ever needs to happen here. `heading` is pre-rendered HTML (build it with
-   `{% set heading %}...{% endset %}` so it can embed the `info()` macro)
-   since the two pages' tooltip text differs. `extra_class` lets a caller
-   that doesn't already sit inside a `.viz-root` ancestor (Dashboard's card
-   is the page's only chart; Analyse wraps its whole page in one `.viz-root`
-   instead) opt the card itself into the `--viz-series-*` CSS vars. #}
-{% macro value_growth_chart(card_id, heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='', date_column_label='Month', show_added=true) %}
+{# A Chart.js-rendered line/bar chart (see static/chart.umd.js, vendored --
+   no CDN, same pattern as htmx.min.js -- and static/tcg-charts.js, which
+   holds the one shared `initTcgChart` renderer every card below calls).
+   One module shared by every chart card (Dashboard's compact value-growth
+   preview, Transactions' value-growth/real-history/cash-flow charts), so a
+   change to how charts look only ever needs to happen in the JS renderer.
+
+   `heading` is pre-rendered HTML (build it with `{% set heading %}...
+   {% endset %}` so it can embed the `info()` macro) since callers' tooltip
+   text differs. `datasets` is a list of {label, data, color} dicts -- color
+   should be `--viz-series-1`/`-2`'s actual hex (#2a78d6 / #eb6834), since
+   Chart.js needs a real color string, not a CSS var. `chart_type` is
+   Chart.js's own 'line' or 'bar'. Call inside `{% call %}...{% endcall %}`
+   to add a "View as table" (or similar) block after the chart -- each
+   caller's underlying data shape differs (value growth has an Added
+   column, real history and cash flow don't/have their own), so that detail
+   table is left to the caller rather than parameterized here. #}
+{% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='') %}
 <div class="card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
   <h2>{{ heading | safe }}</h2>
+  {% if metric_options %}
   <div class="viz-filter">
     {% for key, label, href in metric_options %}
     <a href="{{ href }}"
@@ -46,47 +64,21 @@
        class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
     {% endfor %}
   </div>
-  {% if value_chart.comparison_line_path %}
+  {% endif %}
+  {% if labels %}
+  {% if datasets | length > 1 %}
   <div class="viz-legend" aria-label="Chart series">
-    <span class="viz-legend-item"><span class="viz-legend-swatch viz-legend-primary"></span>{{ metric_label }}</span>
-    <span class="viz-legend-item"><span class="viz-legend-swatch viz-legend-comparison"></span>{{ comparison_label }}</span>
+    {% for ds in datasets %}
+    <span class="viz-legend-item"><span class="viz-legend-swatch{{ ' viz-legend-primary' if loop.first else ' viz-legend-comparison' }}"></span>{{ ds.label }}</span>
+    {% endfor %}
   </div>
   {% endif %}
-  {% if value_chart.points %}
-  <svg class="viz-chart" viewBox="0 0 {{ value_chart.width }} {{ value_chart.height }}" role="img" aria-label="Cumulative value growth over time ({{ metric_label }})">
-    {% for y, label in value_chart.y_ticks %}
-    <line class="viz-gridline" x1="56" y1="{{ y }}" x2="{{ value_chart.width - 16 }}" y2="{{ y }}"></line>
-    <text class="viz-axis-label" x="50" y="{{ y + 3 }}" text-anchor="end">{{ label }}</text>
-    {% endfor %}
-    {% for x, label in value_chart.x_labels %}
-    <text class="viz-axis-label" x="{{ x }}" y="{{ value_chart.height - 8 }}" text-anchor="middle">{{ label }}</text>
-    {% endfor %}
-    <path class="viz-area" d="{{ value_chart.area_path }}" fill="var(--viz-series-1)"></path>
-    <path class="viz-line" d="{{ value_chart.line_path }}" stroke="var(--viz-series-1)" fill="none"></path>
-    {% if value_chart.comparison_line_path %}<path class="viz-line viz-line-comparison" d="{{ value_chart.comparison_line_path }}" stroke="var(--viz-series-2)" fill="none"></path>{% endif %}
-    {% for x, y in value_chart.points %}
-    {% set row = value_growth[loop.index0] %}
-    <circle class="viz-hit" cx="{{ x }}" cy="{{ y }}" r="9" fill="transparent">
-      <title>{{ row.label }}: {{ row.cumulative_value | kr }}</title>
-    </circle>
-    {% endfor %}
-    {% if value_chart.end_point %}
-    <circle class="viz-dot" cx="{{ value_chart.end_point[0] }}" cy="{{ value_chart.end_point[1] }}" r="5" fill="var(--viz-series-1)" stroke="var(--surface)" stroke-width="2"></circle>
-    <text class="viz-end-label" x="{{ value_chart.end_point[0] }}" y="{{ value_chart.end_point[1] - 10 }}" text-anchor="end">{{ value_chart.end_label }} kr</text>
-    {% endif %}
-    {% if value_chart.comparison_end_point %}<circle class="viz-dot" cx="{{ value_chart.comparison_end_point[0] }}" cy="{{ value_chart.comparison_end_point[1] }}" r="5" fill="var(--viz-series-2)" stroke="var(--surface)" stroke-width="2"></circle><text class="viz-end-label viz-end-label-comparison" x="{{ value_chart.comparison_end_point[0] }}" y="{{ value_chart.comparison_end_point[1] + 16 }}" text-anchor="end">{{ value_chart.comparison_end_label }} kr</text>{% endif %}
-  </svg>
-  <details>
-    <summary>View as table</summary>
-    <table style="margin-top: 0.6rem;">
-      <thead><tr><th>{{ date_column_label }}</th>{% if show_added %}<th class="num">Added ({{ metric_label }})</th>{% endif %}<th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
-      <tbody>
-        {% for row in value_growth %}
-        <tr><td>{{ row.label }}</td>{% if show_added %}<td class="num">{{ row.added_value | kr }}</td>{% endif %}<td class="num">{{ row.cumulative_value | kr }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
+  <div class="viz-chart-wrap">
+    <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
+  </div>
+  <script type="application/json" id="{{ card_id }}-data">{{ {"type": chart_type, "labels": labels, "datasets": datasets} | tojson }}</script>
+  <script>initTcgChart("{{ card_id }}");</script>
+  {{ caller() if caller is defined }}
   {% else %}
   <p class="muted">No data yet.</p>
   {% endif %}
