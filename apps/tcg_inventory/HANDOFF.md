@@ -123,11 +123,74 @@ plus this file and the conversation transcript.
   user as the single biggest real gap; they said current scope is fine and
   declined to prioritize it, but it'll very likely come up again.
 - The "+ Legg til i ordre" silent-no-op-when-no-cart-is-open issue (see #86
-  above).
+  above) — **addressed below** (renamed to "+ Add to order", behavior
+  itself unchanged).
 - The "Pris" / "Registrert pris" side-by-side naming ambiguity (see #85
-  above).
+  above) — **addressed below**, renamed to "Market price" / "Paid price".
 
-## UX agent review — 2026-09-15 session (not yet acted on)
+## Full English translation + transaction-type data migration — 2026-09-15 session
+
+Branch `i18n-english-professional`. The user asked to translate the whole
+`tcg_inventory` UI from Norwegian to professional English. Ran the `ux`
+agent first for a full audit (every Norwegian string, a glossary, tone
+flags, and a list of non-obvious traps) before touching any code — that
+audit is not preserved anywhere durable, so if a translation choice below
+looks wrong and you want the reasoning, re-run a similar `ux` review rather
+than assuming one exists somewhere.
+
+**Terminology decisions (asked the user explicitly, not guessed):**
+- "Kjøps-ID" → **"Order ID"** everywhere (not literal "Purchase ID") — fixes
+  a pre-existing inconsistency: the group heading was already generalized to
+  "Ordre #N" in #84 since a group can be a sale/trade too, but the field
+  name never followed.
+- "Pris" / "Registrert pris" (the ambiguous pair flagged in #85 and above)
+  → **"Market price" / "Paid price"**, in the one place both appear
+  side by side (Transactions "Recently Added"). Elsewhere, the lone `Pris`
+  column is just "Price" (no ambiguity without the pairing).
+- Number formatting (space thousands-separator, "1 234 kr") — **left
+  as-is**, the user chose not to switch to English comma convention.
+
+**Data migration — `transactions.type` values, not just UI copy.** The
+DB stored `type` as literal Norwegian values (`"kjøp"` / `"salg"` / `"bytte"`,
+the latter added directly against prod per this file's own log above, e.g.
+the Mega Venusaur `bytte` transaction id 56). The user chose to actually
+**rename the stored values to English** (`"purchase"` / `"sale"` /
+`"trade"`) rather than keep the Norwegian values internally with just a
+display-mapping layer. This is a real data change, not a template edit —
+handled as an **idempotent migration in `db.py`'s `init_db()`**
+(`_normalize_legacy_transaction_types()`, modeled on the existing
+`_add_missing_columns()` pattern): `UPDATE transactions SET type = ... WHERE
+type = '<old value>'`, safe to run on every startup since the `WHERE`
+only ever matches legacy rows. **No manual script was run against prod
+Supabase this session** — the migration ships as code and applies itself
+automatically the next time the deployed app starts (i.e. on the next
+deploy), the same way `_add_missing_columns()` already does for schema.
+Every `== "kjøp"` / `== "salg"` comparison in `app.py`/`queries.py`, every
+`?type=kjøp` URL, and `purchase_cart.html`'s type-branching were updated to
+match. **Verify after the next prod deploy** that old rows actually got
+normalized (e.g. `SELECT DISTINCT type FROM transactions` should show only
+`purchase`/`sale`/`trade`) — this session only verified it against local
+SQLite via the test suite, not against the live Supabase database.
+
+**Wiki content correction bundled in (not just translation):** the
+"Import / Sync" section still described the old manual-CSV-upload/
+Dropbox-browser UI that #87 already removed from that page. Rewrote it to
+match the current read-only "Sync Log" page while translating, per the
+`ux` agent's own flag that translating stale content as-is would just ship
+an accurate-sounding English description of something no longer true.
+
+**Bonus fix, same bug class as the htmx work above:** found a third
+"Sett som favoritt" star-button form (in `partials/pokemon_search_results.html`,
+the Dashboard's Pokemon-search dropdown) still doing a full-page
+`RedirectResponse` — missed in that earlier session since it wasn't one of
+the forms the `ux` agent's review happened to flag. Given the same
+`hx-select`/`hx-target`/`hx-swap="outerHTML"` treatment as the other two
+favorite forms in `dashboard.html`.
+
+Full test suite green (169 passed) after updating every test assertion
+that checked the old Norwegian strings/DB values.
+
+## UX agent review — 2026-09-15 session
 
 Ran the project's `ux` agent for a broad usability pass over the whole app
 (all templates + `static/style.css`, cross-checked against this file and
@@ -135,7 +198,7 @@ Ran the project's `ux` agent for a broad usability pass over the whole app
 a follow-up session (planned to be a different chat) has the full list
 without re-running the review. Ordered by the agent's own priority:
 
-1. **Full-page reloads discard exploration state.** `/pokemon/favorite`,
+1. ~~**Full-page reloads discard exploration state.** `/pokemon/favorite`,
    `/pokemon/merge`, `/pokemon/unmerge` (`app.py` ~lines 372–408) and
    `/transactions/purchase/{id}/total` (~lines 844–860) all end in a
    `RedirectResponse` instead of an htmx partial swap, even though the app
@@ -149,12 +212,18 @@ without re-running the review. Ordered by the agent's own priority:
    `<a href>` links (e.g. `templates/dashboard.html` lines 93–96, 119–124,
    177–183, 220–225, 298–304, 338–344) have the same issue. Pure
    template/route rewiring, no schema change — good candidate to pick up
-   first.
-2. **In-app Wiki is stale.** `templates/wiki.html`'s `#import` section
+   first.~~ **Addressed 2026-09-15** (PR #89, same-day session): every form/
+   route listed now swaps its own section via `hx-select`/`hx-target`/
+   `hx-swap="outerHTML"` instead of a full-page redirect; merge/unmerge and
+   the purchase-total edit also reopen the `<details>` group just used. A
+   third missed instance (the Pokemon-search dropdown's favorite-star form)
+   was found and fixed in the 2026-09-15 translation session below.
+2. ~~**In-app Wiki is stale.** `templates/wiki.html`'s `#import` section
    (lines 126–135) still describes the old manual-CSV-upload/Dropbox-browser
    Import page and labels it "Import / Sync" in the ToC (line 15), but #87
    above already turned that page into the read-only "Synk-logg". Also
-   cheap, no schema change.
+   cheap, no schema change.~~ **Addressed 2026-09-15** (translation session
+   below): rewritten to describe the current read-only "Sync Log" page.
 3. **Synk-logg's "Advarsler" column is a dead end.** `partials/import_log.html`
    line 16 shows a warning *count*, but the actual warning text is never
    persisted (`models.py` `ImportLog.warnings_count` only stores the count;

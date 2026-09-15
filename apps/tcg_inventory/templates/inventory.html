@@ -2,37 +2,37 @@
 {% block title %}Inventory – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info %}
 {% block content %}
-<h1>Inventory {{ info('Pris = Dex sin markedspris per kort. Total verdi = pris × antall du eier av akkurat den printen (duplikater inkludert).') }}</h1>
+<h1>Inventory {{ info("Price = Dex's market price per card. Total value = price × how many you own of that exact print (duplicates included).") }}</h1>
 
 {% include "partials/kpi_module.html" %}
 
 <form class="filters" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true">
-  <input type="text" name="q" value="{{ q }}" placeholder="Søk (navn, number, illustrator, card id)"
+  <input type="text" name="q" value="{{ q }}" placeholder="Search (name, number, illustrator, card ID)"
          hx-get="/inventory" hx-trigger="keyup changed delay:300ms" hx-target="#inventory-results" hx-push-url="true"
          hx-include="closest form">
 
   <select name="series" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
-    <option value="">Alle serier</option>
+    <option value="">All series</option>
     {% for s in all_series %}<option value="{{ s }}" {{ 'selected' if s == series }}>{{ s }}</option>{% endfor %}
   </select>
 
   <select name="set" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
-    <option value="">Alle sett</option>
+    <option value="">All sets</option>
     {% for s in all_sets %}<option value="{{ s }}" {{ 'selected' if s == set }}>{{ s }}</option>{% endfor %}
   </select>
 
   <select name="collection" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
-    <option value="">Alle collections</option>
+    <option value="">All collections</option>
     {% for c in all_collections %}<option value="{{ c }}" {{ 'selected' if c == collection }}>{{ c }}</option>{% endfor %}
   </select>
 
   <select name="binder" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
-    <option value="">Alle bindere</option>
+    <option value="">All binders</option>
     {% for b in all_binders %}<option value="{{ b }}" {{ 'selected' if b == binder }}>{{ b }}</option>{% endfor %}
   </select>
 
   <select name="language" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
-    <option value="">Alle språk</option>
+    <option value="">All languages</option>
     {% for l in all_languages %}<option value="{{ l }}" {{ 'selected' if l == language }}>{{ l }}</option>{% endfor %}
   </select>
 
@@ -42,14 +42,14 @@
   <input type="hidden" name="rarity" value="{{ rarity }}">
   {% if dup %}
   <span class="muted">
-    Viser bare kort med duplikater.
-    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}">Fjern filter</a>
+    Showing only cards with duplicates.
+    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}">Clear filter</a>
   </span>
   {% endif %}
   {% if rarity %}
   <span class="muted">
-    Filtrert på rarity: {{ rarity }}
-    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}">Fjern filter</a>
+    Filtered by rarity: {{ rarity }}
+    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}">Clear filter</a>
   </span>
   {% endif %}
 </form>

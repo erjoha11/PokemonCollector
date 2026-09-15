@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Synk-logg – TCG Inventory{% endblock %}
+{% block title %}Sync Log – TCG Inventory{% endblock %}
 {% block content %}
-<h1>Synk-logg</h1>
+<h1>Sync Log</h1>
 
 <p class="muted">
-  Historikk over synk-kjøringer (daglig automatisk via Dropbox-cron, eller manuelt av en
-  administrator). Denne siden er kun til visning -- selve synken kjøres ikke herfra lenger.
+  History of sync runs (daily automatically via the Dropbox cron job, or manually by an
+  administrator). This page is read-only — the sync itself is no longer triggered from here.
 </p>
 
 {% include "partials/import_log.html" %}

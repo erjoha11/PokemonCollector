@@ -35,8 +35,8 @@
 {% endmacro %}
 
 {% macro bucket_set_series_cells(bucket) %}
-<td>{% if bucket.distinct_sets | length == 1 %}{{ bucket.distinct_sets[0] }}{% elif bucket.distinct_sets | length > 1 %}<span class="muted" title="{{ bucket.distinct_sets | join(', ') }}">Flere</span>{% else %}-{% endif %}</td>
-<td>{% if bucket.distinct_series | length == 1 %}{{ bucket.distinct_series[0] }}{% elif bucket.distinct_series | length > 1 %}<span class="muted" title="{{ bucket.distinct_series | join(', ') }}">Flere</span>{% else %}-{% endif %}</td>
+<td>{% if bucket.distinct_sets | length == 1 %}{{ bucket.distinct_sets[0] }}{% elif bucket.distinct_sets | length > 1 %}<span class="muted" title="{{ bucket.distinct_sets | join(', ') }}">Multiple</span>{% else %}-{% endif %}</td>
+<td>{% if bucket.distinct_series | length == 1 %}{{ bucket.distinct_series[0] }}{% elif bucket.distinct_series | length > 1 %}<span class="muted" title="{{ bucket.distinct_series | join(', ') }}">Multiple</span>{% else %}-{% endif %}</td>
 {% endmacro %}
 
 {% block content %}
@@ -46,18 +46,18 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set dashboard_value_growth_heading %}Verdiutvikling {{ info('Bruker dagens pris anvendt på datoen hvert kort ble lagt til -- en tilnærming, ikke en nøyaktig historisk verdi. Se Analyse for full økonomisk oversikt.', below=true) }}{% endset %}
+  {% set dashboard_value_growth_heading %}Value growth {{ info("Uses today's price applied to the date each card was added — an approximation, not an exact historical value. See Analysis for the full financial picture.", below=true) }}{% endset %}
   {{ value_growth_chart('dashboard-value-growth-card', dashboard_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">
-    <h2>Topp 10 mest verdifulle kort {{ info('De ti enkeltkortene med høyest pris -- ikke justert for hvor mange du eier av hvert.', align_right=true, below=true) }}</h2>
+    <h2>Top 10 most valuable cards {{ info('The ten individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ top_sort('Navn', 'name') }}</th>
-          <th>{{ top_sort('Nr', 'number') }}</th>
+          <th>{{ top_sort('Name', 'name') }}</th>
+          <th>{{ top_sort('No.', 'number') }}</th>
           <th>{{ top_sort('Set', 'set') }}</th>
-          <th class="num">{{ top_sort('Pris', 'reference_price') }}</th>
+          <th class="num">{{ top_sort('Price', 'reference_price') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -76,16 +76,16 @@
 
   <div class="card-pair">
   <div class="card" id="dashboard-inventory-card">
-    <h2>Inventory {{ info('Unike = antall forskjellige kort. Duplikater = ekstra kopier utover det første. Total = unike + duplikater. Verdi = pris for unike kort. Total verdi = inkludert duplikater. Bulk er kort uten collection.', below=true) }}</h2>
+    <h2>Inventory {{ info('Unique = number of distinct cards. Duplicates = extra copies beyond the first. Total = unique + duplicates. Value = price of unique cards. Total value = duplicates included. Bulk is cards with no collection.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ coll_sort('Navn', 'name') }}</th>
-          <th class="num">{{ coll_sort('Unike', 'unique') }}</th>
-          <th class="num">{{ coll_sort('Duplikater', 'duplicates') }}</th>
+          <th>{{ coll_sort('Name', 'name') }}</th>
+          <th class="num">{{ coll_sort('Unique', 'unique') }}</th>
+          <th class="num">{{ coll_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ coll_sort('Total', 'qty') }}</th>
-          <th class="num">{{ coll_sort('Verdi', 'value') }}</th>
-          <th class="num">{{ coll_sort('Total verdi', 'total_value') }}</th>
+          <th class="num">{{ coll_sort('Value', 'value') }}</th>
+          <th class="num">{{ coll_sort('Total value', 'total_value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -134,16 +134,16 @@
 
   <div class="card-pair">
   <div class="card" id="dashboard-series-card">
-    <h2>Serie {{ info('Gruppert etter serie, sortert etter utgivelsesrekkefølge (eldste først). Klikk en rad for å se sett, og et sett for å se kortene i det.', below=true) }}</h2>
+    <h2>Series {{ info('Grouped by series, sorted by release order (oldest first). Click a row to see its sets, and a set to see the cards in it.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ series_sort('Serie', 'name') }}</th>
-          <th class="num">{{ series_sort('Unike', 'unique') }}</th>
-          <th class="num">{{ series_sort('Duplikater', 'duplicates') }}</th>
+          <th>{{ series_sort('Series', 'name') }}</th>
+          <th class="num">{{ series_sort('Unique', 'unique') }}</th>
+          <th class="num">{{ series_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ series_sort('Total', 'qty') }}</th>
-          <th class="num">{{ series_sort('Verdi', 'value') }}</th>
-          <th class="num">{{ series_sort('Total verdi', 'total_value') }}</th>
+          <th class="num">{{ series_sort('Value', 'value') }}</th>
+          <th class="num">{{ series_sort('Total value', 'total_value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -177,15 +177,15 @@
   </div>
 
   <div class="card" id="dashboard-rarity-card">
-    <h2>Rarity {{ info('Gruppert etter sjeldenhetsgrad, sortert fra Common til de sjeldneste (moderne tier-rekkefølge). Ukjente rarity-navn sorteres alfabetisk sist.', align_right=true, below=true) }}</h2>
+    <h2>Rarity {{ info('Grouped by rarity, sorted from Common to the rarest (modern tier order). Unrecognized rarity names sort alphabetically last.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
           <th>{{ rarity_sort('Rarity', 'name') }}</th>
-          <th class="num">{{ rarity_sort('Unike', 'unique') }}</th>
-          <th class="num">{{ rarity_sort('Duplikater', 'duplicates') }}</th>
+          <th class="num">{{ rarity_sort('Unique', 'unique') }}</th>
+          <th class="num">{{ rarity_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ rarity_sort('Total', 'qty') }}</th>
-          <th class="num">{{ rarity_sort('Verdi', 'value') }}</th>
+          <th class="num">{{ rarity_sort('Value', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -209,24 +209,24 @@
 
   <div class="card-pair" id="dashboard-pokemon-cards">
   <div class="card">
-    <h2>Pokemon {{ info('Gruppert etter Pokemon-navn på tvers av alle print du eier. "Flere" i Sett/Serie betyr at bucketen spenner over mer enn ett sett/serie -- hold musepekeren over cellen for å se hvilke.', below=true) }}</h2>
+    <h2>Pokemon {{ info('Grouped by Pokemon name across every print you own. "Multiple" in Set/Series means the group spans more than one set/series — hover the cell to see which.', below=true) }}</h2>
     <div class="autocomplete" style="max-width: 320px; margin-bottom: 1.1rem;">
-      <input type="text" id="pokemon_search" name="q" placeholder="Søk Pokemon for å legge til i favoritter..." autocomplete="off"
+      <input type="text" id="pokemon_search" name="q" placeholder="Search Pokemon to add to favorites..." autocomplete="off"
              hx-get="/pokemon/search" hx-trigger="keyup changed delay:250ms" hx-target="#pokemon-search-results">
       <div id="pokemon-search-results"></div>
     </div>
 
     <details style="margin-bottom: 1.1rem;"{% if open_pokemon_folder %} open{% endif %}>
-      <summary>Legg Pokemon i samme mappe (f.eks. Celebi + Dark Celebi, eller Slowpoke + Slowbro)</summary>
+      <summary>Put Pokemon in the same folder (e.g. Celebi + Dark Celebi, or Slowpoke + Slowbro)</summary>
       <p class="muted" style="margin: 0.5rem 0;">
-        Dette endrer kun visningen her på Dashboardet -- kortene, prisene og eksporten dine påvirkes ikke.
+        This only changes the display here on the Dashboard — your cards, prices, and export are not affected.
       </p>
       <form method="post" action="/pokemon/merge" class="merge-form"
             hx-post="/pokemon/merge" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
-        <input type="text" name="name" list="pokemon-names-list" placeholder="Navn som skal flyttes (f.eks. Slowpoke)" required>
-        <span>i samme mappe som</span>
-        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Mappenavn (f.eks. Slowbro)" required>
-        <button type="submit">Legg i mappe</button>
+        <input type="text" name="name" list="pokemon-names-list" placeholder="Name to move (e.g. Slowpoke)" required>
+        <span>into the same folder as</span>
+        <input type="text" name="canonical" list="pokemon-names-list" placeholder="Folder name (e.g. Slowbro)" required>
+        <button type="submit">Add to folder</button>
       </form>
       <datalist id="pokemon-names-list">
         {% for pname in all_pokemon_names %}
@@ -245,7 +245,7 @@
               <form method="post" action="/pokemon/unmerge"
                     hx-post="/pokemon/unmerge" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
                 <input type="hidden" name="name" value="{{ alias.name }}">
-                <button type="submit" title="Fjern fra mappen">Angre</button>
+                <button type="submit" title="Remove from folder">Undo</button>
               </form>
             </li>
             {% endfor %}
@@ -257,17 +257,17 @@
     </details>
 
     {% if favorite_breakdown %}
-    <h3>Favoritter</h3>
+    <h3>Favorites</h3>
     <table style="margin-bottom: 1.5rem;">
       <thead>
         <tr>
-          <th>{{ fav_sort('Navn', 'name') }}</th>
-          <th>Sett</th>
-          <th>Serie</th>
-          <th class="num">{{ fav_sort('Unike', 'unique') }}</th>
-          <th class="num">{{ fav_sort('Duplikater', 'duplicates') }}</th>
+          <th>{{ fav_sort('Name', 'name') }}</th>
+          <th>Set</th>
+          <th>Series</th>
+          <th class="num">{{ fav_sort('Unique', 'unique') }}</th>
+          <th class="num">{{ fav_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ fav_sort('Total', 'qty') }}</th>
-          <th class="num">{{ fav_sort('Verdi', 'value') }}</th>
+          <th class="num">{{ fav_sort('Value', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -278,7 +278,7 @@
             <form method="post" action="/pokemon/favorite" style="display:inline;"
                   hx-post="/pokemon/favorite" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
               <input type="hidden" name="name" value="{{ p.name }}">
-              <button type="submit" class="favorite-star active" title="Fjern som favoritt">★</button>
+              <button type="submit" class="favorite-star active" title="Remove as favorite">★</button>
             </form>
             {% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}
           </td>
@@ -298,17 +298,17 @@
   </div>
 
   <div class="card">
-    <h2>Topp 10 {{ info('De ti Pokemon-navnene med flest unike print du eier.', align_right=true, below=true) }}</h2>
+    <h2>Top 10 {{ info('The ten Pokemon names with the most unique prints you own.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>
-          <th>{{ top10_sort('Navn', 'name') }}</th>
-          <th>Sett</th>
-          <th>Serie</th>
-          <th class="num">{{ top10_sort('Unike', 'unique') }}</th>
-          <th class="num">{{ top10_sort('Duplikater', 'duplicates') }}</th>
+          <th>{{ top10_sort('Name', 'name') }}</th>
+          <th>Set</th>
+          <th>Series</th>
+          <th class="num">{{ top10_sort('Unique', 'unique') }}</th>
+          <th class="num">{{ top10_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ top10_sort('Total', 'qty') }}</th>
-          <th class="num">{{ top10_sort('Verdi', 'value') }}</th>
+          <th class="num">{{ top10_sort('Value', 'value') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -320,7 +320,7 @@
                   hx-post="/pokemon/favorite" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
               <input type="hidden" name="name" value="{{ p.name }}">
               <button type="submit" class="favorite-star{{ ' active' if p.name in favorite_pokemon else '' }}"
-                      title="{{ 'Fjern som favoritt' if p.name in favorite_pokemon else 'Sett som favoritt' }}">{{ '★' if p.name in favorite_pokemon else '☆' }}</button>
+                      title="{{ 'Remove as favorite' if p.name in favorite_pokemon else 'Set as favorite' }}">{{ '★' if p.name in favorite_pokemon else '☆' }}</button>
             </form>
             {% if p.cards %}{{ toggle_button(p.name, row_id) }}{% else %}{{ p.name }}{% endif %}
           </td>

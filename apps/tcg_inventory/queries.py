@@ -351,15 +351,15 @@ def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
 # --------------------------------------------------------------------------
 # Economic analysis -- development over time
 # --------------------------------------------------------------------------
-_UNTRACKED_MONTH = "Før sporing"  # cards imported before created_at existed
+_UNTRACKED_MONTH = "Before tracking"  # cards imported before created_at existed
 
 
-# Same three numbers as the Dashboard KPI's Verdi / Verdi duplikater / Total
-# verdi -- "unique" never double-counts a duplicate, "duplicates" is just the
+# Same three numbers as the Dashboard KPI's Value / Duplicate value / Total
+# value -- "unique" never double-counts a duplicate, "duplicates" is just the
 # extra value tied up in the copies beyond the first, "total" is both together.
 VALUE_GROWTH_METRICS: dict[str, tuple[str, callable]] = {
-    "unique": ("Unik samling", lambda card: card.unique_value),
-    "duplicates": ("Duplikater", lambda card: card.total_value - card.unique_value),
+    "unique": ("Unique collection", lambda card: card.unique_value),
+    "duplicates": ("Duplicates", lambda card: card.total_value - card.unique_value),
     "total": ("Total", lambda card: card.total_value),
 }
 
@@ -373,9 +373,9 @@ def collection_value_growth(
     a card was added, since Dex gives no historical price snapshots. It
     answers "how has my collection's assessed value grown as I added cards",
     not "what was it actually worth back then". Cards with no created_at
-    (imported before that column existed) are bucketed into one "Før
-    sporing" (before tracking) starting point rather than guessing a date,
-    so the running total still ends at today's real value for that metric.
+    (imported before that column existed) are bucketed into one "Before
+    tracking" starting point rather than guessing a date, so the running
+    total still ends at today's real value for that metric.
 
     `metric` picks which of the three value shown -- see VALUE_GROWTH_METRICS.
     """
@@ -429,18 +429,18 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
 
 
 def cash_flow_by_month(db: Session) -> list[dict]:
-    """Actual money in (kjøp, price + fees) and money out (salg, price) per
-    calendar month, straight from the Transaction log -- real history, not
-    an estimate (unlike collection_value_growth above).
+    """Actual money in (purchase, price + fees) and money out (sale, price)
+    per calendar month, straight from the Transaction log -- real history,
+    not an estimate (unlike collection_value_growth above).
     """
     txs = db.query(Transaction).all()
     by_month: dict[str, dict[str, float]] = {}
     for tx in txs:
         label = tx.date.strftime("%Y-%m")
         bucket = by_month.setdefault(label, {"bought": 0.0, "sold": 0.0})
-        if tx.type == "kjøp":
+        if tx.type == "purchase":
             bucket["bought"] += tx.price + (tx.fees or 0.0)
-        elif tx.type == "salg":
+        elif tx.type == "sale":
             bucket["sold"] += tx.price
 
     result = []
@@ -466,8 +466,8 @@ def economic_summary(db: Session) -> dict:
     amount paid against today's reference price, not a sale.
     """
     txs = db.query(Transaction).all()
-    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "kjøp")
-    total_sold = sum(t.price for t in txs if t.type == "salg")
+    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "purchase")
+    total_sold = sum(t.price for t in txs if t.type == "sale")
     net_invested = total_bought - total_sold
     return {
         "total_bought": total_bought,

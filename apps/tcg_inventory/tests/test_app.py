@@ -29,7 +29,7 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
     text = dashboard.text
     # Scope to the KPI card itself -- both collection names also appear in
     # the Inventory breakdown table further down the page.
-    card = text.split("<h3>Mest verdifulle collection ", 1)[1].split("<h3>", 1)[0]
+    card = text.split("<h3>Most valuable collection ", 1)[1].split("<h3>", 1)[0]
     assert "Single Card Collection" in card
     assert "Duplicated Collection" not in card  # not picked -- lower unique value
     assert "100 kr" in card  # the unique value shown, not 500 kr (its total_value)
@@ -41,7 +41,7 @@ def test_import_page_shows_sync_log_history(client):
 
     response = client.get("/import")
     assert response.status_code == 200
-    assert "Synk-logg" in response.text
+    assert "Sync Log" in response.text
     assert "main.csv" in response.text
     assert "manual" in response.text
 
@@ -77,7 +77,7 @@ def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     text = client.get("/").text
-    # One per KPI tile (Total, Verdi, Mest verdifulle kort/collection/serie)
+    # One per KPI tile (Total, Value, Most valuable card/collection/series)
     # plus one per Dashboard section heading (Inventory, Topp 10, Serie,
     # Rarity, Pokemon) -- a generous floor, not an exact count, so this
     # doesn't need updating every time another tooltip is added.
@@ -100,11 +100,11 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     db.close()
 
     text = client.get("/").text
-    assert "Verdiutvikling" in text
-    # Verdiutvikling is paired with "Topp 10 mest verdifulle kort" (both come
+    assert "Value growth" in text
+    # Value growth is paired with "Top 10 most valuable cards" (both come
     # before Inventory, which now gets its own full-width row below them).
-    first_pair = text.split("Verdiutvikling", 1)[1].split("Inventory", 1)[0]
-    assert "Topp 10 mest verdifulle kort" in first_pair
+    first_pair = text.split("Value growth", 1)[1].split("Inventory", 1)[0]
+    assert "Top 10 most valuable cards" in first_pair
     assert 'class="viz-chart"' in first_pair
     assert "50 kr" in first_pair  # the chart's end-label / tooltip value
 
@@ -119,8 +119,8 @@ def test_dashboard_value_growth_chart_mirrors_the_analyse_pages_metric_filter(cl
     # Pills preserve every other table's sort state, not just the metric --
     # same "keep everything else as-is" idiom sort_th links already use.
     text = client.get("/?csort=name&cdir=asc").text
-    assert "Unik samling" in text
-    assert "Duplikater" in text
+    assert "Unique collection" in text
+    assert "Duplicates" in text
     assert "Total" in text
     assert 'class="viz-filter-pill active"' in text  # unique selected by default
     assert "csort=name" in text
@@ -128,12 +128,12 @@ def test_dashboard_value_growth_chart_mirrors_the_analyse_pages_metric_filter(cl
 
     total_page = client.get("/?metric=total&csort=name&cdir=asc")
     assert total_page.status_code == 200
-    assert "Kumulativ verdi (Total)" in total_page.text
+    assert "Cumulative value (Total)" in total_page.text
     assert "150 kr" in total_page.text  # 3 * 50, the "total" metric's value
 
     fallback_page = client.get("/?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Kumulativ verdi (Unik samling)" in fallback_page.text
+    assert "Cumulative value (Unique collection)" in fallback_page.text
 
 
 def test_all_pages_render(client):
@@ -154,19 +154,19 @@ def test_analyse_page_shows_economic_summary_and_charts(client):
     db = db_module.SessionLocal()
     card = db.query(Card).filter(Card.card_id == "a").one()
     card.created_at = dt.datetime(2026, 1, 15)
-    db.add(Transaction(card_id=card.id, type="kjøp", date=dt.date(2026, 1, 15), price=80, fees=5))
+    db.add(Transaction(card_id=card.id, type="purchase", date=dt.date(2026, 1, 15), price=80, fees=5))
     db.commit()
     db.close()
 
     response = client.get("/analyse")
     assert response.status_code == 200
     text = response.text
-    assert "Netto investert" in text
-    assert "85 kr" in text  # 80 kjøpspris + 5 gebyr
-    assert "Nåværende verdi" in text
-    assert "Papirgevinst" in text or "Papirtap" in text or "Tap" in text or "Gevinst" in text
+    assert "Net invested" in text
+    assert "85 kr" in text  # 80 purchase price + 5 fee
+    assert "Current value" in text
+    assert "Paper gain" in text or "Paper loss" in text or "Loss" in text or "Gain" in text
     assert 'class="viz-chart"' in text
-    assert "Vis som tabell" in text
+    assert "View as table" in text
     assert "2026-01" in text
 
 
@@ -176,7 +176,7 @@ def test_analyse_page_handles_no_transactions_or_dated_cards(client):
 
     response = client.get("/analyse")
     assert response.status_code == 200
-    assert "Ingen registrerte transaksjoner" in response.text
+    assert "No transactions recorded yet" in response.text
 
 
 def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
@@ -184,8 +184,8 @@ def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     default_page = client.get("/analyse")
-    assert "Unik samling" in default_page.text
-    assert "Duplikater" in default_page.text
+    assert "Unique collection" in default_page.text
+    assert "Duplicates" in default_page.text
     assert "Total" in default_page.text
     assert 'href="/analyse?metric=unique"' in default_page.text
     assert 'href="/analyse?metric=duplicates"' in default_page.text
@@ -194,7 +194,7 @@ def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
 
     total_page = client.get("/analyse?metric=total")
     assert total_page.status_code == 200
-    assert "Kumulativ verdi (Total)" in total_page.text
+    assert "Cumulative value (Total)" in total_page.text
     # unique_value=10, total_value=30 for this card -- the chosen metric
     # changes which one shows up as the chart's cumulative total.
     assert "30 kr" in total_page.text
@@ -202,14 +202,14 @@ def test_analyse_page_has_a_metric_filter_that_switches_the_chart(client):
     # An unknown metric falls back to the default instead of erroring.
     fallback_page = client.get("/analyse?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Kumulativ verdi (Unik samling)" in fallback_page.text
+    assert "Cumulative value (Unique collection)" in fallback_page.text
 
 
 def test_wiki_page_documents_the_main_features(client):
     response = client.get("/wiki")
     assert response.status_code == 200
     text = response.text
-    for heading in ["Dashboard", "Pokemon-mapper", "Sortering", "Inventory", "Transactions", "Import"]:
+    for heading in ["Dashboard", "Pokemon folders", "Sorting", "Inventory", "Transactions", "Sync Log"]:
         assert heading in text
     assert 'href="/wiki"' in text  # linked from the nav
 
@@ -227,12 +227,12 @@ def test_transactions_page_shows_transaction_id(client):
 
     response = client.post(
         "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "10"},
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-01", "price": "10"},
         follow_redirects=True,
     )
     # The transaction id is shown de-emphasized next to the date rather than
     # its own column -- the first transaction gets id 1.
-    assert 'title="Transaksjon-ID">#1</span>' in response.text
+    assert 'title="Transaction ID">#1</span>' in response.text
 
 
 def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
@@ -254,7 +254,7 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
             "/transactions",
             data={
                 "card_id": card_id,
-                "type": "kjøp",
+                "type": "purchase",
                 "date": "2026-01-01",
                 "price": "10",
                 "purchase_id": "5",
@@ -264,8 +264,8 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
     response = client.get("/transactions")
     # The shared purchase_id shows as the group's own heading (with a
     # subtotal), not a repeated per-row column -- see the grouping test below.
-    assert "Ordre #5" in response.text
-    assert "2 kort" in response.text
+    assert "Order #5" in response.text
+    assert "2 cards" in response.text
 
 
 def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
@@ -285,26 +285,26 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
     for card_id, price in ((ids["a"], "10"), (ids["b"], "15")):
         client.post(
             "/transactions",
-            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price, "purchase_id": "7"},
+            data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": price, "purchase_id": "7"},
         )
     # Eevee is registered on its own -- no purchase_id, so it should not be
-    # folded into the "Ordre #7" group below.
+    # folded into the "Order #7" group below.
     client.post(
         "/transactions",
-        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-01-02", "price": "20"},
+        data={"card_id": ids["c"], "type": "purchase", "date": "2026-01-02", "price": "20"},
     )
 
     response = client.get("/transactions")
     text = response.text
-    assert "Ordre #7" in text
-    assert "2 kort" in text
+    assert "Order #7" in text
+    assert "2 cards" in text
     assert "25 kr" in text  # 10 + 15, the group's subtotal
-    assert "Enkeltregistrert" in text
-    group_section = text.split("Ordre #7", 1)[1].split("Enkeltregistrert", 1)[0]
+    assert "Individually registered" in text
+    group_section = text.split("Order #7", 1)[1].split("Individually registered", 1)[0]
     assert "Pikachu" in group_section
     assert "Charizard" in group_section
     assert "Eevee" not in group_section
-    ungrouped_section = text.split("Enkeltregistrert", 1)[1]
+    ungrouped_section = text.split("Individually registered", 1)[1]
     assert "Eevee" in ungrouped_section
 
 
@@ -328,19 +328,19 @@ def test_purchase_groups_rank_items_by_price_and_order_groups_by_purchase_id(cli
     for card_id, price in ((ids["a"], "10"), (ids["b"], "50")):
         client.post(
             "/transactions",
-            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price, "purchase_id": "2"},
+            data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": price, "purchase_id": "2"},
         )
     client.post(
         "/transactions",
-        data={"card_id": ids["c"], "type": "kjøp", "date": "2026-02-01", "price": "5", "purchase_id": "1"},
+        data={"card_id": ids["c"], "type": "purchase", "date": "2026-02-01", "price": "5", "purchase_id": "1"},
     )
 
     text = client.get("/transactions").text
-    assert text.index("Ordre #2") < text.index("Ordre #1")
+    assert text.index("Order #2") < text.index("Order #1")
 
-    # Within "Ordre #2", the pricier card (Charizard, 50) ranks above the
+    # Within "Order #2", the pricier card (Charizard, 50) ranks above the
     # cheaper one (Pikachu, 10) regardless of registration order.
-    group_section = text.split("Ordre #2", 1)[1]
+    group_section = text.split("Order #2", 1)[1]
     assert group_section.index("Charizard") < group_section.index("Pikachu")
 
 
@@ -361,7 +361,7 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     response = client.post(
         "/transactions/purchase",
         data={
-            "type": "kjøp",
+            "type": "purchase",
             "date": "2026-01-01",
             "purchase_id": "4",
             "purchase_total": "100",
@@ -377,12 +377,12 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     assert all(t.purchase_total == 100 for t in txs)
     db.close()
 
-    # Registrert (60) + avtalt (100) + diff (40) -- the normal-print cards
+    # Registered (60) + agreed (100) + diff (40) -- the normal-print cards
     # not priced individually yet are the still-unaccounted-for 40 kr.
     text = client.get("/transactions").text
-    group_section = text.split("Ordre #4", 1)[1]
-    assert "registrert 60 kr" in group_section
-    assert "avtalt 100 kr" in group_section
+    group_section = text.split("Order #4", 1)[1]
+    assert "registered 60 kr" in group_section
+    assert "agreed 100 kr" in group_section
     assert 'diff <span class="tx-diff-open">40 kr</span>' in group_section
 
 
@@ -403,7 +403,7 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     response = client.post(
         "/transactions/purchase",
         data={
-            "type": "kjøp",
+            "type": "purchase",
             "date": "2026-01-01",
             "purchase_id": "1",
             "purchase_total": "1076",
@@ -421,10 +421,10 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     db.close()
 
     text = client.get("/transactions").text
-    group_section = text.split("Ordre #1", 1)[1]
-    assert "registrert 1 000 kr" in group_section
-    assert "frakt 76 kr" in group_section
-    assert "avtalt 1 076 kr" in group_section
+    group_section = text.split("Order #1", 1)[1]
+    assert "registered 1 000 kr" in group_section
+    assert "shipping 76 kr" in group_section
+    assert "agreed 1 076 kr" in group_section
     assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
 
 
@@ -441,12 +441,12 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
 
     client.post(
         "/transactions",
-        data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
+        data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
     )
 
     # No declared total yet -- no diff shown, just what's registered.
     text = client.get("/transactions").text
-    group_section = text.split("Ordre #6", 1)[1]
+    group_section = text.split("Order #6", 1)[1]
     assert "avtalt" not in group_section.split("</summary>", 1)[0]
 
     response = client.post(
@@ -464,10 +464,10 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     assert tx.purchase_total == 10
     db.close()
 
-    # Registrert equals avtalt now -- diff is 0, shown as "cleared" not flagged.
+    # Registered equals agreed now -- diff is 0, shown as "cleared" not flagged.
     text = client.get("/transactions").text
-    group_section = text.split("Ordre #6", 1)[1]
-    assert "avtalt 10 kr" in group_section
+    group_section = text.split("Order #6", 1)[1]
+    assert "agreed 10 kr" in group_section
     assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
 
 
@@ -481,22 +481,22 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     # No transactions yet -- the cart starts at purchase_id 1.
-    response = client.get("/transactions/purchase/start?type=kjøp")
+    response = client.get("/transactions/purchase/start?type=purchase")
     assert response.status_code == 200
-    assert "Kjøps-ID 1" in response.text
-    assert "Nytt kjøp" in response.text
+    assert "Order ID 1" in response.text
+    assert "New Purchase" in response.text
 
     db = db_module.SessionLocal()
     card_id = db.query(Card).filter(Card.card_id == "a").one().id
-    db.add(Transaction(card_id=card_id, type="kjøp", date=dt.date.today(), price=10, purchase_id=7))
+    db.add(Transaction(card_id=card_id, type="purchase", date=dt.date.today(), price=10, purchase_id=7))
     db.commit()
     db.close()
 
     # One purchase already on record at id 7 -- the next cart reserves 8,
     # not 1, so it never collides with an existing group.
-    response = client.get("/transactions/purchase/start?type=salg")
-    assert "Kjøps-ID 8" in response.text
-    assert "Nytt salg" in response.text
+    response = client.get("/transactions/purchase/start?type=sale")
+    assert "Order ID 8" in response.text
+    assert "New Sale" in response.text
 
 
 def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transactions(client):
@@ -526,7 +526,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
     response = client.post(
         "/transactions/purchase",
         data={
-            "type": "kjøp",
+            "type": "purchase",
             "date": "2026-06-01",
             "platform": "Kortmesse",
             "purchase_id": "3",
@@ -541,23 +541,23 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
     txs = sorted(db.query(Transaction).filter(Transaction.purchase_id == 3).all(), key=lambda t: t.card_id)
     assert len(txs) == 2
     assert {t.price for t in txs} == {15, 20}
-    assert all(t.type == "kjøp" and t.platform == "Kortmesse" for t in txs)
+    assert all(t.type == "purchase" and t.platform == "Kortmesse" for t in txs)
     db.close()
 
-    # And Historikk groups them together under that shared purchase_id.
+    # And History groups them together under that shared purchase_id.
     history = client.get("/transactions").text
-    assert "Ordre #3" in history
-    assert "2 kort" in history
+    assert "Order #3" in history
+    assert "2 cards" in history
 
 
 def test_purchase_cart_rejects_submitting_with_no_cards(client):
     response = client.post(
         "/transactions/purchase",
-        data={"type": "kjøp", "date": "2026-06-01", "purchase_id": "1", "card_id": [], "price": []},
+        data={"type": "purchase", "date": "2026-06-01", "purchase_id": "1", "card_id": [], "price": []},
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert "minst ett kort" in response.text
+    assert "search for at least one card" in response.text
 
 
 def test_transactions_page_groups_added_cards_by_date(client):
@@ -568,7 +568,7 @@ def test_transactions_page_groups_added_cards_by_date(client):
     assert response.status_code == 200
     assert "Recently Added" in response.text
     assert "Pikachu" in response.text
-    assert "1 kort har en kjent dato" in response.text
+    assert 'Cards with a known "added" date: 1' in response.text
 
 
 def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client):
@@ -594,13 +594,13 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     # doesn't dominate the page -- Pikachu (known date) sits in the always-
     # visible "Recently Added" section, Charizard (no date) is tucked away.
     assert "<details class=\"collapsible\">" in text
-    assert "Resten av samlingen uten kjent dato (1 kort)" in text
+    assert "The rest of the collection with no known date (1 card)" in text
     collapsed_section = text.split("<details class=\"collapsible\">", 1)[1]
     assert "Charizard" in collapsed_section
     assert "Pikachu" not in collapsed_section
-    # No inline purchase form for the old back-catalog -- only "Kort lagt
-    # til" (the actually-new cards) gets the quick-register button.
-    assert "Legg til" not in collapsed_section
+    # No inline purchase form for the old back-catalog -- only "Recently
+    # Added" (the actually-new cards) gets the quick-register button.
+    assert "Add to order" not in collapsed_section
 
 
 def test_transactions_history_table_scrolls_instead_of_widening_the_page(client):
@@ -624,7 +624,7 @@ def test_added_cards_section_shows_the_registered_price_once_bought(client):
 
     client.post(
         "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "25"},
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-01", "price": "25"},
     )
     db = db_module.SessionLocal()
     tx = db.query(Transaction).filter(Transaction.card_id == pikachu_id).one()
@@ -634,7 +634,7 @@ def test_added_cards_section_shows_the_registered_price_once_bought(client):
     # And the "Recently Added" row now shows that already-registered price,
     # so a second visit doesn't risk double-registering the same card.
     response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
+    added_section = response.text.split("Recently Added", 1)[1].split("History", 1)[0]
     assert "25 kr" in added_section
 
 
@@ -651,15 +651,15 @@ def test_upsert_corrects_the_single_existing_price_instead_of_adding_a_second_on
 
     client.post(
         "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": "15", "upsert": "1"},
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-01", "price": "15", "upsert": "1"},
     )
 
     # Re-posting with upsert=1 corrects the price in place -- exactly the
-    # "skrive over" the user expects -- instead of creating a second "kjøp"
+    # overwrite the user expects -- instead of creating a second "purchase"
     # transaction for the same card.
     client.post(
         "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-02", "price": "0", "upsert": "1"},
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-02", "price": "0", "upsert": "1"},
     )
     db = db_module.SessionLocal()
     txs = db.query(Transaction).filter(Transaction.card_id == pikachu_id).all()
@@ -683,7 +683,7 @@ def test_upsert_carries_and_updates_a_purchase_id_in_place(client):
         "/transactions",
         data={
             "card_id": pikachu_id,
-            "type": "kjøp",
+            "type": "purchase",
             "date": "2026-01-01",
             "price": "15",
             "purchase_id": "7",
@@ -701,7 +701,7 @@ def test_upsert_carries_and_updates_a_purchase_id_in_place(client):
         "/transactions",
         data={
             "card_id": pikachu_id,
-            "type": "kjøp",
+            "type": "purchase",
             "date": "2026-01-02",
             "price": "20",
             "purchase_id": "9",
@@ -730,12 +730,12 @@ def test_upsert_does_not_guess_which_purchase_to_update_when_ambiguous(client):
     for price in ("10", "20"):
         client.post(
             "/transactions",
-            data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-01", "price": price},
+            data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-01", "price": price},
         )
 
     client.post(
         "/transactions",
-        data={"card_id": pikachu_id, "type": "kjøp", "date": "2026-01-03", "price": "5", "upsert": "1"},
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-03", "price": "5", "upsert": "1"},
     )
     db = db_module.SessionLocal()
     prices = sorted(t.price for t in db.query(Transaction).filter(Transaction.card_id == pikachu_id).all())
@@ -748,9 +748,9 @@ def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("Historikk", 1)[0]
-    assert "Registrert pris" in added_section
-    # The Registrert pris cell is empty (unlike Pris, which does
+    added_section = response.text.split("Recently Added", 1)[1].split("History", 1)[0]
+    assert "Paid price" in added_section
+    # The Paid price cell is empty (unlike Market price, which does
     # show a value) -- no purchase has been registered for this card yet.
     assert '<td class="num"></td>' in added_section
 
@@ -772,7 +772,7 @@ def test_transactions_table_can_be_sorted_by_column(client):
     for card_id, price in ((ids["a"], "100"), (ids["b"], "50")):
         client.post(
             "/transactions",
-            data={"card_id": card_id, "type": "kjøp", "date": "2026-01-01", "price": price},
+            data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": price},
         )
 
     def _table_body(html: str) -> str:
@@ -797,7 +797,7 @@ def test_recently_added_table_can_be_sorted_by_column(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     def _group_body(html: str) -> str:
-        section = html.split("Recently Added", 1)[1].split("Historikk", 1)[0]
+        section = html.split("Recently Added", 1)[1].split("History", 1)[0]
         return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
     asc = _group_body(client.get("/transactions?gsort=name&gdir=asc").text)
@@ -807,7 +807,7 @@ def test_recently_added_table_can_be_sorted_by_column(client):
     assert desc.index("Zebra") < desc.index("Abra")
 
 
-def test_ukjent_dato_table_can_be_sorted_by_column(client):
+def test_unknown_date_table_can_be_sorted_by_column(client):
     import db as db_module
     from models import Card
 
@@ -818,7 +818,7 @@ def test_ukjent_dato_table_can_be_sorted_by_column(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
-    db.query(Card).update({"created_at": None})  # move both into "Ukjent dato"
+    db.query(Card).update({"created_at": None})  # move both into "Unknown date"
     db.commit()
     db.close()
 
@@ -837,7 +837,7 @@ def test_import_then_dashboard_reflects_the_sync(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     response = client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
     assert response.status_code == 200
-    # The Synk-logg page is log-only now (no inline result summary) -- the
+    # The Sync Log page is log-only now (no inline result summary) -- the
     # sync still shows up as a new row in the log table.
     assert "main.csv" in response.text
 
@@ -910,7 +910,7 @@ def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):
     response = client.get("/inventory?dup=1")
     assert "Pikachu" in response.text
     assert "Charizard" not in response.text
-    assert "1 kort" in response.text
+    assert "1 card" in response.text
 
 
 def test_inventory_accepts_an_empty_dup_query_value(client):
@@ -937,7 +937,7 @@ def test_inventory_shows_and_filters_by_language(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     full = client.get("/inventory").text
-    assert "Språk" in full
+    assert "Language" in full
     assert "ENG" in full and "JPN" in full
 
     eng_only = client.get("/inventory?language=ENG").text
@@ -969,7 +969,7 @@ def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
-    # The "which cards" link lives on Totalt (not Duplikater) -- same filter,
+    # The "which cards" link lives on Total (not Duplicates) -- same filter,
     # different column: /inventory?series=...&dup=1.
     expected_href = f"/inventory?series={quote('Test Series')}&dup=1"
     assert expected_href in dashboard.text
@@ -981,10 +981,10 @@ def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
 
     dashboard = client.get("/")
     text = dashboard.text
-    # Scope to the Serie card itself -- the Pokemon card's own drill-down
-    # rows legitimately link to Inventory by series/set (see the Sett/Serie
+    # Scope to the Series card itself -- the Pokemon card's own drill-down
+    # rows legitimately link to Inventory by series/set (see the Set/Series
     # columns), so "Original</a>" can validly appear elsewhere on the page.
-    series_card = text.split("<h2>Serie ", 1)[1].split("<h2>", 1)[0]
+    series_card = text.split("<h2>Series ", 1)[1].split("<h2>", 1)[0]
     assert 'class="row-toggle-name"' in series_card
     assert ">Original</a>" not in series_card  # no longer a plain link to Inventory
     assert "Base Set" in series_card  # the nested set row is rendered (hidden until expanded)
@@ -1061,9 +1061,9 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
     assert "Magikarp" in pokemon_section
     # Both Sableye prints (Normal + Holo, two different sets) count under one
     # "Sableye" bucket -- 2 unique, not two separate one-card rows. Look only
-    # at the "Topp 10" table itself, since the merge form's <datalist> also
+    # at the "Top 10" table itself, since the merge form's <datalist> also
     # lists raw card names earlier in the same card.
-    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    top10_section = pokemon_section.split("Top 10", 1)[1]
     row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
     assert "<td class=\"num\">2</td>" in row
 
@@ -1077,13 +1077,13 @@ def test_dashboard_pokemon_table_shows_set_and_series_for_a_single_print(client)
 
     dashboard = client.get("/")
     pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    top10_section = pokemon_section.split("Top 10", 1)[1]
     row = top10_section.split("Magikarp", 1)[1].split("</tr>", 1)[0]
     assert "<td>Paldea Evolved</td>" in row or "Paldea Evolved</a>" in row
     assert "<td>Scarlet &amp; Violet</td>" in row or "Scarlet &amp; Violet</a>" in row
 
 
-def test_dashboard_pokemon_table_shows_flere_when_bucket_spans_multiple_sets(client):
+def test_dashboard_pokemon_table_shows_multiple_when_bucket_spans_multiple_sets(client):
     main = make_csv(
         "My Collection",
         [
@@ -1095,9 +1095,9 @@ def test_dashboard_pokemon_table_shows_flere_when_bucket_spans_multiple_sets(cli
 
     dashboard = client.get("/")
     pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_section.split("Topp 10", 1)[1]
+    top10_section = pokemon_section.split("Top 10", 1)[1]
     bucket_row = top10_section.split("Sableye", 1)[1].split("</tr>", 1)[0]
-    assert "Flere" in bucket_row
+    assert "Multiple" in bucket_row
     # But drilling down into the individual prints still shows each one's own set.
     assert "Vivid Voltage" in top10_section
     assert "Triplet Beat" in top10_section
@@ -1155,7 +1155,7 @@ def test_pokemon_search_finds_a_name_to_favorite(client):
 
 def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
     # 10 other species each with more unique prints than Celebi (1), so
-    # Celebi would never make the "Topp 10 (unike)" cutoff on its own.
+    # Celebi would never make the "Top 10 (unique)" cutoff on its own.
     rows = [{"id": "celebi", "name": "Celebi"}]
     for i in range(10):
         for p in range(2):
@@ -1167,11 +1167,11 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    assert "Favoritter" in pokemon_card
-    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Favorites" in pokemon_card
+    favorites_section = pokemon_card.split("Favorites", 1)[1].split("Top 10", 1)[0]
     assert "Celebi" in favorites_section
 
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     assert "Celebi" not in top10_section  # confirms it really was excluded from the cutoff
 
 
@@ -1183,10 +1183,10 @@ def test_pokemon_topp10_table_can_be_sorted_by_column(client):
     client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
 
     def _topp10(html: str) -> str:
-        # Scope to the Pokemon card's own "Topp 10" table -- "Topp 10 mest
+        # Scope to the Pokemon card's own "Top 10" table -- "Topp 10 mest
         # verdifulle kort" appears earlier on the page too.
         pokemon_section = html.split("<h2>Pokemon ", 1)[1]
-        return pokemon_section.split("Topp 10", 1)[1]
+        return pokemon_section.split("Top 10", 1)[1]
 
     asc = _topp10(client.get("/?psort=name&pdir=asc").text)
     assert asc.index("Abra") < asc.index("Zubat")
@@ -1205,7 +1205,7 @@ def test_pokemon_favoritter_table_can_be_sorted_by_column(client):
     client.post("/pokemon/favorite", data={"name": "Zubat"})
 
     def _favoritter(html: str) -> str:
-        return html.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+        return html.split("Favorites", 1)[1].split("Top 10", 1)[0]
 
     asc = _favoritter(client.get("/?fsort=name&fdir=asc").text)
     assert asc.index("Abra") < asc.index("Zubat")
@@ -1233,7 +1233,7 @@ def test_merging_an_evolution_family_into_one_folder(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     assert top10_section.count('class="row-toggle-name"') == 1
     assert "Slowbro</button>" in top10_section
     assert '<td class="num">3</td>' in top10_section  # all three species, one bucket
@@ -1250,7 +1250,7 @@ def test_merging_pokemon_groups_them_into_one_bucket(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     # "Dark Celebi" no longer has its own bucket -- both cards count under the
     # single "Celebi" bucket, with "Dark Celebi" still visible as a nested
     # physical print (not as its own top-level row).
@@ -1272,8 +1272,8 @@ def test_merging_pokemon_migrates_an_existing_favorite(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    assert "Favoritter" in pokemon_card
-    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Favorites" in pokemon_card
+    favorites_section = pokemon_card.split("Favorites", 1)[1].split("Top 10", 1)[0]
     assert "Celebi" in favorites_section
 
 
@@ -1297,14 +1297,14 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     # Only one bucket now -- neither alias name surfaces as its own top-level row.
     assert top10_section.count('class="row-toggle-name"') == 1
     assert "Sand Rat</button>" in top10_section
     assert "Sandslash</button>" not in top10_section
     assert "Alolan Sandslash</button>" not in top10_section
 
-    aliases_html = pokemon_card.split("Legg Pokemon i samme mappe", 1)[1].split("Favoritter", 1)[0]
+    aliases_html = pokemon_card.split("Put Pokemon in the same folder", 1)[1].split("Favorites", 1)[0]
     # A single "Sand Rat" folder, containing both aliased names -- Alolan
     # Sandslash's alias was cascaded onto the new root, not left pointing at
     # "Sandslash" (which is itself now merged away).
@@ -1330,7 +1330,7 @@ def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     # Still a single bucket, rooted at "Dark Celebi" (the first merge's
     # target) -- the reverse merge attempt changed nothing.
     assert top10_section.count('class="row-toggle-name"') == 1
@@ -1352,7 +1352,7 @@ def test_unmerging_a_pokemon_restores_its_own_bucket(client):
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    top10_section = pokemon_card.split("Topp 10", 1)[1]
+    top10_section = pokemon_card.split("Top 10", 1)[1]
     assert "Dark Celebi" in top10_section
 
 
@@ -1369,11 +1369,11 @@ def test_merging_a_pokemon_reopens_the_folder_details_after_redirect(client):
     response = client.post(
         "/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"}, follow_redirects=True
     )
-    folder_details = response.text.split("Legg Pokemon i samme mappe", 1)[0].rsplit("<details", 1)[1]
+    folder_details = response.text.split("Put Pokemon in the same folder", 1)[0].rsplit("<details", 1)[1]
     assert "open" in folder_details
 
     response = client.post("/pokemon/unmerge", data={"name": "Dark Celebi"}, follow_redirects=True)
-    folder_details = response.text.split("Legg Pokemon i samme mappe", 1)[0].rsplit("<details", 1)[1]
+    folder_details = response.text.split("Put Pokemon in the same folder", 1)[0].rsplit("<details", 1)[1]
     assert "open" in folder_details
 
 
@@ -1390,8 +1390,8 @@ def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(
 
     dashboard = client.get("/")
     pokemon_card = dashboard.text.split("<h2>Pokemon ", 1)[1]
-    assert "Favoritter" in pokemon_card
-    favorites_section = pokemon_card.split("Favoritter", 1)[1].split("Topp 10", 1)[0]
+    assert "Favorites" in pokemon_card
+    favorites_section = pokemon_card.split("Favorites", 1)[1].split("Top 10", 1)[0]
     assert "Celebi" in favorites_section
 
 
@@ -1436,7 +1436,7 @@ def test_dashboard_column_sort_only_reorders_leaf_cards_not_buckets(client):
     )
 
     # Scope to the Inventory table itself -- collection names can also appear
-    # earlier on the page via the "Mest verdifulle collection" KPI highlight.
+    # earlier on the page via the "Most valuable collection" KPI highlight.
     def _inventory_table(html: str) -> str:
         return html.split("<h2>Inventory ", 1)[1]
 
@@ -1461,4 +1461,4 @@ def test_inventory_search_filters_results(client):
 
     response = client.get("/inventory?q=Charizard")
     assert "Charizard" in response.text
-    assert "1 kort" in response.text
+    assert "1 card" in response.text

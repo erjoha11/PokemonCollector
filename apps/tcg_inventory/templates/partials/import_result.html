@@ -1,20 +1,20 @@
 {% if result %}
 <div class="result-box" id="import-result">
-  <h2>Resultat</h2>
+  <h2>Result</h2>
   <table>
     <tbody>
-      <tr><td>Kort opprettet</td><td>{{ result.cards_created }}</td></tr>
-      <tr><td>Kort oppdatert</td><td>{{ result.cards_updated }}</td></tr>
-      <tr><td>Kort flagget "mangler i siste eksport"</td><td>{{ result.cards_flagged_missing }}</td></tr>
-      <tr><td>Kort slettet (full load)</td><td>{{ result.cards_deleted }}</td></tr>
-      <tr><td>Collections berørt</td><td>{{ result.collections_touched | join(', ') }}</td></tr>
-      <tr><td>Bindere berørt</td><td>{{ result.binders_touched | join(', ') }}</td></tr>
+      <tr><td>Cards created</td><td>{{ result.cards_created }}</td></tr>
+      <tr><td>Cards updated</td><td>{{ result.cards_updated }}</td></tr>
+      <tr><td>Cards flagged "missing from latest export"</td><td>{{ result.cards_flagged_missing }}</td></tr>
+      <tr><td>Cards deleted (full load)</td><td>{{ result.cards_deleted }}</td></tr>
+      <tr><td>Collections affected</td><td>{{ result.collections_touched | join(', ') }}</td></tr>
+      <tr><td>Binders affected</td><td>{{ result.binders_touched | join(', ') }}</td></tr>
     </tbody>
   </table>
 
   {% if result.warnings %}
   <div class="warnings">
-    <strong>Advarsler:</strong>
+    <strong>Warnings:</strong>
     <ul>
       {% for w in result.warnings %}<li>{{ w }}</li>{% endfor %}
     </ul>

@@ -63,11 +63,11 @@ def list_csv_files(dbx: dropbox.Dropbox, folder: str) -> list[DropboxFile]:
             result = dbx.files_list_folder_continue(result.cursor)
             entries.extend(result.entries)
     except AuthError as exc:
-        raise DropboxImportError(f"Dropbox-autentisering feilet: {exc}") from exc
+        raise DropboxImportError(f"Dropbox authentication failed: {exc}") from exc
     except ApiError as exc:
-        raise DropboxImportError(f"Fant ikke mappen '{folder}' i Dropbox: {exc}") from exc
+        raise DropboxImportError(f"Folder '{folder}' not found in Dropbox: {exc}") from exc
     except Exception as exc:  # network errors etc. -- surface as a friendly message
-        raise DropboxImportError(f"Klarte ikke å nå Dropbox: {exc}") from exc
+        raise DropboxImportError(f"Could not reach Dropbox: {exc}") from exc
 
     files = [
         DropboxFile(
@@ -88,8 +88,8 @@ def download_file(dbx: dropbox.Dropbox, path_lower: str) -> bytes:
         _metadata, response = dbx.files_download(path_lower)
         return response.content
     except AuthError as exc:
-        raise DropboxImportError(f"Dropbox-autentisering feilet: {exc}") from exc
+        raise DropboxImportError(f"Dropbox authentication failed: {exc}") from exc
     except ApiError as exc:
-        raise DropboxImportError(f"Kunne ikke laste ned '{path_lower}' fra Dropbox: {exc}") from exc
+        raise DropboxImportError(f"Could not download '{path_lower}' from Dropbox: {exc}") from exc
     except Exception as exc:  # network errors etc. -- surface as a friendly message
-        raise DropboxImportError(f"Klarte ikke å laste ned '{path_lower}' fra Dropbox: {exc}") from exc
+        raise DropboxImportError(f"Failed to download '{path_lower}' from Dropbox: {exc}") from exc

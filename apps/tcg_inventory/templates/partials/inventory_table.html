@@ -2,28 +2,28 @@
 {% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
 
 <div id="inventory-results">
-  <p class="muted">{{ total }} kort</p>
+  <p class="muted">{{ total }} card{{ '' if total == 1 else 's' }}</p>
   <div class="inventory-table-wrap">
   <table class="inventory-table">
     <thead>
       <tr>
-        <th>{{ sort_link('name', 'Navn') }}</th>
-        <th>{{ sort_link('number', 'Nr') }}</th>
-        <th>{{ sort_link('series', 'Serie') }}</th>
+        <th>{{ sort_link('name', 'Name') }}</th>
+        <th>{{ sort_link('number', 'No.') }}</th>
+        <th>{{ sort_link('series', 'Series') }}</th>
         <th>{{ sort_link('release', 'Set') }}</th>
         <th>Collections</th>
-        <th class="num">{{ sort_link('reference_price', 'Pris') }}</th>
+        <th class="num">{{ sort_link('reference_price', 'Price') }}</th>
         <th class="num">{{ sort_link('qty', 'Total') }}</th>
-        <th class="num">Duplikater</th>
-        <th class="num">{{ sort_link('total_value', 'Total verdi') }}</th>
+        <th class="num">Duplicates</th>
+        <th class="num">{{ sort_link('total_value', 'Total value') }}</th>
         <th>Variant</th>
-        <th>{{ sort_link('language', 'Språk') }}</th>
+        <th>{{ sort_link('language', 'Language') }}</th>
         <th>{{ sort_link('rarity', 'Rarity') }}</th>
         <th>{{ sort_link('illustrator', 'Illustrator') }}</th>
         <th>Binder</th>
-        <th>Klassifisering</th>
-        <th>Lokasjon</th>
-        <th>Notater</th>
+        <th>Classification</th>
+        <th>Location</th>
+        <th>Notes</th>
         <th>Card ID</th>
       </tr>
     </thead>
@@ -50,7 +50,7 @@
         <td>{{ card.card_id }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="18" class="muted">Ingen kort matcher filteret.</td></tr>
+      <tr><td colspan="18" class="muted">No cards match the filter.</td></tr>
       {% endfor %}
     </tbody>
   </table>

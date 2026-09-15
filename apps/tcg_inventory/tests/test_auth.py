@@ -48,7 +48,7 @@ def test_verify_access_token_rejects_expired_hs256_token(monkeypatch):
 
 def test_verify_access_token_without_jwt_secret_and_no_jwks_match_fails_clearly(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_JWT_SECRET", "")
-    with pytest.raises(auth.AuthError, match="ingen signeringsnøkkel"):
+    with pytest.raises(auth.AuthError, match="no signing key"):
         auth.verify_access_token(_hs256_token())
 
 
@@ -100,7 +100,7 @@ def test_login_rejects_non_ascii_anon_key_with_a_clear_error(monkeypatch):
     monkeypatch.setattr(auth, "SUPABASE_URL", "https://x.supabase.co")
     monkeypatch.setattr(auth, "SUPABASE_ANON_KEY", "eyJhbGci​OiJIUzI1NiJ9")
 
-    with pytest.raises(auth.AuthError, match="ugyldige tegn"):
+    with pytest.raises(auth.AuthError, match="invalid characters"):
         auth.login("user@example.com", "correct-password")
 
 
