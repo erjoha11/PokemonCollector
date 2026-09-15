@@ -1,47 +1,15 @@
-{% extends "base.html" %}
-{% block title %}Analyse – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info %}
-{% block content %}
 <div class="viz-root">
-<h1>Analyse {{ info('Reelle kjøps-/salgstall kommer fra Transactions. Verdiutviklingen er en tilnærming -- se eget hint under den grafen.') }}</h1>
-
-<div class="kpi-grid" style="margin-bottom: 1.75rem;">
-  <div class="kpi-card">
-    <h3>Netto investert {{ info('Sum kjøpspris + gebyr, minus sum salgspris -- reelle tall fra Transactions.') }}</h3>
-    <div class="kpi-hero"><span class="value">{{ summary.net_invested | kr }}</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Kjøpt for</span><span class="stat-value">{{ summary.total_bought | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Solgt for</span><span class="stat-value">{{ summary.total_sold | kr }}</span></div>
-    </div>
-  </div>
-
-  <div class="kpi-card">
-    <h3>Nåværende verdi {{ info('Verdi av unike kort du eier akkurat nå -- samme tall som Dashboardets Verdi-kort.') }}</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.unique_value | kr }}</span></div>
-  </div>
-
-  <div class="kpi-card">
-    {% set delta = headline.unique_value - summary.net_invested %}
-    <h3>Papirgevinst/tap {{ info('Nåværende verdi minus netto investert. Ikke realisert -- sammenligner dagens pris med det du faktisk betalte, ikke et faktisk salg.', align_right=true) }}</h3>
-    <div class="kpi-hero"><span class="value {{ 'viz-delta-gain' if delta >= 0 else 'viz-delta-loss' }}">{{ delta | kr }}</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">{{ 'Gevinst (på papiret)' if delta >= 0 else 'Tap (på papiret)' }}</span></div>
-    </div>
-  </div>
-</div>
-
 <div class="breakdown-grid">
-  <div class="card-pair">
   <div class="card" id="value-growth-card">
     <h2>Samlingens verdiutvikling {{ info('Bruker dagens pris anvendt på datoen hvert kort ble lagt til -- Dex gir ingen historisk prisdata, så dette er en tilnærming til vekst, ikke en nøyaktig historisk verdi. "Før sporing" samler kort lagt til før datoen ble registrert.') }}</h2>
     <div class="viz-filter">
       {% for key, label in metric_options %}
-      <a href="/analyse?metric={{ key }}"
-         hx-get="/analyse?metric={{ key }}"
+      <a href="/transactions/charts?metric={{ key }}"
+         hx-get="/transactions/charts?metric={{ key }}"
          hx-select="#value-growth-card"
          hx-target="#value-growth-card"
          hx-swap="outerHTML"
-         hx-push-url="true"
          class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
       {% endfor %}
     </div>
@@ -123,7 +91,5 @@
     <p class="muted">Ingen registrerte transaksjoner ennå.</p>
     {% endif %}
   </div>
-  </div>
 </div>
 </div>
-{% endblock %}

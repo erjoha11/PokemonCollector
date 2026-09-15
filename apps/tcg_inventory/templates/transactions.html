@@ -63,6 +63,17 @@
   </div>
 </div>
 
+<div class="tx-kpi-bar">
+  <div><span class="tx-kpi-label">Netto investert</span><span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span></div>
+  <div><span class="tx-kpi-label">Nåværende verdi</span><span class="tx-kpi-value">{{ kpi.unique_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Papirgevinst/tap {{ info('Nåværende verdi minus netto investert. Ikke realisert -- sammenligner dagens pris med det du faktisk betalte, ikke et faktisk salg.') }}</span><span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span></div>
+</div>
+
+<details class="collapsible" hx-get="/transactions/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
+  <summary>Vis grafer</summary>
+  <div id="tx-charts"><p class="muted">Laster grafer …</p></div>
+</details>
+
 <h2 style="margin-top: 2rem;">Historikk {{ info('Hver rad er én registrert kjøps- eller salgstransaksjon. Pris er det du faktisk oppga på transaksjonen -- ikke Dex sin pris. Kort kjøpt sammen (samme Kjøps-ID, f.eks. et lot) samles i en egen, sammenleggbar gruppe med sum. Sett en avtalt totalsum og frakt på gruppen for å se diff mot det du faktisk har registrert kort for -- nyttig for å spore opp normalkort du ikke har priset individuelt ennå.') }}</h2>
 
 {% macro tx_table(rows, empty_message, sortable=True) %}

@@ -1,4 +1,5 @@
-"""SVG chart geometry for the Analyse page.
+"""SVG chart geometry for Transactions' "Vis grafer" section (and the
+dashboard's value-growth preview).
 
 No JS charting library -- these turn a plain data series into pixel
 coordinates (points, bar rects, axis ticks) so the templates only ever loop

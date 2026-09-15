@@ -13,7 +13,6 @@
     <li><a href="#inventory">Inventory</a></li>
     <li><a href="#transactions">Transactions</a></li>
     <li><a href="#import">Import / Sync</a></li>
-    <li><a href="#analyse">Analyse</a></li>
     <li><a href="#faq">Ofte stilte spørsmål</a></li>
   </ul>
 </div>
@@ -34,9 +33,9 @@
   <h2 id="dashboard">Dashboard</h2>
   <p>Forsiden viser samlingen din fordelt på flere måter samtidig:</p>
   <ul>
-    <li><strong>Verdiutvikling</strong> -- en forenklet versjon av grafen på
-      <a href="/analyse">Analyse</a> (kun "Unik samling"-metrikken, ingen filter). Se Analyse for
-      full oversikt.</li>
+    <li><strong>Verdiutvikling</strong> -- en forenklet versjon av grafen i
+      <a href="/transactions">Transactions</a> sin "Vis grafer"-seksjon (kun "Unik
+      samling"-metrikken, ingen filter). Se Transactions for full oversikt.</li>
     <li><strong>Topp 10 mest verdifulle kort</strong> -- de ti dyreste enkeltkortene dine
       etter pris.</li>
     <li><strong>Inventory</strong> -- Collections (navngitte samlinger) og Bulk (kort uten
@@ -116,6 +115,16 @@
     "Ukjent dato"-seksjon nederst.
   </p>
   <p>
+    Over Historikk vises en kompakt økonomisk oversikt: netto investert, nåværende verdi og
+    papirgevinst/tap (fargekodet grønn/rød), regnet ut fra faktiske registrerte transaksjoner --
+    ikke estimater. "Vis grafer" åpner (ved første klikk, hentes ikke på forhånd) to grafer:
+    "Samlingens verdiutvikling" er en tilnærming -- den bruker dagens pris på datoen hvert kort
+    ble lagt til, siden Dex ikke gir historisk prisdata, og har et filter (Unik samling /
+    Duplikater / Total) som bytter mellom å vise verdien av kun unike kort, kun duplikatene,
+    eller summen av begge. "Kjøp og salg per måned" er derimot reelle tall, ikke en
+    tilnærming. Begge grafene har en "Vis som tabell"-lenke med de underliggende tallene.
+  </p>
+  <p>
     "Historikk" viser hver registrerte transaksjon som en kompakt rad (dato, kort, type,
     pris, platform). Transaksjoner som deler samme Kjøps-ID -- typisk flere kort kjøpt sammen
     i et lot -- samles i en egen sammenleggbar gruppe med antall og sum, i stedet for å vises
@@ -131,21 +140,6 @@
     <em>flagger</em> kort som mangler i eksporten i stedet for å slette dem -- bare "Full
     load" faktisk sletter kort som ikke lenger finnes i "My Collection"-eksporten. Synk-loggen
     nederst på siden viser historikk for hver kjøring.
-  </p>
-</div>
-
-<div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="analyse">Analyse</h2>
-  <p>
-    Økonomisk oversikt over samlingen. Netto investert, kjøpt for og solgt for kommer fra
-    faktiske registrerte transaksjoner -- ikke estimater. "Samlingens verdiutvikling" er
-    derimot en tilnærming: den bruker dagens pris på datoen hvert kort ble lagt til,
-    siden Dex ikke gir historisk prisdata -- den viser altså veksten i antall/type kort du
-    eier, ikke en nøyaktig historisk markedsverdi. "Papirgevinst/tap" er heller ikke realisert
-    -- det sammenligner dagens verdi med det du faktisk betalte. Grafen "Samlingens
-    verdiutvikling" har et filter øverst (Unik samling / Duplikater / Total) som bytter
-    mellom å vise verdien av kun unike kort, kun duplikatene, eller summen av begge. Begge
-    grafene har en "Vis som tabell"-lenke med de underliggende tallene.
   </p>
 </div>
 
