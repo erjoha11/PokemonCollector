@@ -126,3 +126,42 @@ plus this file and the conversation transcript.
   above).
 - The "Pris" / "Registrert pris" side-by-side naming ambiguity (see #85
   above).
+
+## 2026-09-15 session — Wiki staleness fix (UX review item #2)
+
+- Fixed `templates/wiki.html`: the "Import / Sync" ToC entry/section is now
+  "Synk-logg" and moved to its actual nav position (after Analyse, before
+  FAQ), matching #87's page rename. Content rewritten to describe the
+  current read-only Synk-logg page (no manual-upload/Dropbox-browser UI
+  anymore) instead of the old manual-CSV/Dropbox-browser flow.
+- Also fixed adjacent staleness the UX review didn't call out explicitly:
+  the Transactions section still described #86's old inline buy-form
+  (Pris + Kjøps-ID inputs) instead of the current "+ Legg til i ordre"
+  button / open-cart behavior; the Oversikt section still implied manual
+  CSV upload is user-facing.
+- `test_app.py::test_wiki_page_documents_the_main_features` asserted the
+  stale "Import" label — updated to "Synk-logg", plus a new
+  `test_wiki_page_reflects_current_nav_labels` that scrapes `base.html`'s
+  actually-rendered nav labels and asserts each is documented somewhere on
+  `/wiki`. That test should catch the *next* nav rename automatically
+  instead of relying on someone noticing the wiki drifted.
+
+**Process recommendation** (the user asked whether keeping the wiki current
+should be "an agent"): no — a dedicated agent doesn't help here since
+someone still has to remember to invoke it, same as remembering to update
+the page by hand. Recommended instead:
+  1. A `CLAUDE.md` convention: "a template/route rename or user-facing
+     behavior change should update the matching `templates/wiki.html`
+     section in the same PR" — same discipline as the existing
+     importer.py/README.md rule. **Not added here** because `CLAUDE.md` is
+     currently mid-edit/uncommitted in a concurrent session's main
+     checkout — add it there once that lands, don't recreate the file from
+     scratch in a worktree and risk clobbering that work.
+  2. The mechanical test above, for the specific "label renamed, wiki still
+     says the old name" failure mode — it runs on every `pytest` invocation,
+     no one has to remember anything.
+  3. For *behavioral* staleness (like the #86 case here, which no test can
+     catch generically), the existing `ux` agent's periodic review is the
+     right tool — its brief already cross-checks against `README.md`; worth
+     extending it to explicitly check `templates/wiki.html` against current
+     templates too, next time it's run.

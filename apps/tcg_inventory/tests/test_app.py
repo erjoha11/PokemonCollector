@@ -209,9 +209,21 @@ def test_wiki_page_documents_the_main_features(client):
     response = client.get("/wiki")
     assert response.status_code == 200
     text = response.text
-    for heading in ["Dashboard", "Pokemon-mapper", "Sortering", "Inventory", "Transactions", "Import"]:
+    for heading in ["Dashboard", "Pokemon-mapper", "Sortering", "Inventory", "Transactions", "Analyse", "Synk-logg"]:
         assert heading in text
     assert 'href="/wiki"' in text  # linked from the nav
+
+
+def test_wiki_page_reflects_current_nav_labels(client):
+    """Guards against wiki.html drifting when a nav page is renamed (base.html
+    is the source of truth) -- see HANDOFF.md's "In-app Wiki is stale" note."""
+    nav_labels = re.findall(r'<a href="/[a-z]*"[^>]*>([^<]+)</a>', client.get("/").text)
+    assert nav_labels  # sanity: the regex actually matched something
+    wiki_text = client.get("/wiki").text
+    for label in nav_labels:
+        if label == "Wiki":
+            continue  # the wiki doesn't need to document a link to itself
+        assert label in wiki_text, f"nav label {label!r} is no longer documented in wiki.html"
 
 
 def test_transactions_page_shows_transaction_id(client):
