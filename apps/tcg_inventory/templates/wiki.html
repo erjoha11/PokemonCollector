@@ -13,7 +13,6 @@
     <li><a href="#inventory">Inventory</a></li>
     <li><a href="#transactions">Transactions</a></li>
     <li><a href="#import">Sync Log</a></li>
-    <li><a href="#analyse">Analysis</a></li>
     <li><a href="#faq">Frequently asked questions</a></li>
   </ul>
 </div>
@@ -34,9 +33,9 @@
   <h2 id="dashboard">Dashboard</h2>
   <p>The front page shows your collection broken down several ways at once:</p>
   <ul>
-    <li><strong>Value growth</strong> — a simplified version of the chart on
-      <a href="/analyse">Analysis</a> (only the "Unique collection" metric, no filter). See
-      Analysis for the full picture.</li>
+    <li><strong>Value growth</strong> — a simplified version of the chart in
+      <a href="/transactions">Transactions</a>'s "View charts" section (only the "Unique
+      collection" metric, no filter). See Transactions for the full picture.</li>
     <li><strong>Top 10 most valuable cards</strong> — your ten most expensive individual cards
       by price.</li>
     <li><strong>Inventory</strong> — Collections (named groupings) and Bulk (cards with no
@@ -117,6 +116,16 @@
     section at the bottom.
   </p>
   <p>
+    Above History, a compact financial summary is shown: net invested, current value, and
+    paper gain/loss (color-coded green/red), calculated from actual recorded transactions — not
+    estimates. "View charts" opens two charts (fetched lazily on first click): "Collection value
+    growth" is an approximation — it applies today's price to the date each card was added, since
+    Dex provides no historical price data, and has a filter (Unique collection / Duplicates /
+    Total) that switches between showing the value of unique cards only, duplicates only, or the
+    sum of both. "Purchases and sales per month" is real figures, however, not an approximation.
+    Both charts have a "View as table" link with the underlying numbers.
+  </p>
+  <p>
     "History" shows every recorded transaction as a compact row (date, card, type, price,
     platform). Transactions sharing the same Order ID — typically several cards bought together
     in a lot — are grouped into their own collapsible group with a count and total, instead of
@@ -134,21 +143,6 @@
     the underlying API routes the cron and an administrator use directly. A normal sync
     <em>flags</em> cards missing from the export instead of deleting them — only a "Full load"
     actually deletes cards no longer in the "My Collection" export.
-  </p>
-</div>
-
-<div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="analyse">Analysis</h2>
-  <p>
-    A financial overview of the collection. Net invested, bought for, and sold for come from
-    actual recorded transactions — not estimates. "Collection value growth", on the other hand,
-    is an approximation: it applies today's price to the date each card was added, since Dex
-    provides no historical price data — so it shows growth in the number/type of cards you own,
-    not an exact historical market value. "Paper gain/loss" is also unrealized — it compares
-    today's value with what you actually paid. The "Collection value growth" chart has a filter
-    at the top (Unique collection / Duplicates / Total) that switches between showing the value
-    of unique cards only, duplicates only, or the sum of both. Both charts have a "View as
-    table" link with the underlying numbers.
   </p>
 </div>
 

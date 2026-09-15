@@ -46,7 +46,7 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set dashboard_value_growth_heading %}Value growth {{ info("Uses today's price applied to the date each card was added — an approximation, not an exact historical value. See Analysis for the full financial picture.", below=true) }}{% endset %}
+  {% set dashboard_value_growth_heading %}Value growth {{ info("Uses today's price applied to the date each card was added — an approximation, not an exact historical value. See Transactions for the full financial picture.", below=true) }}{% endset %}
   {{ value_growth_chart('dashboard-value-growth-card', dashboard_value_growth_heading, value_chart, value_growth, metric_options, metric, metric_label, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">

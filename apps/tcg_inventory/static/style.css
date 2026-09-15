@@ -617,8 +617,41 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .folder-members form { display: inline-flex; }
 .folder-members button { padding: 0.25rem 0.55rem; font-size: 0.78rem; }
 
-/* Analyse page -- hand-rolled inline-SVG charts, no JS charting library.
-   Colors are the app's own validated categorical palette (see the KPI tiles'
+/* Transactions' compact, always-visible economic snapshot -- folded in from
+   the former standalone Analyse page, sitting above the collapsible "Vis
+   grafer" charts (see details.collapsible) and above Historikk. Delta keeps
+   its own viz-delta-gain/loss color -- the one number worth an at-a-glance
+   read; the other two values stay plain. */
+.tx-kpi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.75rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 0.7rem 1.1rem;
+  margin-top: 2rem;
+  box-shadow: var(--shadow);
+}
+.tx-kpi-bar > div { display: flex; align-items: baseline; gap: 0.45rem; }
+.tx-kpi-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.tx-kpi-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Transactions' collapsible charts (formerly the standalone Analyse page) --
+   hand-rolled inline-SVG charts, no JS charting library. Colors are the
+   app's own validated categorical palette (see the KPI tiles'
    --kpi-accent cycle): slot 1 blue, slot 2 orange, in fixed order per series
    identity (Kjøp always slot 1, Salg always slot 2). */
 .viz-root {

@@ -25,7 +25,10 @@ run).
   series, top 10 most valuable cards, by rarity.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table.
-- **Transactions** (`/transactions`) — a purchase/sale log per card.
+- **Transactions** (`/transactions`) — a purchase/sale log per card, plus a
+  compact economic snapshot (net invested, current value, paper gain/loss)
+  and a collapsible "Vis grafer" section with the value-growth and cash-flow
+  charts (formerly the standalone Analyse page).
 - **Import / Sync** (`/import`) — pull Dex CSV exports straight from Dropbox,
   or upload them manually.
 
@@ -237,7 +240,7 @@ Import page manually.
 
 ### Value history
 
-`collection_value_growth` (used by the Analyse page) is an *approximation*:
+`collection_value_growth` (used by Transactions' "Vis grafer" section) is an *approximation*:
 it applies today's price retroactively to each card's `created_at` month,
 because Dex gives no historical prices. `card_snapshots` fixes that going
 forward — the cron job above writes one row per card (`qty` +
@@ -246,7 +249,7 @@ forward — the cron job above writes one row per card (`qty` +
 worth on a given date, not an estimate. It's empty until snapshots
 accumulate (starts from whenever this table was added — there's no way to
 backfill history for dates before it existed) and is currently
-backend-only; nothing on the Analyse page consumes it yet.
+backend-only; nothing in Transactions' charts consumes it yet.
 
 ## Project layout
 
