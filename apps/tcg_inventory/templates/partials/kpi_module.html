@@ -35,7 +35,7 @@
           <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}</div>
           {% if first_card.rarity %}<div class="top-card-meta">{{ first_card.rarity }}</div>{% endif %}
         </div>
-        <span class="top-card-price">{{ first_card.reference_price | kr }}</span>
+        <span class="top-card-price">{{ first_card.display_price | kr }}</span>
       </div>
       {% if top_cards|length > 1 %}
       <div class="top-card-runners-up">
@@ -46,7 +46,7 @@
             <div class="top-card-name" title="{{ card.name }}">{{ card.name }}</div>
             {% if card.rarity %}<div class="top-card-meta">{{ card.rarity }}</div>{% endif %}
           </div>
-          <span class="top-card-price">{{ card.reference_price | kr }}</span>
+          <span class="top-card-price">{{ card.display_price | kr }}</span>
         </div>
         {% endfor %}
       </div>

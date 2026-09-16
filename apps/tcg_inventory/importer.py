@@ -34,6 +34,13 @@ MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
 # since the condition below is "still missing one", not "just created".
 _MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 
+# Same reasoning, separate budget: unlike images (fetched once and cached
+# forever), a TCGPlayer price needs periodic refreshing since prices move,
+# so this budget is spent on stale-or-missing prices every sync rather than
+# only ever-missing ones -- see _PRICE_STALE_AFTER_DAYS below.
+_MAX_PRICE_LOOKUPS_PER_IMPORT = 25
+_PRICE_STALE_AFTER_DAYS = 7
+
 
 @dataclass
 class ImportResult:
@@ -193,6 +200,8 @@ def import_dex_csv_files(
         existing = db.query(Card).filter(Card.card_id.in_(row_ids)).all() if row_ids else []
         cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
         image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
+        price_lookup_budget = _MAX_PRICE_LOOKUPS_PER_IMPORT
+        price_stale_cutoff = today - dt.timedelta(days=_PRICE_STALE_AFTER_DAYS)
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -225,9 +234,21 @@ def import_dex_csv_files(
                 card.notes = notes
             card.flagged_missing_since = None  # it's back, un-flag it
 
-            if card.image_url is None and image_lookup_budget > 0:
-                card.image_url = card_images.fetch_image_url(card.name, card.set, card.number)
-                image_lookup_budget -= 1
+            needs_image = card.image_url is None and image_lookup_budget > 0
+            needs_price = (
+                card.tcgplayer_price is None or card.tcgplayer_price_updated_at is None
+                or card.tcgplayer_price_updated_at < price_stale_cutoff
+            ) and price_lookup_budget > 0
+            if needs_image or needs_price:
+                api_data = card_images.fetch_card_data(card.name, card.set, card.number)
+                if needs_image:
+                    card.image_url = api_data.image_url
+                    image_lookup_budget -= 1
+                if needs_price:
+                    if api_data.tcgplayer_price is not None:
+                        card.tcgplayer_price = api_data.tcgplayer_price
+                        card.tcgplayer_price_updated_at = today
+                    price_lookup_budget -= 1
 
             if is_new:
                 result.cards_created += 1

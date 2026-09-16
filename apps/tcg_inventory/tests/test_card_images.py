@@ -75,3 +75,47 @@ def test_fetch_image_url_omits_set_and_number_when_not_provided(monkeypatch):
     card_images.fetch_image_url("Pikachu", None, None)
 
     assert captured["params"]["q"] == 'name:"Pikachu"'
+
+
+def test_fetch_card_data_returns_image_and_price_from_one_call(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _FakeResponse(
+            {
+                "data": [
+                    {
+                        "images": {"small": "https://example.com/a.png"},
+                        "tcgplayer": {"prices": {"holofoil": {"market": 12.5}}},
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
+
+    assert result.image_url == "https://example.com/a.png"
+    assert result.tcgplayer_price == 12.5
+
+
+def test_fetch_card_data_price_is_none_when_no_tcgplayer_data(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _FakeResponse({"data": [{"images": {"small": "https://example.com/a.png"}}]}),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
+
+    assert result.image_url == "https://example.com/a.png"
+    assert result.tcgplayer_price is None
+
+
+def test_fetch_card_data_returns_nones_on_no_match(monkeypatch):
+    monkeypatch.setattr(card_images.httpx, "get", lambda *a, **kw: _FakeResponse({"data": []}))
+
+    result = card_images.fetch_card_data("Not A Real Card", None, None)
+
+    assert result.image_url is None
+    assert result.tcgplayer_price is None

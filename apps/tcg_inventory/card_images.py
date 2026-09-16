@@ -1,20 +1,28 @@
-"""Real card photos, looked up from the Pokemon TCG API (api.pokemontcg.io)
--- Dex itself has no card images. That API's card IDs don't correspond to
-Dex's own `card_id`, so lookup is by name + set + printed number instead,
-best-effort: any failure (network, no match, ambiguous set name) just leaves
-the card without an image rather than blocking an import. See importer.py's
-`_MAX_IMAGE_LOOKUPS_PER_IMPORT` for how this is kept from slowing a large
-sync down -- looked up once per card and cached in `Card.image_url`
-(never re-fetched once set, since a card's image never changes).
+"""Real card photos and live TCGPlayer prices, both looked up from the same
+Pokemon TCG API (api.pokemontcg.io) call -- Dex itself has no card images and
+importer.py's own Dex-CSV "Price" column is the only price signal otherwise.
+That API's card IDs don't correspond to Dex's own `card_id`, so lookup is by
+name + set + printed number instead, best-effort: any failure (network, no
+match, ambiguous set name) just leaves the card without an image/price rather
+than blocking an import. See importer.py for how often each is looked up --
+image_url once and cached forever (a card's image never changes), tcgplayer
+price on a staleness schedule (prices move).
 """
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 import httpx
 
 _API_URL = "https://api.pokemontcg.io/v2/cards"
 _TIMEOUT = 5.0
+
+
+@dataclass
+class CardApiData:
+    image_url: str | None
+    tcgplayer_price: float | None
 
 
 def _printed_number(number: str | None) -> str | None:
@@ -27,13 +35,31 @@ def _printed_number(number: str | None) -> str | None:
     return match.group(0) if match else None
 
 
-def fetch_image_url(name: str, set_name: str | None, number: str | None) -> str | None:
-    """Best-effort small-image URL for one card, or None if no confident
-    match was found or the lookup couldn't be completed. Never raises --
-    a failed lookup is not a reason to fail an import.
+def _best_tcgplayer_price(tcgplayer: dict | None) -> float | None:
+    """`tcgplayer.prices` has one entry per print variant (normal, holofoil,
+    reverseHolofoil, 1stEditionHolofoil, ...), each with market/low/mid/high.
+    There's no reliable way to match a variant name to Dex's own `Variant`
+    field, so just take the first variant's `market` price present -- better
+    than no price at all, and this is already how Dex's own Price column is
+    presumably sourced (a single number per card, not per variant).
+    """
+    if not tcgplayer:
+        return None
+    prices = tcgplayer.get("prices") or {}
+    for variant_prices in prices.values():
+        market = (variant_prices or {}).get("market")
+        if market is not None:
+            return market
+    return None
+
+
+def fetch_card_data(name: str, set_name: str | None, number: str | None) -> CardApiData:
+    """Best-effort image URL and TCGPlayer market price for one card, from a
+    single API call. Never raises -- a failed lookup just leaves both fields
+    None rather than being a reason to fail an import.
     """
     if not name:
-        return None
+        return CardApiData(image_url=None, tcgplayer_price=None)
 
     query_parts = [f'name:"{name}"']
     if set_name:
@@ -45,7 +71,7 @@ def fetch_image_url(name: str, set_name: str | None, number: str | None) -> str 
     # The free tier of this API is noticeably flaky in practice -- repeated,
     # identical queries routinely 500/502 for no apparent reason -- so one
     # retry roughly doubles the real-world match rate instead of leaving a
-    # card imageless over one bad response.
+    # card without an image/price over one bad response.
     data = None
     for _attempt in range(2):
         try:
@@ -60,5 +86,18 @@ def fetch_image_url(name: str, set_name: str | None, number: str | None) -> str 
         except (httpx.HTTPError, ValueError):
             continue
     if not data:
-        return None
-    return data[0].get("images", {}).get("small")
+        return CardApiData(image_url=None, tcgplayer_price=None)
+
+    card = data[0]
+    return CardApiData(
+        image_url=card.get("images", {}).get("small"),
+        tcgplayer_price=_best_tcgplayer_price(card.get("tcgplayer")),
+    )
+
+
+def fetch_image_url(name: str, set_name: str | None, number: str | None) -> str | None:
+    """Back-compat wrapper around fetch_card_data for callers that only
+    want the image (currently just tests) -- importer.py itself calls
+    fetch_card_data directly so it doesn't pay for two API round-trips.
+    """
+    return fetch_card_data(name, set_name, number).image_url
