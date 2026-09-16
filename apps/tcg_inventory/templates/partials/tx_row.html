@@ -1,0 +1,50 @@
+{% from "partials/macros.html" import dex_link %}
+
+{% macro tx_row(tx) %}
+<tr id="tx-row-{{ tx.id }}">
+  <td class="muted">
+    {{ tx.date }}
+    <span class="tx-id" title="Transaction ID">#{{ tx.id }}</span>
+  </td>
+  <td>
+    {{ dex_link(tx.card) }}
+    <div class="tx-card-meta">
+      {%- set meta = [] -%}
+      {%- if tx.card.variant %}{% set _ = meta.append(tx.card.variant) %}{% endif -%}
+      {%- if tx.card.rarity %}{% set _ = meta.append(tx.card.rarity) %}{% endif -%}
+      {%- if tx.card.set %}{% set _ = meta.append(tx.card.set) %}{% endif -%}
+      {%- if tx.card.number %}{% set _ = meta.append('#' + tx.card.number) %}{% endif -%}
+      {{ meta | join(' · ') }}
+    </div>
+  </td>
+  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
+  <td class="num tx-price">
+    {{ tx.price | kr }}
+    {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
+  </td>
+  <td class="muted">{{ tx.platform or '' }}</td>
+  <td>
+    <button type="button" hx-get="/transactions/{{ tx.id }}/edit" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">Edit</button>
+  </td>
+</tr>
+{% endmacro %}
+
+{% macro tx_row_edit(tx) %}
+<tr id="tx-row-{{ tx.id }}">
+  <td colspan="6">
+    <form class="filters" hx-post="/transactions/{{ tx.id }}" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">
+      <input type="date" name="date" value="{{ tx.date.isoformat() }}" required style="width: 150px;">
+      <select name="type">
+        <option value="purchase" {% if tx.type == 'purchase' %}selected{% endif %}>Purchase</option>
+        <option value="sale" {% if tx.type == 'sale' %}selected{% endif %}>Sale</option>
+        <option value="trade" {% if tx.type == 'trade' %}selected{% endif %}>Trade</option>
+      </select>
+      <input type="number" step="0.01" name="price" value="{{ tx.price }}" placeholder="Price" required style="width: 110px;">
+      <input type="number" step="0.01" name="fees" value="{{ tx.fees if tx.fees is not none else '' }}" placeholder="Fees" style="width: 100px;">
+      <input type="text" name="platform" value="{{ tx.platform or '' }}" placeholder="Platform" style="width: 140px;">
+      <button type="submit">Save</button>
+      <button type="button" hx-get="/transactions/{{ tx.id }}/row" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">Cancel</button>
+    </form>
+  </td>
+</tr>
+{% endmacro %}

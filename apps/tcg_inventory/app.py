@@ -971,6 +971,57 @@ def create_transaction(
         db.close()
 
 
+@app.get("/transactions/{tx_id}/edit")
+def edit_transaction_form(request: Request, tx_id: int):
+    db = get_db_session()
+    try:
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).one_or_none()
+        if tx is None:
+            return HTMLResponse("")
+        return templates.TemplateResponse(request, "partials/tx_row_edit.html", {"tx": tx})
+    finally:
+        db.close()
+
+
+@app.get("/transactions/{tx_id}/row")
+def view_transaction_row(request: Request, tx_id: int):
+    db = get_db_session()
+    try:
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).one_or_none()
+        if tx is None:
+            return HTMLResponse("")
+        return templates.TemplateResponse(request, "partials/tx_row_view.html", {"tx": tx})
+    finally:
+        db.close()
+
+
+@app.post("/transactions/{tx_id}")
+def update_transaction(
+    request: Request,
+    tx_id: int,
+    date: str = Form(...),
+    type: str = Form(...),
+    price: float = Form(...),
+    platform: str = Form(""),
+    fees: float | None = Form(None),
+):
+    db = get_db_session()
+    try:
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).one_or_none()
+        if tx is None:
+            return HTMLResponse("")
+        tx.date = dt.date.fromisoformat(date)
+        tx.type = type
+        tx.price = price
+        tx.platform = platform or None
+        tx.fees = fees
+        db.commit()
+        db.refresh(tx)
+        return templates.TemplateResponse(request, "partials/tx_row_view.html", {"tx": tx})
+    finally:
+        db.close()
+
+
 # --------------------------------------------------------------------------
 # CSV import / sync
 # --------------------------------------------------------------------------
