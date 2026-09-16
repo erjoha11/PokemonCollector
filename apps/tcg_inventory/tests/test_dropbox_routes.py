@@ -1,5 +1,6 @@
 import dropbox_client
 from conftest import make_csv
+from models import CardSnapshot
 from test_dropbox_client import FakeDropbox, FakeListFolderResult, _file_entry
 
 
@@ -92,6 +93,12 @@ def test_cron_sync_accepts_correct_secret(client, monkeypatch):
     inventory = client.get("/inventory")
     assert "Pikachu" in inventory.text
 
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        snap = db.query(CardSnapshot).one()
+        assert snap.source == "cron"  # real Vercel header -> the scheduled slot
+
 
 def test_cron_sync_accepts_secret_as_query_param(client, monkeypatch):
     # Fallback for callers that can't set a custom Authorization header.
@@ -106,6 +113,31 @@ def test_cron_sync_accepts_secret_as_query_param(client, monkeypatch):
     response = client.get("/cron/dropbox-sync?secret=s3cr3t")
     assert response.status_code == 200
     assert response.json()["cards_created"] == 1
+
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        snap = db.query(CardSnapshot).one()
+        assert snap.source == "manual"  # off-schedule trigger, not the real cron header
+
+
+def test_cron_sync_scheduled_then_manual_same_day_yields_two_snapshot_rows(client, monkeypatch):
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    csv_bytes = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
+    fake = FakeDropbox(
+        pages=[FakeListFolderResult([_file_entry("main.csv")])],
+        download_bytes={"/exports/main.csv": csv_bytes},
+    )
+    monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
+
+    client.get("/cron/dropbox-sync", headers={"Authorization": "Bearer s3cr3t"})
+    client.get("/cron/dropbox-sync?secret=s3cr3t")
+
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        rows = db.query(CardSnapshot).order_by(CardSnapshot.source).all()
+        assert [r.source for r in rows] == ["cron", "manual"]
 
 
 def test_cron_sync_rejects_wrong_query_param_secret(client, monkeypatch):

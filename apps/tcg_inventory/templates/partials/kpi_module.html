@@ -30,7 +30,7 @@
       {% set first_card = top_cards[0] %}
       <div class="top-card-rank top-card-rank-first">
         <span class="top-card-place">1.</span>
-        <img class="top-card-image" src="https://assets.tcgdex.net/en/{{ first_card.card_id.rsplit('-', 1)[0].split('_')[-1] }}/{{ first_card.number.split('/')[0] }}/high.webp" alt="{{ first_card.name }}" loading="lazy">
+        {% if first_card.image_url %}<img class="top-card-image" src="{{ first_card.image_url }}" alt="{{ first_card.name }}" loading="lazy">{% endif %}
         <div class="top-card-details">
           <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}</div>
           {% if first_card.rarity %}<div class="top-card-meta">{{ first_card.rarity }}</div>{% endif %}
@@ -42,7 +42,6 @@
         {% for card in top_cards[1:3] %}
         <div class="top-card-rank">
           <span class="top-card-place">{{ loop.index + 1 }}.</span>
-          <img class="top-card-image" src="https://assets.tcgdex.net/en/{{ card.card_id.rsplit('-', 1)[0].split('_')[-1] }}/{{ card.number.split('/')[0] }}/high.webp" alt="{{ card.name }}" loading="lazy">
           <div class="top-card-details">
             <div class="top-card-name" title="{{ card.name }}">{{ card.name }}</div>
             {% if card.rarity %}<div class="top-card-meta">{{ card.rarity }}</div>{% endif %}

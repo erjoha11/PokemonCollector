@@ -1,6 +1,6 @@
 import re
 
-from conftest import make_csv
+from conftest import make_csv, seed_import
 
 
 def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client):
@@ -16,9 +16,9 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
     )
     single = make_csv("Single Card Collection", [{"id": "a"}])
     duped = make_csv("Duplicated Collection", [{"id": "b"}])
-    client.post(
-        "/import",
-        files=[
+    seed_import(
+        client,
+        [
             ("files", ("main.csv", main, "text/csv")),
             ("files", ("single.csv", single, "text/csv")),
             ("files", ("duped.csv", duped, "text/csv")),
@@ -37,7 +37,7 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
 
 def test_import_page_shows_sync_log_history(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/import")
     assert response.status_code == 200
@@ -48,7 +48,7 @@ def test_import_page_shows_sync_log_history(client):
 
 def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/import")
     log_section = response.text.split('id="import-log"', 1)[1]
@@ -58,8 +58,8 @@ def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
 def test_import_log_table_can_be_sorted_by_column(client):
     zebra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     abra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("zzz.csv", zebra, "text/csv"))])
-    client.post("/import", files=[("files", ("aaa.csv", abra, "text/csv"))])
+    seed_import(client, [("files", ("zzz.csv", zebra, "text/csv"))])
+    seed_import(client, [("files", ("aaa.csv", abra, "text/csv"))])
 
     def _log_body(html: str) -> str:
         section = html.split('id="import-log"', 1)[1]
@@ -74,7 +74,7 @@ def test_import_log_table_can_be_sorted_by_column(client):
 
 def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     text = client.get("/").text
     # One per KPI tile (Total, Value, Most valuable card/collection/series)
@@ -92,7 +92,7 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     from models import Card
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "50"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     db.query(Card).update({"created_at": dt.datetime(2026, 1, 10)})
@@ -114,7 +114,7 @@ def test_dashboard_value_growth_chart_mirrors_transactions_metric_filter(client)
         "My Collection",
         [{"id": "a", "name": "Pikachu", "qty": 3, "price": "50"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     # Pills preserve every other table's sort state, not just the metric --
     # same "keep everything else as-is" idiom sort_th links already use.
@@ -155,7 +155,7 @@ def test_transactions_page_shows_economic_kpi_strip(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "100"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     card = db.query(Card).filter(Card.card_id == "a").one()
@@ -183,7 +183,7 @@ def test_transactions_charts_endpoint_shows_growth_and_cash_flow_charts(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "100"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     card = db.query(Card).filter(Card.card_id == "a").one()
@@ -202,7 +202,7 @@ def test_transactions_charts_endpoint_shows_growth_and_cash_flow_charts(client):
 
 def test_transactions_charts_endpoint_handles_no_transactions_or_dated_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions/charts")
     assert response.status_code == 200
@@ -211,7 +211,7 @@ def test_transactions_charts_endpoint_handles_no_transactions_or_dated_cards(cli
 
 def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_chart(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "10"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     default_page = client.get("/transactions/charts")
     assert "Unique collection" in default_page.text
@@ -249,7 +249,7 @@ def test_transactions_page_shows_transaction_id(client):
     from models import Card
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "150"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -273,7 +273,7 @@ def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -306,7 +306,7 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}, {"id": "c", "name": "Eevee"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -346,7 +346,7 @@ def test_purchase_groups_rank_items_by_price_and_order_groups_by_purchase_id(cli
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}, {"id": "c", "name": "Bulbasaur"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -382,7 +382,7 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -421,7 +421,7 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     card_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -463,7 +463,7 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     card_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -508,7 +508,7 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     # No transactions yet -- the cart starts at purchase_id 1.
     response = client.get("/transactions/purchase/start")
@@ -538,7 +538,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
         "My Collection",
         [{"id": "a", "name": "Charizard ex"}, {"id": "b", "name": "Blastoise ex"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -593,7 +593,7 @@ def test_purchase_cart_rejects_submitting_with_no_cards(client):
 
 def test_transactions_page_groups_added_cards_by_date(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
     assert response.status_code == 200
@@ -612,7 +612,7 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     db.query(Card).filter(Card.card_id == "b").update({"created_at": None})
@@ -636,7 +636,7 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
 
 def test_transactions_history_table_scrolls_instead_of_widening_the_page(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
     assert '<div class="table-scroll">' in response.text
@@ -647,7 +647,7 @@ def test_added_cards_section_shows_the_registered_price_once_bought(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -674,7 +674,7 @@ def test_upsert_corrects_the_single_existing_price_instead_of_adding_a_second_on
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -704,7 +704,7 @@ def test_upsert_carries_and_updates_a_purchase_id_in_place(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -751,7 +751,7 @@ def test_upsert_does_not_guess_which_purchase_to_update_when_ambiguous(client):
     from models import Card, Transaction
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
@@ -776,7 +776,7 @@ def test_upsert_does_not_guess_which_purchase_to_update_when_ambiguous(client):
 
 def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
     added_section = response.text.split("Recently Added", 1)[1].split("History", 1)[0]
@@ -794,7 +794,7 @@ def test_transactions_table_can_be_sorted_by_column(client):
         "My Collection",
         [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}
@@ -825,7 +825,7 @@ def test_recently_added_table_can_be_sorted_by_column(client):
         "My Collection",
         [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     def _group_body(html: str) -> str:
         section = html.split("Recently Added", 1)[1].split("History", 1)[0]
@@ -846,7 +846,7 @@ def test_unknown_date_table_can_be_sorted_by_column(client):
         "My Collection",
         [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     db.query(Card).update({"created_at": None})  # move both into "Unknown date"
@@ -866,11 +866,11 @@ def test_unknown_date_table_can_be_sorted_by_column(client):
 
 def test_import_then_dashboard_reflects_the_sync(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
-    response = client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
-    assert response.status_code == 200
-    # The Sync Log page is log-only now (no inline result summary) -- the
-    # sync still shows up as a new row in the log table.
-    assert "main.csv" in response.text
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    # The Sync Log page is log-only -- the sync shows up as a new row there.
+    log_page = client.get("/import")
+    assert log_page.status_code == 200
+    assert "main.csv" in log_page.text
 
     dashboard = client.get("/")
     assert dashboard.status_code == 200
@@ -881,7 +881,7 @@ def test_import_then_dashboard_reflects_the_sync(client):
 
 def test_inventory_card_name_links_to_dex(client):
     main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     inventory = client.get("/inventory")
     assert '<a href="https://app.dextcg.com/cards/ex5-4"' in inventory.text
@@ -890,7 +890,7 @@ def test_inventory_card_name_links_to_dex(client):
 
 def test_dashboard_top_cards_link_to_dex(client):
     main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     assert '<a href="https://app.dextcg.com/cards/ex5-4"' in dashboard.text
@@ -908,7 +908,7 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
             {"id": "old2", "name": "OldCard2", "series": "Original", "set": "Base Set", "number": "2/102"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
     db.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
@@ -936,7 +936,7 @@ def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):
             {"id": "b", "name": "Charizard", "qty": 1},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/inventory?dup=1")
     assert "Pikachu" in response.text
@@ -950,7 +950,7 @@ def test_inventory_accepts_an_empty_dup_query_value(client):
     # (series/set/collection/binder/language) resubmits it too -- so ?dup=
     # (empty, not absent) must not 422.
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/inventory?dup=&series=&language=")
     assert response.status_code == 200
@@ -965,7 +965,7 @@ def test_inventory_shows_and_filters_by_language(client):
             {"id": "b", "name": "Charizard", "locale": "JPN"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     full = client.get("/inventory").text
     assert "Language" in full
@@ -984,7 +984,7 @@ def test_inventory_can_be_sorted_by_language(client):
             {"id": "b", "name": "Abra", "locale": "ENG"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     def _rows(html: str) -> str:
         return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
@@ -997,7 +997,7 @@ def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
     from urllib.parse import quote
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     # The "which cards" link lives on Total (not Duplicates) -- same filter,
@@ -1008,7 +1008,7 @@ def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
 
 def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
     main = make_csv("My Collection", [{"id": "a", "series": "Original", "set": "Base Set"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     text = dashboard.text
@@ -1024,9 +1024,9 @@ def test_dashboard_series_name_is_the_drilldown_trigger_not_a_link(client):
 def test_dashboard_collection_row_drills_down_to_individual_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     collection = make_csv("My Binder Collection", [{"id": "a"}])
-    client.post(
-        "/import",
-        files=[
+    seed_import(
+        client,
+        [
             ("files", ("main.csv", main, "text/csv")),
             ("files", ("collection.csv", collection, "text/csv")),
         ],
@@ -1045,15 +1045,15 @@ def test_dashboard_bulk_row_is_not_nested_under_collections(client):
     # named collection's child-row.
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     collection = make_csv("My Named Collection", [{"id": "a"}])
-    client.post(
-        "/import",
-        files=[
+    seed_import(
+        client,
+        [
             ("files", ("main.csv", main, "text/csv")),
             ("files", ("collection.csv", collection, "text/csv")),
         ],
     )
     main2 = make_csv("My Collection", [{"id": "b", "name": "Magikarp"}])
-    client.post("/import", files=[("files", ("main2.csv", main2, "text/csv"))])
+    seed_import(client, [("files", ("main2.csv", main2, "text/csv"))])
 
     text = client.get("/").text
     inventory_card = text.split("<h2>Inventory", 1)[1].split("<h2>", 1)[0]
@@ -1064,7 +1064,7 @@ def test_dashboard_bulk_row_is_not_nested_under_collections(client):
 
 def test_dashboard_rarity_row_drills_down_to_individual_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "rarity": "Rare"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     text = dashboard.text
@@ -1082,7 +1082,7 @@ def test_dashboard_pokemon_row_groups_every_print_of_the_same_name(client):
             {"id": "c", "name": "Magikarp", "set": "Paldea Evolved"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     text = dashboard.text
@@ -1104,7 +1104,7 @@ def test_dashboard_pokemon_table_shows_set_and_series_for_a_single_print(client)
         "My Collection",
         [{"id": "a", "name": "Magikarp", "series": "Scarlet & Violet", "set": "Paldea Evolved"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
@@ -1122,7 +1122,7 @@ def test_dashboard_pokemon_table_shows_multiple_when_bucket_spans_multiple_sets(
             {"id": "b", "name": "Sableye", "set": "Triplet Beat", "variant": "Holo"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
@@ -1143,7 +1143,7 @@ def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
         for p in range(prints):
             rows.append({"id": f"p{i}-{p}", "name": f"Species{i}", "number": f"{i}{p}/999"})
     main = make_csv("My Collection", rows)
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     pokemon_section = dashboard.text.split("<h2>Pokemon ", 1)[1]
@@ -1156,7 +1156,7 @@ def test_dashboard_pokemon_table_caps_at_top_10_by_unique_count(client):
 
 def test_pokemon_favorite_can_be_toggled_on_and_off(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Sableye"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.post("/pokemon/favorite", data={"name": "Sableye"}, follow_redirects=True)
     pokemon_section = response.text.split("<h2>Pokemon ", 1)[1]
@@ -1174,7 +1174,7 @@ def test_pokemon_search_finds_a_name_to_favorite(client):
         "My Collection",
         [{"id": "a", "name": "Sableye"}, {"id": "b", "name": "Slowbro"}, {"id": "c", "name": "Onix"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/pokemon/search?q=slow")
     assert "Slowbro" in response.text
@@ -1192,7 +1192,7 @@ def test_favorited_pokemon_shows_even_when_not_in_the_top_10(client):
         for p in range(2):
             rows.append({"id": f"filler{i}-{p}", "name": f"Filler{i}", "number": f"{i}{p}/999"})
     main = make_csv("My Collection", rows)
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/favorite", data={"name": "Celebi"})
 
@@ -1211,7 +1211,7 @@ def test_pokemon_topp10_table_can_be_sorted_by_column(client):
         "My Collection",
         [{"id": "a", "name": "Abra"}, {"id": "b", "name": "Zubat"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     def _topp10(html: str) -> str:
         # Scope to the Pokemon card's own "Top 10" table -- "Topp 10 mest
@@ -1231,7 +1231,7 @@ def test_pokemon_favoritter_table_can_be_sorted_by_column(client):
         "My Collection",
         [{"id": "a", "name": "Abra"}, {"id": "b", "name": "Zubat"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
     client.post("/pokemon/favorite", data={"name": "Abra"})
     client.post("/pokemon/favorite", data={"name": "Zubat"})
 
@@ -1257,7 +1257,7 @@ def test_merging_an_evolution_family_into_one_folder(client):
             {"id": "c", "name": "Slowking"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Slowpoke", "canonical": "Slowbro"})
     client.post("/pokemon/merge", data={"name": "Slowking", "canonical": "Slowbro"})
@@ -1275,7 +1275,7 @@ def test_merging_pokemon_groups_them_into_one_bucket(client):
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
 
@@ -1296,7 +1296,7 @@ def test_merging_pokemon_migrates_an_existing_favorite(client):
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/favorite", data={"name": "Dark Celebi"})
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
@@ -1321,7 +1321,7 @@ def test_merging_pokemon_cascades_existing_aliases_to_the_new_root(client):
             {"id": "c", "name": "Sand Rat"},
         ],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Alolan Sandslash", "canonical": "Sandslash"})
     client.post("/pokemon/merge", data={"name": "Sandslash", "canonical": "Sand Rat"})
@@ -1350,7 +1350,7 @@ def test_merging_pokemon_into_itself_after_a_reverse_merge_is_a_noop(client):
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Celebi", "canonical": "Dark Celebi"})
     # Attempting the reverse now would create a 2-cycle; it must no-op.
@@ -1376,7 +1376,7 @@ def test_unmerging_a_pokemon_restores_its_own_bucket(client):
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
     client.post("/pokemon/unmerge", data={"name": "Dark Celebi"})
@@ -1395,7 +1395,7 @@ def test_merging_a_pokemon_reopens_the_folder_details_after_redirect(client):
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.post(
         "/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"}, follow_redirects=True
@@ -1413,7 +1413,7 @@ def test_favoriting_an_already_merged_alias_name_favorites_the_canonical_bucket(
         "My Collection",
         [{"id": "a", "name": "Celebi"}, {"id": "b", "name": "Dark Celebi"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     client.post("/pokemon/merge", data={"name": "Dark Celebi", "canonical": "Celebi"})
     # Favoriting via the old, now-merged-away name should favorite "Celebi".
@@ -1430,7 +1430,7 @@ def test_dashboard_series_set_row_drills_down_to_individual_cards(client):
     main = make_csv(
         "My Collection", [{"id": "a", "name": "Pikachu", "series": "Original", "set": "Base Set"}]
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     text = dashboard.text
@@ -1440,7 +1440,7 @@ def test_dashboard_series_set_row_drills_down_to_individual_cards(client):
 
 def test_dashboard_top_cards_show_card_number(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "number": "58/102", "price": "150"}])
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     dashboard = client.get("/")
     assert "58/102" in dashboard.text
@@ -1457,9 +1457,9 @@ def test_dashboard_column_sort_only_reorders_leaf_cards_not_buckets(client):
     )
     alpha = make_csv("Alpha Collection", [{"id": "a"}, {"id": "b"}])
     zeta = make_csv("Zeta Collection", [{"id": "c"}])
-    client.post(
-        "/import",
-        files=[
+    seed_import(
+        client,
+        [
             ("files", ("main.csv", main, "text/csv")),
             ("files", ("alpha.csv", alpha, "text/csv")),
             ("files", ("zeta.csv", zeta, "text/csv")),
@@ -1488,7 +1488,7 @@ def test_inventory_search_filters_results(client):
         "My Collection",
         [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
     )
-    client.post("/import", files=[("files", ("main.csv", main, "text/csv"))])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/inventory?q=Charizard")
     assert "Charizard" in response.text

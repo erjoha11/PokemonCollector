@@ -29,8 +29,9 @@ run).
   compact economic snapshot (net invested, current value, paper gain/loss)
   and a collapsible "Vis grafer" section with the value-growth and cash-flow
   charts (formerly the standalone Analyse page).
-- **Import / Sync** (`/import`) — pull Dex CSV exports straight from Dropbox,
-  or upload them manually.
+- **Sync Log** (`/import`) — read-only history of past syncs (daily cron,
+  or a manual Dropbox sync). There is no manual CSV-upload page; see
+  "Dropbox import setup" below for the only way to sync outside the cron.
 
 ## Data model
 
@@ -78,8 +79,8 @@ without updating both the code and this doc.
    - "Full load" (only when explicitly requested, e.g. to clean up bad
      data) actually deletes cards missing from the export.
    - Every sync is expected to include both the main export and the
-     Vintage Collection export together — the Import page lets you select
-     multiple files at once for exactly this reason.
+     Vintage Collection export together — the Dropbox picker lets you
+     select multiple files at once for exactly this reason.
    - A collection's tag membership (e.g. Vintage Collection) is only
      touched for categories actually present in that sync's uploaded
      files. A category absent from the current batch is left completely
@@ -113,10 +114,12 @@ per-card information.
 
 ## Dropbox import setup
 
-The Import page can list and pull CSV files directly from a Dropbox folder
-(read-only: `files.metadata.read` + `files.content.read`), so you don't
-have to download from Dropbox and re-upload by hand. Manual upload still
-works with no setup at all — Dropbox is optional.
+Dropbox is how card data gets into the app at all — there is no manual
+CSV-upload page (removed; nobody used it). This pulls CSV files directly
+from a Dropbox folder (read-only: `files.metadata.read` +
+`files.content.read`), either via the daily cron or the manual Dropbox
+picker below, so setting this up is required before the app has any data
+to show.
 
 One-time setup:
 
@@ -136,10 +139,11 @@ One-time setup:
 4. Copy `.env.example` to `.env` in `apps/tcg_inventory/` and paste those
    three values in, plus `DROPBOX_FOLDER` (the path to the folder you save
    Dex exports to, e.g. `/Dex Exports`).
-5. Restart `python app.py`. The Import page now lists CSV files from that
-   folder with checkboxes — select the ones for this sync (main export +
-   Vintage export, same rule as manual upload) and click "Hent valgte
-   filer og synk".
+5. Restart `python app.py`. The Dropbox picker (reachable at
+   `/import/dropbox/list`) now lists CSV files from that folder with
+   checkboxes — select the ones for this sync (main export + Vintage
+   export together, per the sync-semantics rule above) and click "Hent
+   valgte filer og synk".
 
 The refresh token doesn't expire, so this is a one-time setup. Nothing is
 ever written back to Dropbox.
@@ -243,16 +247,23 @@ Import page manually.
 `collection_value_growth` (Transactions' "View charts" section, top chart) is an
 *approximation*: it applies today's price retroactively to each card's
 `created_at` month, because Dex gives no historical prices. `card_snapshots`
-fixes that going forward — the cron job above writes one row per card (`qty`
-+ `reference_price` as of that day) right after every successful sync, so
+fixes that going forward — every sync writes one row per card (`qty` +
+`reference_price` as of that day) right after it completes, so
 `queries.real_value_history` can report what the collection was *actually*
 worth on a given date, not an estimate. It's rendered as its own "Real value
 history" chart, right below the approximation, using the same
 unique/duplicates/total metric filter. It's empty until snapshots
 accumulate (starts from whenever this table was added — there's no way to
-backfill history for dates before it existed), and only the automated
-Dropbox cron sync writes snapshots — a manual CSV upload via `/import` does
-not.
+backfill history for dates before it existed).
+
+Up to two points per day: the scheduled cron run (`CardSnapshot.source="cron"`)
+and, separately, the latest off-schedule sync that day
+(`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync` hit by
+hand with `?secret=` instead of the real Vercel cron header). Re-running
+either one again the same day overwrites that same slot rather than adding
+a third point, so the chart never grows more than 2 points/day. There is no
+manual CSV-upload page in the app (removed — the only sync entry points are
+the Dropbox-based ones above).
 
 ## Project layout
 

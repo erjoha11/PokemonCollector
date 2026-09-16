@@ -65,3 +65,29 @@ def test_record_daily_snapshot_defaults_to_today(db_session):
 
     row = db_session.query(CardSnapshot).one()
     assert row.date == dt.date.today()
+    assert row.source == "cron"
+
+
+def test_record_daily_snapshot_keeps_cron_and_manual_separate_same_day(db_session):
+    card = _add_card(db_session, qty=2, reference_price=100.0)
+
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="cron")
+    card.qty = 5
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="manual")
+
+    rows = db_session.query(CardSnapshot).order_by(CardSnapshot.source).all()
+    assert [(r.source, r.qty) for r in rows] == [("cron", 2), ("manual", 5)]
+
+
+def test_record_daily_snapshot_manual_rerun_same_day_updates_in_place(db_session):
+    card = _add_card(db_session, qty=2, reference_price=100.0)
+
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="manual")
+    card.qty = 9
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="manual")
+
+    rows = db_session.query(CardSnapshot).all()
+    assert len(rows) == 1  # updated in place, not a third point
+    assert rows[0].qty == 9

@@ -88,6 +88,28 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
+def seed_import(client, files, full_load=False):
+    """Load Dex CSV fixtures straight into the `client` fixture's test DB.
+
+    There is no manual CSV-upload route in the app (removed -- users never
+    did this; see HANDOFF.md) -- the only real sync entry points are the
+    daily/manual Dropbox sync and the cron job. Tests still need a fast way
+    to seed data without going through either of those, so this calls the
+    same import_dex_csv_files() those routes use directly, bypassing HTTP.
+    `files` matches the old multipart shape so existing call sites need
+    minimal changes: [("files", (filename, csv_bytes, content_type)), ...].
+    """
+    import db as db_module
+    from importer import import_dex_csv_files
+
+    payload = [(filename, data) for _, (filename, data, *_rest) in files]
+    db = db_module.SessionLocal()
+    try:
+        return import_dex_csv_files(db, payload, full_load=full_load)
+    finally:
+        db.close()
+
+
 HEADER = (
     "Type;Category;Locale;Series;Set;Id;Number;Name;Variant;Rarity;"
     "Illustrator;Quantity;Price;Note 1;Note 2;Note 3;Note 4;Note 5"

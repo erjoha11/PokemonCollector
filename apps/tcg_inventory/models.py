@@ -125,11 +125,16 @@ class Card(Base):
 
 
 class CardSnapshot(Base):
-    """One row per (card, date): that card's qty and reference_price as of
-    that date. Written once a day by `snapshots.record_daily_snapshot`,
-    called from the `/cron/dropbox-sync` cron job right after a successful
-    sync (see app.py). Stores the same raw inputs Card's computed properties
-    use (never a derived total, same reasoning as Card above) -- so
+    """One row per (card, date, source): that card's qty and reference_price
+    as of that date. Written by `snapshots.record_daily_snapshot`, called
+    from the `/cron/dropbox-sync` cron job right after a successful sync
+    (source="cron") and from the manual CSV-upload/Dropbox-sync routes
+    (source="manual") -- see app.py. Two sources per date, not per-call
+    timestamps, is deliberate: it caps each day at exactly the scheduled
+    cron point plus one "latest manual sync of the day" point, instead of
+    growing unbounded every time someone re-triggers a sync (see
+    HANDOFF.md). Stores the same raw inputs Card's computed properties use
+    (never a derived total, same reasoning as Card above) -- so
     duplicates/unique_value/total_value can be computed the same way, but
     as of a past date instead of today. Without this table there is no way
     to answer "what was the collection worth on date X" -- see
@@ -138,7 +143,7 @@ class CardSnapshot(Base):
 
     __tablename__ = "card_snapshots"
     __table_args__ = (
-        UniqueConstraint("card_id", "date", name="uq_card_snapshots_card_id_date"),
+        UniqueConstraint("card_id", "date", "source", name="uq_card_snapshots_card_id_date_source"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -146,6 +151,7 @@ class CardSnapshot(Base):
         ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True
     )
     date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String, nullable=False, default="cron", server_default="cron")
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
 

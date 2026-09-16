@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -1012,21 +1012,6 @@ def import_form(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
         db.close()
 
 
-@app.post("/import")
-async def run_import(request: Request, files: list[UploadFile], full_load: bool = Form(False)):
-    payload = [(f.filename or "upload.csv", await f.read()) for f in files]
-    db = get_db_session()
-    try:
-        result = import_dex_csv_files(db, payload, full_load=full_load, source="manual")
-        return templates.TemplateResponse(
-            request,
-            "import.html",
-            {"result": result, "logs": _recent_import_logs(db), "lsort": "ran_at", "ldir": "desc"},
-        )
-    finally:
-        db.close()
-
-
 # --------------------------------------------------------------------------
 # CSV import / sync -- straight from Dropbox
 # --------------------------------------------------------------------------
@@ -1069,6 +1054,7 @@ def import_dropbox_sync(
         dbx = dropbox_client.build_client_from_env()
         payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
         result = import_dex_csv_files(db, payload, full_load=full_load, source="dropbox")
+        snapshots.record_daily_snapshot(db, source="manual")
         return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         return templates.TemplateResponse(
@@ -1091,13 +1077,23 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     carry no browser session to log in with. Vercel automatically sends
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
     var is set -- see README "Automatic daily sync". A manual trigger (e.g.
-    from a tool that can't set custom headers) may instead pass the same
-    value as `?secret=`.
+    from a tool that can't set custom headers, or a person running this by
+    hand mid-day) may instead pass the same value as `?secret=`.
+
+    The two are told apart for snapshotting purposes: only a request
+    carrying that exact header is trusted as the real scheduled Vercel
+    invocation (CardSnapshot.source="cron"); a `?secret=` request is treated
+    as a manual off-schedule run (source="manual") even though it hits this
+    same route -- see snapshots.record_daily_snapshot and HANDOFF.md. With
+    no CRON_SECRET configured at all there's no way to tell the two apart,
+    so every request is treated as "manual".
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
-    authorized = not cron_secret or request.headers.get("authorization") == f"Bearer {cron_secret}" or secret == cron_secret
+    is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
+    authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
     if not authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
+    snapshot_source = "cron" if is_scheduled_invocation else "manual"
 
     folder = dropbox_client.default_folder()
     db = get_db_session()
@@ -1105,7 +1101,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         dbx = dropbox_client.build_client_from_env()
         files = dropbox_client.list_csv_files(dbx, folder)
         if not files:
-            snapshotted = snapshots.record_daily_snapshot(db)
+            snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
             return {
                 "status": "ok",
                 "folder": folder,
@@ -1117,7 +1113,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # Snapshot after the sync, not before -- a cron run should always
         # record today's post-sync qty/price, never yesterday's leftover
         # state (see snapshots.record_daily_snapshot / README "Value history").
-        snapshotted = snapshots.record_daily_snapshot(db)
+        snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
             f"created={result.cards_created} updated={result.cards_updated} "

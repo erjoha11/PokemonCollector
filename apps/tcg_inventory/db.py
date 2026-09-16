@@ -110,9 +110,45 @@ def _normalize_legacy_transaction_types():
             )
 
 
+def _widen_card_snapshot_source_constraint():
+    """`card_snapshots` used to be unique on (card_id, date) alone, before
+    the `source` column (cron vs manual sync) existed -- see models.py and
+    HANDOFF.md. That old constraint would reject a same-day manual snapshot
+    once the cron's already run that day, so it needs widening to
+    (card_id, date, source). `_add_missing_columns()` above already adds the
+    `source` column itself (nullable, no default -- a generic ALTER ADD
+    COLUMN); this backfills existing NULL rows (all written before `source`
+    existed, so all cron in practice) and swaps the constraint, both
+    idempotently, on every startup -- so this ships with no manual migration
+    step against production. SQLite (local/tests) always creates the table
+    fresh via `create_all()` with the final constraint already in place, so
+    this is a no-op there.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    inspector = inspect(engine)
+    if not inspector.has_table("card_snapshots"):
+        return
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE card_snapshots SET source = 'cron' WHERE source IS NULL"))
+        conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET DEFAULT 'cron'"))
+        conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET NOT NULL"))
+        constraints = {c["name"] for c in inspector.get_unique_constraints("card_snapshots")}
+        if "uq_card_snapshots_card_id_date" in constraints:
+            conn.execute(text("ALTER TABLE card_snapshots DROP CONSTRAINT uq_card_snapshots_card_id_date"))
+        if "uq_card_snapshots_card_id_date_source" not in constraints:
+            conn.execute(
+                text(
+                    "ALTER TABLE card_snapshots ADD CONSTRAINT uq_card_snapshots_card_id_date_source "
+                    "UNIQUE (card_id, date, source)"
+                )
+            )
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
     _normalize_legacy_transaction_types()
+    _widen_card_snapshot_source_constraint()

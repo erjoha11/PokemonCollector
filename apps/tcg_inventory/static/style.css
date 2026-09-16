@@ -804,3 +804,25 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-filter-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .viz-delta-gain { color: #0ca30c; }
 .viz-delta-loss { color: #d03b3b; }
+
+.wiki-diagram {
+  overflow-x: auto;
+  margin: 0.8rem 0 1.1rem;
+  padding: 0.9rem;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.wiki-diagram svg { display: block; margin: 0 auto; min-width: 560px; }
+.wiki-diagram text { font-family: inherit; fill: var(--ink); }
+.wiki-diagram .wd-muted { fill: var(--ink-secondary); }
+.wiki-diagram .wd-node-plain { fill: var(--surface); stroke: var(--border-strong); }
+.wiki-diagram .wd-node-accent { fill: var(--accent-wash); stroke: var(--accent); }
+.wiki-diagram .wd-node-highlight { fill: #fff8ea; stroke: #d9a83b; }
+.wiki-diagram .wd-conn { stroke: var(--border-strong); fill: none; }
+.wiki-diagram .wd-conn-accent { stroke: var(--accent); fill: none; }
+.wiki-figcaption {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0.4rem 0 0;
+}

@@ -408,11 +408,16 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
     """The real, non-approximated counterpart to collection_value_growth:
     the collection's total value on each date a snapshot was actually taken
     (see snapshots.record_daily_snapshot), summed across every card's
-    CardSnapshot row for that date -- what the collection was actually
-    worth on date X, not today's price applied retroactively. Empty until
-    at least one day of snapshots has accumulated (the daily cron writes
-    one row per day going forward; there is no way to backfill snapshots
-    for dates before this table existed).
+    CardSnapshot row for that (date, source) -- what the collection was
+    actually worth on date X, not today's price applied retroactively.
+    Empty until at least one snapshot has accumulated (there is no way to
+    backfill snapshots for dates before this table existed).
+
+    Up to two points per date: one from the scheduled cron sync, one from
+    the latest manual sync that day (see CardSnapshot.source). Points are
+    ordered cron-then-manual within a date; the label only gets a
+    "(cron)"/"(manual)" suffix when both exist for the same date, so the
+    common one-point-a-day case keeps its plain date label.
 
     `metric` reuses the same VALUE_GROWTH_METRICS lambdas as
     collection_value_growth -- CardSnapshot exposes the same
@@ -423,14 +428,25 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
         raise ValueError(f"unknown metric: {metric!r} (expected one of {sorted(VALUE_GROWTH_METRICS)})")
     _, value_of = VALUE_GROWTH_METRICS[metric]
 
-    by_date: dict[dt.date, float] = {}
+    by_date_source: dict[tuple[dt.date, str], float] = {}
     for snap in db.query(CardSnapshot).all():
-        by_date[snap.date] = by_date.get(snap.date, 0.0) + value_of(snap)
+        key = (snap.date, snap.source)
+        by_date_source[key] = by_date_source.get(key, 0.0) + value_of(snap)
 
-    return [
-        {"label": date.strftime("%Y-%m-%d"), "cumulative_value": total}
-        for date, total in sorted(by_date.items())
-    ]
+    sources_by_date: dict[dt.date, set[str]] = {}
+    for date, source in by_date_source:
+        sources_by_date.setdefault(date, set()).add(source)
+
+    source_order = {"cron": 0, "manual": 1}
+    result = []
+    for (date, source), total in sorted(
+        by_date_source.items(), key=lambda item: (item[0][0], source_order.get(item[0][1], 2))
+    ):
+        label = date.strftime("%Y-%m-%d")
+        if len(sources_by_date[date]) > 1:
+            label = f"{label} ({source})"
+        result.append({"label": label, "cumulative_value": total})
+    return result
 
 
 def cash_flow_by_month(db: Session) -> list[dict]:

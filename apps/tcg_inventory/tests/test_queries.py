@@ -288,6 +288,34 @@ def test_real_value_history_empty_with_no_snapshots(db_session):
     assert queries.real_value_history(db_session) == []
 
 
+def test_real_value_history_labels_cron_and_manual_when_both_exist_same_day(db_session):
+    import datetime as dt
+
+    import snapshots
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu", "qty": 2, "price": "100"}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="cron")
+    card.qty = 4
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="manual")
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 2), source="cron")
+
+    unique = queries.real_value_history(db_session, metric="unique")
+
+    assert [row["label"] for row in unique] == [
+        "2026-01-01 (cron)",
+        "2026-01-01 (manual)",
+        "2026-01-02",
+    ]
+
+
 def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):
     import datetime as dt
 
