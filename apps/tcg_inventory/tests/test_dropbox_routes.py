@@ -160,7 +160,10 @@ def test_cron_sync_works_without_secret_configured(client, monkeypatch):
     assert body["cards_snapshotted"] == 0  # snapshot still runs, just nothing to snapshot yet
 
 
-def test_cron_sync_reports_dropbox_not_configured(client):
+def test_cron_sync_reports_dropbox_not_configured(client, monkeypatch):
+    # Not the auth check -- isolate from whatever CRON_SECRET the developer's
+    # own .env happens to have set (app.py loads it into os.environ on import).
+    monkeypatch.delenv("CRON_SECRET", raising=False)
     response = client.get("/cron/dropbox-sync")
     assert response.status_code == 502
     assert "DROPBOX_APP_KEY" in response.text

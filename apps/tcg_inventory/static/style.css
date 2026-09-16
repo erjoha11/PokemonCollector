@@ -144,17 +144,6 @@ tbody tr:hover td { background: var(--accent-wash); }
    merged card cell (name + variant/rarity/set/number as muted subtext)
    instead of a column each, a colored type badge, and a de-emphasized
    transaction id inline with the date rather than its own wide column. */
-/* Real card photo (see card_images.py) shown next to every Dex-linked card
-   name (dex_link macro) -- small enough to sit inline in a dense table row,
-   absent entirely for a card whose image lookup never matched. */
-.card-thumb {
-  height: 32px;
-  width: auto;
-  border-radius: 3px;
-  vertical-align: middle;
-  margin-right: 0.4rem;
-}
-
 .tx-table td { vertical-align: top; white-space: normal; }
 .tx-card-meta { font-size: 0.78em; color: var(--muted); margin-top: 0.1rem; }
 .tx-id { font-size: 0.75em; color: var(--muted); margin-left: 0.35rem; }

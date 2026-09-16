@@ -14,13 +14,14 @@
 <a href="{{ href }}"{% if hx_target %} hx-get="{{ href }}" hx-target="{{ hx_target }}" hx-swap="{{ hx_swap }}"{% if hx_select %} hx-select="{{ hx_select }}"{% endif %}{% if hx_push_url %} hx-push-url="true"{% endif %}{% endif %}>{{ label }}{% if current_sort == field %} {{ '▲' if current_dir == 'asc' else '▼' }}{% endif %}</a>
 {%- endmacro %}
 
-{# A card's name, linked out to its Dex page, with its real photo as a small
-   thumbnail when one was found at import time (see card_images.py --
-   Dex itself has no image, so this can be empty for a card whose lookup
-   never matched or hasn't run yet). Shared by every card-listing table
-   (Dashboard, Inventory, Transactions) so a card only ever needs one place
-   to look right. #}
-{% macro dex_link(card) %}{% if card.image_url %}<img src="{{ card.image_url }}" alt="" class="card-thumb" loading="lazy">{% endif %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
+{# A card's name, linked out to its Dex page. No thumbnail here deliberately
+   -- the "Most valuable cards" KPI tile's #1 spot is the only place a photo
+   shows (see kpi_module.html), since most cards' `image_url` is still NULL
+   (best-effort lookup at import time, see card_images.py) and showing a
+   picture on whichever one row happens to have one reads as broken/random
+   rather than a real feature. Shared by every card-listing table (Dashboard,
+   Inventory, Transactions) so a card only ever needs one place to look right. #}
+{% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does
    this mean" note on a KPI tile or section heading. `align_right` flips the
