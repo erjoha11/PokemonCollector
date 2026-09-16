@@ -3,6 +3,7 @@
 {% from "partials/macros.html" import sort_th with context %}
 {% from "partials/macros.html" import info %}
 {% from "partials/macros.html" import dex_link %}
+{% from "partials/tx_row.html" import tx_row %}
 {% block content %}
 <h1>Transactions</h1>
 
@@ -89,42 +90,22 @@
         <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th class="num">{{ sort_th('Price', 'price', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
         <th>{{ sort_th('Platform', 'platform', 'tsort', 'tdir', tsort, tdir, '/transactions') }}</th>
+        <th></th>
         {% else %}
         <th>Date</th>
         <th>Card</th>
         <th>Type</th>
         <th class="num">Price ▼</th>
         <th>Platform</th>
+        <th></th>
         {% endif %}
       </tr>
     </thead>
     <tbody>
       {% for tx in rows %}
-      <tr>
-        <td class="muted">
-          {{ tx.date }}
-          <span class="tx-id" title="Transaction ID">#{{ tx.id }}</span>
-        </td>
-        <td>
-          {{ dex_link(tx.card) }}
-          <div class="tx-card-meta">
-            {%- set meta = [] -%}
-            {%- if tx.card.variant %}{% set _ = meta.append(tx.card.variant) %}{% endif -%}
-            {%- if tx.card.rarity %}{% set _ = meta.append(tx.card.rarity) %}{% endif -%}
-            {%- if tx.card.set %}{% set _ = meta.append(tx.card.set) %}{% endif -%}
-            {%- if tx.card.number %}{% set _ = meta.append('#' + tx.card.number) %}{% endif -%}
-            {{ meta | join(' · ') }}
-          </div>
-        </td>
-        <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
-        <td class="num tx-price">
-          {{ tx.price | kr }}
-          {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
-        </td>
-        <td class="muted">{{ tx.platform or '' }}</td>
-      </tr>
+      {{ tx_row(tx) }}
       {% else %}
-      <tr><td colspan="5" class="muted">{{ empty_message }}</td></tr>
+      <tr><td colspan="6" class="muted">{{ empty_message }}</td></tr>
       {% endfor %}
     </tbody>
   </table>

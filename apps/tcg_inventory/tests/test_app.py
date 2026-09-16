@@ -265,6 +265,51 @@ def test_transactions_page_shows_transaction_id(client):
     assert 'title="Transaction ID">#1</span>' in response.text
 
 
+def test_transaction_can_be_edited_in_place(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "150"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    pikachu_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    client.post(
+        "/transactions",
+        data={"card_id": pikachu_id, "type": "purchase", "date": "2026-01-01", "price": "10"},
+    )
+    db = db_module.SessionLocal()
+    tx_id = db.query(Transaction).one().id
+    db.close()
+
+    edit_form = client.get(f"/transactions/{tx_id}/edit")
+    assert edit_form.status_code == 200
+    assert f'hx-post="/transactions/{tx_id}"' in edit_form.text
+    assert 'value="10.0"' in edit_form.text
+
+    response = client.post(
+        f"/transactions/{tx_id}",
+        data={"date": "2026-02-15", "type": "purchase", "price": "12.5", "platform": "Tradera", "fees": "2"},
+    )
+    assert response.status_code == 200
+    assert "Tradera" in response.text
+
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).one()
+    assert tx.platform == "Tradera"
+    assert tx.price == 12.5
+    assert tx.fees == 2
+    assert tx.date.isoformat() == "2026-02-15"
+    db.close()
+
+    # Cancel just re-renders the row unchanged (no write).
+    cancel = client.get(f"/transactions/{tx_id}/row")
+    assert cancel.status_code == 200
+    assert "Tradera" in cancel.text
+
+
 def test_transactions_can_be_tagged_with_a_shared_purchase_id(client):
     import db as db_module
     from models import Card
