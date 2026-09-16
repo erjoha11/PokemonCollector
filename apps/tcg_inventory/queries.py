@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
@@ -344,10 +345,11 @@ def merge_pokemon(db: Session, name: str, canonical: str) -> None:
 
 
 def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
+    display_price = func.coalesce(Card.tcgplayer_price, Card.reference_price)
     return (
         db.query(Card)
-        .filter(Card.reference_price.isnot(None))
-        .order_by(Card.reference_price.desc())
+        .filter(display_price.isnot(None))
+        .order_by(display_price.desc())
         .limit(limit)
         .all()
     )

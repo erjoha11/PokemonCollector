@@ -107,14 +107,16 @@ async def auth_guard(request: Request, call_next):
             pass
     return RedirectResponse("/login", status_code=303)
 
+_DISPLAY_PRICE_COL = func.coalesce(Card.tcgplayer_price, Card.reference_price)
+
 SORT_COLUMNS = {
     "name": Card.name,
     "number": func.coalesce(Card.number_int, 999999),
     "series": Card.series,
     "set": Card.set,
-    "reference_price": Card.reference_price,
+    "reference_price": _DISPLAY_PRICE_COL,
     "qty": Card.qty,
-    "total_value": Card.qty * func.coalesce(Card.reference_price, 0),
+    "total_value": Card.qty * func.coalesce(_DISPLAY_PRICE_COL, 0),
     "rarity": Card.rarity,
     "illustrator": Card.illustrator,
     "language": Card.language,
@@ -127,7 +129,7 @@ TOP_CARD_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "number": lambda c: c.number_int if c.number_int is not None else 999999,
     "set": lambda c: (c.set or "").lower(),
-    "reference_price": lambda c: c.reference_price or 0,
+    "reference_price": lambda c: c.display_price or 0,
 }
 
 
@@ -627,7 +629,7 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
         "variant": lambda c: (c.variant or "").lower(),
         "series": lambda c: (c.series or "").lower(),
         "set": lambda c: (c.set or "").lower(),
-        "reference_price": lambda c: c.reference_price if c.reference_price is not None else -1,
+        "reference_price": lambda c: c.display_price if c.display_price is not None else -1,
         "card_id": lambda c: c.card_id.lower(),
     }
     if purchase_prices_by_card is not None:

@@ -20,7 +20,8 @@ from models import Card, CardSnapshot
 def record_daily_snapshot(db: Session, as_of: dt.date | None = None, source: str = "cron") -> int:
     """Write one CardSnapshot row per card for `as_of` (default: today) and
     `source` ("cron" or "manual"), capturing its current qty and
-    reference_price.
+    display_price (TCGPlayer price when we have one, else Dex's reference
+    price).
 
     Idempotent per (day, source): re-running this for a date/source that
     already has snapshots updates them in place instead of creating
@@ -47,7 +48,7 @@ def record_daily_snapshot(db: Session, as_of: dt.date | None = None, source: str
             snap = CardSnapshot(card_id=card.id, date=as_of, source=source)
             db.add(snap)
         snap.qty = card.qty
-        snap.reference_price = card.reference_price
+        snap.reference_price = card.display_price
         count += 1
 
     db.commit()
