@@ -18,6 +18,13 @@ import httpx
 _API_URL = "https://api.pokemontcg.io/v2/cards"
 _TIMEOUT = 5.0
 
+# The Pokemon TCG API's tcgplayer prices are always USD; every other price in
+# this app (Dex's own exported "Price" column, and every `| kr` template
+# display) is NOK. A fixed approximate rate, not a live lookup -- one more
+# external, flaky dependency isn't worth it for a number that's already a
+# best-effort estimate. Revisit if USD/NOK drifts far from this over time.
+_USD_TO_NOK = 10.5
+
 
 @dataclass
 class CardApiData:
@@ -37,11 +44,14 @@ def _printed_number(number: str | None) -> str | None:
 
 def _best_tcgplayer_price(tcgplayer: dict | None) -> float | None:
     """`tcgplayer.prices` has one entry per print variant (normal, holofoil,
-    reverseHolofoil, 1stEditionHolofoil, ...), each with market/low/mid/high.
-    There's no reliable way to match a variant name to Dex's own `Variant`
-    field, so just take the first variant's `market` price present -- better
-    than no price at all, and this is already how Dex's own Price column is
-    presumably sourced (a single number per card, not per variant).
+    reverseHolofoil, 1stEditionHolofoil, ...), each with market/low/mid/high,
+    in USD. There's no reliable way to match a variant name to Dex's own
+    `Variant` field, so just take the first variant's `market` price present
+    -- better than no price at all, and this is already how Dex's own Price
+    column is presumably sourced (a single number per card, not per variant).
+    Converted to NOK here (see _USD_TO_NOK) since every other price in this
+    app -- Dex's own column included -- is NOK; returning raw USD would
+    silently understate these cards' value by ~10x wherever it's displayed.
     """
     if not tcgplayer:
         return None
@@ -49,7 +59,7 @@ def _best_tcgplayer_price(tcgplayer: dict | None) -> float | None:
     for variant_prices in prices.values():
         market = (variant_prices or {}).get("market")
         if market is not None:
-            return market
+            return round(market * _USD_TO_NOK, 2)
     return None
 
 
