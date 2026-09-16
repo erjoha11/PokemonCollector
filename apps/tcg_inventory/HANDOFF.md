@@ -258,3 +258,31 @@ without re-running the review. Ordered by the agent's own priority:
 Explicitly *not* re-raised (already covered above): the "+ Legg til i
 ordre" no-op, the "Pris"/"Registrert pris" ambiguity, and the missing
 order-edit UI.
+
+## Backlog item — 2026-09-16 session
+
+**Most valuable cards KPI card had broken images; fixed, but most cards
+still have no photo at all.** `templates/partials/kpi_module.html`'s
+"Most valuable cards" card was building a hand-rolled `assets.tcgdex.net`
+image URL from Dex's own `card_id`/`number` — `card_images.py`'s own
+docstring notes the Pokemon TCG API's card IDs don't correspond to Dex's,
+so this was effectively guaranteed to 404. Fixed to use the already-fetched
+`card.image_url` field instead (same source `partials/macros.html`'s
+`dex_link` macro already uses elsewhere on the dashboard), guarded with
+`{% if card.image_url %}` so a missing URL just omits the image instead of
+rendering broken. Only the #1 spot shows an image now (runner-up spots #2/#3
+never did, by design/request).
+
+**Not fixed, and the actual reason most top-value cards show no picture:**
+`image_url` is `NULL` for most cards, including the current single most
+valuable card ("Dark Celebi"). Confirmed live against prod (only 1 of the
+current top-10 most valuable cards has an image at all — "Dragonite").
+Root cause: `card_images.fetch_image_url()` is deliberately best-effort
+(silently gives up on no-match/ambiguous-set), and `importer.py`'s
+`_MAX_IMAGE_LOOKUPS_PER_IMPORT` caps lookups at 25 per sync, so cards can
+go indefinitely without ever getting a successful match retried.
+
+**TODO:** write a one-off backfill script — find cards with
+`image_url IS NULL`, retry `card_images.fetch_image_url()` for each
+(respecting the same rate-limit/best-effort behavior already in
+`card_images.py`), write results back to the DB. Not built yet.
