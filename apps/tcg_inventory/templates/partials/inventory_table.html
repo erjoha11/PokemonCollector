@@ -36,7 +36,7 @@
         <td>{{ card.series or '' }}</td>
         <td>{{ card.set or '' }}</td>
         <td>{{ card.collections | map(attribute='name') | join(', ') }}</td>
-        <td class="num">{{ card.reference_price | kr }}</td>
+        <td class="num">{{ card.display_price | kr }}</td>
         <td class="num">{{ card.qty }}</td>
         <td class="num">{{ card.duplicates }}</td>
         <td class="num">{{ card.total_value | kr }}</td>

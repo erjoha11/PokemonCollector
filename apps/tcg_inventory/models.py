@@ -80,6 +80,15 @@ class Card(Base):
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Live TCGPlayer market price, looked up from the same Pokemon TCG API
+    # call as image_url (card_images.fetch_card_data). Unlike image_url this
+    # is refetched periodically (prices move; images never do) -- see
+    # importer.py's staleness check against tcgplayer_price_updated_at. Null
+    # when no confident match was found yet, or the API had no tcgplayer
+    # pricing data for this card. `display_price` below is what every
+    # consumer should read, not this column directly.
+    tcgplayer_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    tcgplayer_price_updated_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id"), nullable=True)
@@ -106,12 +115,23 @@ class Card(Base):
         return max(self.qty - 1, 0)
 
     @property
+    def display_price(self) -> float | None:
+        """The price every consumer (value calculations, sorting, templates)
+        should read: the live TCGPlayer price when we have one, falling back
+        to Dex's own exported Price otherwise. Two independent sources are
+        kept in separate columns rather than one column overwritten in
+        place, so it's always possible to tell which one produced a given
+        value -- see tcgplayer_price's column comment.
+        """
+        return self.tcgplayer_price if self.tcgplayer_price is not None else self.reference_price
+
+    @property
     def unique_value(self) -> float:
-        return self.reference_price or 0.0
+        return self.display_price or 0.0
 
     @property
     def total_value(self) -> float:
-        return self.qty * (self.reference_price or 0.0)
+        return self.qty * (self.display_price or 0.0)
 
     @property
     def primary_collection(self) -> Collection | None:

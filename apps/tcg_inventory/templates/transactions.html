@@ -58,7 +58,7 @@
           <td>{{ card.variant or '' }}</td>
           <td>{{ card.series or '' }}</td>
           <td>{{ card.set or '' }}</td>
-          <td class="num">{{ card.reference_price | kr }}</td>
+          <td class="num">{{ card.display_price | kr }}</td>
           <td>{{ card.card_id }}</td>
           <td class="num">{{ registered_prices.get(card.id, '') }}</td>
           <td>
@@ -158,7 +158,7 @@
           <td>{{ card.variant or '' }}</td>
           <td>{{ card.series or '' }}</td>
           <td>{{ card.set or '' }}</td>
-          <td class="num">{{ card.reference_price | kr }}</td>
+          <td class="num">{{ card.display_price | kr }}</td>
           <td>{{ card.card_id }}</td>
         </tr>
         {% else %}

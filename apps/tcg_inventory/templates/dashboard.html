@@ -82,7 +82,7 @@
           <td>{{ dex_link(card) }}</td>
           <td>{{ card.number or '' }}</td>
           <td>{{ filter_link('set', card.set) }}</td>
-          <td class="num">{{ card.reference_price | kr }}</td>
+          <td class="num">{{ card.display_price | kr }}</td>
         </tr>
         {% endfor %}
       </tbody>

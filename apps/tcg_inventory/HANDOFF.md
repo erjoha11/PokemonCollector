@@ -286,3 +286,64 @@ go indefinitely without ever getting a successful match retried.
 `image_url IS NULL`, retry `card_images.fetch_image_url()` for each
 (respecting the same rate-limit/best-effort behavior already in
 `card_images.py`), write results back to the DB. Not built yet.
+
+## Live TCGPlayer prices — 2026-09-16 session
+
+Per HANDOFF #85's note that the user is "standardizing on TCGPlayer as the
+price source" (previously just a label change, no actual live lookup), added
+a real TCGPlayer price fetch. Consulted the `architect` agent first for the
+design since it touches value calculations, snapshots, and the sync flow;
+implemented per its recommendation.
+
+- `card_images.py` — renamed the underlying Pokemon TCG API lookup to
+  `fetch_card_data()`, returning both `image_url` and `tcgplayer_price` from
+  the **same** API call (that API's card response already includes a
+  `tcgplayer.prices.*.market` field — no separate TCGPlayer OAuth
+  integration needed). `fetch_image_url()` kept as a thin back-compat
+  wrapper. Picks the first variant's `market` price present, since there's
+  no reliable way to map a TCGPlayer print-variant name to Dex's own
+  `Variant` field.
+- `models.py` — new nullable `Card.tcgplayer_price` /
+  `tcgplayer_price_updated_at` columns (additive, picked up automatically by
+  `db.py`'s existing `_add_missing_columns()`, no manual migration needed).
+  **Did not** overwrite or drop `reference_price` (Dex's own CSV "Price"
+  column) — two independent sources are kept in separate columns so it's
+  always possible to tell which one produced a value, rather than blending
+  them in place. Added `Card.display_price` (`tcgplayer_price` if not None,
+  else `reference_price`) as the one property every consumer should read;
+  `unique_value`/`total_value` now use it.
+- `importer.py` — during each My Collection sync, refetches a card's
+  TCGPlayer price when it's missing or older than
+  `_PRICE_STALE_AFTER_DAYS` (7), budget-capped at
+  `_MAX_PRICE_LOOKUPS_PER_IMPORT` (25) per import call, mirroring
+  `_MAX_IMAGE_LOOKUPS_PER_IMPORT`'s existing pattern but with its own
+  separate budget — unlike images (fetched once, cached forever since an
+  image never changes), a price needs periodic refreshing, so the skip
+  condition is staleness, not "already has a value".
+- `snapshots.py` — `record_daily_snapshot` now snapshots `card.display_price`
+  into `CardSnapshot.reference_price` (same column, no new snapshot table —
+  `real_value_history` only needs "what was it worth", not which source
+  produced it).
+- `queries.py` (`top_valuable_cards`) and `app.py` (`SORT_COLUMNS`,
+  `TOP_CARD_SORT_KEYS`, the Transactions field-sort keys) repointed at
+  `func.coalesce(Card.tcgplayer_price, Card.reference_price)` /
+  `card.display_price` instead of `reference_price` directly, so sorting and
+  the "top valuable cards" KPI reflect the live price too. Templates
+  (`dashboard.html`, `partials/inventory_table.html`,
+  `partials/kpi_module.html`, `transactions.html`) now render
+  `card.display_price` instead of `card.reference_price` — the sort-link
+  query-param names were deliberately left as `"reference_price"` (backend
+  dict keys only, not user-visible) to avoid touching every URL/link.
+- No staleness indicator in the UI (e.g. "price last checked N days ago")
+  was built — Dex's own Price column is a reasonable fallback, not an error
+  state, so this was deferred rather than built speculatively per the
+  architect's recommendation. Revisit if `tcgplayer_price` turns out to go
+  stale often in practice.
+- 6 new tests added (`test_card_images.py`: `fetch_card_data` image+price
+  extraction; `test_importer.py`: price fetched when missing, not refetched
+  same-day, refetched once stale). Full suite green, 188 passed.
+- **Not yet verified against live TCGPlayer data** — only tested against
+  fakes/mocks (per this repo's offline test-suite convention). Worth
+  spot-checking a real sync against a few known cards after the next deploy
+  to confirm match quality (name+set+number matching can be ambiguous for
+  some prints, same caveat `card_images.py` already documents for images).

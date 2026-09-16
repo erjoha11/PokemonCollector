@@ -3,6 +3,8 @@ import datetime as dt
 import pytest
 from conftest import make_csv
 
+import card_images
+import importer
 from importer import _parse_number_int, _parse_price, import_dex_csv_files
 from models import Card, Collection, ImportLog
 
@@ -71,6 +73,61 @@ def test_my_collection_imports_utf16le_bom_export(db_session):
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert card.name == "Shellder"
     assert card.reference_price == 0.48
+
+
+def test_my_collection_fetches_tcgplayer_price_for_a_card_missing_one(db_session, monkeypatch):
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.tcgplayer_price == 9.99
+    assert card.tcgplayer_price_updated_at == dt.date.today()
+    # Dex's own Price column is still recorded independently.
+    assert card.reference_price == 0.48
+
+
+def test_my_collection_does_not_refetch_a_fresh_tcgplayer_price(db_session, monkeypatch):
+    # image_url is set on the fake response too, so the image side of the
+    # lookup also stops asking for more once satisfied -- otherwise a
+    # still-missing image would keep triggering the shared API call and mask
+    # what this test is actually checking (price staleness).
+    calls = []
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: calls.append(1)
+        or card_images.CardApiData("https://example.com/a.png", 5.0),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    assert len(calls) == 1
+
+    # Re-import the same day: price was just fetched, so it's not stale yet.
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    assert len(calls) == 1
+
+
+def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch):
+    card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=1.0)
+    card.tcgplayer_price_updated_at = dt.date.today() - dt.timedelta(days=importer._PRICE_STALE_AFTER_DAYS + 1)
+    db_session.add(card)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: card_images.CardApiData(None, 42.0),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert refreshed.tcgplayer_price == 42.0
+    assert refreshed.tcgplayer_price_updated_at == dt.date.today()
 
 
 def test_my_collection_same_id_different_variant_creates_two_cards(db_session):
