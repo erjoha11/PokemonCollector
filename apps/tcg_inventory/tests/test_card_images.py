@@ -96,7 +96,9 @@ def test_fetch_card_data_returns_image_and_price_from_one_call(monkeypatch):
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
 
     assert result.image_url == "https://example.com/a.png"
-    assert result.tcgplayer_price == 12.5
+    # The API returns USD; this app displays everything in NOK (see
+    # _USD_TO_NOK), so the raw 12.5 must come back converted, not verbatim.
+    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
 
 
 def test_fetch_card_data_price_is_none_when_no_tcgplayer_data(monkeypatch):

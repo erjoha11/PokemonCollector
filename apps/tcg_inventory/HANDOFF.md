@@ -347,3 +347,37 @@ implemented per its recommendation.
   spot-checking a real sync against a few known cards after the next deploy
   to confirm match quality (name+set+number matching can be ambiguous for
   some prints, same caveat `card_images.py` already documents for images).
+
+### Currency bug found and fixed same day — USD vs NOK
+
+Spot-checked live against production right after merging (top-5 most
+valuable cards, via a one-off script run with the user's explicit
+permission since it wrote to prod — see the Bash permission entry added to
+`.claude/settings.local.json`, local-only, scoped to that script's exact
+path). Two of five got a real TCGPlayer match: Dragonite (Dragon Vault
+5/20) and Ditto (Triumphant 17/102). Their `tcgplayer_price` came back
+**~9-10x lower** than Dex's `reference_price` for the same card (34.55 vs
+307.41 kr, 24.96 vs 237.33 kr) — the user immediately flagged this as
+wrong, correctly guessing the cause before I'd diagnosed it: **the Pokemon
+TCG API's `tcgplayer.prices.*.market` is always USD; every other price in
+this app (Dex's exported column, every `| kr` template) is NOK.**
+`_best_tcgplayer_price` was returning the raw USD number unconverted.
+
+Confirmed via the API directly that this wasn't a wrong-card/wrong-variant
+match (Dragon Vault's Dragonite has exactly one print, "Rare Holo",
+`dv1-5` — no ambiguity) — it was purely the missing currency conversion.
+
+**Fix:** `card_images.py` now multiplies by a fixed `_USD_TO_NOK = 10.5`
+constant before returning `tcgplayer_price` (chose a fixed rate over a live
+FX API — one more flaky external dependency isn't worth it for a number
+that's already a best-effort estimate; revisit if the real rate drifts far
+from 10.5). Re-ran the same live check after the fix: Dragonite now 362.77
+kr, Ditto 262.08 kr — both back in the right ballpark vs Dex's 307.41 /
+237.33. Updated `test_card_images.py`'s price-extraction test to assert
+the converted value. Full suite green, 189 passed.
+
+**Also corrected the two already-mis-stored production rows** (Dragonite,
+Ditto) by re-running the same fetch with the fixed code — no snapshot had
+been taken yet at the buggy values (the diagnostic script never called
+`snapshots.record_daily_snapshot`), so `real_value_history` was never
+polluted with USD-mislabeled-as-NOK numbers.
