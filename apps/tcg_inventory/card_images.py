@@ -30,6 +30,15 @@ _USD_TO_NOK = 10.5
 class CardApiData:
     image_url: str | None
     tcgplayer_price: float | None
+    # True when the API returned a card, but its own name/number didn't
+    # exactly match what was searched for -- see _is_confident_match. A
+    # low-confidence match still yields an image (best-effort, low stakes --
+    # see module docstring), but never a price: a wrong image is a cosmetic
+    # annoyance, a wrong price silently corrupts the Market Value KPI and
+    # value-growth charts. Callers (importer.py, price_refresh.py) can use
+    # this to flag/log a card worth a manual look rather than trusting a
+    # guess.
+    low_confidence_match: bool = False
 
 
 def _printed_number(number: str | None) -> str | None:
@@ -61,6 +70,30 @@ def _best_tcgplayer_price(tcgplayer: dict | None) -> float | None:
         if market is not None:
             return round(market * _USD_TO_NOK, 2)
     return None
+
+
+def _is_confident_match(name: str, number: str | None, card: dict) -> bool:
+    """Post-fetch sanity check on the single candidate `fetch_card_data`
+    picks (`data[0]`, see below). The search query already scopes by
+    name/set/number, but the API's query parser does fuzzy/tokenized name
+    matching, so the top result isn't guaranteed to actually be the exact
+    card asked for -- fine when the payoff is just a card image, not fine
+    when it silently feeds a wrong card's price into the Market Value KPI
+    (see importer.py / models.Card.display_price). Requires the returned
+    card's own name and printed number to match exactly (case-insensitive)
+    before its price is trusted; set is intentionally not re-checked here
+    since the query already filters on it and set-name formatting varies
+    enough between Dex and this API to cause false negatives.
+    """
+    api_name = (card.get("name") or "").strip().lower()
+    if api_name != (name or "").strip().lower():
+        return False
+    printed_number = _printed_number(number)
+    if printed_number:
+        api_number = (card.get("number") or "").strip()
+        if api_number != printed_number:
+            return False
+    return True
 
 
 def fetch_card_data(name: str, set_name: str | None, number: str | None) -> CardApiData:
@@ -99,9 +132,11 @@ def fetch_card_data(name: str, set_name: str | None, number: str | None) -> Card
         return CardApiData(image_url=None, tcgplayer_price=None)
 
     card = data[0]
+    confident = _is_confident_match(name, number, card)
     return CardApiData(
         image_url=card.get("images", {}).get("small"),
-        tcgplayer_price=_best_tcgplayer_price(card.get("tcgplayer")),
+        tcgplayer_price=_best_tcgplayer_price(card.get("tcgplayer")) if confident else None,
+        low_confidence_match=not confident,
     )
 
 

@@ -381,3 +381,47 @@ Ditto) by re-running the same fetch with the fixed code — no snapshot had
 been taken yet at the buggy values (the diagnostic script never called
 `snapshots.record_daily_snapshot`), so `real_value_history` was never
 polluted with USD-mislabeled-as-NOK numbers.
+
+## Decoupled price refresh + match-confidence guard (issue #93) — 2026-09-17 session
+
+Closes the second half of issue #93 — the "Live TCGPlayer prices" session
+above (2026-09-16) shipped the price *source* switch (PRs #94/#95); this
+session shipped the part of #93 that work didn't cover: decoupling refresh
+from Dex sync, and guarding against a wrong-card API match silently
+producing a wrong price.
+
+- New `price_refresh.py` + `GET /cron/price-refresh` route (`app.py`), its
+  own `vercel.json` Vercel Cron entry (`0 6 * * *`), same `CRON_SECRET`
+  auth pattern as `/cron/dropbox-sync`. Walks up to 100 cards
+  oldest-priced-first per run, independent of whether/when a Dex sync
+  happens to run — see README's new "Price refresh" section.
+- `card_images.fetch_card_data` now checks the API's top match's name and
+  printed number against what was searched for (`_is_confident_match`)
+  before trusting its price — a low-confidence match still returns an image
+  (cosmetic, low stakes) but withholds the price (would silently corrupt
+  the Market Value KPI / value-growth charts). Surfaced as an import
+  warning (Dex-sync path) or `cards_low_confidence` in the response
+  (cron/price-refresh path) rather than auto-corrected.
+- `card_snapshots` gets a third possible `source` value, `"price-cron"`
+  (scheduled) — README's "Value history" section updated to note a day can
+  now show up to 3 points instead of 2, and that a same-day *manual*
+  price-refresh trigger shares the `"manual"` slot with a same-day manual
+  Dex sync (last one to run wins that slot — not deduped/merged, just
+  flagging this as a real, if narrow, edge case rather than a bug that was
+  fixed).
+- 11 new tests: `test_price_refresh.py` (budget/staleness/ordering/low-
+  confidence behavior of `refresh_stale_prices`), `test_price_refresh_routes.py`
+  (the `/cron/price-refresh` route's auth + snapshot-source behavior),
+  plus new/updated cases in `test_card_images.py` and `test_importer.py`
+  for the confidence guard. Full suite green.
+- **Not yet verified against live TCGPlayer/pokemontcg.io data** — same
+  offline-test-suite caveat as the 2026-09-16 session above. Worth spot-
+  checking a real `/cron/price-refresh` run after deploy, and checking
+  whether the confidence guard causes more `cards_low_confidence` hits than
+  expected (e.g. from set-name formatting differences already documented as
+  a known false-negative source in `_is_confident_match`'s docstring).
+- Second source (eBay) from issue #93's "out of scope" section was not
+  touched — `price_source`/generic-schema question from issue #93 point 2
+  also wasn't revisited; `tcgplayer_price`/`tcgplayer_price_updated_at`
+  (already shipped in the 2026-09-16 session) remain TCGPlayer-specific
+  columns, not yet generalized for a second source.

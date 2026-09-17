@@ -85,6 +85,8 @@ def test_fetch_card_data_returns_image_and_price_from_one_call(monkeypatch):
             {
                 "data": [
                     {
+                        "name": "Pikachu",
+                        "number": "58",
                         "images": {"small": "https://example.com/a.png"},
                         "tcgplayer": {"prices": {"holofoil": {"market": 12.5}}},
                     }
@@ -99,13 +101,16 @@ def test_fetch_card_data_returns_image_and_price_from_one_call(monkeypatch):
     # The API returns USD; this app displays everything in NOK (see
     # _USD_TO_NOK), so the raw 12.5 must come back converted, not verbatim.
     assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    assert result.low_confidence_match is False
 
 
 def test_fetch_card_data_price_is_none_when_no_tcgplayer_data(monkeypatch):
     monkeypatch.setattr(
         card_images.httpx,
         "get",
-        lambda *a, **kw: _FakeResponse({"data": [{"images": {"small": "https://example.com/a.png"}}]}),
+        lambda *a, **kw: _FakeResponse(
+            {"data": [{"name": "Pikachu", "number": "58", "images": {"small": "https://example.com/a.png"}}]}
+        ),
     )
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
@@ -121,3 +126,56 @@ def test_fetch_card_data_returns_nones_on_no_match(monkeypatch):
 
     assert result.image_url is None
     assert result.tcgplayer_price is None
+
+
+def test_fetch_card_data_still_returns_image_but_not_price_on_low_confidence_match(monkeypatch):
+    # The API's fuzzy name search can return a same-named-but-different card
+    # (or a mismatched printed number) as the top result -- a wrong image is
+    # cosmetic, a wrong price silently corrupts the Market Value KPI, so
+    # price must be withheld while the image is still trusted.
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _FakeResponse(
+            {
+                "data": [
+                    {
+                        "name": "Raichu",
+                        "number": "26",
+                        "images": {"small": "https://example.com/a.png"},
+                        "tcgplayer": {"prices": {"holofoil": {"market": 12.5}}},
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
+
+    assert result.image_url == "https://example.com/a.png"
+    assert result.tcgplayer_price is None
+    assert result.low_confidence_match is True
+
+
+def test_fetch_card_data_number_mismatch_is_also_low_confidence(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _FakeResponse(
+            {
+                "data": [
+                    {
+                        "name": "Pikachu",
+                        "number": "99",
+                        "images": {"small": "https://example.com/a.png"},
+                        "tcgplayer": {"prices": {"holofoil": {"market": 12.5}}},
+                    }
+                ]
+            }
+        ),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
+
+    assert result.tcgplayer_price is None
+    assert result.low_confidence_match is True

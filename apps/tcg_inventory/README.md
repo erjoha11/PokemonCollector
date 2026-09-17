@@ -242,6 +242,29 @@ collection + Vintage + whatever else you track) — each cron run syncs
 whatever's in there at the time, same as selecting every file on the
 Import page manually.
 
+### Price refresh (Vercel Cron)
+
+Each card's `tcgplayer_price` (see `models.Card.display_price`) is normally
+refreshed as a side effect of a Dex sync — but that means pricing only gets
+fresher when a sync happens to run. `vercel.json` schedules a second,
+independent cron job, `GET /cron/price-refresh` (`0 6 * * *`, one hour after
+the Dropbox sync — edit `vercel.json` to change it), so pricing keeps moving
+on its own schedule regardless of Dex sync frequency. It walks up to 100
+cards oldest-priced (and never-priced) first per run — see
+`price_refresh.py` — using the same `CRON_SECRET` auth pattern as
+`/cron/dropbox-sync` (see that section above for setup) and writing its own
+`card_snapshots` row (`source="price-cron"`) right after refreshing.
+
+The underlying `pokemontcg.io` lookup (`card_images.fetch_card_data`, also
+used for card images) does fuzzy name matching, so its top result isn't
+guaranteed to be the exact card searched for. A returned card's name and
+printed number must match exactly before its price is trusted — a
+low-confidence match still yields an image (cosmetic, low stakes) but never
+a price (would silently corrupt the Market Value KPI and value-growth
+charts). Low-confidence matches are skipped and listed in the response's
+`cards_low_confidence` (also surfaced as an import warning when triggered
+via a Dex sync instead) — worth a manual look, not auto-corrected.
+
 ### Value history
 
 `collection_value_growth` (Transactions' "View charts" section, top chart) is an
@@ -256,14 +279,19 @@ unique/duplicates/total metric filter. It's empty until snapshots
 accumulate (starts from whenever this table was added — there's no way to
 backfill history for dates before it existed).
 
-Up to two points per day: the scheduled cron run (`CardSnapshot.source="cron"`)
-and, separately, the latest off-schedule sync that day
-(`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync` hit by
-hand with `?secret=` instead of the real Vercel cron header). Re-running
-either one again the same day overwrites that same slot rather than adding
-a third point, so the chart never grows more than 2 points/day. There is no
+Up to two points per day from the Dex-sync side: the scheduled cron run
+(`CardSnapshot.source="cron"`) and, separately, the latest off-schedule sync
+that day (`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync`
+hit by hand with `?secret=` instead of the real Vercel cron header).
+Re-running either one again the same day overwrites that same slot rather
+than adding a third point. `/cron/price-refresh` (see "Price refresh" above)
+writes its own independent slot the same way (`source="price-cron"` when
+scheduled, `"manual"` when triggered by hand — note this can collide with a
+same-day manual Dex sync's slot; a real day with both shows only the later
+one's total under the shared "manual" label), so a day can have up to three
+points if both cron jobs and a manual sync all land on it. There is no
 manual CSV-upload page in the app (removed — the only sync entry points are
-the Dropbox-based ones above).
+the Dropbox-based ones above and the price-refresh cron).
 
 ## Project layout
 
@@ -276,6 +304,8 @@ the Dropbox-based ones above).
 - `importer.py` — CSV parsing and sync logic.
 - `queries.py` — dashboard aggregation queries.
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
+- `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
+  sync (see "Price refresh" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
 - `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.
