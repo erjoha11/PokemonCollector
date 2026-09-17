@@ -307,5 +307,19 @@ network access or the app's real `tcg_inventory.db` involved.
   (`CREATE TABLE IF NOT EXISTS`, via SQLAlchemy). A schema change later
   will need a real migration (e.g. Alembic) rather than editing a live
   Supabase table by hand.
+  - `init_db()` gates its migration chain (`create_all()` →
+    `_add_missing_columns()` → `_normalize_legacy_transaction_types()` →
+    `_widen_card_snapshot_source_constraint()`) behind a single-row
+    `schema_meta` table + `db.CURRENT_SCHEMA_VERSION` constant, so a
+    serverless cold start against an already-migrated Supabase database
+    does one `SELECT` and returns instead of a chain of round trips on
+    every single request-serving process boot. Every migration function
+    stays idempotent regardless — the version check is a fast path
+    *around* the chain, not a replacement for it. A new migration is still
+    added as a new function appended to the chain, gated by bumping
+    `CURRENT_SCHEMA_VERSION`. If a schema/data change is ever made by hand
+    against prod (see `HANDOFF.md`) instead of through this chain, also
+    bump `schema_meta`'s stored version accordingly — otherwise this gate
+    will skip a migration that should still run.
 - Silent session refresh — an expired Supabase session redirects to
   `/login` instead of refreshing quietly in the background.
