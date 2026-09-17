@@ -45,14 +45,27 @@
    text differs. `datasets` is a list of {label, data, color} dicts -- color
    should be `--viz-series-1`/`-2`'s actual hex (#2a78d6 / #eb6834), since
    Chart.js needs a real color string, not a CSS var. `chart_type` is
-   Chart.js's own 'line' or 'bar'. Call inside `{% call %}...{% endcall %}`
-   to add a "View as table" (or similar) block after the chart -- each
-   caller's underlying data shape differs (value growth has an Added
-   column, real history and cash flow don't/have their own), so that detail
-   table is left to the caller rather than parameterized here. #}
-{% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='') %}
+   Chart.js's own 'line' or 'bar'. `stats` is an optional list of
+   {label, value, delta_class} dicts rendered as a compact KPI row between
+   the heading and the chart itself (reuses Transactions' `.tx-kpi-label`/
+   `.tx-kpi-value` styling; `delta_class` is 'gain'/'loss' for
+   `viz-delta-gain`/`viz-delta-loss` coloring, e.g. a gain/loss figure) --
+   for a chart that IS the headline KPI visual (the Market Value chart), not
+   just a plain trend line. Call inside `{% call %}...{% endcall %}` to add
+   a "View as table" (or similar) block after the chart -- each caller's
+   underlying data shape differs (real history and cash flow have their own
+   columns), so that detail table is left to the caller rather than
+   parameterized here. #}
+{% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='', stats=none) %}
 <div class="card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
   <h2>{{ heading | safe }}</h2>
+  {% if stats %}
+  <div class="chart-kpi-bar">
+    {% for s in stats %}
+    <div><span class="tx-kpi-label">{{ s.label }}</span><span class="tx-kpi-value{{ ' viz-delta-gain' if s.delta_class == 'gain' else (' viz-delta-loss' if s.delta_class == 'loss' else '') }}">{{ s.value | kr }}</span></div>
+    {% endfor %}
+  </div>
+  {% endif %}
   {% if metric_options %}
   <div class="viz-filter">
     {% for key, label, href in metric_options %}

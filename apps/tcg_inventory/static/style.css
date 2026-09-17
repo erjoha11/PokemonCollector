@@ -809,6 +809,15 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-filter-pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .viz-delta-gain { color: #0ca30c; }
 .viz-delta-loss { color: #d03b3b; }
+.chart-kpi-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.75rem;
+  margin: 0.4rem 0 0.9rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+.chart-kpi-bar > div { display: flex; align-items: baseline; gap: 0.45rem; }
 
 .wiki-diagram {
   overflow-x: auto;

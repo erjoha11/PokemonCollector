@@ -46,19 +46,18 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set dashboard_value_growth_heading %}Value growth {{ info("Uses today's price applied to the date each card was added — an approximation, not an exact historical value. See Transactions for the full financial picture.", below=true) }}{% endset %}
-  {% set dashboard_value_growth_datasets = [
-    {"label": metric_label, "data": value_growth | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
-    {"label": comparison_label, "data": comparison_values, "color": "#eb6834"},
+  {% set dashboard_market_value_heading %}Market Value {{ info("The collection's actual value on each date a daily snapshot was taken — real historical prices, not an estimate. See Transactions for the full financial picture. Empty until at least one day of snapshots has accumulated.", below=true) }}{% endset %}
+  {% set dashboard_market_value_datasets = [
+    {"label": metric_label, "data": market_value_history | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
   ] %}
-  {% call chart_card('dashboard-value-growth-card', dashboard_value_growth_heading, 'line', value_growth | map(attribute="label") | list, dashboard_value_growth_datasets, metric_options, metric, extra_class='viz-root') %}
+  {% call chart_card('dashboard-market-value-card', dashboard_market_value_heading, 'line', market_value_history | map(attribute="label") | list, dashboard_market_value_datasets, metric_options, metric, extra_class='viz-root', stats=market_value_stats) %}
   <details>
     <summary>View as table</summary>
     <table style="margin-top: 0.6rem;">
-      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
+      <thead><tr><th>Date</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
       <tbody>
-        {% for row in value_growth %}
-        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
+        {% for row in market_value_history %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

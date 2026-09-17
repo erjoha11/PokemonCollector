@@ -212,6 +212,21 @@ def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
     return f"{path}?" + urlencode(params)
 
 
+def _market_value_stats(headline: dict, economic: dict) -> list[dict]:
+    """The Net invested / Current value / Gain-loss row shown inside the
+    Market Value chart itself (see `chart_card`'s `stats` param in
+    macros.html) -- same formula as Transactions' `.tx-kpi-bar` (`delta`
+    below), always against unique_value regardless of the chart's own
+    metric toggle, matching Bucket.gain_loss elsewhere.
+    """
+    gain_loss = headline["unique_value"] - economic["net_invested"]
+    return [
+        {"label": "Net invested", "value": economic["net_invested"]},
+        {"label": "Current value", "value": headline["unique_value"]},
+        {"label": "Gain / loss", "value": gain_loss, "delta_class": "gain" if gain_loss >= 0 else "loss"},
+    ]
+
+
 @app.get("/")
 def dashboard(
     request: Request,
@@ -253,11 +268,7 @@ def dashboard(
         # Renders via the shared chart_card macro (macros.html), the same
         # module Transactions uses -- see /transactions for the full
         # economic breakdown this is a compact preview of.
-        value_growth = queries.collection_value_growth(db, cards, metric=metric)
-        comparison_metric = "total" if metric == "unique" else "unique"
-        comparison_growth = queries.collection_value_growth(db, cards, metric=comparison_metric)
-        comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
-        comparison_values = [comparison_by_label.get(row["label"], 0) for row in value_growth]
+        market_value_history = queries.real_value_history(db, metric=metric)
         metric_label = queries.VALUE_GROWTH_METRICS[metric][0]
         metric_options = [
             (key, label, _metric_url(request, key)) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
@@ -322,11 +333,10 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
-                "value_growth": value_growth,
-                "comparison_values": comparison_values,
+                "market_value_history": market_value_history,
+                "market_value_stats": _market_value_stats(headline, economic),
                 "metric": metric,
                 "metric_label": metric_label,
-                "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],
                 "metric_options": metric_options,
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
@@ -1446,25 +1456,20 @@ def transactions_charts(request: Request, metric: str = "unique"):
         metric = "unique"
     db = get_db_session()
     try:
-        value_growth = queries.collection_value_growth(db, metric=metric)
-        comparison_metric = "total" if metric == "unique" else "unique"
-        comparison_growth = queries.collection_value_growth(db, metric=comparison_metric)
-        comparison_by_label = {row["label"]: row["cumulative_value"] for row in comparison_growth}
-        comparison_values = [comparison_by_label.get(row["label"], 0) for row in value_growth]
-        real_history = queries.real_value_history(db, metric=metric)
+        market_value_history = queries.real_value_history(db, metric=metric)
         cash_flow = queries.cash_flow_by_month(db)
+        headline = queries.headline_summary(db)
+        economic = queries.economic_summary(db)
 
         return templates.TemplateResponse(
             request,
             "partials/transactions_charts.html",
             {
-                "value_growth": value_growth,
-                "comparison_values": comparison_values,
-                "real_history": real_history,
+                "market_value_history": market_value_history,
+                "market_value_stats": _market_value_stats(headline, economic),
                 "cash_flow": cash_flow,
                 "metric": metric,
                 "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
-                "comparison_label": queries.VALUE_GROWTH_METRICS[comparison_metric][0],
                 "metric_options": [
                     (key, label, _metric_url(request, key, path="/transactions/charts"))
                     for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()

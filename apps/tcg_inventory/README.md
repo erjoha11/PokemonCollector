@@ -289,17 +289,28 @@ the wrong print.
 
 ### Value history
 
-`collection_value_growth` (Transactions' "View charts" section, top chart) is an
-*approximation*: it applies today's price retroactively to each card's
-`created_at` month, because Dex gives no historical prices. `card_snapshots`
-fixes that going forward — every sync writes one row per card (`qty` +
-`reference_price` as of that day) right after it completes, so
-`queries.real_value_history` can report what the collection was *actually*
-worth on a given date, not an estimate. It's rendered as its own "Real value
-history" chart, right below the approximation, using the same
-unique/duplicates/total metric filter. It's empty until snapshots
-accumulate (starts from whenever this table was added — there's no way to
-backfill history for dates before it existed).
+`card_snapshots` records real history going forward — every sync writes one
+row per card (`qty` + `reference_price` as of that day) right after it
+completes, so `queries.real_value_history` can report what the collection
+was *actually* worth on a given date, not an estimate. It's rendered as the
+**"Market Value" chart** on both Dashboard and Transactions' "View charts"
+section, using the unique/duplicates/total metric filter, with a stat row
+(Net invested / Current value / Gain-loss, `queries.economic_summary` +
+`headline_summary`) built into the chart card itself (`chart_card`'s
+`stats` param in `macros.html`) rather than off in a separate KPI tile.
+
+Note: "Market Value" is also the name of an existing KPI tile
+(`headline.total_value`, `kpi_module.html`) showing today's snapshot value —
+the chart is that same number's history over time, not a different metric.
+This was a deliberate naming choice, accepted despite the two elements
+sharing a label on the same page.
+
+Empty until snapshots accumulate (starts from whenever `card_snapshots` was
+added — there's no way to backfill history for dates before it existed).
+There is no longer an approximation chart (the old `collection_value_growth`,
+which applied today's price retroactively to each card's `created_at`
+month) rendered anywhere in the UI — the function itself is still in
+`queries.py` and unit-tested, just unused by any route now.
 
 Up to two points per day from the Dex-sync side: the scheduled cron run
 (`CardSnapshot.source="cron"`) and, separately, the latest off-schedule sync
