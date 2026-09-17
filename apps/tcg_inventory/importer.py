@@ -240,7 +240,7 @@ def import_dex_csv_files(
                 or card.tcgplayer_price_updated_at < price_stale_cutoff
             ) and price_lookup_budget > 0
             if needs_image or needs_price:
-                api_data = card_images.fetch_card_data(card.name, card.set, card.number)
+                api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
                 if needs_image:
                     card.image_url = api_data.image_url
                     image_lookup_budget -= 1
@@ -248,6 +248,14 @@ def import_dex_csv_files(
                     if api_data.tcgplayer_price is not None:
                         card.tcgplayer_price = api_data.tcgplayer_price
                         card.tcgplayer_price_updated_at = today
+                        if api_data.variant_price_uncertain:
+                            result.warnings.append(
+                                f"{card.name} ({card.set or '?'} {card.number or '?'}"
+                                f"{f', {card.variant}' if card.variant else ''}): "
+                                "card has multiple TCGPlayer prints and the price used "
+                                "couldn't be matched to this card's variant -- worth a "
+                                "manual look."
+                            )
                     elif api_data.low_confidence_match:
                         result.warnings.append(
                             f"{card.name} ({card.set or '?'} {card.number or '?'}): "

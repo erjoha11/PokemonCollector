@@ -20,7 +20,7 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     _add_card(client)
     monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number: card_images.CardApiData(None, 9.99)
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
     )
 
     response = client.get("/cron/price-refresh", headers={"Authorization": "Bearer s3cr3t"})
@@ -44,7 +44,7 @@ def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     _add_card(client)
     monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number: card_images.CardApiData(None, 9.99)
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
     )
 
     response = client.get("/cron/price-refresh?secret=s3cr3t")
@@ -64,7 +64,7 @@ def test_cron_price_refresh_reports_low_confidence_matches(client, monkeypatch):
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: card_images.CardApiData(
+        lambda name, set_name, number, variant=None: card_images.CardApiData(
             image_url=None, tcgplayer_price=None, low_confidence_match=True
         ),
     )

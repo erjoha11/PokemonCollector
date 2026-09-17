@@ -79,7 +79,7 @@ def test_my_collection_fetches_tcgplayer_price_for_a_card_missing_one(db_session
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
+        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
     )
     csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])
@@ -99,7 +99,7 @@ def test_my_collection_does_not_refetch_a_fresh_tcgplayer_price(db_session, monk
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: calls.append(1)
+        lambda name, set_name, number, variant=None: calls.append(1)
         or card_images.CardApiData("https://example.com/a.png", 5.0),
     )
     csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
@@ -120,7 +120,7 @@ def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: card_images.CardApiData(None, 42.0),
+        lambda name, set_name, number, variant=None: card_images.CardApiData(None, 42.0),
     )
     csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])
@@ -134,7 +134,7 @@ def test_my_collection_warns_instead_of_pricing_on_low_confidence_match(db_sessi
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: card_images.CardApiData(
+        lambda name, set_name, number, variant=None: card_images.CardApiData(
             image_url=None, tcgplayer_price=None, low_confidence_match=True
         ),
     )
@@ -147,6 +147,25 @@ def test_my_collection_warns_instead_of_pricing_on_low_confidence_match(db_sessi
     # Dex's own price is untouched -- a low-confidence API match should never
     # clobber a price the collection already had.
     assert card.reference_price == 0.48
+
+
+def test_my_collection_warns_but_still_prices_on_variant_uncertain_match(db_session, monkeypatch):
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: card_images.CardApiData(
+            image_url=None, tcgplayer_price=99.0, variant_price_uncertain=True
+        ),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "variant": "Holo"}])
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    # Unlike a low-confidence name/number match, a variant-uncertain match
+    # is still trusted for pricing (same card, just possibly the wrong
+    # print) -- just surfaced as worth a manual look.
+    assert card.tcgplayer_price == 99.0
+    assert any("multiple TCGPlayer prints" in w for w in result.warnings)
 
 
 def test_my_collection_same_id_different_variant_creates_two_cards(db_session):

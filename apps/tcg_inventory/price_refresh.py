@@ -37,6 +37,7 @@ class PriceRefreshResult:
     cards_checked: int = 0
     cards_updated: int = 0
     cards_low_confidence: list[str] = field(default_factory=list)
+    cards_variant_uncertain: list[str] = field(default_factory=list)
 
 
 def refresh_stale_prices(
@@ -72,11 +73,15 @@ def refresh_stale_prices(
 
     for card in candidates[:budget]:
         result.cards_checked += 1
-        api_data = card_images.fetch_card_data(card.name, card.set, card.number)
+        api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
         if api_data.tcgplayer_price is not None:
             card.tcgplayer_price = api_data.tcgplayer_price
             card.tcgplayer_price_updated_at = today
             result.cards_updated += 1
+            if api_data.variant_price_uncertain:
+                result.cards_variant_uncertain.append(
+                    f"{card.name} ({card.set or '?'} {card.number or '?'})"
+                )
         elif api_data.low_confidence_match:
             result.cards_low_confidence.append(
                 f"{card.name} ({card.set or '?'} {card.number or '?'})"

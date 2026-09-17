@@ -1246,6 +1246,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
             f"[cron/price-refresh] ok: checked={result.cards_checked} "
             f"updated={result.cards_updated} "
             f"low_confidence={len(result.cards_low_confidence)} "
+            f"variant_uncertain={len(result.cards_variant_uncertain)} "
             f"snapshotted={snapshotted}"
         )
         return {
@@ -1253,6 +1254,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "cards_checked": result.cards_checked,
             "cards_updated": result.cards_updated,
             "cards_low_confidence": result.cards_low_confidence,
+            "cards_variant_uncertain": result.cards_variant_uncertain,
             "cards_snapshotted": snapshotted,
         }
     finally:

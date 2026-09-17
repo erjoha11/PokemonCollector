@@ -179,3 +179,98 @@ def test_fetch_card_data_number_mismatch_is_also_low_confidence(monkeypatch):
 
     assert result.tcgplayer_price is None
     assert result.low_confidence_match is True
+
+
+def _fake_multi_variant_response(**prices):
+    return _FakeResponse(
+        {
+            "data": [
+                {
+                    "name": "Pikachu",
+                    "number": "58",
+                    "images": {"small": "https://example.com/a.png"},
+                    "tcgplayer": {"prices": {key: {"market": market} for key, market in prices.items()}},
+                }
+            ]
+        }
+    )
+
+
+def test_fetch_card_data_single_priced_variant_is_never_uncertain(monkeypatch):
+    # Only one priced print exists -- nothing to disambiguate, regardless of
+    # what Dex's own Variant says (or doesn't say).
+    monkeypatch.setattr(card_images.httpx, "get", lambda *a, **kw: _fake_multi_variant_response(holofoil=12.5))
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Some Unrelated Variant Text")
+
+    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is False
+
+
+def test_fetch_card_data_matches_reverse_holo_variant_among_several(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(normal=5.0, reverseHolofoil=20.0),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Reverse Holo")
+
+    assert result.tcgplayer_price == round(20.0 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is False
+
+
+def test_fetch_card_data_matches_normal_variant_among_several(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(normal=5.0, reverseHolofoil=20.0),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Normal")
+
+    assert result.tcgplayer_price == round(5.0 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is False
+
+
+def test_fetch_card_data_matches_1st_edition_variant_among_several(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(**{"unlimited": 8.0, "1stEditionHolofoil": 50.0}),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "1st Edition Holo")
+
+    assert result.tcgplayer_price == round(50.0 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is False
+
+
+def test_fetch_card_data_ambiguous_variant_among_several_falls_back_but_flags_uncertain(monkeypatch):
+    # A plain "Holo" doesn't disambiguate between holofoil/reverseHolofoil/
+    # unlimitedHolofoil on purpose (see _VARIANT_HINTS) -- still returns a
+    # best-effort price (the first one present) rather than none at all, but
+    # flags it so callers can surface it instead of trusting a guess.
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(holofoil=12.5, reverseHolofoil=20.0),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Holo")
+
+    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is True
+
+
+def test_fetch_card_data_missing_variant_with_several_priced_prints_is_uncertain(monkeypatch):
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(normal=5.0, reverseHolofoil=20.0),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
+
+    assert result.tcgplayer_price == round(5.0 * card_images._USD_TO_NOK, 2)
+    assert result.variant_price_uncertain is True
