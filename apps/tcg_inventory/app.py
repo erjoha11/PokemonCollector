@@ -667,6 +667,15 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
         # it set (e.g. rows added before this field existed).
         purchase_total = next((t.purchase_total for t in group_txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in group_txs if t.purchase_shipping is not None), None)
+        # Unlike purchase_total/purchase_shipping (always set uniformly across
+        # a group already, per the comment above), platform can legitimately
+        # disagree across rows if a group was built up piecemeal via
+        # individual per-row edits. Only prefill the bulk-edit field when
+        # every row that has a platform set agrees on the same value;
+        # otherwise leave it blank rather than assume one row's value speaks
+        # for the whole order.
+        row_platforms = {t.platform for t in group_txs if t.platform}
+        group_platform = next(iter(row_platforms)) if len(row_platforms) == 1 else None
         purchase_groups.append(
             {
                 "purchase_id": pid,
@@ -675,6 +684,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "total_fees": sum(t.fees or 0 for t in group_txs),
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
+                "platform": group_platform,
                 # What's left unaccounted for once both the card prices and
                 # any declared shipping are subtracted -- e.g. normal-print
                 # cards not priced individually yet. None when no declared
@@ -895,18 +905,25 @@ def create_purchase(
 
 @app.post("/transactions/purchase/{purchase_id}/total")
 def set_purchase_total(
-    purchase_id: int, purchase_total: float | None = Form(None), purchase_shipping: float | None = Form(None)
+    purchase_id: int,
+    purchase_total: float | None = Form(None),
+    purchase_shipping: float | None = Form(None),
+    platform: str | None = Form(None),
 ):
-    """Sets (or clears) the declared total and shipping cost for every row
-    already sharing this purchase_id — the "agreed"/shipping half of the
-    registered/shipping/agreed/diff line in History, editable after the
-    fact for purchases built up piecemeal (e.g. via direct reconciliation)
-    rather than through the cart form.
+    """Sets (or clears) the declared total, shipping cost, and platform for
+    every row already sharing this purchase_id — the "agreed"/shipping half
+    of the registered/shipping/agreed/diff line in History, editable after
+    the fact for purchases built up piecemeal (e.g. via direct
+    reconciliation) rather than through the cart form. Platform is a
+    bulk-overwrite of the whole order, same semantics as total/shipping — a
+    blank submission clears it (sets NULL) on every row, matching per-row
+    edit behavior; a mixed order that should keep one card on a different
+    platform still needs the per-row edit form.
     """
     db = get_db_session()
     try:
         db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(
-            {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping}
+            {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping, "platform": platform or None}
         )
         db.commit()
         return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
