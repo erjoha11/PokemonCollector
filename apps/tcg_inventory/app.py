@@ -660,7 +660,14 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
             groups.setdefault(tx.purchase_id, []).append(tx)
     purchase_groups = []
     for pid, group_txs in groups.items():
-        total_price = sum(t.price for t in group_txs)
+        # A group can legitimately mix purchase/sale rows (both real cash
+        # flow, both belong in the registered total) with trade rows (no
+        # cash changes hands -- see models.py Transaction.type) if it was
+        # built up piecemeal via direct DB edits (see HANDOFF.md's 2026-09-14
+        # entry, order #11). A trade row's price must never contribute to
+        # the registered total or its diff against the agreed total.
+        priced_txs = [t for t in group_txs if t.type != "trade"]
+        total_price = sum(t.price for t in priced_txs)
         # Every row in a group carries its own copy of the same value (same
         # redundant-per-row pattern as date/platform) -- take whichever one
         # isn't null, since not all of a group's rows are guaranteed to have
@@ -681,7 +688,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "purchase_id": pid,
                 "transactions": sorted(group_txs, key=lambda t: t.price, reverse=True),
                 "total_price": total_price,
-                "total_fees": sum(t.fees or 0 for t in group_txs),
+                "total_fees": sum(t.fees or 0 for t in priced_txs),
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
                 "platform": group_platform,
@@ -898,7 +905,12 @@ def create_purchase(
                 )
             )
         db.commit()
-        return RedirectResponse("/transactions", status_code=303)
+        # Same open_order + hx-select/hx-target/hx-swap="outerHTML" pattern
+        # as set_purchase_total below -- htmx swaps in just the newly
+        # registered order's <details> (open, per open_order) instead of
+        # navigating the whole page, so any other expanded groups / sort
+        # state on Transactions survive registering an order.
+        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
     finally:
         db.close()
 

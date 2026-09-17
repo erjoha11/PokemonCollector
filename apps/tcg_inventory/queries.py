@@ -482,14 +482,46 @@ def cash_flow_by_month(db: Session) -> list[dict]:
     return result
 
 
+def _purchase_shipping_total(txs: list[Transaction]) -> float:
+    """Sum of `purchase_shipping` across `txs`, counted once per order.
+
+    Every purchase-type row sharing a `purchase_id` carries an identical copy
+    of that order's shipping cost (see `app.py::create_purchase` -- the same
+    value is written onto every row when the order is registered, it's not
+    divided across cards), so naively summing `t.purchase_shipping` per row
+    would multiply a single shipping charge by however many cards were in
+    the lot. A row with no `purchase_id` (registered individually) counts its
+    own shipping value on its own. Mirrors
+    `app.py::_group_transactions_by_purchase`'s diff line, which also only
+    ever subtracts shipping once per group.
+    """
+    total = 0.0
+    seen_purchase_ids: set[int] = set()
+    for t in txs:
+        if t.type != "purchase" or not t.purchase_shipping:
+            continue
+        if t.purchase_id is None:
+            total += t.purchase_shipping
+        elif t.purchase_id not in seen_purchase_ids:
+            seen_purchase_ids.add(t.purchase_id)
+            total += t.purchase_shipping
+    return total
+
+
 def economic_summary(db: Session) -> dict:
     """Total real money in/out across every registered transaction, plus the
     "paper" gain/loss against today's collection value (unique_value, so
     duplicates don't inflate it) -- unrealized, since it compares a real
     amount paid against today's reference price, not a sale.
+
+    Purchase-side spend includes `purchase_shipping` (see
+    `_purchase_shipping_total`) alongside price + fees -- previously omitted
+    here even though `_group_transactions_by_purchase`'s per-order diff line
+    already accounted for it, understating the "Net invested"/"Paper
+    gain/loss" KPIs whenever any order had shipping set.
     """
     txs = db.query(Transaction).all()
-    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "purchase")
+    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "purchase") + _purchase_shipping_total(txs)
     total_sold = sum(t.price for t in txs if t.type == "sale")
     net_invested = total_bought - total_sold
     return {
@@ -500,11 +532,30 @@ def economic_summary(db: Session) -> dict:
 
 
 def net_invested_by_card(db: Session) -> dict[int, float]:
-    """Return actual net investment per card using economic-summary rules."""
+    """Return actual net investment per card using economic-summary rules.
+
+    Like `economic_summary`, this now includes `purchase_shipping`. Since
+    shipping is a per-order cost, not per-card, it's attributed in full to a
+    single card per order -- the lowest transaction id in that `purchase_id`
+    group (the `order_by` below makes this deterministic) -- rather than
+    split across every card in the lot. This keeps
+    `sum(net_invested_by_card(db).values())` consistent with
+    `economic_summary`'s `net_invested`; the tradeoff is that one card's own
+    figure can look inflated relative to its lot-mates when a multi-card
+    order has shipping set. A row with no `purchase_id` counts its own
+    shipping on its own card, same as `_purchase_shipping_total`.
+    """
     invested: dict[int, float] = {}
-    for tx in db.query(Transaction).all():
+    seen_purchase_ids: set[int] = set()
+    for tx in db.query(Transaction).order_by(Transaction.purchase_id, Transaction.id).all():
         if tx.type == "purchase":
             amount = tx.price + (tx.fees or 0.0)
+            if tx.purchase_shipping:
+                if tx.purchase_id is None:
+                    amount += tx.purchase_shipping
+                elif tx.purchase_id not in seen_purchase_ids:
+                    seen_purchase_ids.add(tx.purchase_id)
+                    amount += tx.purchase_shipping
         elif tx.type == "sale":
             amount = -tx.price
         else:
