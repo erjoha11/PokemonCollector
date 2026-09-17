@@ -1,0 +1,30 @@
+{% if draft.truncated_title %}
+<p class="warnings">Title was shortened to fit finn.no's length limit — double-check it still reads well.</p>
+{% endif %}
+<div class="ad-draft">
+  <label>
+    Title
+    <div class="ad-draft-field">
+      <input type="text" id="ad-title" value="{{ draft.title }}">
+      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('ad-title').value)">Copy</button>
+    </div>
+  </label>
+  <label>
+    Description
+    <div class="ad-draft-field">
+      <textarea id="ad-description" rows="12">{{ draft.description }}</textarea>
+      <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('ad-description').value)">Copy</button>
+    </div>
+  </label>
+
+  <form hx-post="/sales/mark-listed" hx-target="#ad-draft" hx-swap="innerHTML"
+        onsubmit="document.getElementById('mark-listed-title').value = document.getElementById('ad-title').value; document.getElementById('mark-listed-description').value = document.getElementById('ad-description').value;">
+    {% for cid in card_ids %}
+    <input type="hidden" name="card_id" value="{{ cid }}">
+    {% endfor %}
+    <input type="hidden" id="mark-listed-title" name="title" value="{{ draft.title }}">
+    <input type="hidden" id="mark-listed-description" name="description" value="{{ draft.description }}">
+    <input type="hidden" name="suggested_price" value="{{ draft.suggested_price or '' }}">
+    <button type="submit">Mark as listed</button>
+  </form>
+</div>

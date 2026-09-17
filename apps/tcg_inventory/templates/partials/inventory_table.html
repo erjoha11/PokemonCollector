@@ -8,6 +8,7 @@
   <table class="inventory-table">
     <thead>
       <tr>
+        <th></th>
         <th>{{ sort_link('name', 'Name') }}</th>
         <th>{{ sort_link('number', 'No.') }}</th>
         <th>{{ sort_link('series', 'Series') }}</th>
@@ -31,6 +32,7 @@
     <tbody>
       {% for card in cards %}
       <tr>
+        <td><input type="checkbox" class="sale-select" data-card-id="{{ card.id }}"></td>
         <td>{{ dex_link(card) }}</td>
         <td>{{ card.number or '' }}</td>
         <td>{{ card.series or '' }}</td>
@@ -51,7 +53,7 @@
         <td>{{ card.card_id }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="18" class="muted">No cards match the filter.</td></tr>
+      <tr><td colspan="19" class="muted">No cards match the filter.</td></tr>
       {% endfor %}
     </tbody>
   </table>

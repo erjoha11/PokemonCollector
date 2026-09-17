@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Sell on finn.no – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Sell on finn.no</h1>
+
+{% if not cards %}
+<p class="muted">
+  No cards selected. Go to <a href="/inventory">Inventory</a>, check the cards you want to sell, then
+  click "Generate finn.no ad".
+</p>
+{% else %}
+<p class="muted">Review quantity, condition, and asking price for each card, then generate the ad text.</p>
+
+<form hx-post="/sales/generate" hx-target="#ad-draft" hx-swap="innerHTML">
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Card</th>
+          <th class="num">Owned</th>
+          <th class="num">Qty to sell</th>
+          <th>Condition</th>
+          <th class="num">Asking price (kr)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for card in cards %}
+        <tr>
+          <td>
+            <input type="hidden" name="card_id" value="{{ card.id }}">
+            {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }})
+          </td>
+          <td class="num">{{ card.qty }}</td>
+          <td class="num">
+            <input type="number" name="qty" value="1" min="1" max="{{ card.qty }}" style="width: 4em;">
+          </td>
+          <td>
+            <select name="condition">
+              <option value="">{{ card.condition or 'Unknown' }}</option>
+              {% for c in conditions %}
+              <option value="{{ c }}">{{ c }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="num">
+            <input type="number" name="price" value="{{ card.display_price | round(0) if card.display_price is not none else '' }}" step="1" style="width: 6em;">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <button type="submit">Generate ad</button>
+</form>
+
+<div id="ad-draft"></div>
+{% endif %}
+{% endblock %}

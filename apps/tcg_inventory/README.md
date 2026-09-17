@@ -40,13 +40,21 @@ run).
 - **Sync Log** (`/import`) — read-only history of past syncs (daily cron,
   or a manual Dropbox sync). There is no manual CSV-upload page; see
   "Dropbox import setup" below for the only way to sync outside the cron.
+- **Sell on finn.no** (`/sales`) — check cards on Inventory (a new leading
+  checkbox column, selection tracked client-side and cleared on refresh —
+  see `static/sale-list.js`), click "Generate finn.no ad", then set
+  quantity/condition/asking price per card and generate a copy-paste
+  finn.no title + description (Norwegian ad copy — see "Sales listings"
+  below). "Mark as listed" records the ad but never changes `qty`; a real
+  sale is still only ever recorded via Transactions.
 
 ## Data model
 
 `cards`, `collections`, `card_collections` (many-to-many), `binders`,
-`transactions`, `card_snapshots` (see "Value history" below), plus
-`set_release_order` (a lookup table for chronological sorting — see
-"Chronological sorting" below).
+`transactions`, `card_snapshots` (see "Value history" below),
+`listings`/`listing_cards` (many-to-many, see "Sales listings (finn.no)"
+below), plus `set_release_order` (a lookup table for chronological sorting
+— see "Chronological sorting" below).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -101,6 +109,16 @@ without updating both the code and this doc.
    populate it (ask for it / provide a CSV and it can be loaded directly
    into that table). Until then, sorting falls back to name/series/set
    order in the Inventory table.
+7. **Sales listings (finn.no).** `Card.condition` is real per-card data
+   (nullable, vocabulary in `constants.CARD_CONDITIONS`) — deliberately the
+   same values as `apps/finn_ad_scraper/card_identifier.CONDITIONS`, kept
+   in sync by convention since apps never import from each other. A
+   generated ad the user marks "Mark as listed" (`/sales`) is recorded as a
+   `Listing` row (+ `listing_cards`), not a flag on `Card` — the common case
+   is a lot (several cards, one ad), which a per-card boolean/date can't
+   represent without duplicating a date across every card in it. Marking a
+   listing **never** changes `qty`, `card_collections`, or `binder_id` —
+   listed is not sold; a real sale is only ever recorded as a `Transaction`.
 
 ## CSV import format
 

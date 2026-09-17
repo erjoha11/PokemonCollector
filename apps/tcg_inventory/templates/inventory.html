@@ -55,4 +55,11 @@
 </form>
 
 {% include "partials/inventory_table.html" %}
+
+<div id="sale-list-bar" class="sale-list-bar" hidden>
+  <span><span id="sale-list-count">0</span> card(s) selected — selection is temporary and clears on refresh.</span>
+  <button type="button" id="sale-list-generate">Generate finn.no ad</button>
+  <button type="button" id="sale-list-clear" class="secondary">Clear</button>
+</div>
+<script src="/static/sale-list.js"></script>
 {% endblock %}

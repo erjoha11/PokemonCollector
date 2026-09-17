@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -26,11 +26,13 @@ from sqlalchemy.orm import Session, selectinload
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
 
+import ads
 import auth
 import dropbox_client
 import price_refresh
 import queries
 import snapshots
+from constants import CARD_CONDITIONS
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
 from models import (
@@ -39,6 +41,7 @@ from models import (
     Collection,
     FavoritePokemon,
     ImportLog,
+    Listing,
     PokemonAlias,
     SetReleaseOrder,
     Transaction,
@@ -577,6 +580,125 @@ def inventory(
             )
         template = "partials/inventory_table.html" if is_htmx else "inventory.html"
         return templates.TemplateResponse(request, template, context)
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Sales -- build a finn.no listing (title + description) from a selection of
+# cards made on Inventory (see static/sale-list.js for how the selection is
+# tracked client-side). Stateless generation (ads.py is a pure function);
+# "Mark as listed" is the only write, and it never touches qty/collections
+# -- listed != sold, see models.Listing's docstring.
+# --------------------------------------------------------------------------
+@app.get("/sales")
+def sales_review(request: Request, card_ids: list[int] = Query(default=[])):
+    db = get_db_session()
+    try:
+        cards = db.query(Card).filter(Card.id.in_(card_ids)).all() if card_ids else []
+        # Preserve the order the user selected them in, not the DB's own order.
+        cards_by_id = {c.id: c for c in cards}
+        cards = [cards_by_id[cid] for cid in card_ids if cid in cards_by_id]
+        return templates.TemplateResponse(
+            request,
+            "sales.html",
+            {"cards": cards, "conditions": CARD_CONDITIONS},
+        )
+    finally:
+        db.close()
+
+
+def _sale_items_from_form(
+    db: Session, card_ids: list[int], qtys: list[int], conditions: list[str], prices: list[str]
+) -> list[ads.SaleItem]:
+    cards_by_id = {c.id: c for c in db.query(Card).filter(Card.id.in_(card_ids)).all()}
+    items = []
+    for card_id, qty, condition, price_raw in zip(card_ids, qtys, conditions, prices):
+        card = cards_by_id.get(card_id)
+        if card is None:
+            continue
+        try:
+            price = float(price_raw) if price_raw not in (None, "") else None
+        except ValueError:
+            price = None
+        # Never let a stray form value exceed how many of this card exist --
+        # the qty being sold, unlike the card's own qty, is a per-listing
+        # decision that must not silently imply "sell everything owned".
+        qty = max(1, min(qty, card.qty)) if card.qty else max(1, qty)
+        items.append(
+            ads.SaleItem(
+                card_id=card.id,
+                name=card.name,
+                set=card.set,
+                number=card.number,
+                variant=card.variant,
+                language=card.language,
+                condition=condition or card.condition,
+                qty=qty,
+                price=price,
+            )
+        )
+    return items
+
+
+@app.post("/sales/generate")
+def sales_generate(
+    request: Request,
+    card_id: list[int] = Form(...),
+    qty: list[int] = Form(...),
+    condition: list[str] = Form(...),
+    price: list[str] = Form(...),
+):
+    db = get_db_session()
+    try:
+        # Persist any condition set here back onto the card -- it's real
+        # per-card data (see models.Card.condition), not scoped just to this
+        # one ad, so it should still be there next time this card is listed.
+        for cid, cond in zip(card_id, condition):
+            if cond:
+                db.query(Card).filter(Card.id == cid).update({"condition": cond})
+        db.commit()
+
+        items = _sale_items_from_form(db, card_id, qty, condition, price)
+        if not items:
+            raise HTTPException(status_code=400, detail="No cards selected")
+        draft = ads.build_listing(items)
+        return templates.TemplateResponse(
+            request,
+            "partials/ad_draft.html",
+            {"draft": draft, "card_ids": card_id},
+        )
+    finally:
+        db.close()
+
+
+@app.post("/sales/mark-listed")
+def sales_mark_listed(
+    request: Request,
+    card_id: list[int] = Form(...),
+    title: str = Form(...),
+    description: str = Form(...),
+    suggested_price: str = Form(""),
+):
+    db = get_db_session()
+    try:
+        cards = db.query(Card).filter(Card.id.in_(card_id)).all()
+        try:
+            price = float(suggested_price) if suggested_price else None
+        except ValueError:
+            price = None
+        listing = Listing(
+            created_at=dt.datetime.utcnow(),
+            title=title,
+            description=description,
+            suggested_price=price,
+            platform="finn.no",
+            status="active",
+        )
+        listing.cards = cards
+        db.add(listing)
+        db.commit()
+        return templates.TemplateResponse(request, "partials/listing_confirmation.html", {"listing": listing})
     finally:
         db.close()
 

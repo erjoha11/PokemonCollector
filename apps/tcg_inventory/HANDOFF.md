@@ -485,3 +485,51 @@ every correction previously required raw SQL against prod.
   is worth clicking through by hand before relying on it, since htmx
   target/swap wiring is easy to get subtly wrong in a way tests using the
   raw test client wouldn't catch.
+
+## New "Sell on finn.no" module — 2026-09-17 session
+
+A UX pass (`ux` agent) and architecture pass (`architect` agent) preceded
+this build — see PR description / git history for the full writeups. Ships
+as code only, no direct database changes.
+
+- New page `/sales`: select cards on Inventory (new checkbox column, tracked
+  client-side in `static/sale-list.js` via sessionStorage — deliberately not
+  server-persisted, and re-hydrated after every htmx filter/sort swap on
+  `#inventory-results` so switching filters mid-selection doesn't silently
+  drop already-checked cards) → "Generate finn.no ad" → review qty/condition/
+  price per card → generate a copy-paste finn.no title + description
+  (Norwegian ad copy, deterministic template, no LLM call — see `ads.py`).
+- **New persisted `Card.condition` column** (nullable string, vocabulary in
+  `constants.CARD_CONDITIONS` — a literal copy of
+  `apps/finn_ad_scraper/card_identifier.CONDITIONS`, kept in sync by
+  convention since apps don't import each other's code). Set whenever a
+  condition is chosen on `/sales`; real per-card data, not derived, so it's
+  a real column rather than an ephemeral generation-time-only input.
+- **New `listings` + `listing_cards` tables** (`models.Listing`): one row
+  per generated ad the user explicitly marks "Mark as listed" — title,
+  description, suggested price, platform (default "finn.no"), status. A
+  separate table rather than a boolean/date on `Card` because the primary
+  case is a lot (N cards, one ad) and a per-card flag can't represent that
+  grouping without duplicating a date across every card in the lot. Also
+  deliberately not a `Transaction` — a listing has no real cash flow yet,
+  and every economic query sums `Transaction.price` directly. **Marking a
+  card listed never changes `qty`/`card_collections`/`binder_id`** — listed
+  != sold; a real sale is still only ever recorded via Transactions.
+- Bumped `db.CURRENT_SCHEMA_VERSION` to 2 so the new column/tables actually
+  get created on an already-migrated Supabase database (the schema-version
+  gate added 2026-09-17 would otherwise skip `_add_missing_columns()`/
+  `create_all()` entirely on a cold start).
+- New tests: `tests/test_ads.py` (pure `ads.build_listing` unit tests —
+  single card, lot, mixed-set lot, missing price, title truncation, qty>1)
+  and `tests/test_sales.py` (routes: review page, generate, mark-listed,
+  and an explicit assertion that marking listed never touches `qty`). Full
+  suite green (243 passed).
+- **Not yet exercised in a real browser** — same caveat as the entry above;
+  worth clicking through the Inventory checkbox → sticky bar → `/sales` →
+  generate → copy → mark-listed flow by hand, especially the sessionStorage
+  re-hydration after an Inventory filter change, before relying on it.
+- **Deferred, not built**: CSV export of the sale list, an "already listed"
+  badge back on Inventory/`/sales` for a card with an active `Listing`, and
+  linking a `Listing` to the `Transaction` that eventually sells it
+  (`Listing.status` has a "sold" value reserved for this, nothing sets it
+  yet). None of these were asked for; flagging in case they come up.
