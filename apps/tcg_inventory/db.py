@@ -8,7 +8,7 @@ Vercel deployment -- see README.md "Deploying to Vercel + Supabase".
 import os
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import Column, Integer, Table, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import NullPool
 
@@ -56,6 +56,51 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 class Base(DeclarativeBase):
     pass
+
+
+# Bumped whenever a new migration step is appended to init_db()'s chain
+# below. See _get_schema_version()/_set_schema_version() -- this is a fast
+# path *around* the migration chain, not a replacement for it: every
+# function in the chain must stay idempotent and safe to re-run regardless
+# of this gate, per README.md "Database migrations".
+CURRENT_SCHEMA_VERSION = 1
+
+# A single-row table recording which schema version the migration chain has
+# already been run against, so a serverless cold start (Vercel + Supabase,
+# a fresh process per invocation -- see NullPool comment above) can skip the
+# whole create_all()/introspection/UPDATE chain with one SELECT once a
+# deploy's migrations have already applied once. Declared as a plain Table
+# (not a mapped model in models.py) since nothing in the app ever queries it
+# through the ORM -- it's purely init_db()'s own bookkeeping.
+schema_meta = Table(
+    "schema_meta",
+    Base.metadata,
+    Column("id", Integer, primary_key=True),
+    Column("version", Integer, nullable=False),
+)
+
+
+def _get_schema_version():
+    """Returns the stored schema version, or None if schema_meta doesn't
+    exist yet (brand-new database) or has no row yet.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("schema_meta"):
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("SELECT version FROM schema_meta WHERE id = 1")).fetchone()
+    return row[0] if row else None
+
+
+def _set_schema_version(version):
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO schema_meta (id, version) VALUES (1, :version) "
+                "ON CONFLICT (id) DO UPDATE SET version = :version"
+            ),
+            {"version": version},
+        )
 
 
 def get_db():
@@ -148,7 +193,22 @@ def _widen_card_snapshot_source_constraint():
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
+    # Fast path: on a serverless cold start against an already-migrated
+    # Supabase database, this is the *only* round trip init_db() makes
+    # before the process can serve its first request -- skips create_all()'s
+    # has_table checks, _add_missing_columns()'s introspection, and the
+    # UPDATE/ALTER calls below entirely. Only falls through to the full
+    # chain when the stored version is behind (or schema_meta doesn't exist
+    # yet -- brand-new database, or an already-live database seeing this
+    # gate for the first time). A manual/direct schema or data edit against
+    # prod (see HANDOFF.md) must also bump schema_meta's row, or this gate
+    # will incorrectly skip migrations that should still apply going
+    # forward.
+    if _get_schema_version() == CURRENT_SCHEMA_VERSION:
+        return
+
     Base.metadata.create_all(bind=engine)
     _add_missing_columns()
     _normalize_legacy_transaction_types()
     _widen_card_snapshot_source_constraint()
+    _set_schema_version(CURRENT_SCHEMA_VERSION)
