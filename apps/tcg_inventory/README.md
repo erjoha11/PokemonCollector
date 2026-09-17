@@ -28,7 +28,15 @@ run).
 - **Transactions** (`/transactions`) — a purchase/sale log per card, plus a
   compact economic snapshot (net invested, current value, paper gain/loss)
   and a collapsible "Vis grafer" section with the value-growth and cash-flow
-  charts (formerly the standalone Analyse page).
+  charts (formerly the standalone Analyse page). Each order group has an
+  "Edit order" link (`/transactions/purchase/{id}/edit`) for retyping,
+  relinking a card, adding a note, deleting a row, or moving/merging/
+  splitting rows between orders by reassigning Order ID — all edits in a
+  group commit atomically, and moving a row out of an order clears that
+  row's agreed total/shipping rather than guessing how to split it (set
+  the destination order's total/shipping afterward). A single ungrouped
+  row can still be edited in place via its own quick-edit form, including
+  its Order ID.
 - **Sync Log** (`/import`) — read-only history of past syncs (daily cron,
   or a manual Dropbox sync). There is no manual CSV-upload page; see
   "Dropbox import setup" below for the only way to sync outside the cron.

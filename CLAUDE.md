@@ -68,7 +68,7 @@ Data model: `cards`, `collections`, `card_collections` (many-to-many), `binders`
 
 Tests use an in-memory or temp-file SQLite database (`tests/conftest.py`'s `db_session`/`client` fixtures) — the real `tcg_inventory.db` is never touched. The `client` fixture monkeypatches `db.engine`/`db.SessionLocal` and reloads `app` so routes bind to the throwaway DB.
 
-There is no UI yet to edit an already-registered order (retype/relink/move/merge/split/add note) — this is a known, intentionally-deferred gap; corrections currently require raw SQL against the live database. See `apps/tcg_inventory/HANDOFF.md` for the most recent session's direct production-database changes (not reflected in git history) and any other open items before assuming the DB matches what a migration or seed script would produce.
+An already-registered order can be edited (retype/relink/move/merge/split/add note) via `/transactions/purchase/{id}/edit` — see `apps/tcg_inventory/README.md`'s Transactions section. See `apps/tcg_inventory/HANDOFF.md` for the most recent session's direct production-database changes (not reflected in git history) and any other open items before assuming the DB matches what a migration or seed script would produce.
 
 ## Agents and multi-session handoff
 

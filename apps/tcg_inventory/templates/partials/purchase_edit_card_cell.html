@@ -1,0 +1,16 @@
+{% macro purchase_edit_card_cell(purchase_id, tx_id, card) %}
+<td id="relink-cell-{{ tx_id }}">
+  <a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>
+  <span class="muted">({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})</span>
+  <input type="hidden" name="card_id" value="{{ card.id }}">
+  <details>
+    <summary class="muted" style="cursor: pointer;">Change card</summary>
+    <div class="autocomplete" style="max-width: 320px;">
+      <input type="text" placeholder="Search for replacement card..." autocomplete="off"
+             hx-get="/transactions/purchase/{{ purchase_id }}/edit/row/{{ tx_id }}/relink-search"
+             hx-trigger="keyup changed delay:250ms" hx-target="#relink-results-{{ tx_id }}" name="q">
+      <div id="relink-results-{{ tx_id }}"></div>
+    </div>
+  </details>
+</td>
+{% endmacro %}
