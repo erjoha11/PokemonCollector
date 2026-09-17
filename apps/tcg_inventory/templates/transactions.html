@@ -118,9 +118,11 @@
   <summary class="tx-order-summary">
     <span class="tx-order-id">Order #{{ group.purchase_id }}</span>
     <span class="tx-order-stat">{{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}</span>
-    <span class="tx-order-stat">Value {{ (group.total_price + group.total_fees) | kr }}</span>
-    {% if group.purchase_shipping %}<span class="tx-order-stat">Shipping &amp; cost {{ group.purchase_shipping | kr }}</span>{% endif %}
-    {% if group.diff is not none and group.diff | round(2) != 0 %}<span class="tx-order-stat tx-diff-flag">Diff {{ group.diff | kr }}</span>{% endif %}
+    <span class="tx-order-stat">Value {{ group.total_price | kr }}</span>
+    {% if group.total_fees %}<span class="tx-order-stat">Fees {{ group.total_fees | kr }}</span>{% endif %}
+    {% if group.purchase_shipping %}<span class="tx-order-stat">Shipping {{ group.purchase_shipping | kr }}</span>{% endif %}
+    {% if group.purchase_total is not none %}<span class="tx-order-stat">Total {{ group.purchase_total | kr }}</span>{% endif %}
+    {% if group.diff is not none and group.diff | round(2) != 0 %}<span class="tx-order-stat tx-diff-flag">Remaining {{ group.diff | kr }}</span>{% endif %}
     {% if group.summary_platform %}<span class="tx-platform-badge">{{ group.summary_platform }}</span>{% endif %}
   </summary>
   <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;"
