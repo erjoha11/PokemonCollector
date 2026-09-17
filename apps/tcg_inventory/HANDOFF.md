@@ -117,11 +117,12 @@ plus this file and the conversation transcript.
 
 ## Open items raised but intentionally not built
 
-- **No UI to edit an existing order** after it's registered (retype,
+- ~~**No UI to edit an existing order** after it's registered (retype,
   relink, move a card between orders, merge/split, add a note) — every
   correction above required raw SQL. This was flagged explicitly to the
   user as the single biggest real gap; they said current scope is fine and
-  declined to prioritize it, but it'll very likely come up again.
+  declined to prioritize it, but it'll very likely come up again.~~
+  **Addressed 2026-09-17** (issue #109) — see the dated entry below.
 - The "+ Legg til i ordre" silent-no-op-when-no-cart-is-open issue (see #86
   above) — **addressed below** (renamed to "+ Add to order", behavior
   itself unchanged).
@@ -425,3 +426,62 @@ producing a wrong price.
   also wasn't revisited; `tcgplayer_price`/`tcgplayer_price_updated_at`
   (already shipped in the 2026-09-16 session) remain TCGPlayer-specific
   columns, not yet generalized for a second source.
+
+## Order-level edit endpoint (issue #109) — 2026-09-17 session
+
+Closes the "No UI to edit an existing order" gap flagged repeatedly above —
+every correction previously required raw SQL against prod.
+
+- New `Transaction.note` column (`models.py`), nullable, additive, picked
+  up automatically by `db.py`'s `_add_missing_columns()`. Prod-schema audit
+  for a possible pre-existing undocumented `note` column (per the
+  2026-09-14 entry's "Kjopt pa Collect63 Card Show" note) was requested but
+  **not completed this session** — the auto-mode "Production Reads"
+  classifier blocked a direct read-only `information_schema` query against
+  the Supabase database, and the follow-up attempt to add a permission rule
+  for it was itself blocked by the "Self-Modification" classifier. **Run
+  the schema audit before the next prod deploy**: `SELECT column_name FROM
+  information_schema.columns WHERE table_name = 'transactions'` — if a
+  `note`/`notes` column already exists there under a different name,
+  rename this one to match before shipping, since `_add_missing_columns()`
+  only adds columns, it never renames or merges one that already exists
+  under a different name.
+- New `GET`/`POST /transactions/purchase/{purchase_id}/edit` (`app.py`),
+  template `purchase_edit.html` — one row per transaction in the order,
+  every field editable (type, date, price, platform, note) plus a card
+  relink control (inline search + htmx swap, no page reload) and a
+  per-row Order ID field. Reassigning a row's Order ID is the single
+  primitive behind move/merge/split, per the issue's own scoping — there's
+  no separate move/merge/split endpoint.
+- All row edits (including deletions, via a per-row checkbox) commit in one
+  transaction. A row whose Order ID changes has its
+  `purchase_total`/`purchase_shipping` cleared rather than carried over,
+  split, or summed onto the destination order — matching the "never guess"
+  precedent elsewhere in this app (`SetReleaseOrder.UNKNOWN_RELEASE_RANK`,
+  `qty = 0` instead of deleting a traded-away card). The user must set the
+  destination order's total/shipping afterward via the existing
+  `set_purchase_total` form.
+- The single-row inline edit (`partials/tx_row.html`'s `tx_row_edit` macro,
+  `update_transaction` route) was kept rather than superseded, and gained
+  its own `purchase_id` field — decided as the pick between the two options
+  the issue left open, since it's still the faster path for a single
+  ungrouped row or pulling one card out of an order without opening the
+  full editor. The full order editor is for anything that needs several
+  rows changed atomically (relink, note, delete, or a total/shipping
+  reconciliation).
+- No delete-transaction route existed anywhere in the codebase before this
+  session, despite the issue's acceptance criteria assuming one did and
+  saying to reuse it — confirmed by search, not just missing docs. The
+  delete checkbox in the new order editor is the first delete path added.
+- 7 new tests in `tests/test_purchase_edit.py`: render, atomic multi-row
+  update, card relink, row deletion, total/shipping clearing on a move
+  (the core "never guess" behavior), and no dangling empty order left
+  behind when every row in a group is moved out. Full suite green (231
+  passed).
+- **Not yet exercised in a real browser** — only tested via the test
+  client's form posts, per this repo's offline-test-suite convention. The
+  relink search/select htmx round trip (`purchase_edit_relink_search`/
+  `purchase_edit_relink_select` routes, swapping `#relink-cell-{tx_id}`)
+  is worth clicking through by hand before relying on it, since htmx
+  target/swap wiring is easy to get subtly wrong in a way tests using the
+  raw test client wouldn't catch.

@@ -950,6 +950,142 @@ def set_purchase_total(
         db.close()
 
 
+@app.get("/transactions/purchase/{purchase_id}/edit")
+def purchase_edit_form(request: Request, purchase_id: int):
+    """Order-level edit view (issue #109) -- one row per transaction sharing
+    this purchase_id, all fields editable including relinking the card and
+    reassigning purchase_id itself (which is how a row is moved to another
+    order, merged into one, or split off into a new one -- there's no
+    separate move/merge/split verb, see update_purchase below).
+    """
+    db = get_db_session()
+    try:
+        txs = (
+            db.query(Transaction)
+            .options(selectinload(Transaction.card))
+            .filter(Transaction.purchase_id == purchase_id)
+            .order_by(Transaction.price.desc())
+            .all()
+        )
+        if not txs:
+            return RedirectResponse("/transactions", status_code=303)
+        purchase_total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
+        purchase_shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None)
+        return templates.TemplateResponse(
+            request,
+            "purchase_edit.html",
+            {
+                "purchase_id": purchase_id,
+                "transactions": txs,
+                "purchase_total": purchase_total,
+                "purchase_shipping": purchase_shipping,
+                "next_purchase_id": _next_purchase_id(db),
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/transactions/purchase/{purchase_id}/edit/row/{tx_id}/relink-search")
+def purchase_edit_relink_search(request: Request, purchase_id: int, tx_id: int, q: str = ""):
+    db = get_db_session()
+    try:
+        results = []
+        if q and len(q) >= 2:
+            like = _like_pattern(q)
+            results = (
+                db.query(Card)
+                .filter(func.lower(Card.name).like(like) | func.lower(Card.card_id).like(like))
+                .order_by(Card.name)
+                .limit(20)
+                .all()
+            )
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_edit_relink_results.html",
+            {"results": results, "purchase_id": purchase_id, "tx_id": tx_id},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/transactions/purchase/{purchase_id}/edit/row/{tx_id}/relink")
+def purchase_edit_relink_select(request: Request, purchase_id: int, tx_id: int, card_id: int):
+    db = get_db_session()
+    try:
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        if card is None:
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request, "partials/purchase_edit_relink_cell.html", {"purchase_id": purchase_id, "tx_id": tx_id, "card": card}
+        )
+    finally:
+        db.close()
+
+
+@app.post("/transactions/purchase/{purchase_id}/edit")
+def update_purchase(
+    request: Request,
+    purchase_id: int,
+    tx_id: list[int] = Form(default=[]),
+    type: list[str] = Form(default=[]),
+    date: list[str] = Form(default=[]),
+    price: list[float] = Form(default=[]),
+    platform: list[str] = Form(default=[]),
+    note: list[str] = Form(default=[]),
+    card_id: list[int] = Form(default=[]),
+    new_purchase_id: list[int] = Form(default=[]),
+    delete_tx_id: list[int] = Form(default=[]),
+    purchase_total: float | None = Form(None),
+    purchase_shipping: float | None = Form(None),
+):
+    """Applies every row edit for this order -- including reassigning a
+    row's purchase_id, which is move/merge/split's shared underlying
+    primitive (see issue #109's scoping) -- in one commit.
+
+    A row whose purchase_id changes has its purchase_total/purchase_shipping
+    cleared rather than carried over, split, or summed onto the destination
+    order: those fields are redundantly stored per row (see
+    Transaction.purchase_total's comment in models.py) and there's no way to
+    tell how much of the old total belongs there. The user must set the
+    destination order's total/shipping afterward via the existing
+    set_purchase_total form. Rows staying in this order get this form's
+    purchase_total/purchase_shipping applied uniformly, same semantics as
+    set_purchase_total.
+    """
+    db = get_db_session()
+    try:
+        delete_set = set(delete_tx_id)
+        for i, txid in enumerate(tx_id):
+            if txid in delete_set:
+                db.query(Transaction).filter(Transaction.id == txid).delete()
+                continue
+            tx = db.query(Transaction).filter(Transaction.id == txid).one_or_none()
+            if tx is None:
+                continue
+            tx.card_id = card_id[i]
+            tx.type = type[i]
+            tx.date = dt.date.fromisoformat(date[i])
+            tx.price = price[i]
+            tx.platform = platform[i] or None
+            tx.note = note[i] or None
+            target_purchase_id = new_purchase_id[i]
+            if target_purchase_id != purchase_id:
+                tx.purchase_id = target_purchase_id
+                tx.purchase_total = None
+                tx.purchase_shipping = None
+            else:
+                tx.purchase_id = purchase_id
+                tx.purchase_total = purchase_total
+                tx.purchase_shipping = purchase_shipping
+        db.commit()
+        remaining = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).count()
+        target = f"/transactions?open_order={purchase_id}" if remaining else "/transactions"
+        return RedirectResponse(target, status_code=303)
+    finally:
+        db.close()
+
+
 @app.post("/transactions")
 def create_transaction(
     request: Request,
@@ -1043,7 +1179,17 @@ def update_transaction(
     price: float = Form(...),
     platform: str = Form(""),
     fees: float | None = Form(None),
+    purchase_id: int | None = Form(None),
 ):
+    """Quick per-row edit, including reassigning purchase_id for a single
+    row (e.g. an ungrouped transaction, or pulling one card out of an order
+    without touching the rest of it). For editing several rows of the same
+    order together -- relinking a card, adding a note, deleting a row, or
+    reassigning several rows' purchase_id at once with the total/shipping
+    reconciliation that requires -- use the order-level editor
+    (update_purchase above) instead; this single-row form intentionally
+    doesn't try to replicate that reconciliation.
+    """
     db = get_db_session()
     try:
         tx = db.query(Transaction).filter(Transaction.id == tx_id).one_or_none()
@@ -1054,6 +1200,7 @@ def update_transaction(
         tx.price = price
         tx.platform = platform or None
         tx.fees = fees
+        tx.purchase_id = purchase_id
         db.commit()
         db.refresh(tx)
         return templates.TemplateResponse(request, "partials/tx_row_view.html", {"tx": tx})

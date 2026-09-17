@@ -130,6 +130,7 @@
     <input type="text" name="platform" placeholder="Platform"
            value="{{ group.platform if group.platform is not none else '' }}" style="width: 130px;">
     <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
+    <a href="/transactions/purchase/{{ group.purchase_id }}/edit"><button type="button">Edit order</button></a>
   </form>
   {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
 </details>
