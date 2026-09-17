@@ -676,6 +676,12 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
         # for the whole order.
         row_platforms = {t.platform for t in group_txs if t.platform}
         group_platform = next(iter(row_platforms)) if len(row_platforms) == 1 else None
+        # For the collapsed summary line (unlike the bulk-edit form's
+        # group_platform above, which stays blank on disagreement so it
+        # never silently overwrites a mixed group), just surface whichever
+        # row has one set -- same first-non-null-across-the-group pattern
+        # already used for purchase_total/purchase_shipping/diff.
+        summary_platform = next((t.platform for t in group_txs if t.platform), None)
         purchase_groups.append(
             {
                 "purchase_id": pid,
@@ -685,6 +691,7 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
                 "platform": group_platform,
+                "summary_platform": summary_platform,
                 # What's left unaccounted for once both the card prices and
                 # any declared shipping are subtracted -- e.g. normal-print
                 # cards not priced individually yet. None when no declared

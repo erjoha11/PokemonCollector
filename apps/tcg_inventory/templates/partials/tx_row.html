@@ -17,7 +17,7 @@
       {{ meta | join(' · ') }}
     </div>
   </td>
-  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
+  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
   <td class="num tx-price">
     {{ tx.price | kr }}
     {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
