@@ -47,6 +47,14 @@ run).
   finn.no title + description (Norwegian ad copy — see "Sales listings"
   below). "Mark as listed" records the ad but never changes `qty`; a real
   sale is still only ever recorded via Transactions.
+- **Listings** (`/listings`) — read-only overview of every recorded
+  `Listing`: its card(s), status (active/delisted/sold), and three prices
+  side by side per card so a listing's margin is visible at a glance — cost
+  (`queries.net_invested_by_card`, same figure used everywhere else),
+  market price (`Card.display_price`), and listed price
+  (`Listing.suggested_price`). Never changes `qty`/`card_collections`/
+  `binder_id` — no delist or "mark as sold" action here, see "Sales
+  listings (finn.no)" below.
 
 ## Data model
 
