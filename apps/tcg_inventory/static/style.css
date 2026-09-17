@@ -565,6 +565,11 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   gap: 1.25rem;
 }
 
+#dashboard-market-value-card,
+#market-value-card {
+  grid-column: 1 / -1;
+}
+
 /* Inventory and Serie carry enough columns (two of them currency, plus a
    drilldown) that pairing them with another card needs a smaller, tighter
    table to avoid horizontal scroll. */
@@ -839,8 +844,8 @@ button:hover, input[type=submit]:hover { filter: brightness(0.92); }
 .viz-delta-gain { color: #0ca30c; }
 .viz-delta-loss { color: #d03b3b; }
 .chart-kpi-bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.5rem 1.75rem;
   margin: 0.4rem 0 0.9rem;
   padding-bottom: 0.7rem;
