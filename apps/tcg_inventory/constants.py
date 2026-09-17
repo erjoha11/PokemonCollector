@@ -77,3 +77,20 @@ def is_excluded_category(category: str) -> bool:
 
 def is_binder_category(category: str) -> bool:
     return category in BINDER_CATEGORIES
+
+
+# Condition vocabulary for `Card.condition` (see models.py) and generated
+# finn.no ad text (ads.py). Deliberately the same values as
+# apps/finn_ad_scraper/card_identifier.py's CONDITIONS tuple -- apps don't
+# import from each other, so this is a literal copy kept in sync by
+# convention, not by shared code. Keep both lists identical if either
+# changes.
+CARD_CONDITIONS = (
+    "Mint",
+    "Near Mint",
+    "Lightly Played",
+    "Moderately Played",
+    "Heavily Played",
+    "Damaged",
+    "Unknown",
+)

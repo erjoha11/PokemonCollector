@@ -24,6 +24,40 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-09-17 — New "Sell on finn.no" module
+
+**Reviewed:** README.md, models.py, templates/inventory.html,
+templates/partials/{dropbox_files,inventory_table,macros,purchase_cart*}.html,
+templates/transactions.html, and apps/finn_ad_scraper/card_identifier.py's
+CONDITIONS vocabulary (prompted by adding a card-selection → finn.no ad
+generation feature — see HANDOFF.md's matching entry for the shipped code).
+
+**Findings:**
+- The app's UI is English throughout (not Norwegian, despite README's
+  Dropbox section quoting a stale Norwegian button label that no longer
+  matches `dropbox_files.html`'s actual "Fetch selected files and sync" —
+  worth a one-line doc fix, not done here since it's unrelated to this
+  feature).
+- Checkbox multi-select has a direct precedent (`dropbox_files.html`'s
+  checkbox column feeding a form submit) and the search/select → review →
+  submit shape has a direct precedent in the purchase cart — both reused
+  for the new selection/review flow rather than inventing new patterns.
+- Risk specific to this feature: Inventory's filter/sort controls fully
+  replace `#inventory-results` on every change (`hx-swap="innerHTML"`), so
+  a naive checkbox selection would be silently dropped the moment the user
+  narrows the filter to find more cards to sell — same failure family as
+  the already-documented "+ Add to order" no-op. Addressed in the shipped
+  code via `static/sale-list.js` (sessionStorage-backed selection,
+  re-hydrated on `htmx:afterSwap`), not by persisting selection
+  server-side.
+- Selling a duplicate should default "quantity to sell" to 1, never to the
+  card's full owned `qty` — defaulting to "sell everything you own" is the
+  wrong default for a collector tool. Shipped as an explicit, editable
+  per-row input on `/sales`, capped server-side at the card's `qty`.
+
+**Status:** Addressed — see HANDOFF.md's "New 'Sell on finn.no' module —
+2026-09-17 session" entry for what shipped.
+
 ## 2026-09-16 — Full-app review (value charts + card image rollout)
 
 **Reviewed:** every template in templates/ and templates/partials/, static/style.css, static/tcg-charts.js, card_images.py, and the app.py routes feeding them. Prompted by the current uncommitted diff (value-growth/KPI chart rework + new `card.image_url` thumbnails).

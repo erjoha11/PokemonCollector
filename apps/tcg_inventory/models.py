@@ -96,6 +96,12 @@ class Card(Base):
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
     flagged_missing_since: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # Physical grade, e.g. "Near Mint" -- see constants.CARD_CONDITIONS. Real
+    # per-card data with no other source (nobody's grading these on import),
+    # unlike duplicates/total_value above -- not derived, so it's a real
+    # column, not a computed property. Null ("Unknown" in the UI) until a
+    # user sets it, most commonly when building a finn.no listing (ads.py).
+    condition: Mapped[str | None] = mapped_column(String, nullable=True)
     # When this physical card (card_id, variant) was first imported -- set once,
     # on creation, never touched on update. Null for cards that already existed
     # before this column was added; there's no way to recover their real
@@ -219,6 +225,47 @@ class Transaction(Base):
     note: Mapped[str | None] = mapped_column(String, nullable=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
+
+
+listing_cards = Table(
+    "listing_cards",
+    Base.metadata,
+    Column("listing_id", Integer, ForeignKey("listings.id", ondelete="CASCADE"), primary_key=True),
+    Column("card_id", Integer, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class Listing(Base):
+    """A finn.no ad generated from a selection of cards (ads.py), recorded
+    once the user clicks "Mark as listed" after copying the generated text
+    out. Deliberately its own table rather than a boolean/date pair on
+    `Card`: the primary use case is a lot (several cards, one ad, one
+    price), so a per-card flag would either duplicate the same date across
+    every card in the lot or lose the "these cards were one ad" grouping.
+    It's also deliberately not a `Transaction` -- Transaction rows are real,
+    completed cash flow that every economic query (economic_summary,
+    cash_flow_by_month, net_invested_by_card) sums directly, and a listing
+    has no price actually received yet. Marking a card listed never touches
+    `qty`/`card_collections`/`binder_id` -- listed != sold; a real sale is
+    still only ever recorded as a `Transaction` once it actually happens.
+    """
+
+    __tablename__ = "listings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(String, nullable=False)
+    suggested_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Free-text, not an enum, same precedent as Transaction.platform -- only
+    # "finn.no" is generated today but nothing here assumes that.
+    platform: Mapped[str] = mapped_column(String, nullable=False, default="finn.no")
+    # "active" | "delisted" | "sold" -- "sold" is reserved for a future link
+    # to a real Transaction (e.g. a `sold_transaction_id` FK) once that flow
+    # is built; nothing sets it yet.
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+
+    cards: Mapped[list["Card"]] = relationship(secondary=listing_cards)
 
 
 class SetReleaseOrder(Base):
