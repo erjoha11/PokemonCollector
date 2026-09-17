@@ -72,12 +72,13 @@ There is no UI yet to edit an already-registered order (retype/relink/move/merge
 
 ## Agents and multi-session handoff
 
-Besides the default coding agent, two project-scoped advisory agents live in `.claude/agents/` — read-only (no Edit/Write), so they analyze and recommend rather than implement:
+Besides the default coding agent, project-scoped advisory agents live in `.claude/agents/` — none of them have Edit/Write, so they analyze/plan and recommend rather than implement application code:
 
 - **architect** — system-architecture-level thinking: module/app boundaries, data flow, deployment topology, coupling, design tradeoffs. Consult before a change that ripples across the system or touches a documented decision (see e.g. the computed-vs-stored discussion above).
 - **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`, not `finn_ad_scraper`): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish.
+- **advisor** — feature-level product thinking: scoping an idea, sequencing it into shippable steps, and tracking that plan on GitHub. Unlike `architect`/`ux` it has `gh` CLI access, but only to read (issues/PRs/CI) and create (issues, draft PRs) — never to merge, close, force-push, or delete. Consult when a feature idea needs shaping into a concrete plan and tracked issues before handing it to the default agent or `developer` (see below) to build.
 
-Neither agent edits files — their output is analysis for the default agent (or the user) to act on. When a task needs input from both (e.g. a UX change with schema implications), the orchestrating session keeps each agent's spawned instance alive and relays findings between them rather than re-explaining context from scratch each time.
+None of these three edit files; their output is analysis/plans for the default agent (or the user) to act on. There's also a separate, non-advisory **developer** agent with full Edit/Write and full GitHub read/write (including merge/close/force-push) for when the user wants the whole code -> PR -> merge loop done without pausing. When a task needs input from more than one advisory agent (e.g. a UX change with schema implications, or a feature `advisor` scopes that also needs `architect`'s ripple-effect read), the orchestrating session keeps each agent's spawned instance alive and relays findings between them rather than re-explaining context from scratch each time.
 
 Since `ux` can't write files, whichever session consults it is responsible for logging findings worth keeping to `apps/tcg_inventory/UX_NOTES.md` (dated entries, same spirit as `HANDOFF.md` below) — otherwise the analysis only exists in that one chat transcript and is gone once it ends.
 
