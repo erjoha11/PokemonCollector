@@ -503,6 +503,69 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
 
 
+def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}]
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    # One real purchase row (300 kr) plus a trade row (given away, no cash --
+    # its 9999 kr "price" is a red herring that should never be summed into
+    # the order's registered total or its diff against the agreed total).
+    db.add_all(
+        [
+            Transaction(card_id=ids["a"], type="purchase", date=dt.date(2026, 1, 1), price=300, purchase_id=9,
+                        purchase_total=300),
+            Transaction(card_id=ids["b"], type="trade", date=dt.date(2026, 1, 1), price=9999, purchase_id=9),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    group_section = text.split("Order #9", 1)[1]
+    assert "registered 300 kr" in group_section
+    assert "9 999 kr" not in group_section.split("</summary>", 1)[0]
+    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+
+
+def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    response = client.post(
+        "/transactions/purchase",
+        data={
+            "type": "purchase",
+            "date": "2026-01-01",
+            "purchase_id": "12",
+            "card_id": [str(card_id)],
+            "price": ["25"],
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert response.history  # actually redirected, not a bare 200
+    assert "open_order=12" in str(response.history[-1].headers["location"])
+
+    order_details = response.text.split('id="order-12"', 1)[1].split(">", 1)[0]
+    assert "open" in order_details
+
+
 def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     import db as db_module
     from models import Card, Transaction

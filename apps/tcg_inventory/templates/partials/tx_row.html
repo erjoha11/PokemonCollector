@@ -18,7 +18,8 @@
     </div>
   </td>
   <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
-  <td class="num tx-price">
+  <td class="num tx-price{{ ' muted' if tx.type == 'trade' else '' }}"
+      {%- if tx.type == 'trade' %} title="Trade price is not counted toward Net invested, Paper gain/loss, or any other KPI — trades aren't cash spend."{% endif %}>
     {{ tx.price | kr }}
     {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
   </td>
