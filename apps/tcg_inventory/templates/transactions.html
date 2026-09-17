@@ -117,7 +117,7 @@
 <details class="collapsible" id="order-{{ group.purchase_id }}" style="margin-bottom: 0.75rem;"{% if open_order == group.purchase_id %} open{% endif %}>
   <summary>Order #{{ group.purchase_id }}
     <span class="muted">
-      ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }} · registered {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} fee{% endif %}{% if group.purchase_shipping %} · shipping {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · agreed {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %})
+      ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }} · registered {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} fee{% endif %}{% if group.purchase_shipping %} · shipping {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · agreed {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %}{% if group.summary_platform %} · {{ group.summary_platform }}{% endif %})
     </span>
   </summary>
   <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;"

@@ -1,8 +1,8 @@
 <div class="autocomplete-results">
   {% for card in results %}
-  <div hx-get="/transactions/purchase/add-row?card_id={{ card.id }}" hx-target="#cart-body" hx-swap="beforeend">
+  <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}" hx-target="#cart-body" hx-swap="beforeend">
     {{ card.name }} — {{ card.set }} ({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})
-  </div>
+  </button>
   {% else %}
   <div class="muted">No matches</div>
   {% endfor %}
