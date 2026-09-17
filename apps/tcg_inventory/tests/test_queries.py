@@ -277,8 +277,10 @@ def test_real_value_history_sums_snapshots_by_date_not_approximated(db_session):
 
     assert [row["label"] for row in unique] == ["2026-01-01", "2026-01-02"]
     assert unique[0]["cumulative_value"] == 100  # unique_value unaffected by qty
+    assert [row["card_count"] for row in unique] == [1, 1]
     assert total[0]["cumulative_value"] == 200  # qty=2 * 100
     assert total[1]["cumulative_value"] == 300  # qty=3 * 100
+    assert [row["card_count"] for row in total] == [2, 3]
 
     with pytest.raises(ValueError):
         queries.real_value_history(db_session, metric="not-a-real-metric")

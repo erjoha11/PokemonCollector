@@ -431,9 +431,11 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
     _, value_of = VALUE_GROWTH_METRICS[metric]
 
     by_date_source: dict[tuple[dt.date, str], float] = {}
+    snapshots_by_date_source: dict[tuple[dt.date, str], list[CardSnapshot]] = {}
     for snap in db.query(CardSnapshot).all():
         key = (snap.date, snap.source)
         by_date_source[key] = by_date_source.get(key, 0.0) + value_of(snap)
+        snapshots_by_date_source.setdefault(key, []).append(snap)
 
     sources_by_date: dict[dt.date, set[str]] = {}
     for date, source in by_date_source:
@@ -447,7 +449,14 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
         label = date.strftime("%Y-%m-%d")
         if len(sources_by_date[date]) > 1:
             label = f"{label} ({source})"
-        result.append({"label": label, "cumulative_value": total})
+        snapshots = snapshots_by_date_source[(date, source)]
+        if metric == "unique":
+            card_count = sum(snap.qty > 0 for snap in snapshots)
+        elif metric == "duplicates":
+            card_count = sum(snap.duplicates for snap in snapshots)
+        else:
+            card_count = sum(snap.qty for snap in snapshots)
+        result.append({"label": label, "cumulative_value": total, "card_count": card_count})
     return result
 
 
