@@ -39,6 +39,14 @@ class CardApiData:
     # this to flag/log a card worth a manual look rather than trusting a
     # guess.
     low_confidence_match: bool = False
+    # True when the card had more than one priced print (normal/holofoil/
+    # reverseHolofoil/...) and this module couldn't confidently tell which
+    # one matches Dex's own `Variant` field -- see _match_variant_key. A
+    # price is still returned (best-effort, same spirit as low_confidence_
+    # match on the image side), but callers should surface it as worth a
+    # manual look rather than trusting it silently, since different prints
+    # of the same card can have very different market prices.
+    variant_price_uncertain: bool = False
 
 
 def _printed_number(number: str | None) -> str | None:
@@ -51,25 +59,77 @@ def _printed_number(number: str | None) -> str | None:
     return match.group(0) if match else None
 
 
-def _best_tcgplayer_price(tcgplayer: dict | None) -> float | None:
+# Dex's free-text `Variant` field and the API's `tcgplayer.prices` keys
+# don't share a vocabulary, so this is a deliberately conservative,
+# ordered (substring-in-Dex-variant -> candidate API key substrings) rule
+# set -- first match wins. Only covers cases that are genuinely
+# unambiguous; e.g. a plain "Holo" is left unmapped on purpose, since it
+# could mean holofoil, reverseHolofoil, or unlimitedHolofoil and guessing
+# wrong here would silently misprice a card exactly like the case this is
+# meant to prevent. See _match_variant_key.
+_VARIANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
+    ("1st edition", ("1stedition",)),
+    ("reverse holo", ("reverseholofoil",)),
+    ("normal", ("normal", "unlimited")),
+]
+
+
+def _match_variant_key(variant: str | None, price_keys: list[str]) -> str | None:
+    """Best-effort match from Dex's own `Variant` value to one of the
+    `tcgplayer.prices` keys actually present on this card. Returns None
+    (never guesses) when the variant is missing or doesn't hit one of the
+    unambiguous hints in _VARIANT_HINTS.
+    """
+    if not variant:
+        return None
+    lowered = variant.strip().lower()
+    for hint, candidates in _VARIANT_HINTS:
+        if hint not in lowered:
+            continue
+        for candidate in candidates:
+            for key in price_keys:
+                if candidate in key.lower():
+                    return key
+    return None
+
+
+def _best_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) -> tuple[float | None, bool]:
     """`tcgplayer.prices` has one entry per print variant (normal, holofoil,
     reverseHolofoil, 1stEditionHolofoil, ...), each with market/low/mid/high,
-    in USD. There's no reliable way to match a variant name to Dex's own
-    `Variant` field, so just take the first variant's `market` price present
-    -- better than no price at all, and this is already how Dex's own Price
-    column is presumably sourced (a single number per card, not per variant).
+    in USD. Returns (price_in_nok, uncertain):
+
+    - No priced variant at all -> (None, False).
+    - Exactly one priced variant -> that one, not uncertain (nothing to
+      disambiguate regardless of what Dex's `Variant` says).
+    - Multiple priced variants -> try to match Dex's own `Variant` field via
+      _match_variant_key; if that succeeds, use it, not uncertain. If it
+      can't be matched, fall back to the first priced variant present
+      (better than no price at all) but flag it `uncertain=True` so callers
+      can surface it rather than trust a guess silently -- different prints
+      of the same card can have very different market prices.
+
     Converted to NOK here (see _USD_TO_NOK) since every other price in this
     app -- Dex's own column included -- is NOK; returning raw USD would
     silently understate these cards' value by ~10x wherever it's displayed.
     """
     if not tcgplayer:
-        return None
+        return None, False
     prices = tcgplayer.get("prices") or {}
-    for variant_prices in prices.values():
-        market = (variant_prices or {}).get("market")
-        if market is not None:
-            return round(market * _USD_TO_NOK, 2)
-    return None
+    price_keys = [key for key, variant_prices in prices.items() if (variant_prices or {}).get("market") is not None]
+    if not price_keys:
+        return None, False
+
+    def _price_in_nok(key: str) -> float:
+        return round(prices[key]["market"] * _USD_TO_NOK, 2)
+
+    if len(price_keys) == 1:
+        return _price_in_nok(price_keys[0]), False
+
+    matched_key = _match_variant_key(variant, price_keys)
+    if matched_key:
+        return _price_in_nok(matched_key), False
+
+    return _price_in_nok(price_keys[0]), True
 
 
 def _is_confident_match(name: str, number: str | None, card: dict) -> bool:
@@ -96,10 +156,15 @@ def _is_confident_match(name: str, number: str | None, card: dict) -> bool:
     return True
 
 
-def fetch_card_data(name: str, set_name: str | None, number: str | None) -> CardApiData:
+def fetch_card_data(
+    name: str, set_name: str | None, number: str | None, variant: str | None = None
+) -> CardApiData:
     """Best-effort image URL and TCGPlayer market price for one card, from a
     single API call. Never raises -- a failed lookup just leaves both fields
-    None rather than being a reason to fail an import.
+    None rather than being a reason to fail an import. `variant` is Dex's
+    own `Variant` field (e.g. "Normal", "Holo", "1st Edition"), used only to
+    disambiguate which print's price to trust when a card has more than
+    one -- see _best_tcgplayer_price.
     """
     if not name:
         return CardApiData(image_url=None, tcgplayer_price=None)
@@ -133,10 +198,14 @@ def fetch_card_data(name: str, set_name: str | None, number: str | None) -> Card
 
     card = data[0]
     confident = _is_confident_match(name, number, card)
+    price, variant_uncertain = (
+        _best_tcgplayer_price(card.get("tcgplayer"), variant) if confident else (None, False)
+    )
     return CardApiData(
         image_url=card.get("images", {}).get("small"),
-        tcgplayer_price=_best_tcgplayer_price(card.get("tcgplayer")) if confident else None,
+        tcgplayer_price=price,
         low_confidence_match=not confident,
+        variant_price_uncertain=variant_uncertain,
     )
 
 

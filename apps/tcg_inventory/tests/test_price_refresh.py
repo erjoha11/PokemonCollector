@@ -11,7 +11,7 @@ def test_refresh_stale_prices_updates_never_priced_cards(db_session, monkeypatch
     db_session.commit()
 
     monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number: card_images.CardApiData(None, 9.99)
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
     )
 
     result = price_refresh.refresh_stale_prices(db_session)
@@ -34,7 +34,7 @@ def test_refresh_stale_prices_skips_a_fresh_price(db_session, monkeypatch):
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: calls.append(1) or card_images.CardApiData(None, 42.0),
+        lambda name, set_name, number, variant=None: calls.append(1) or card_images.CardApiData(None, 42.0),
     )
 
     result = price_refresh.refresh_stale_prices(db_session)
@@ -52,7 +52,7 @@ def test_refresh_stale_prices_refetches_a_stale_price(db_session, monkeypatch):
     db_session.commit()
 
     monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number: card_images.CardApiData(None, 42.0)
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 42.0)
     )
 
     result = price_refresh.refresh_stale_prices(db_session)
@@ -71,7 +71,7 @@ def test_refresh_stale_prices_flags_low_confidence_matches_without_pricing(db_se
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: card_images.CardApiData(
+        lambda name, set_name, number, variant=None: card_images.CardApiData(
             image_url=None, tcgplayer_price=None, low_confidence_match=True
         ),
     )
@@ -82,6 +82,27 @@ def test_refresh_stale_prices_flags_low_confidence_matches_without_pricing(db_se
     assert refreshed.tcgplayer_price is None
     assert result.cards_updated == 0
     assert result.cards_low_confidence == ["Shellder (? ?)"]
+
+
+def test_refresh_stale_prices_flags_variant_uncertain_matches_while_still_pricing(db_session, monkeypatch):
+    card = Card(card_id="a", variant="Holo", name="Shellder")
+    db_session.add(card)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: card_images.CardApiData(
+            image_url=None, tcgplayer_price=42.0, variant_price_uncertain=True
+        ),
+    )
+
+    result = price_refresh.refresh_stale_prices(db_session)
+
+    refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert refreshed.tcgplayer_price == 42.0
+    assert result.cards_updated == 1
+    assert result.cards_variant_uncertain == ["Shellder (? ?)"]
 
 
 def test_refresh_stale_prices_respects_the_budget_and_prioritizes_oldest_first(db_session, monkeypatch):
@@ -99,7 +120,7 @@ def test_refresh_stale_prices_respects_the_budget_and_prioritizes_oldest_first(d
     monkeypatch.setattr(
         card_images,
         "fetch_card_data",
-        lambda name, set_name, number: checked_names.append(name) or card_images.CardApiData(None, 5.0),
+        lambda name, set_name, number, variant=None: checked_names.append(name) or card_images.CardApiData(None, 5.0),
     )
 
     result = price_refresh.refresh_stale_prices(db_session, budget=1)

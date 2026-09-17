@@ -265,6 +265,20 @@ charts). Low-confidence matches are skipped and listed in the response's
 `cards_low_confidence` (also surfaced as an import warning when triggered
 via a Dex sync instead) — worth a manual look, not auto-corrected.
 
+A confidently-matched card can still have more than one print (normal,
+holofoil, reverse holofoil, 1st edition, ...), each with its own
+`tcgplayer.prices` entry and potentially a very different market price.
+`fetch_card_data` tries to match Dex's own `Variant` field to the right
+print, but only for the unambiguous cases ("Normal", "Reverse Holo", "1st
+Edition ...") — a bare "Holo" is intentionally left unmapped, since it
+could mean any of several prints. When a card has multiple priced prints
+and the variant can't be confidently matched, the first one present is
+still used (better than no price) but flagged — listed in the response's
+`cards_variant_uncertain` (or as an import warning via a Dex sync) — worth
+a manual look, unlike a low-confidence match this still updates the price
+rather than withholding it, since it's still the right card, just possibly
+the wrong print.
+
 ### Value history
 
 `collection_value_growth` (Transactions' "View charts" section, top chart) is an
