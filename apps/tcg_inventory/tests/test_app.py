@@ -85,10 +85,11 @@ def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):
     assert "info-tooltip" in text
 
 
-def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_below(client):
+def test_dashboard_shows_a_market_value_chart_left_of_topp_10_and_inventory_below(client):
     import datetime as dt
 
     import db as db_module
+    import snapshots
     from models import Card
 
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "50"}])
@@ -97,24 +98,36 @@ def test_dashboard_shows_a_value_growth_chart_left_of_topp_10_and_inventory_belo
     db = db_module.SessionLocal()
     db.query(Card).update({"created_at": dt.datetime(2026, 1, 10)})
     db.commit()
+    snapshots.record_daily_snapshot(db, as_of=dt.date(2026, 1, 10))
     db.close()
 
     text = client.get("/").text
-    assert "Value growth" in text
-    # Value growth is paired with "Top 10 most valuable cards" (both come
-    # before Inventory, which now gets its own full-width row below them).
-    first_pair = text.split("Value growth", 1)[1].split("Inventory", 1)[0]
+    assert 'id="dashboard-market-value-card"' in text
+    # The Market Value chart is paired with "Top 10 most valuable cards"
+    # (both come before Inventory, which gets its own full-width row below).
+    first_pair = text.split('id="dashboard-market-value-card"', 1)[1].split("Inventory", 1)[0]
     assert "Top 10 most valuable cards" in first_pair
     assert "viz-chart-wrap" in first_pair
     assert "50 kr" in first_pair  # the chart's "View as table" value
+    # Net invested / Current value / Gain-loss now live in the chart itself.
+    assert "Net invested" in first_pair
+    assert "Current value" in first_pair
 
 
-def test_dashboard_value_growth_chart_mirrors_transactions_metric_filter(client):
+def test_dashboard_market_value_chart_mirrors_transactions_metric_filter(client):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+
     main = make_csv(
         "My Collection",
         [{"id": "a", "name": "Pikachu", "qty": 3, "price": "50"}],
     )
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    snapshots.record_daily_snapshot(db, as_of=dt.date(2026, 1, 10))
+    db.close()
 
     # Pills preserve every other table's sort state, not just the metric --
     # same "keep everything else as-is" idiom sort_th links already use.
@@ -210,8 +223,16 @@ def test_transactions_charts_endpoint_handles_no_transactions_or_dated_cards(cli
 
 
 def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_chart(client):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "10"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    snapshots.record_daily_snapshot(db, as_of=dt.date(2026, 1, 10))
+    db.close()
 
     default_page = client.get("/transactions/charts")
     assert "Unique collection" in default_page.text

@@ -165,9 +165,10 @@
   <h2 id="dashboard">Dashboard</h2>
   <p>The front page shows your collection broken down several ways at once:</p>
   <ul>
-    <li><strong>Value growth</strong> — a simplified version of the chart in
-      <a href="/transactions">Transactions</a>'s "View charts" section (only the "Unique
-      collection" metric, no filter). See Transactions for the full picture.</li>
+    <li><strong>Market Value</strong> — the same real-value-history chart shown in
+      <a href="/transactions">Transactions</a>'s "View charts" section, with Net invested /
+      Current value / Gain-loss built into the chart itself. Empty until at least one day of
+      snapshots has accumulated.</li>
     <li><strong>Top 10 most valuable cards</strong> — your ten most expensive individual cards
       by price.</li>
     <li><strong>Inventory</strong> — Collections (named groupings) and Bulk (cards with no
@@ -251,12 +252,13 @@
   <p>
     Above History, a compact financial summary is shown: net invested, current value, and
     paper gain/loss (color-coded green/red), calculated from actual recorded transactions — not
-    estimates. "View charts" opens two charts (fetched lazily on first click): "Collection value
-    growth" is an approximation — it applies today's price to the date each card was added, since
-    Dex provides no historical price data, and has a filter (Unique collection / Duplicates /
-    Total) that switches between showing the value of unique cards only, duplicates only, or the
-    sum of both. "Purchases and sales per month" is real figures, however, not an approximation.
-    Both charts have a "View as table" link with the underlying numbers.
+    estimates. "View charts" opens two charts (fetched lazily on first click): "Market Value" is
+    the collection's real historical value from daily snapshots (empty until at least one day of
+    snapshots has accumulated), with the same net invested / current value / gain-loss figures
+    built into the chart, and a filter (Unique collection / Duplicates / Total) that switches
+    between showing the value of unique cards only, duplicates only, or the sum of both.
+    "Purchases and sales per month" is real figures too. Both charts have a "View as table" link
+    with the underlying numbers.
   </p>
   <p>
     "History" shows every recorded transaction as a compact row (date, card, type, price,

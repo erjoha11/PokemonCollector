@@ -16,7 +16,13 @@
          value columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
     <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span><span class="label">total value</span></div>
     <div class="kpi-support">
+      {% if request.url.path == '/inventory' %}
+      {# Dashboard and Transactions show Net invested as part of the Market
+         Value chart's own stat bar instead (see chart_card's `stats` param
+         in macros.html) -- Inventory has no such chart, so it keeps its own
+         copy here. #}
       <div class="stat-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ (net_invested if net_invested is defined else (kpi.net_invested if kpi is defined else 0)) | kr }}</span></div>
+      {% endif %}
       <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
       <div class="stat-row"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
     </div>

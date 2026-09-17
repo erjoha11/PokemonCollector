@@ -3,25 +3,6 @@
 <div class="viz-root">
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set tx_value_growth_heading %}Collection value growth {{ info("Uses today's price applied to the date each card was added — Dex provides no historical price data, so this approximates growth, not an exact historical value. Cards added before the date was recorded are grouped under a Before tracking starting point.") }}{% endset %}
-  {% set tx_value_growth_datasets = [
-    {"label": metric_label, "data": value_growth | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
-    {"label": comparison_label, "data": comparison_values, "color": "#eb6834"},
-  ] %}
-  {% call chart_card('value-growth-card', tx_value_growth_heading, 'line', value_growth | map(attribute="label") | list, tx_value_growth_datasets, metric_options, metric) %}
-  <details>
-    <summary>View as table</summary>
-    <table style="margin-top: 0.6rem;">
-      <thead><tr><th>Month</th><th class="num">Added ({{ metric_label }})</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
-      <tbody>
-        {% for row in value_growth %}
-        <tr><td>{{ row.label }}</td><td class="num">{{ row.added_value | kr }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
-  {% endcall %}
-
   {% set cash_flow_datasets = [
     {"label": "Purchases", "data": cash_flow | map(attribute="bought") | list, "color": "#2a78d6"},
     {"label": "Sales", "data": cash_flow | map(attribute="sold") | list, "color": "#eb6834"},
@@ -42,17 +23,17 @@
 </div>
 
 <div class="card-pair">
-  {% set tx_real_history_heading %}Real value history {{ info('The collection\'s actual value on each date a daily snapshot was taken — real historical prices, not today\'s price applied retroactively like the chart above. Empty until at least one day of snapshots has accumulated.') }}{% endset %}
-  {% set tx_real_history_datasets = [
-    {"label": metric_label, "data": real_history | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
+  {% set market_value_heading %}Market Value {{ info('The collection\'s actual value on each date a daily snapshot was taken — real historical prices, not an estimate. Empty until at least one day of snapshots has accumulated.') }}{% endset %}
+  {% set market_value_datasets = [
+    {"label": metric_label, "data": market_value_history | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
   ] %}
-  {% call chart_card('real-value-history-card', tx_real_history_heading, 'line', real_history | map(attribute="label") | list, tx_real_history_datasets, metric_options, metric) %}
+  {% call chart_card('market-value-card', market_value_heading, 'line', market_value_history | map(attribute="label") | list, market_value_datasets, metric_options, metric, stats=market_value_stats) %}
   <details>
     <summary>View as table</summary>
     <table style="margin-top: 0.6rem;">
       <thead><tr><th>Date</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
       <tbody>
-        {% for row in real_history %}
+        {% for row in market_value_history %}
         <tr><td>{{ row.label }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
         {% endfor %}
       </tbody>
