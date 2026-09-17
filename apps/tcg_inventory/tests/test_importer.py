@@ -5,7 +5,7 @@ from conftest import make_csv
 
 import card_images
 import importer
-from importer import _parse_number_int, _parse_price, import_dex_csv_files
+from importer import _parse_number_int, _parse_price, import_dex_csv_files, refresh_stale_prices
 from models import Card, Collection, ImportLog
 
 
@@ -128,6 +128,71 @@ def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch
     refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
     assert refreshed.tcgplayer_price == 42.0
     assert refreshed.tcgplayer_price_updated_at == dt.date.today()
+
+
+def test_refresh_stale_prices_updates_a_stale_card(db_session, monkeypatch):
+    card = Card(card_id="a", variant=None, name="Shellder", set="Base Set", tcgplayer_price=1.0)
+    card.tcgplayer_price_updated_at = dt.date.today() - dt.timedelta(days=importer._PRICE_STALE_AFTER_DAYS + 1)
+    db_session.add(card)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: card_images.CardApiData(None, 42.0),
+    )
+    result = refresh_stale_prices(db_session)
+
+    assert result.cards_checked == 1
+    assert result.cards_updated == 1
+    assert result.api_calls_used == 1
+    refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert refreshed.tcgplayer_price == 42.0
+    assert refreshed.tcgplayer_price_updated_at == dt.date.today()
+
+
+def test_refresh_stale_prices_skips_a_fresh_card(db_session, monkeypatch):
+    card = Card(card_id="a", variant=None, name="Shellder", set="Base Set", tcgplayer_price=1.0)
+    card.tcgplayer_price_updated_at = dt.date.today()
+    db_session.add(card)
+    db_session.commit()
+
+    calls = []
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: calls.append(1) or card_images.CardApiData(None, 42.0),
+    )
+    result = refresh_stale_prices(db_session)
+
+    assert result.cards_checked == 0
+    assert result.cards_updated == 0
+    assert result.api_calls_used == 0
+    assert calls == []
+    refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert refreshed.tcgplayer_price == 1.0
+
+
+def test_refresh_stale_prices_respects_the_lookup_budget(db_session, monkeypatch):
+    for i in range(5):
+        card = Card(card_id=str(i), variant=None, name="Shellder", set="Base Set")
+        db_session.add(card)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number: card_images.CardApiData(None, 5.0),
+    )
+    result = refresh_stale_prices(db_session, max_lookups=2)
+
+    assert result.cards_checked == 2
+    assert result.cards_updated == 2
+    assert result.api_calls_used == 2
+    updated_count = (
+        db_session.query(Card).filter(Card.tcgplayer_price.isnot(None)).count()
+    )
+    assert updated_count == 2
 
 
 def test_my_collection_same_id_different_variant_creates_two_cards(db_session):

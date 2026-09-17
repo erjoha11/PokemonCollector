@@ -31,7 +31,7 @@ import dropbox_client
 import queries
 import snapshots
 from db import SessionLocal, init_db
-from importer import import_dex_csv_files
+from importer import import_dex_csv_files, refresh_stale_prices
 from models import (
     Binder,
     Card,
@@ -88,9 +88,9 @@ templates.env.globals["sort_url"] = _sort_url
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
-# /cron/dropbox-sync has its own separate auth (CRON_SECRET) -- a scheduled
-# job has no browser session to log in with.
-_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync"}
+# /cron/dropbox-sync and /cron/refresh-prices have their own separate auth
+# (CRON_SECRET) -- a scheduled job has no browser session to log in with.
+_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/refresh-prices"}
 
 
 @app.middleware("http")
@@ -1193,6 +1193,40 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # has to land in Vercel's runtime logs to be debuggable at all.
         print(f"[cron/dropbox-sync] failed: {exc}")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
+@app.get("/cron/refresh-prices")
+def cron_refresh_prices(request: Request, secret: str = ""):
+    """Scheduled TCGPlayer price refresh, triggered by the Vercel Cron job in
+    vercel.json -- separate from /cron/dropbox-sync so a card's price
+    doesn't have to wait for the next Dex import to get refreshed (Dex
+    imports only spend a small per-import budget on stale prices, and only
+    run when a sync happens at all). Same CRON_SECRET auth scheme as
+    /cron/dropbox-sync -- see that route's docstring for the header-vs-
+    query-param rationale (this route has no snapshot to attribute, so it
+    doesn't need the "scheduled vs manual" distinction that one does).
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
+    authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
+    if not authorized:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    db = get_db_session()
+    try:
+        result = refresh_stale_prices(db)
+        print(
+            f"[cron/refresh-prices] ok: checked={result.cards_checked} "
+            f"updated={result.cards_updated} api_calls={result.api_calls_used}"
+        )
+        return {
+            "status": "ok",
+            "cards_checked": result.cards_checked,
+            "cards_updated": result.cards_updated,
+            "api_calls_used": result.api_calls_used,
+        }
     finally:
         db.close()
 

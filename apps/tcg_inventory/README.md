@@ -242,6 +242,21 @@ collection + Vintage + whatever else you track) — each cron run syncs
 whatever's in there at the time, same as selecting every file on the
 Import page manually.
 
+### Automatic daily price refresh (Vercel Cron)
+
+A separate cron, `GET /cron/refresh-prices` (`30 5 * * *`, right after the
+Dropbox sync above), refreshes `Card.tcgplayer_price` on its own schedule
+instead of only as a side effect of a Dex import. A Dex sync already
+refreshes a small batch of stale prices per run (`importer._MAX_PRICE_LOOKUPS_PER_IMPORT`,
+25), but that only happens when a sync runs at all — this cron runs daily
+regardless, with a larger budget
+(`importer._MAX_PRICE_LOOKUPS_PER_REFRESH_CRON`, 150) since it isn't
+competing with an import's own timeout, and picks up cards that would
+otherwise go stale for a long time between syncs. Same staleness rule
+(`_PRICE_STALE_AFTER_DAYS`, 7) and CRON_SECRET auth as `/cron/dropbox-sync`
+(see above) — no snapshotting here, since this cron doesn't affect `qty`,
+only price.
+
 ### Value history
 
 `collection_value_growth` (Transactions' "View charts" section, top chart) is an

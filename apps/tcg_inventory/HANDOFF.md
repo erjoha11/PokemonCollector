@@ -381,3 +381,21 @@ Ditto) by re-running the same fetch with the fixed code — no snapshot had
 been taken yet at the buggy values (the diagnostic script never called
 `snapshots.record_daily_snapshot`), so `real_value_history` was never
 polluted with USD-mislabeled-as-NOK numbers.
+
+## Standalone price-refresh cron — 2026-09-17 session
+
+Per user request, added a second daily Vercel cron, `GET
+/cron/refresh-prices` (`30 5 * * *`), that refreshes `Card.tcgplayer_price`
+independently of the Dex import — previously a card's price only ever got
+refreshed as a side effect of `import_dex_csv_files` (25/import budget), so
+a card could go stale indefinitely between syncs. New
+`importer.refresh_stale_prices()` reuses the existing
+`_PRICE_STALE_AFTER_DAYS` staleness rule with its own larger standalone
+budget (`_MAX_PRICE_LOOKUPS_PER_REFRESH_CRON`, 150), same
+`card_images.fetch_card_data` best-effort call, same CRON_SECRET auth
+pattern as `/cron/dropbox-sync`. No snapshotting on this route (it never
+touches `qty`, only price). Tests added in `tests/test_importer.py`
+(refresh/skip/budget-cap) and a new `tests/test_price_refresh_route.py`
+(auth variants). Full suite green. Not yet verified against a real Vercel
+deploy — the schedule and route are new, worth checking Vercel's Cron Jobs
+dashboard after the next deploy to confirm it actually fires.

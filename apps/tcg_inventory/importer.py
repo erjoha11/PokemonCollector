@@ -41,6 +41,18 @@ _MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 _MAX_PRICE_LOOKUPS_PER_IMPORT = 25
 _PRICE_STALE_AFTER_DAYS = 7
 
+# refresh_stale_prices runs on its own cron, not piggybacking on a Dex
+# import, so it isn't competing with an import's own timeout/network budget
+# and can afford to check far more cards per run than the import-time cap.
+_MAX_PRICE_LOOKUPS_PER_REFRESH_CRON = 150
+
+
+@dataclass
+class PriceRefreshResult:
+    cards_checked: int = 0
+    cards_updated: int = 0
+    api_calls_used: int = 0
+
 
 @dataclass
 class ImportResult:
@@ -328,6 +340,49 @@ def import_dex_csv_files(
 
     _apply_auto_binder_rules(db, result)
     _log_import(db, result, source, [name for name, _ in files])
+
+    db.commit()
+    return result
+
+
+def refresh_stale_prices(
+    db: Session,
+    max_lookups: int = _MAX_PRICE_LOOKUPS_PER_REFRESH_CRON,
+    today: dt.date | None = None,
+) -> PriceRefreshResult:
+    """Refresh `Card.tcgplayer_price` independently of a Dex import.
+
+    A Dex sync already refreshes stale prices as a side effect (see the
+    `price_lookup_budget` handling above), but that budget is small and only
+    runs when a sync happens -- a card can otherwise go stale for a long time
+    between syncs. This is the same staleness rule and update logic, just
+    invoked on its own schedule (see app.py's /cron/refresh-prices) so prices
+    don't have to wait on the next Dex import to catch up.
+    """
+    today = today or dt.date.today()
+    price_stale_cutoff = today - dt.timedelta(days=_PRICE_STALE_AFTER_DAYS)
+    result = PriceRefreshResult()
+
+    stale_cards = (
+        db.query(Card)
+        .filter(
+            (Card.tcgplayer_price.is_(None))
+            | (Card.tcgplayer_price_updated_at.is_(None))
+            | (Card.tcgplayer_price_updated_at < price_stale_cutoff)
+        )
+        .order_by(Card.tcgplayer_price_updated_at.is_(None).desc(), Card.tcgplayer_price_updated_at.asc())
+        .limit(max_lookups)
+        .all()
+    )
+
+    for card in stale_cards:
+        api_data = card_images.fetch_card_data(card.name, card.set, card.number)
+        result.cards_checked += 1
+        result.api_calls_used += 1
+        if api_data.tcgplayer_price is not None:
+            card.tcgplayer_price = api_data.tcgplayer_price
+            card.tcgplayer_price_updated_at = today
+            result.cards_updated += 1
 
     db.commit()
     return result
