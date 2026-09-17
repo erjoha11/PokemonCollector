@@ -19,7 +19,7 @@
     <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">Sync Log</a>
     {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Log out</a>{% endif %}
   </nav>
-  <main>
+  <main id="main-content">
     {% block content %}{% endblock %}
   </main>
 </body>

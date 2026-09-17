@@ -358,3 +358,46 @@ def test_economic_summary_computes_net_invested(db_session):
     assert summary["total_bought"] == 110
     assert summary["total_sold"] == 60
     assert summary["net_invested"] == 50
+
+
+def test_economic_summary_includes_purchase_shipping(db_session):
+    import datetime as dt
+
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}]
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    cards = {c.card_id: c.id for c in db_session.query(Card).all()}
+
+    # Two cards sharing one order/purchase_id -- shipping is a per-order
+    # value duplicated onto every row of the order (see app.py's
+    # create_purchase), so it must be counted once for the order, not once
+    # per row, even though total_bought must still include it at all
+    # (previously omitted entirely).
+    db_session.add(
+        Transaction(
+            card_id=cards["a"], type="purchase", date=dt.date(2026, 1, 5), price=100, fees=10,
+            purchase_id=1, purchase_shipping=50,
+        )
+    )
+    db_session.add(
+        Transaction(
+            card_id=cards["b"], type="purchase", date=dt.date(2026, 1, 5), price=200,
+            purchase_id=1, purchase_shipping=50,
+        )
+    )
+    db_session.commit()
+
+    summary = queries.economic_summary(db_session)
+    # 100 + 10 fees + 200 + 50 shipping (once, not 100) = 360
+    assert summary["total_bought"] == 360
+    assert summary["net_invested"] == 360
+
+    invested = queries.net_invested_by_card(db_session)
+    # Shipping is attributed to exactly one card in the order (the lowest
+    # transaction id) so the per-card figures still sum to the same total.
+    assert sum(invested.values()) == 360
+    assert invested[cards["a"]] == 100 + 10 + 50
+    assert invested[cards["b"]] == 200

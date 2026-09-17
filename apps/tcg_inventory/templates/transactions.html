@@ -13,7 +13,8 @@
 
 <div class="filters" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
   <span class="muted">Search for each card that was part of the deal and add them one by one — they automatically share the same Order ID.</span>
-  <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML">+ New Order</button>
+  <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"
+          hx-trigger="click[confirmDiscardCart()]">+ New Order</button>
 </div>
 <div id="purchase-cart-container"></div>
 
@@ -172,6 +173,22 @@
 </details>
 
 <script>
+// Shared by "+ New Order" (this file) and "Cancel" (partials/purchase_cart.html)
+// -- both discard whatever's currently in the purchase cart, so both should
+// only nag when there's actually something to lose: at least one card row
+// added, or a purchase_total/purchase_shipping value typed in. An empty,
+// just-opened cart (or no cart open at all) proceeds with no prompt.
+function confirmDiscardCart() {
+  var cartBody = document.getElementById('cart-body');
+  var hasRows = !!cartBody && cartBody.children.length > 0;
+  var hasTotalOrShipping = Array.prototype.some.call(
+    document.querySelectorAll('#purchase-cart-container input[name="purchase_total"], #purchase-cart-container input[name="purchase_shipping"]'),
+    function (el) { return el.value.trim() !== ''; }
+  );
+  if (!hasRows && !hasTotalOrShipping) return true;
+  return confirm('Discard the in-progress order?');
+}
+
 // Splits the "Remaining amount" value evenly across every still-empty price
 // input in the purchase-cart table -- the "one lump sum, distribute
 // automatically" half of registering a purchase (the other half: type a
