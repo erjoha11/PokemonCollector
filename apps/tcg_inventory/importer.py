@@ -248,6 +248,12 @@ def import_dex_csv_files(
                     if api_data.tcgplayer_price is not None:
                         card.tcgplayer_price = api_data.tcgplayer_price
                         card.tcgplayer_price_updated_at = today
+                    elif api_data.low_confidence_match:
+                        result.warnings.append(
+                            f"{card.name} ({card.set or '?'} {card.number or '?'}): "
+                            "TCGPlayer API match wasn't confident enough to trust for "
+                            "pricing -- price left unchanged, worth a manual look."
+                        )
                     price_lookup_budget -= 1
 
             if is_new:

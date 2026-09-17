@@ -28,6 +28,7 @@ load_dotenv(APP_DIR / ".env")
 
 import auth
 import dropbox_client
+import price_refresh
 import queries
 import snapshots
 from db import SessionLocal, init_db
@@ -88,9 +89,9 @@ templates.env.globals["sort_url"] = _sort_url
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
-# /cron/dropbox-sync has its own separate auth (CRON_SECRET) -- a scheduled
-# job has no browser session to log in with.
-_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync"}
+# /cron/dropbox-sync and /cron/price-refresh have their own separate auth
+# (CRON_SECRET) -- a scheduled job has no browser session to log in with.
+_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh"}
 
 
 @app.middleware("http")
@@ -1193,6 +1194,50 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # has to land in Vercel's runtime logs to be debuggable at all.
         print(f"[cron/dropbox-sync] failed: {exc}")
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    finally:
+        db.close()
+
+
+@app.get("/cron/price-refresh")
+def cron_price_refresh(request: Request, secret: str = ""):
+    """Scheduled TCGPlayer price refresh, decoupled from Dex sync (see
+    price_refresh.py and issue #93) -- its own Vercel Cron entry in
+    vercel.json, separate from /cron/dropbox-sync's schedule so pricing
+    keeps moving even on a day the Dex sync doesn't run (or once Dex sync
+    becomes optional). Same CRON_SECRET-gated pattern as
+    /cron/dropbox-sync -- see that route's docstring for the
+    scheduled-vs-manual distinction, which also decides the CardSnapshot
+    source recorded here ("price-cron" vs "manual", both distinct from the
+    Dex sync's own "cron"/"manual" sources -- see queries.real_value_history,
+    which already labels charts by source when more than one exists for a
+    given day).
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
+    authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
+    if not authorized:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    snapshot_source = "price-cron" if is_scheduled_invocation else "manual"
+
+    db = get_db_session()
+    try:
+        result = price_refresh.refresh_stale_prices(db)
+        # Snapshot right after refreshing, same reasoning as
+        # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
+        snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
+        print(
+            f"[cron/price-refresh] ok: checked={result.cards_checked} "
+            f"updated={result.cards_updated} "
+            f"low_confidence={len(result.cards_low_confidence)} "
+            f"snapshotted={snapshotted}"
+        )
+        return {
+            "status": "ok",
+            "cards_checked": result.cards_checked,
+            "cards_updated": result.cards_updated,
+            "cards_low_confidence": result.cards_low_confidence,
+            "cards_snapshotted": snapshotted,
+        }
     finally:
         db.close()
 
