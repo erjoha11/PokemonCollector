@@ -126,6 +126,8 @@
            value="{{ group.purchase_total if group.purchase_total is not none else '' }}" style="width: 160px;">
     <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
            value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" style="width: 130px;">
+    <input type="text" name="platform" placeholder="Platform"
+           value="{{ group.platform if group.platform is not none else '' }}" style="width: 130px;">
     <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
   </form>
   {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
