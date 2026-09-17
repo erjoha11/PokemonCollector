@@ -115,10 +115,13 @@
 
 {% for group in purchase_groups %}
 <details class="collapsible" id="order-{{ group.purchase_id }}" style="margin-bottom: 0.75rem;"{% if open_order == group.purchase_id %} open{% endif %}>
-  <summary>Order #{{ group.purchase_id }}
-    <span class="muted">
-      ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }} · registered {{ group.total_price | kr }}{% if group.total_fees %} + {{ group.total_fees | kr }} fee{% endif %}{% if group.purchase_shipping %} · shipping {{ group.purchase_shipping | kr }}{% endif %}{% if group.purchase_total is not none %} · agreed {{ group.purchase_total | kr }} · diff <span class="{{ 'tx-diff-open' if group.diff and group.diff | round(2) != 0 else 'tx-diff-clear' }}">{{ group.diff | kr }}</span>{% endif %}{% if group.summary_platform %} · {{ group.summary_platform }}{% endif %})
-    </span>
+  <summary class="tx-order-summary">
+    <span class="tx-order-id">Order #{{ group.purchase_id }}</span>
+    <span class="tx-order-stat">{{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}</span>
+    <span class="tx-order-stat">Value {{ (group.total_price + group.total_fees) | kr }}</span>
+    {% if group.purchase_shipping %}<span class="tx-order-stat">Shipping &amp; cost {{ group.purchase_shipping | kr }}</span>{% endif %}
+    {% if group.diff is not none and group.diff | round(2) != 0 %}<span class="tx-order-stat tx-diff-flag">Diff {{ group.diff | kr }}</span>{% endif %}
+    {% if group.summary_platform %}<span class="tx-platform-badge">{{ group.summary_platform }}</span>{% endif %}
   </summary>
   <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;"
         hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"

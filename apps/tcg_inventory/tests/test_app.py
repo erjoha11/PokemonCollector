@@ -452,13 +452,13 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     assert all(t.purchase_total == 100 for t in txs)
     db.close()
 
-    # Registered (60) + agreed (100) + diff (40) -- the normal-print cards
-    # not priced individually yet are the still-unaccounted-for 40 kr.
+    # Value (60, registered price + fees) vs. the diff against the agreed
+    # total (40) -- the normal-print cards not priced individually yet are
+    # the still-unaccounted-for 40 kr, flagged since it's nonzero.
     text = client.get("/transactions").text
     group_section = text.split("Order #4", 1)[1]
-    assert "registered 60 kr" in group_section
-    assert "agreed 100 kr" in group_section
-    assert 'diff <span class="tx-diff-open">40 kr</span>' in group_section
+    assert "Value 60 kr" in group_section
+    assert '<span class="tx-order-stat tx-diff-flag">Diff 40 kr</span>' in group_section
 
 
 def test_purchase_shipping_is_subtracted_from_the_diff(client):
@@ -497,10 +497,11 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
 
     text = client.get("/transactions").text
     group_section = text.split("Order #1", 1)[1]
-    assert "registered 1 000 kr" in group_section
-    assert "shipping 76 kr" in group_section
-    assert "agreed 1 076 kr" in group_section
-    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+    assert "Value 1 000 kr" in group_section
+    assert "Shipping &amp; cost 76 kr" in group_section
+    # Diff is 0 once shipping is accounted for -- the flag stays hidden
+    # entirely rather than showing a "0 kr" line for a settled order.
+    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
 
 
 def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
@@ -531,9 +532,12 @@ def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
 
     text = client.get("/transactions").text
     group_section = text.split("Order #9", 1)[1]
-    assert "registered 300 kr" in group_section
-    assert "9 999 kr" not in group_section.split("</summary>", 1)[0]
-    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+    assert "Value 300 kr" in group_section
+    summary_section = group_section.split("</summary>", 1)[0]
+    assert "9 999 kr" not in summary_section
+    # Diff is 0 (the agreed total matches the real purchase row exactly) --
+    # the flag stays hidden for a settled order.
+    assert "tx-diff-flag" not in summary_section
 
 
 def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
@@ -582,10 +586,10 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
         data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
     )
 
-    # No declared total yet -- no diff shown, just what's registered.
+    # No declared total yet -- no diff flag shown, just the Value stat.
     text = client.get("/transactions").text
     group_section = text.split("Order #6", 1)[1]
-    assert "avtalt" not in group_section.split("</summary>", 1)[0]
+    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
 
     response = client.post(
         "/transactions/purchase/6/total", data={"purchase_total": "10"}, follow_redirects=True
@@ -602,11 +606,10 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     assert tx.purchase_total == 10
     db.close()
 
-    # Registered equals agreed now -- diff is 0, shown as "cleared" not flagged.
+    # Registered equals agreed now -- diff is 0, so the flag stays hidden.
     text = client.get("/transactions").text
     group_section = text.split("Order #6", 1)[1]
-    assert "agreed 10 kr" in group_section
-    assert 'diff <span class="tx-diff-clear">0 kr</span>' in group_section
+    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
 
 
 def test_platform_can_be_bulk_set_on_an_existing_purchase(client):

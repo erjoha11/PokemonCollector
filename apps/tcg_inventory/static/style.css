@@ -160,11 +160,40 @@ tbody tr:hover td { background: var(--accent-wash); }
 .tx-badge-sell { background: rgba(235, 104, 52, 0.14); color: #b8501f; }
 .tx-badge-trade { background: rgba(120, 90, 200, 0.14); color: #6a3fb0; }
 
-/* Registrert-vs-avtalt diff on a purchase group -- flagged when nonzero
-   (money still unaccounted for, e.g. normal-print cards not priced yet),
-   neutral once the two sums match. */
-.tx-diff-open { color: #d03b3b; font-weight: 600; }
-.tx-diff-clear { color: var(--muted); }
+/* A purchase group's <summary> line: "Order #N" plus a run of small stats
+   (card count, Value, shipping & cost, an optional diff flag) with the
+   platform as a pill pushed to the far right -- scannable across many
+   collapsed orders instead of one long muted sentence. flex-wrap so it
+   degrades gracefully on narrow viewports instead of overflowing. */
+.tx-order-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem 0.85rem;
+}
+.tx-order-id {
+  font-weight: 700;
+  color: var(--ink);
+}
+.tx-order-stat {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Registrert-vs-avtalt diff on a purchase group -- only rendered at all
+   when nonzero (money still unaccounted for, e.g. normal-print cards not
+   priced yet), so a clean/settled order stays quiet. */
+.tx-order-stat.tx-diff-flag { color: #d03b3b; font-weight: 600; }
+.tx-platform-badge {
+  margin-left: auto;
+  display: inline-block;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  background: var(--accent-wash);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
 
 details.collapsible {
   margin-top: 1.5rem;
