@@ -38,8 +38,13 @@
         <span class="top-card-place">1.</span>
         {% if first_card.image_url %}<img class="top-card-image" src="{{ first_card.image_url }}" alt="{{ first_card.name }}" loading="lazy">{% endif %}
         <div class="top-card-details">
-          <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}</div>
-          {% if first_card.rarity %}<div class="top-card-meta">{{ first_card.rarity }}</div>{% endif %}
+          <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}{% if first_card.number %} <span class="top-card-number">#{{ first_card.number }}</span>{% endif %}</div>
+          {% if first_card.rarity or first_card.language %}
+          <div class="top-card-meta">
+            {%- if first_card.rarity %}{{ first_card.rarity }}{% endif -%}
+            {%- if first_card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ first_card.language }}</span>{% endif -%}
+          </div>
+          {% endif %}
         </div>
         <span class="top-card-price">{{ first_card.display_price | kr }}</span>
       </div>
@@ -49,8 +54,13 @@
         <div class="top-card-rank">
           <span class="top-card-place">{{ loop.index + 1 }}.</span>
           <div class="top-card-details">
-            <div class="top-card-name" title="{{ card.name }}">{{ card.name }}</div>
-            {% if card.rarity %}<div class="top-card-meta">{{ card.rarity }}</div>{% endif %}
+            <div class="top-card-name" title="{{ card.name }}">{{ card.name }}{% if card.number %} <span class="top-card-number">#{{ card.number }}</span>{% endif %}</div>
+            {% if card.rarity or card.language %}
+            <div class="top-card-meta">
+              {%- if card.rarity %}{{ card.rarity }}{% endif -%}
+              {%- if card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ card.language }}</span>{% endif -%}
+            </div>
+            {% endif %}
           </div>
           <span class="top-card-price">{{ card.display_price | kr }}</span>
         </div>

@@ -415,6 +415,26 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   color: var(--muted);
   font-size: 0.7rem;
 }
+/* Card number trails the name as secondary metadata -- smaller and more
+   muted than the name itself so it reads as a subscript, not competing for
+   attention (same "reads as secondary" intent as .tx-card-meta/.tx-id on
+   Transactions' rows). */
+.top-card-number {
+  font-size: 0.78em;
+  font-weight: 400;
+  color: var(--muted);
+  opacity: 0.75;
+}
+/* Reuses .tx-platform-badge's pill styling (Transactions' order-platform
+   badge) for the language variant, per this app's one established
+   "neutral metadata pill" visual language -- just sized down slightly to
+   fit a compact KPI row. */
+.top-card-lang-badge {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
 .top-card-price {
   font-size: 0.82rem;
   font-weight: 600;
