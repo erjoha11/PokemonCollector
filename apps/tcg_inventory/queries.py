@@ -59,6 +59,16 @@ class Bucket:
     # kind of bucket (collection, set, rarity) since it's populated here
     # rather than per-breakdown-function.
     cards: list[Card] = field(default_factory=list)
+    # Only populated for set-level buckets within `by_series_breakdown`'s
+    # `child_sets` (see #142) -- the set's known card count from `Set.total_cards`
+    # (via `set_sync.py`'s api.pokemontcg.io backfill), used to compute
+    # `completion_pct`. None for every other kind of bucket (collection,
+    # series, rarity, Pokemon), and also None for a set-level bucket whose
+    # linked `Set` row has no `total_cards` yet (JP/KR sets the API doesn't
+    # cover, or one `set_sync.py` just hasn't run against since import) --
+    # the template must render an explicit "unknown" state for that case,
+    # never a bare 0%/100%.
+    total_cards: int | None = None
 
     def add(self, card: Card) -> None:
         self.qty += card.qty
@@ -75,6 +85,19 @@ class Bucket:
         regardless of how many copies it has (min(card.qty, 1)).
         """
         return self.qty - self.duplicates
+
+    @property
+    def completion_pct(self) -> float | None:
+        """Percent of the set actually owned (`unique_count / total_cards`),
+        or None when `total_cards` isn't known yet -- see `total_cards`'
+        docstring above for why that happens and why the template must not
+        collapse it to 0%/100%. `unique_count` is already qty>0-gated, so
+        this is unaffected by #132 (a separate bug about `Card.unique_value`
+        not being qty-gated).
+        """
+        if not self.total_cards:
+            return None
+        return self.unique_count / self.total_cards * 100
 
     @property
     def gain_loss(self) -> float:
@@ -197,6 +220,12 @@ def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bu
     # in-Python dict over cards already loaded, rather than a second query
     # against the superseded `set_release_order` table (see issue #138).
     set_release_ranks: dict[tuple[str, str], int] = {}
+    # Per-set known card count, read the same way as set_release_ranks above
+    # (straight off each card's own `Set.total_cards` FK) -- unlike release
+    # rank, ties aren't resolved with `min()`: a display-string collision
+    # spanning more than one actual `Set` row is rare enough that "first
+    # non-null value wins" is simpler and good enough (see #142).
+    set_total_cards: dict[tuple[str, str], int] = {}
     for card in cards:
         series_key = card.series or "(uten serie)"
         bucket = buckets.setdefault(series_key, Bucket(name=series_key))
@@ -212,13 +241,17 @@ def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bu
             set_release_ranks[key] = min(
                 set_release_ranks.get(key, linked_set.release_rank), linked_set.release_rank
             )
+        if linked_set is not None and linked_set.total_cards is not None:
+            key = (series_key, set_key)
+            set_total_cards.setdefault(key, linked_set.total_cards)
 
     # A series' own rank is its earliest set's rank.
     release_ranks: dict[str, int] = {}
     for (series_key, _set_key), rank in set_release_ranks.items():
         release_ranks[series_key] = min(release_ranks.get(series_key, rank), rank)
 
-    for (series_key, _set_key), set_bucket in set_buckets.items():
+    for (series_key, set_key_), set_bucket in set_buckets.items():
+        set_bucket.total_cards = set_total_cards.get((series_key, set_key_))
         buckets[series_key].child_sets.append(set_bucket)
         set_bucket.cards.sort(key=_card_sort_key)
     for series_key, bucket in buckets.items():

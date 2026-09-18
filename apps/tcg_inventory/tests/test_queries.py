@@ -94,7 +94,7 @@ def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session)
     assert top[0].card_id == "expensive-single"
 
 
-def _link_set(db_session, series, set_name, release_rank=None):
+def _link_set(db_session, series, set_name, release_rank=None, total_cards=None):
     """Test helper mirroring db.py's `_backfill_sets()`: get-or-create a
     `Set` row for (series, set_name) and link every matching card's
     `set_id` to it. `by_series_breakdown` reads release order off this FK
@@ -102,15 +102,17 @@ def _link_set(db_session, series, set_name, release_rank=None):
     `SetReleaseOrder` table -- see issue #138. The real app links this
     automatically via `db.py`'s `init_db()`/`_backfill_sets()`; the
     `db_session` fixture here doesn't run `init_db()`, so tests link it by
-    hand.
+    hand. `total_cards` mirrors `set_sync.py`'s api.pokemontcg.io backfill,
+    for #142's completion-percent field.
     """
     set_row = db_session.query(Set).filter_by(series=series, name=set_name).one_or_none()
     if set_row is None:
-        set_row = Set(series=series, name=set_name, release_rank=release_rank)
+        set_row = Set(series=series, name=set_name, release_rank=release_rank, total_cards=total_cards)
         db_session.add(set_row)
         db_session.flush()
     else:
         set_row.release_rank = release_rank
+        set_row.total_cards = total_cards
     db_session.query(Card).filter_by(series=series, set=set_name).update({Card.set_id: set_row.id})
     db_session.commit()
     return set_row
@@ -217,6 +219,58 @@ def test_series_breakdown_falls_back_for_cards_with_no_linked_set_or_no_rank(db_
     # "(uten serie)" bucket the unlinked/no-series card lands in, which has
     # no ranked set at all and falls back to the unknown-rank tie-break.
     assert names.index("Original") < names.index("(uten serie)")
+
+
+def test_set_bucket_completion_pct_computed_from_total_cards_and_partial_ownership(db_session):
+    """#142: a set-level bucket with a known `total_cards` and partial
+    ownership computes `unique_count / total_cards * 100` -- never stored,
+    computed live from the already qty>0-gated `unique_count`.
+    """
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "series": "Original", "set": "Base Set", "qty": 1},
+            {"id": "b", "series": "Original", "set": "Base Set", "qty": 0},
+            {"id": "c", "series": "Original", "set": "Base Set", "qty": 3},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    _link_set(db_session, "Original", "Base Set", release_rank=1, total_cards=102)
+
+    original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
+    base_set = next(s for s in original.child_sets if s.name == "Base Set")
+
+    assert base_set.total_cards == 102
+    # 2 owned (qty 1 and qty 3) out of 3 cards, one at qty 0 -> unique_count 2.
+    assert base_set.unique_count == 2
+    assert base_set.completion_pct == pytest.approx(2 / 102 * 100)
+
+    # The parent series-level bucket is not a set-level metric -- #142 says
+    # leave it None/blank rather than aggregating or guessing.
+    assert original.total_cards is None
+    assert original.completion_pct is None
+
+
+def test_set_bucket_with_unknown_total_cards_reports_none_not_0_or_100_pct(db_session):
+    """#142: a set with no `Set.total_cards` yet (permanent for JP/KR sets
+    api.pokemontcg.io doesn't cover, temporary otherwise until `set_sync.py`
+    runs again) must report `completion_pct is None` -- the template renders
+    an explicit "unknown" state for this, never a bare 0%/100%.
+    """
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "series": "Original", "set": "Base Set", "qty": 1}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    _link_set(db_session, "Original", "Base Set", release_rank=1, total_cards=None)
+
+    original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
+    base_set = next(s for s in original.child_sets if s.name == "Base Set")
+
+    assert base_set.total_cards is None
+    assert base_set.completion_pct is None
 
 
 def test_rarity_breakdown_groups_by_rarity(db_session):

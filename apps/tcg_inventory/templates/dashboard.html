@@ -163,6 +163,7 @@
           <th class="num">{{ series_sort('Total value', 'total_value') }}</th>
           <th class="num">Net invested</th>
           <th class="num">Gain/loss</th>
+          <th class="num">Completion {{ info('Share of the set you own (unique cards / total cards in the set). Only shown per set, not per series. "unknown" means the set\'s total card count hasn\'t been synced yet.', align_right=true) }}</th>
         </tr>
       </thead>
       <tbody>
@@ -177,6 +178,7 @@
           <td class="num">{{ s.total_value | kr }}</td>
           <td class="num">{{ s.net_invested | kr }}</td>
           <td class="num">{{ s.gain_loss | kr }}</td>
+          <td class="num"></td>
         </tr>
         {% for set_b in s.child_sets %}
         {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
@@ -189,6 +191,7 @@
           <td class="num">{{ set_b.total_value | kr }}</td>
           <td class="num">{{ set_b.net_invested | kr }}</td>
           <td class="num">{{ set_b.gain_loss | kr }}</td>
+          <td class="num">{% if set_b.total_cards %}{{ set_b.unique_count }}/{{ set_b.total_cards }} ({{ set_b.completion_pct | round | int }}%){% else %}<span class="muted" title="Set's total card count hasn't been synced yet">unknown</span>{% endif %}</td>
         </tr>
         {% for card in set_b.cards %}
         {{ card_leaf_row(card, 'grandchild-row', set_row_id) }}
