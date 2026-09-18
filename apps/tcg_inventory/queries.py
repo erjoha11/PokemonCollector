@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Transaction
+from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Set, Transaction
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -689,4 +689,37 @@ def unlinked_set_cards(db: Session) -> list[UnlinkedSetCards]:
     return [
         UnlinkedSetCards(series=series, set=set_name, card_count=count)
         for series, set_name, count in rows
+    ]
+
+
+@dataclass
+class SetMissingReleaseRank:
+    series: str
+    name: str
+    card_count: int
+
+
+def sets_missing_release_rank(db: Session) -> list[SetMissingReleaseRank]:
+    """`Set` rows with no `release_rank` yet -- either `set_sync.py`'s
+    api.pokemontcg.io backfill never matched them (a JP/KR set the API
+    doesn't cover yet, or a name/series mismatch that didn't clear
+    `set_sync._match`'s confidence bar -- never guessed, see that module's
+    docstring for why), or a set with no rank researched by hand either.
+    Grouped with each set's own card count (via the `Card.set_id` FK, not a
+    string join) so it's obvious which gaps are worth a manual look and
+    which are empty/low-stakes -- same "make the gap visible instead of
+    silently falling back" idea as `unlinked_set_cards()` above, just for
+    `release_rank` instead of the FK link itself.
+    """
+    rows = (
+        db.query(Set.series, Set.name, func.count(Card.id))
+        .outerjoin(Card, Card.set_id == Set.id)
+        .filter(Set.release_rank.is_(None))
+        .group_by(Set.series, Set.name)
+        .order_by(func.count(Card.id).desc())
+        .all()
+    )
+    return [
+        SetMissingReleaseRank(series=series, name=name, card_count=count)
+        for series, name, count in rows
     ]

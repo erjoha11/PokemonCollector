@@ -297,13 +297,23 @@ class Set(Base):
     Rows are get-or-created automatically for every distinct (series, set)
     pair seen on `cards`, by db.py's `_backfill_sets()` -- nothing needs to
     seed this table by hand the way `set_release_order` did/does.
-    `release_rank` is nullable (unlike `SetReleaseOrder.release_rank`)
-    because most sets won't have a known release rank yet; app.py's
+    `release_rank` is nullable because not every set is known to
+    `set_sync.py`'s api.pokemontcg.io backfill (see issue #136) -- app.py's
     Inventory "release order" sort falls back to `UNKNOWN_RELEASE_RANK` for
     a card with no linked Set row, or a linked one with a null rank -- same
     fallback semantics as before, just sourced from this FK now.
-    `total_cards` is nullable and unused today -- reserved for a future
-    "set completion %" feature (tracked separately, not built here).
+    `release_rank` used to be "hand-entered once researched, never
+    guessed"; issue #136 deliberately changed that -- `set_sync.py` now
+    populates it in bulk from api.pokemontcg.io's real published
+    `releaseDate` per set, which satisfies "never guessed" a different way
+    (real published data, not a manual estimate) rather than abandoning the
+    principle. A set that script can't confidently match (see its
+    module docstring -- notably JP/KR sets, which that API doesn't cover
+    yet) is left null rather than assigned a wrong rank; `release_rank` can
+    still be hand-edited directly for a case the sync can't cover.
+    `total_cards` is likewise populated by `set_sync.py` (from the API's
+    per-set card count) for every matched set -- reserved for a future "set
+    completion %" feature (tracked separately, not built here).
     """
 
     __tablename__ = "sets"

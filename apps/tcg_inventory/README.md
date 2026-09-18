@@ -122,11 +122,28 @@ without updating both the code and this doc.
    every app startup, not just once) automatically get-or-creates a `Set`
    row for every distinct `(series, set)` pair seen on `cards` and links
    every matching card's `set_id`, so nothing needs to be imported or
-   seeded by hand for the link itself to exist. `release_rank` is still
-   null for most sets, though — it isn't known automatically, only ever
-   set by hand once a set's actual release date is researched (never
-   guessed). Every release-order UI surface in the app — the Inventory
-   table's default "release order" sort, the Dashboard's series breakdown,
+   seeded by hand for the link itself to exist. `release_rank` used to be
+   null for most sets and only ever set by hand once a set's actual release
+   date was researched (never guessed) — `set_sync.py` (issue #136,
+   fast-follow to #133) is a deliberate, explicitly-approved change to that
+   rule: it's a one-off/occasional script (`python set_sync.py`, same
+   "run it locally or against Supabase via `DATABASE_URL`" shape as
+   `seed_set_release_order.py`) that calls api.pokemontcg.io's `/v2/sets`
+   (~166 sets, one call) and, for every `Set` row it can confidently match
+   by (series, name) — see its module docstring for the matching
+   strategy — writes `release_rank` as an ordinal rank over the API's own
+   published `releaseDate` (earliest first) and `total_cards` from the
+   API's per-set card count. "Never guessed" is satisfied a different way
+   now: real published data instead of a manual estimate, not abandoned.
+   A set the script can't confidently match — notably Japanese/Korean sets,
+   which that API doesn't cover yet (e.g. this collection's own "Scarlet &
+   Violet: 151 JP/KR") — is left exactly as it was (typically null) rather
+   than guessed; `queries.sets_missing_release_rank()` lists which sets
+   still have no `release_rank`, grouped with each one's own card count, so
+   that gap stays visible instead of only showing up as a sort artifact.
+   Safe to re-run any time; only ever touches rows it actually matches.
+   Every release-order UI surface in the app — the Inventory table's
+   default "release order" sort, the Dashboard's series breakdown,
    Inventory's collapsed KPI module, and the Transactions KPI module (all
    four via `queries.by_series_breakdown()`) — reads `Card.set_id ->
    Set.release_rank`; a card with no linked `Set` row, or a linked one with
