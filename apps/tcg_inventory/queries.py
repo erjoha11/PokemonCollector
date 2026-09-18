@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Card, CardSnapshot, FavoritePokemon, PokemonAlias, SetReleaseOrder, Transaction
+from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, SetReleaseOrder, Transaction
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -577,3 +577,55 @@ def assign_bucket_investment(buckets, invested_by_card: dict[int, float]) -> Non
     """Attach transaction totals to buckets without changing value rules."""
     for bucket in buckets:
         bucket.net_invested = sum(invested_by_card.get(card.id, 0.0) for card in bucket.cards)
+
+
+@dataclass
+class ListingCardPricing:
+    """One card within a `Listing`, annotated with the three prices the
+    /listings page compares side by side -- see the "Sales listings
+    (finn.no)" business rule in README.md. `listed_price` is the listing's
+    own `suggested_price` (one price per listing, not per card, since a
+    listing covers a lot rather than pricing each card in it separately).
+    """
+
+    card: Card
+    cost: float
+    market_price: float | None
+    listed_price: float | None
+
+
+@dataclass
+class ListingOverview:
+    listing: Listing
+    card_rows: list[ListingCardPricing]
+
+
+def listing_overview(db: Session) -> list[ListingOverview]:
+    """Every `Listing`, newest first, with each of its cards annotated with
+    cost (actual money spent, from `net_invested_by_card` -- the same
+    Transaction-derived figure used everywhere else, not a second "cost"
+    concept), market price (`Card.display_price`), and listed price
+    (`Listing.suggested_price`). Read-only: this never touches `qty`,
+    `card_collections`, or `binder_id` -- see README's "Sales listings
+    (finn.no)" business rule.
+    """
+    invested_by_card = net_invested_by_card(db)
+    listings = (
+        db.query(Listing)
+        .options(selectinload(Listing.cards))
+        .order_by(Listing.created_at.desc())
+        .all()
+    )
+    overview = []
+    for listing in listings:
+        card_rows = [
+            ListingCardPricing(
+                card=card,
+                cost=invested_by_card.get(card.id, 0.0),
+                market_price=card.display_price,
+                listed_price=listing.suggested_price,
+            )
+            for card in listing.cards
+        ]
+        overview.append(ListingOverview(listing=listing, card_rows=card_rows))
+    return overview

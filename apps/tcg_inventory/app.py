@@ -704,6 +704,23 @@ def sales_mark_listed(
 
 
 # --------------------------------------------------------------------------
+# Listings overview -- read-only view of every `Listing` recorded via
+# "Mark as listed" above, with cost/market/listed prices side by side per
+# card. Deliberately read-only: no status change, no "mark as sold" here --
+# see queries.listing_overview's docstring and README's "Sales listings
+# (finn.no)" business rule.
+# --------------------------------------------------------------------------
+@app.get("/listings")
+def listings_page(request: Request):
+    db = get_db_session()
+    try:
+        overview = queries.listing_overview(db)
+        return templates.TemplateResponse(request, "listings.html", {"overview": overview})
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
 # Transactions -- also shows when each card was first imported (merged from
 # the former standalone "Lagt til" page, since the two were always used
 # together: see a newly-synced card, then register what it cost).

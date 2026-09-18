@@ -533,3 +533,35 @@ as code only, no direct database changes.
   linking a `Listing` to the `Transaction` that eventually sells it
   (`Listing.status` has a "sold" value reserved for this, nothing sets it
   yet). None of these were asked for; flagging in case they come up.
+
+## Listings overview (issue #120) — 2026-09-17 session
+
+Built on top of the "Sell on finn.no" module above (PR #119), which was
+**still open/unmerged** at the time this branch was cut — this branch
+(`claude/listings-overview-120`) is stacked on PR #119's branch
+(`claude/card-selection-module-ux-g3odsj`) rather than `main`, since the
+`Listing` model this issue reads doesn't exist on `main` yet. Its PR should
+land after (or be merged into) #119, not directly onto `main`, unless #119
+is merged first and this branch is rebased. No schema change, no direct
+database changes — code only.
+
+- New read-only page `/listings` (`app.py`'s `listings_page`,
+  `queries.listing_overview`): every `Listing`, newest first, each card
+  annotated with three prices side by side — cost (`net_invested_by_card`,
+  reused as-is, not a new concept), market price (`Card.display_price`),
+  listed price (`Listing.suggested_price`) — plus the listing's
+  created-at date, platform, and status (active/delisted/sold).
+  Nav link added in `templates/base.html`.
+- Deliberately does **not** touch `qty`/`card_collections`/`binder_id` —
+  no delist/mark-sold action, per the issue's explicit scope cut and the
+  README's "Sales listings (finn.no)" business rule.
+- **Explicitly deferred** (per the issue, scope kept tight on purpose):
+  the optional show/hide toggle for non-sale card detail (illustrator/
+  rarity/variant/language), the "already listed since" badge back on
+  Inventory/`/sales`, and any "mark as sold"/Transaction-linking flow.
+- New tests: `tests/test_listings.py` (empty state, card+status render,
+  all three prices rendered independently with a real `Transaction` for
+  cost, no qty/binder mutation, nav link present). Full suite green (242
+  passed) on top of PR #119's branch.
+- **Not yet exercised in a real browser** — same caveat as the entries
+  above; only exercised via the test client.
