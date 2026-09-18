@@ -265,7 +265,7 @@ def dashboard(
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
         for series_bucket in series_breakdown:
             queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
-        top_cards = queries.top_valuable_cards(db, limit=10)
+        top_cards = queries.top_valuable_cards(db, limit=50)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
 
         # Renders via the shared chart_card macro (macros.html), the same
@@ -573,7 +573,7 @@ def inventory(
                 {
                     "headline": queries.headline_summary(db),
                     "net_invested": queries.economic_summary(db)["net_invested"],
-                    "top_cards": queries.top_valuable_cards(db, limit=10),
+                    "top_cards": queries.top_valuable_cards(db, limit=50),
                     "top_collection": top_collection,
                     "top_series": top_series,
                 }
@@ -916,7 +916,7 @@ def _transactions_context(
     return {
         "transactions": txs,
         "headline": headline,
-        "top_cards": queries.top_valuable_cards(db, limit=10),
+        "top_cards": queries.top_valuable_cards(db, limit=50),
         "top_collection": top_collection,
         "top_series": top_series,
         "kpi": kpi,

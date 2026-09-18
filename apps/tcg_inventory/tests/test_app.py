@@ -103,10 +103,10 @@ def test_dashboard_shows_a_market_value_chart_left_of_topp_10_and_inventory_belo
 
     text = client.get("/").text
     assert 'id="dashboard-market-value-card"' in text
-    # The Market Value chart is paired with "Top 10 most valuable cards"
+    # The Market Value chart is paired with "Most valuable cards"
     # (both come before Inventory, which gets its own full-width row below).
     first_pair = text.split('id="dashboard-market-value-card"', 1)[1].split("Inventory", 1)[0]
-    assert "Top 10 most valuable cards" in first_pair
+    assert "Most valuable cards" in first_pair
     assert "viz-chart-wrap" in first_pair
     assert "50 kr" in first_pair  # the chart's "View as table" value
     # Net invested / Current value / Gain-loss now live in the chart itself.
