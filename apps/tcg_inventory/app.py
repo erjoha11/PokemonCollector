@@ -125,6 +125,7 @@ SORT_COLUMNS = {
     "illustrator": Card.illustrator,
     "language": Card.language,
 }
+INVENTORY_VALUE_SORTS = {"net_invested", "gain_loss"}
 # Cards not present in set_release_order (no research done for that set yet)
 # sort after every known set, not before -- see SetReleaseOrder's docstring.
 UNKNOWN_RELEASE_RANK = 999999
@@ -141,7 +142,12 @@ def _sorted_rows(rows, sort: str, direction: str, keys: dict):
     key_fn = keys.get(sort)
     if key_fn is None:  # no/unknown sort param -- keep the caller's default order
         return rows
-    return sorted(rows, key=key_fn, reverse=(direction == "desc"))
+    present = []
+    missing = []
+    for row in rows:
+        (missing if key_fn(row) is None else present).append(row)
+    present.sort(key=key_fn, reverse=(direction == "desc"))
+    return present + missing
 
 
 # Shared by CARD_LEAF_SORT_KEYS and POKEMON_BUCKET_SORT_KEYS below: both
@@ -185,11 +191,9 @@ def _sort_cards_in_buckets(buckets, sort: str, direction: str) -> None:
     key_fn = CARD_LEAF_SORT_KEYS.get(sort)
     if key_fn is None:
         return
-    reverse = direction == "desc"
-
     def _apply(bucket_list):
         for bucket in bucket_list:
-            bucket.cards.sort(key=key_fn, reverse=reverse)
+            bucket.cards[:] = _sorted_rows(bucket.cards, sort, direction, CARD_LEAF_SORT_KEYS)
             if bucket.child_sets:
                 _apply(bucket.child_sets)
 
@@ -525,11 +529,27 @@ def inventory(
             rank_col = release_rank.desc() if direction == "desc" else release_rank.asc()
             order_cols = [rank_col, Card.set.asc(), number_sort.asc()]
         else:
-            sort_col = SORT_COLUMNS.get(sort, Card.name)
-            sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
-            order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
+            if sort in INVENTORY_VALUE_SORTS:
+                order_cols = [number_sort.asc()]
+            else:
+                sort_col = SORT_COLUMNS.get(sort, Card.name)
+                # Keep cards without a price at the bottom in either direction.
+                sort_col = sort_col.nulls_last()
+                sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
+                order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
 
         cards = query.order_by(*order_cols).all()
+        invested_by_card = queries.net_invested_by_card(db)
+        if sort in INVENTORY_VALUE_SORTS:
+            def value_sort_key(card):
+                invested = invested_by_card.get(card.id)
+                if invested is None:
+                    return float("-inf")
+                if sort == "gain_loss":
+                    return card.unique_value - invested
+                return invested
+
+            cards.sort(key=value_sort_key, reverse=direction == "desc")
 
         all_series = _distinct_values(db, Card.series)
         all_sets = _distinct_values(db, Card.set)
@@ -550,6 +570,7 @@ def inventory(
             "language": language,
             "sort": sort,
             "direction": direction,
+            "invested_by_card": invested_by_card,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,

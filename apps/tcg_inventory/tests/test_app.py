@@ -1239,6 +1239,75 @@ def test_inventory_can_be_sorted_by_language(client):
     assert asc.index("Abra") < asc.index("Zubat")  # ENG before JPN
 
 
+def test_inventory_price_sort_keeps_unpriced_cards_last(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "priced", "name": "Priced", "price": "25"},
+            {"id": "unpriced", "name": "Unpriced", "price": ""},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    def _rows(html: str) -> str:
+        return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+    asc = _rows(client.get("/inventory?sort=reference_price&direction=asc").text)
+    desc = _rows(client.get("/inventory?sort=reference_price&direction=desc").text)
+    assert asc.index("Priced") < asc.index("Unpriced")
+    assert desc.index("Priced") < desc.index("Unpriced")
+
+
+def test_inventory_shows_net_paid_and_per_print_gain(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "priced", "name": "Priced", "price": "25"},
+            {"id": "unpriced", "name": "Unpriced", "price": ""},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    priced = db.query(Card).filter(Card.card_id == "priced").one()
+    db.add(Transaction(card_id=priced.id, type="purchase", date="2026-01-01", price=10, fees=2))
+    db.commit()
+    db.close()
+
+    response = client.get("/inventory")
+    rows = response.text.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    assert "Net paid" in response.text
+    assert "Gain" in response.text
+    assert "12 kr" in rows
+    assert "13 kr" in rows
+    assert rows.count("> -</td>") >= 2
+
+
+def test_inventory_value_sorts_treat_missing_cost_as_less_than_zero(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "priced", "name": "Priced", "price": "25"},
+            {"id": "unpriced", "name": "Unpriced", "price": ""},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    priced = db.query(Card).filter(Card.card_id == "priced").one()
+    db.add(Transaction(card_id=priced.id, type="purchase", date="2026-01-01", price=10))
+    db.commit()
+    db.close()
+
+    for sort in ("net_invested", "gain_loss"):
+        rows = client.get(f"/inventory?sort={sort}&direction=desc").text.split("<tbody>", 1)[1]
+        assert rows.index("Priced") < rows.index("Unpriced")
+
+
 def test_dashboard_totalt_column_links_to_inventory_filtered_by_dup(client):
     from urllib.parse import quote
 
