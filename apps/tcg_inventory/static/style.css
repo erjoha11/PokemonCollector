@@ -195,6 +195,11 @@ tbody tr:hover td { background: var(--accent-wash); }
   font-weight: 700;
 }
 
+/* Per-listing action area on /listings (currently just "Remove listing") --
+   kept generic so a future edit/mark-as-sold action can slot in beside it. */
+.listing-actions form { display: inline-block; margin: 0; }
+.listing-actions button { padding: 0.35rem 0.75rem; font-size: 0.8rem; }
+
 details.collapsible {
   margin-top: 1.5rem;
 }

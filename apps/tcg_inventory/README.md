@@ -47,14 +47,17 @@ run).
   finn.no title + description (Norwegian ad copy — see "Sales listings"
   below). "Mark as listed" records the ad but never changes `qty`; a real
   sale is still only ever recorded via Transactions.
-- **Listings** (`/listings`) — read-only overview of every recorded
-  `Listing`: its card(s), status (active/delisted/sold), and three prices
-  side by side per card so a listing's margin is visible at a glance — cost
+- **Listings** (`/listings`) — overview of every recorded `Listing`: its
+  card(s), status (active/delisted/sold), and three prices side by side per
+  card so a listing's margin is visible at a glance — cost
   (`queries.net_invested_by_card`, same figure used everywhere else),
   market price (`Card.display_price`), and listed price
-  (`Listing.suggested_price`). Never changes `qty`/`card_collections`/
-  `binder_id` — no delist or "mark as sold" action here, see "Sales
-  listings (finn.no)" below.
+  (`Listing.suggested_price`). Each active listing has a "Remove listing"
+  control (`POST /listings/{id}/delist`, htmx partial-swap, no confirm
+  dialog) that sets its status to `"delisted"`; excludes delisted listings
+  by default, with a "Show delisted" toggle to reveal them. Delisting never
+  changes `qty`/`card_collections`/`binder_id` — there is still no "mark as
+  sold" action here, see "Sales listings (finn.no)" below.
 
 ## Data model
 
@@ -149,6 +152,12 @@ without updating both the code and this doc.
    represent without duplicating a date across every card in it. Marking a
    listing **never** changes `qty`, `card_collections`, or `binder_id` —
    listed is not sold; a real sale is only ever recorded as a `Transaction`.
+   An active listing can be removed from `/listings` (`POST
+   /listings/{id}/delist`, htmx, no confirm dialog), which sets `status =
+   "delisted"` and, like marking listed, never touches `qty`,
+   `card_collections`, `binder_id`, or Transactions — delisting only changes
+   the `Listing` row's own status. `/listings` excludes delisted listings by
+   default; a "Show delisted" toggle reveals them.
 
 ## CSV import format
 

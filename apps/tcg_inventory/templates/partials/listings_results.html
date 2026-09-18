@@ -1,0 +1,9 @@
+<div id="listings-results">
+{% if not overview %}
+<p class="muted">No listings recorded yet.</p>
+{% else %}
+{% for entry in overview %}
+{% include "partials/listing_entry.html" %}
+{% endfor %}
+{% endif %}
+</div>

@@ -725,18 +725,48 @@ def sales_mark_listed(
 
 
 # --------------------------------------------------------------------------
-# Listings overview -- read-only view of every `Listing` recorded via
-# "Mark as listed" above, with cost/market/listed prices side by side per
-# card. Deliberately read-only: no status change, no "mark as sold" here --
+# Listings overview -- every `Listing` recorded via "Mark as listed" above,
+# with cost/market/listed prices side by side per card, plus a "Remove
+# listing" (delist) action per row. Excludes delisted listings by default
+# ("Show delisted" toggle reveals them). Still no "mark as sold" here --
 # see queries.listing_overview's docstring and README's "Sales listings
-# (finn.no)" business rule.
+# (finn.no)" business rule. The per-row action area (currently just
+# "Remove listing") is deliberately generic so future actions (edit,
+# mark as sold) can slot into the same spot.
 # --------------------------------------------------------------------------
 @app.get("/listings")
-def listings_page(request: Request):
+def listings_page(request: Request, show_delisted: bool = False):
     db = get_db_session()
     try:
-        overview = queries.listing_overview(db)
-        return templates.TemplateResponse(request, "listings.html", {"overview": overview})
+        overview = queries.listing_overview(db, include_delisted=show_delisted)
+        context = {"overview": overview, "show_delisted": show_delisted}
+        is_htmx = bool(request.headers.get("HX-Request"))
+        template = "partials/listings_results.html" if is_htmx else "listings.html"
+        return templates.TemplateResponse(request, template, context)
+    finally:
+        db.close()
+
+
+@app.post("/listings/{listing_id}/delist")
+def listings_delist(request: Request, listing_id: int, show_delisted: str = Form("")):
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        if listing is None:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        listing.status = "delisted"
+        db.commit()
+
+        show_delisted_flag = show_delisted in ("true", "1", "on")
+        if not show_delisted_flag:
+            # Default view excludes delisted listings -- an empty response
+            # swapped into the row's own outerHTML removes it from the page.
+            return HTMLResponse("")
+
+        entry = queries.listing_entry(db, listing_id)
+        return templates.TemplateResponse(
+            request, "partials/listing_entry.html", {"entry": entry, "show_delisted": show_delisted_flag}
+        )
     finally:
         db.close()
 
