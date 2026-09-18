@@ -106,3 +106,100 @@ def test_listings_nav_link_present_on_base_pages(client):
 
     assert response.status_code == 200
     assert 'href="/listings"' in response.text
+
+
+def _listing_id(client):
+    import db as db_module
+    from models import Listing
+
+    db = db_module.SessionLocal()
+    try:
+        return db.query(Listing).one().id
+    finally:
+        db.close()
+
+
+def test_delist_sets_status_delisted(client):
+    import db as db_module
+    from models import Listing
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]])
+    listing_id = _listing_id(client)
+
+    response = client.post(f"/listings/{listing_id}/delist")
+
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    try:
+        listing = db.query(Listing).filter(Listing.id == listing_id).one()
+        assert listing.status == "delisted"
+    finally:
+        db.close()
+
+
+def test_delist_does_not_touch_qty_collections_binder_or_transactions(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]])
+    listing_id = _listing_id(client)
+
+    db = db_module.SessionLocal()
+    try:
+        tx_count_before = db.query(Transaction).count()
+    finally:
+        db.close()
+
+    client.post(f"/listings/{listing_id}/delist")
+
+    db = db_module.SessionLocal()
+    try:
+        card = db.query(Card).filter(Card.id == ids["a"]).one()
+        assert card.qty == 1
+        assert card.binder_id is None
+        assert list(card.collections) == []
+        assert db.query(Transaction).count() == tx_count_before
+    finally:
+        db.close()
+
+
+def test_delisted_listing_excluded_from_default_listings_view(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]])
+    listing_id = _listing_id(client)
+
+    client.post(f"/listings/{listing_id}/delist")
+    response = client.get("/listings")
+
+    assert response.status_code == 200
+    assert "No listings recorded yet" in response.text
+
+
+def test_show_delisted_toggle_reveals_delisted_listing(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]])
+    listing_id = _listing_id(client)
+
+    client.post(f"/listings/{listing_id}/delist")
+    response = client.get("/listings", params={"show_delisted": "true"})
+
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+    assert "delisted" in response.text
+
+
+def test_delist_htmx_response_omits_row_when_delisted_hidden(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]])
+    listing_id = _listing_id(client)
+
+    response = client.post(
+        f"/listings/{listing_id}/delist",
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert response.text.strip() == ""

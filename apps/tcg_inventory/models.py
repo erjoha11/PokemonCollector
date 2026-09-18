@@ -248,6 +248,12 @@ class Listing(Base):
     has no price actually received yet. Marking a card listed never touches
     `qty`/`card_collections`/`binder_id` -- listed != sold; a real sale is
     still only ever recorded as a `Transaction` once it actually happens.
+
+    `POST /listings/{id}/delist` (the "Remove listing" control on
+    `/listings`) sets `status = "delisted"` and, like every other listing
+    action, never touches `qty`/`card_collections`/`binder_id` -- delisting
+    an ad is not the same as the cards being gone. `/listings` excludes
+    delisted listings by default; its "Show delisted" toggle reveals them.
     """
 
     __tablename__ = "listings"

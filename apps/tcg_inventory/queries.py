@@ -600,32 +600,46 @@ class ListingOverview:
     card_rows: list[ListingCardPricing]
 
 
-def listing_overview(db: Session) -> list[ListingOverview]:
+def _build_listing_overview(listing: Listing, invested_by_card: dict[int, float]) -> ListingOverview:
+    card_rows = [
+        ListingCardPricing(
+            card=card,
+            cost=invested_by_card.get(card.id, 0.0),
+            market_price=card.display_price,
+            listed_price=listing.suggested_price,
+        )
+        for card in listing.cards
+    ]
+    return ListingOverview(listing=listing, card_rows=card_rows)
+
+
+def listing_overview(db: Session, include_delisted: bool = False) -> list[ListingOverview]:
     """Every `Listing`, newest first, with each of its cards annotated with
     cost (actual money spent, from `net_invested_by_card` -- the same
     Transaction-derived figure used everywhere else, not a second "cost"
     concept), market price (`Card.display_price`), and listed price
-    (`Listing.suggested_price`). Read-only: this never touches `qty`,
-    `card_collections`, or `binder_id` -- see README's "Sales listings
-    (finn.no)" business rule.
+    (`Listing.suggested_price`). Never touches `qty`, `card_collections`, or
+    `binder_id` -- see README's "Sales listings (finn.no)" business rule.
+
+    Excludes `status == "delisted"` listings by default -- `/listings`' "Show
+    delisted" toggle passes `include_delisted=True` to include them.
     """
     invested_by_card = net_invested_by_card(db)
-    listings = (
-        db.query(Listing)
-        .options(selectinload(Listing.cards))
-        .order_by(Listing.created_at.desc())
-        .all()
+    query = db.query(Listing).options(selectinload(Listing.cards)).order_by(Listing.created_at.desc())
+    if not include_delisted:
+        query = query.filter(Listing.status != "delisted")
+    return [_build_listing_overview(listing, invested_by_card) for listing in query.all()]
+
+
+def listing_entry(db: Session, listing_id: int) -> ListingOverview | None:
+    """Single-listing counterpart to `listing_overview`, used to re-render
+    one row after an htmx action (e.g. delisting) without recomputing
+    pricing for every listing. Returns None if the listing no longer exists.
+    """
+    listing = (
+        db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
     )
-    overview = []
-    for listing in listings:
-        card_rows = [
-            ListingCardPricing(
-                card=card,
-                cost=invested_by_card.get(card.id, 0.0),
-                market_price=card.display_price,
-                listed_price=listing.suggested_price,
-            )
-            for card in listing.cards
-        ]
-        overview.append(ListingOverview(listing=listing, card_rows=card_rows))
-    return overview
+    if listing is None:
+        return None
+    invested_by_card = net_invested_by_card(db)
+    return _build_listing_overview(listing, invested_by_card)
