@@ -3,7 +3,7 @@ from conftest import make_csv
 
 import queries
 from importer import import_dex_csv_files
-from models import Card, Set, SetReleaseOrder
+from models import Card, Set
 
 
 def _seed(db_session):
@@ -94,6 +94,28 @@ def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session)
     assert top[0].card_id == "expensive-single"
 
 
+def _link_set(db_session, series, set_name, release_rank=None):
+    """Test helper mirroring db.py's `_backfill_sets()`: get-or-create a
+    `Set` row for (series, set_name) and link every matching card's
+    `set_id` to it. `by_series_breakdown` reads release order off this FK
+    (`Card.set_id -> Set.release_rank`), not the superseded
+    `SetReleaseOrder` table -- see issue #138. The real app links this
+    automatically via `db.py`'s `init_db()`/`_backfill_sets()`; the
+    `db_session` fixture here doesn't run `init_db()`, so tests link it by
+    hand.
+    """
+    set_row = db_session.query(Set).filter_by(series=series, name=set_name).one_or_none()
+    if set_row is None:
+        set_row = Set(series=series, name=set_name, release_rank=release_rank)
+        db_session.add(set_row)
+        db_session.flush()
+    else:
+        set_row.release_rank = release_rank
+    db_session.query(Card).filter_by(series=series, set=set_name).update({Card.set_id: set_row.id})
+    db_session.commit()
+    return set_row
+
+
 def test_series_breakdown_sorts_by_release_order_not_alphabetically(db_session):
     main = make_csv(
         "My Collection",
@@ -105,15 +127,42 @@ def test_series_breakdown_sorts_by_release_order_not_alphabetically(db_session):
     )
     import_dex_csv_files(db_session, [("main.csv", main)])
 
-    db_session.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
-    db_session.add(SetReleaseOrder(series="XY", set="XY", release_rank=50))
-    db_session.commit()
+    _link_set(db_session, "Original", "Base Set", release_rank=1)
+    _link_set(db_session, "XY", "XY", release_rank=50)
 
     names = [b.name for b in queries.by_series_breakdown(db_session)]
     # "Original" (rank 1) before "XY" (rank 50) before the series with no
-    # set_release_order row at all -- release order, not alphabetical
+    # linked Set/release_rank at all -- release order, not alphabetical
     # (which would put "Original" after "Unresearched Series").
     assert names == ["Original", "XY", "Unresearched Series"]
+
+
+def test_series_breakdown_ignores_stale_set_release_order_rows(db_session):
+    """Editing `SetReleaseOrder` directly (the superseded table) must not
+    move these breakdowns any more -- only `Set.release_rank` does. Guards
+    against regressing back to reading `set_release_order` (issue #138).
+    """
+    from models import SetReleaseOrder
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "series": "XY", "set": "XY"},
+            {"id": "b", "series": "Original", "set": "Base Set"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    # A stale/never-migrated SetReleaseOrder row claiming XY is oldest --
+    # if by_series_breakdown were still reading this table, XY would sort
+    # first. It must be ignored entirely now.
+    db_session.add(SetReleaseOrder(series="XY", set="XY", release_rank=1))
+    db_session.commit()
+
+    names = [b.name for b in queries.by_series_breakdown(db_session)]
+    # Neither series has a linked Set/release_rank, so both fall back to
+    # the UNKNOWN_RELEASE_RANK tie-break (alphabetical by name).
+    assert names == ["Original", "XY"]
 
 
 def test_series_breakdown_carries_per_series_sets_in_release_order(db_session):
@@ -126,15 +175,48 @@ def test_series_breakdown_carries_per_series_sets_in_release_order(db_session):
     )
     import_dex_csv_files(db_session, [("main.csv", main)])
 
-    db_session.add(SetReleaseOrder(series="Original", set="Base Set", release_rank=1))
-    db_session.add(SetReleaseOrder(series="Original", set="Jungle", release_rank=2))
-    db_session.commit()
+    _link_set(db_session, "Original", "Base Set", release_rank=1)
+    _link_set(db_session, "Original", "Jungle", release_rank=2)
 
     original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
     set_names = [s.name for s in original.child_sets]
     assert set_names == ["Base Set", "Jungle"]
     assert original.child_sets[0].qty == 1
     assert original.child_sets[1].qty == 2
+
+
+def test_series_breakdown_falls_back_for_cards_with_no_linked_set_or_no_rank(db_session):
+    """Mirrors app.py's already-migrated Inventory sort fallback: a card
+    with no linked `Set` row at all, and a card whose linked `Set` has no
+    `release_rank` yet, both sort after every series/set with a known rank
+    -- same UNKNOWN_RELEASE_RANK semantics, just exercised here.
+    """
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "ranked", "series": "Original", "set": "Base Set"},
+            # Linked to a real Set row, but nobody's researched its rank yet.
+            {"id": "norank", "series": "Original", "set": "Jungle"},
+            # No series/set at all -- _backfill_sets() would have nothing to
+            # link this to in the real app either.
+            {"id": "nolink", "series": "", "set": ""},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    _link_set(db_session, "Original", "Base Set", release_rank=1)
+    _link_set(db_session, "Original", "Jungle", release_rank=None)
+
+    original = next(b for b in queries.by_series_breakdown(db_session) if b.name == "Original")
+    set_names = [s.name for s in original.child_sets]
+    # Base Set (rank 1) before Jungle (linked, no rank -> falls back last).
+    assert set_names == ["Base Set", "Jungle"]
+
+    names = [b.name for b in queries.by_series_breakdown(db_session)]
+    # "Original" (rank 1, via its earliest ranked set) sorts before the
+    # "(uten serie)" bucket the unlinked/no-series card lands in, which has
+    # no ranked set at all and falls back to the unknown-rank tie-break.
+    assert names.index("Original") < names.index("(uten serie)")
 
 
 def test_rarity_breakdown_groups_by_rarity(db_session):
