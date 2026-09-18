@@ -16,15 +16,19 @@ from .finn_ad import fetch_finn_ad
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Identify Pokemon cards in a finn.no ad.")
-    parser.add_argument("url", help="finn.no ad URL")
+    parser.add_argument("url", nargs="?", help="finn.no ad URL; prompted when omitted")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON instead of a summary")
     args = parser.parse_args(argv)
+    url = args.url or input("Enter finn.no ad URL: ").strip()
+    if not url:
+        print("A finn.no ad URL is required.", file=sys.stderr)
+        return 1
 
     try:
-        ad = fetch_finn_ad(args.url)
+        ad = fetch_finn_ad(url)
         cards = identify_cards(ad.images, ad_context=f"{ad.title}\n\n{ad.description}")
     except Exception as exc:  # surface a clean error instead of a traceback
-        print(f"Error processing {args.url}: {exc}", file=sys.stderr)
+        print(f"Error processing {url}: {exc}", file=sys.stderr)
         return 1
 
     if args.json:
