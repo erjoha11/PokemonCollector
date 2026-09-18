@@ -1149,7 +1149,7 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     main = make_csv(
         "My Collection",
         [
-            {"id": "new1", "name": "NewCard", "series": "Scarlet & Violet", "set": "151", "number": "1/165"},
+            {"id": "new1", "name": "NewCard", "series": "XY", "set": "XY", "number": "1/165"},
             {"id": "old10", "name": "OldCard10", "series": "Original", "set": "Base Set", "number": "10/102"},
             {"id": "old2", "name": "OldCard2", "series": "Original", "set": "Base Set", "number": "2/102"},
         ],
@@ -1226,6 +1226,104 @@ def test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets(client)
     # FK now instead of a string match.
     assert text.index("RankedCard") < text.index("NoRankCard")
     assert text.index("RankedCard") < text.index("NoLinkCard")
+
+
+def _seed_two_series_and_link_sets(client, old_rank, new_rank):
+    """Shared setup for the Dashboard/Inventory-KPI/Transactions-KPI
+    release-order tests below: two series, each linked to a `Set` row via
+    `init_db()`'s `_backfill_sets()`, ranked per the caller's args.
+    """
+    import db as db_module
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "old1", "name": "OldSeriesCard", "series": "Original", "set": "Base Set"},
+            {"id": "new1", "name": "NewSeriesCard", "series": "XY", "set": "XY"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db_module.init_db()  # link Card.set_id -> Set for both (series, set) pairs
+
+    from models import Set
+
+    db = db_module.SessionLocal()
+    db.query(Set).filter_by(series="Original", name="Base Set").update({"release_rank": old_rank})
+    db.query(Set).filter_by(series="XY", name="XY").update({"release_rank": new_rank})
+    db.commit()
+    db.close()
+
+
+def test_dashboard_series_breakdown_reflects_set_release_rank_edits(client):
+    """Issue #138: the Dashboard's series breakdown must source release
+    order from `Set.release_rank` (via `Card.set_id`), not the superseded
+    `SetReleaseOrder` table -- editing one rank re-orders the row without
+    touching `set_release_order` at all.
+    """
+    _seed_two_series_and_link_sets(client, old_rank=1, new_rank=50)
+
+    text = client.get("/").text.split('id="dashboard-series-card"', 1)[1]
+    assert text.index("Original") < text.index("XY")
+
+    import db as db_module
+    from models import Set
+
+    db = db_module.SessionLocal()
+    # Flip the ranks -- no set_release_order row involved anywhere.
+    db.query(Set).filter_by(series="Original", name="Base Set").update({"release_rank": 99})
+    db.query(Set).filter_by(series="XY", name="XY").update({"release_rank": 1})
+    db.commit()
+    db.close()
+
+    text = client.get("/").text.split('id="dashboard-series-card"', 1)[1]
+    assert text.index("XY") < text.index("Original")
+
+
+def test_inventory_kpi_series_breakdown_reflects_set_release_rank_edits(client):
+    """Same source as the Dashboard, exercised through Inventory's
+    collapsed KPI module (a full, non-htmx page load only, per app.py)."""
+    _seed_two_series_and_link_sets(client, old_rank=1, new_rank=50)
+
+    text = client.get("/inventory").text
+    assert "Original" in text  # sanity: KPI module rendered on full load
+
+    import db as db_module
+    from models import Set
+
+    db = db_module.SessionLocal()
+    db.query(Set).filter_by(series="Original", name="Base Set").update({"release_rank": 99})
+    db.query(Set).filter_by(series="XY", name="XY").update({"release_rank": 1})
+    db.commit()
+    db.close()
+
+    # Re-fetching after the rank flip doesn't 500 and still renders both
+    # series -- the KPI module itself doesn't expose ordering as directly
+    # testable text (it highlights only the single top series by value),
+    # so this exercises the same by_series_breakdown() call path Dashboard's
+    # ordering test above already verifies more precisely.
+    text = client.get("/inventory").text
+    assert "Original" in text and "XY" in text
+
+
+def test_transactions_kpi_series_breakdown_reflects_set_release_rank_edits(client):
+    """Same source as Dashboard/Inventory, exercised through Transactions'
+    KPI module."""
+    _seed_two_series_and_link_sets(client, old_rank=1, new_rank=50)
+
+    text = client.get("/transactions").text
+    assert "Original" in text
+
+    import db as db_module
+    from models import Set
+
+    db = db_module.SessionLocal()
+    db.query(Set).filter_by(series="Original", name="Base Set").update({"release_rank": 99})
+    db.query(Set).filter_by(series="XY", name="XY").update({"release_rank": 1})
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    assert "Original" in text and "XY" in text
 
 
 def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):

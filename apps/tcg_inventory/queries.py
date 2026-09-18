@@ -18,7 +18,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, SetReleaseOrder, Transaction
+from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Transaction
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -30,8 +30,12 @@ def all_cards_with_collections(db: Session) -> list[Card]:
     breakdown also accepts an already-loaded `cards` list (see their
     `cards=None` params) so a caller building several breakdowns in one
     request -- the dashboard route does all five -- only pays for this once.
+
+    `Card.linked_set` is eager-loaded alongside `collections` because
+    `by_series_breakdown` reads `card.linked_set.release_rank` for every
+    card -- without this, that would be an N+1 lazy-load per card.
     """
-    return db.query(Card).options(selectinload(Card.collections)).all()
+    return db.query(Card).options(selectinload(Card.collections), selectinload(Card.linked_set)).all()
 
 
 @dataclass
@@ -177,8 +181,8 @@ def _ordered_children(buckets) -> list[Bucket]:
 
 def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bucket]:
     """Series sort by release order (oldest first), not alphabetically --
-    matches Inventory's default "release" sort. A series with no
-    set_release_order rows at all sorts after every known series.
+    matches Inventory's default "release" sort. A series with no linked
+    `Set` rows carrying a `release_rank` sorts after every known series.
 
     Each series bucket also carries `.child_sets` -- the sets within that
     series, for the dashboard's expandable per-series drill-down row --
@@ -187,6 +191,12 @@ def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bu
     cards = all_cards_with_collections(db) if cards is None else cards
     buckets: dict[str, Bucket] = {}
     set_buckets: dict[tuple[str, str], Bucket] = {}
+    # Per-set rank read straight off each card's own `Set.id -> release_rank`
+    # FK (same join app.py's Inventory "release" sort uses), keyed by the
+    # same (series, set) pair the buckets above are built from -- an
+    # in-Python dict over cards already loaded, rather than a second query
+    # against the superseded `set_release_order` table (see issue #138).
+    set_release_ranks: dict[tuple[str, str], int] = {}
     for card in cards:
         series_key = card.series or "(uten serie)"
         bucket = buckets.setdefault(series_key, Bucket(name=series_key))
@@ -196,14 +206,17 @@ def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bu
         set_bucket = set_buckets.setdefault((series_key, set_key), Bucket(name=set_key))
         set_bucket.add(card)
 
-    # One pass over set_release_order covers both the per-series rank (its
-    # earliest set's rank) and the per-set rank -- a second, near-identical
-    # query for just the per-series min would just re-scan the same rows.
-    set_release_rows = db.query(SetReleaseOrder).all()
-    set_release_ranks = {(r.series, r.set): r.release_rank for r in set_release_rows}
+        linked_set = card.linked_set
+        if linked_set is not None and linked_set.release_rank is not None:
+            key = (series_key, set_key)
+            set_release_ranks[key] = min(
+                set_release_ranks.get(key, linked_set.release_rank), linked_set.release_rank
+            )
+
+    # A series' own rank is its earliest set's rank.
     release_ranks: dict[str, int] = {}
-    for r in set_release_rows:
-        release_ranks[r.series] = min(release_ranks.get(r.series, r.release_rank), r.release_rank)
+    for (series_key, _set_key), rank in set_release_ranks.items():
+        release_ranks[series_key] = min(release_ranks.get(series_key, rank), rank)
 
     for (series_key, _set_key), set_bucket in set_buckets.items():
         buckets[series_key].child_sets.append(set_bucket)

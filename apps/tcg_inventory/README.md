@@ -125,21 +125,25 @@ without updating both the code and this doc.
    seeded by hand for the link itself to exist. `release_rank` is still
    null for most sets, though — it isn't known automatically, only ever
    set by hand once a set's actual release date is researched (never
-   guessed). The Inventory table's default "release order" sort reads
-   `Card.set_id -> Set.release_rank`; a card with no linked `Set` row, or
-   a linked one with a null `release_rank`, sorts after every ranked set
-   (`UNKNOWN_RELEASE_RANK` in app.py) rather than before, falling back to
-   name/series/set order among themselves. `queries.unlinked_set_cards()`
-   lists `(series, set)` pairs with cards that have no `set_id` linked yet,
-   so drift (e.g. a card with a null `series`/`set` to begin with) is
-   visible instead of only silently falling back.
+   guessed). Every release-order UI surface in the app — the Inventory
+   table's default "release order" sort, the Dashboard's series breakdown,
+   Inventory's collapsed KPI module, and the Transactions KPI module (all
+   four via `queries.by_series_breakdown()`) — reads `Card.set_id ->
+   Set.release_rank`; a card with no linked `Set` row, or a linked one with
+   a null `release_rank`, sorts after every ranked set/series
+   (`UNKNOWN_RELEASE_RANK` in app.py, mirrored as `queries._UNKNOWN_RELEASE_RANK`)
+   rather than before, falling back to name/series/set order among
+   themselves. `queries.unlinked_set_cards()` lists `(series, set)` pairs
+   with cards that have no `set_id` linked yet, so drift (e.g. a card with
+   a null `series`/`set` to begin with) is visible instead of only
+   silently falling back.
 
    `set_release_order` (`Series`, `Set`, `release_rank`) is the older
    lookup table `Set` replaces — kept in the schema (nothing drops/renames
-   tables, see "Database migrations" below) but no longer read by the sort;
-   `_backfill_sets()` only reads it once per `(series, set)` pair, to carry
-   an existing `release_rank` row over onto the new matching `Set` row.
-   Nothing should write to `set_release_order` going forward — edit
+   tables, see "Database migrations" below) but no longer read anywhere in
+   the app; `_backfill_sets()` only reads it once per `(series, set)` pair,
+   to carry an existing `release_rank` row over onto the new matching `Set`
+   row. Nothing should write to `set_release_order` going forward — edit
    `Set.release_rank` directly instead (e.g. via a script or a future admin
    UI; none exists yet).
 7. **Sales listings (finn.no).** `Card.condition` is real per-card data
