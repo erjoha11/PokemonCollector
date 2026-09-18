@@ -1,0 +1,44 @@
+{% if entry %}
+<div class="card" style="margin-top: 1.5rem;" id="listing-{{ entry.listing.id }}">
+  <div class="tx-order-summary">
+    <span class="tx-order-id">{{ entry.listing.title }}</span>
+    <span class="tx-order-stat">{{ entry.listing.created_at.strftime('%Y-%m-%d') }}</span>
+    <span class="tx-badge {{ 'tx-badge-buy' if entry.listing.status == 'active' else ('tx-badge-sell' if entry.listing.status == 'sold' else 'tx-badge-trade') }}">
+      {{ entry.listing.status }}
+    </span>
+    <span class="tx-platform-badge">{{ entry.listing.platform }}</span>
+    <span class="listing-actions">
+      {% if entry.listing.status == 'active' %}
+      <form hx-post="/listings/{{ entry.listing.id }}/delist" hx-target="#listing-{{ entry.listing.id }}" hx-swap="outerHTML">
+        <input type="hidden" name="show_delisted" value="{{ 'true' if show_delisted else '' }}">
+        <button type="submit" class="secondary">Remove listing</button>
+      </form>
+      {% endif %}
+    </span>
+  </div>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Card</th>
+          <th class="num">Cost</th>
+          <th class="num">Market price</th>
+          <th class="num">Listed price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in entry.card_rows %}
+        <tr>
+          <td>
+            {{ row.card.name }} ({{ row.card.set or '' }} {{ '#' + row.card.number if row.card.number }})
+          </td>
+          <td class="num">{{ row.cost | kr }}</td>
+          <td class="num">{{ row.market_price | kr }}</td>
+          <td class="num">{{ row.listed_price | kr }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}

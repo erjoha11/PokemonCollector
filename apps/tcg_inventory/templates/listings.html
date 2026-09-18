@@ -5,48 +5,18 @@
 
 <p class="muted">
   Every ad recorded via "Mark as listed" on <a href="/sales">Sell on finn.no</a>, with cost, market
-  price, and listed price side by side per card. Read-only — marking a listing sold and changing
-  quantity/collection still only ever happens via <a href="/transactions">Transactions</a>.
+  price, and listed price side by side per card. Removing a listing here only changes its status —
+  quantity/collection changes and marking a card actually sold still only ever happen via
+  <a href="/transactions">Transactions</a>.
 </p>
 
-{% if not overview %}
-<p class="muted">No listings recorded yet.</p>
-{% else %}
-{% for entry in overview %}
-<div class="card" style="margin-top: 1.5rem;">
-  <div class="tx-order-summary">
-    <span class="tx-order-id">{{ entry.listing.title }}</span>
-    <span class="tx-order-stat">{{ entry.listing.created_at.strftime('%Y-%m-%d') }}</span>
-    <span class="tx-badge {{ 'tx-badge-buy' if entry.listing.status == 'active' else ('tx-badge-sell' if entry.listing.status == 'sold' else 'tx-badge-trade') }}">
-      {{ entry.listing.status }}
-    </span>
-    <span class="tx-platform-badge">{{ entry.listing.platform }}</span>
-  </div>
-  <div class="table-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>Card</th>
-          <th class="num">Cost</th>
-          <th class="num">Market price</th>
-          <th class="num">Listed price</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for row in entry.card_rows %}
-        <tr>
-          <td>
-            {{ row.card.name }} ({{ row.card.set or '' }} {{ '#' + row.card.number if row.card.number }})
-          </td>
-          <td class="num">{{ row.cost | kr }}</td>
-          <td class="num">{{ row.market_price | kr }}</td>
-          <td class="num">{{ row.listed_price | kr }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endfor %}
-{% endif %}
+<form class="filters" hx-get="/listings" hx-target="#listings-results" hx-push-url="true">
+  <label>
+    <input type="checkbox" name="show_delisted" value="true" {{ 'checked' if show_delisted }}
+           hx-get="/listings" hx-target="#listings-results" hx-push-url="true" hx-include="closest form">
+    Show delisted
+  </label>
+</form>
+
+{% include "partials/listings_results.html" %}
 {% endblock %}
