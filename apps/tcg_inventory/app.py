@@ -43,7 +43,7 @@ from models import (
     ImportLog,
     Listing,
     PokemonAlias,
-    SetReleaseOrder,
+    Set,
     Transaction,
 )
 
@@ -126,8 +126,9 @@ SORT_COLUMNS = {
     "language": Card.language,
 }
 INVENTORY_VALUE_SORTS = {"net_invested", "gain_loss"}
-# Cards not present in set_release_order (no research done for that set yet)
-# sort after every known set, not before -- see SetReleaseOrder's docstring.
+# Cards with no linked Set row, or a linked one with no known release_rank
+# yet (no research done for that set), sort after every known set, not
+# before -- see Set's docstring.
 UNKNOWN_RELEASE_RANK = 999999
 
 TOP_CARD_SORT_KEYS = {
@@ -519,13 +520,12 @@ def inventory(
 
         if sort == "release":
             # Default: actual print order -- Base Set #1 first, etc. Sets
-            # with no research done yet (no set_release_order row) sort
-            # after every known set rather than before (see UNKNOWN_RELEASE_RANK).
-            query = query.outerjoin(
-                SetReleaseOrder,
-                (SetReleaseOrder.series == Card.series) & (SetReleaseOrder.set == Card.set),
-            )
-            release_rank = func.coalesce(SetReleaseOrder.release_rank, UNKNOWN_RELEASE_RANK)
+            # with no research done yet (no linked Set row, or one with no
+            # release_rank) sort after every known set rather than before
+            # (see UNKNOWN_RELEASE_RANK). Joined via the real Card.set_id FK,
+            # not a string match on (series, set) -- see Set's docstring.
+            query = query.outerjoin(Set, Set.id == Card.set_id)
+            release_rank = func.coalesce(Set.release_rank, UNKNOWN_RELEASE_RANK)
             rank_col = release_rank.desc() if direction == "desc" else release_rank.asc()
             order_cols = [rank_col, Card.set.asc(), number_sort.asc()]
         else:

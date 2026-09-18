@@ -91,6 +91,16 @@ class Card(Base):
     tcgplayer_price_updated_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # Real Set entity, replacing the string-matched `set_release_order` join
+    # below -- see Set's docstring. Nullable (and populated automatically by
+    # db.py's `_backfill_sets()`, not written here) so this stays additive:
+    # every existing card keeps working via `series`/`set` even before it's
+    # linked. `series`/`set` themselves are kept as-is alongside this FK
+    # (denormalized) -- importer.py's Dex CSV sync still needs a plain
+    # display/fallback string, and removing them is a separate, riskier
+    # migration (see issue #133).
+    set_id: Mapped[int | None] = mapped_column(ForeignKey("sets.id"), nullable=True)
+
     binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id"), nullable=True)
     classification: Mapped[str | None] = mapped_column(String, nullable=True)
     location: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -115,6 +125,9 @@ class Card(Base):
     transactions: Mapped[list["Transaction"]] = relationship(
         back_populates="card", cascade="all, delete-orphan"
     )
+    # Named `linked_set`, not `set` -- `Card.set` is already the plain
+    # string column above (Dex's "Set" export column).
+    linked_set: Mapped["Set | None"] = relationship(back_populates="cards")
 
     @property
     def duplicates(self) -> int:
@@ -274,16 +287,55 @@ class Listing(Base):
     cards: Mapped[list["Card"]] = relationship(secondary=listing_cards)
 
 
+class Set(Base):
+    """Real Set entity -- (series, name) with a proper primary key, replacing
+    `SetReleaseOrder`'s string-matched join to `Card` below (see its
+    docstring). `Card.set_id` is a real FK to this table, so a future Dex
+    rename of a set name can't silently break the join for a card that's
+    already linked, the way a string match could -- see issue #133.
+
+    Rows are get-or-created automatically for every distinct (series, set)
+    pair seen on `cards`, by db.py's `_backfill_sets()` -- nothing needs to
+    seed this table by hand the way `set_release_order` did/does.
+    `release_rank` is nullable (unlike `SetReleaseOrder.release_rank`)
+    because most sets won't have a known release rank yet; app.py's
+    Inventory "release order" sort falls back to `UNKNOWN_RELEASE_RANK` for
+    a card with no linked Set row, or a linked one with a null rank -- same
+    fallback semantics as before, just sourced from this FK now.
+    `total_cards` is nullable and unused today -- reserved for a future
+    "set completion %" feature (tracked separately, not built here).
+    """
+
+    __tablename__ = "sets"
+    __table_args__ = (UniqueConstraint("series", "name", name="uq_sets_series_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    series: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    release_rank: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_cards: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    cards: Mapped[list["Card"]] = relationship(back_populates="linked_set")
+
+
 class SetReleaseOrder(Base):
     """Lookup table for chronological (release-date) sorting of sets.
 
-    Empty by default -- the ~100-row table from the Excel work needs to be
-    supplied separately (see README) to enable release-order sorting.
-    Without rows here, the app falls back to alphabetical (series, set).
-    Grows over time as new sets get released: a (series, set) missing here
-    sorts after every known set rather than guessing (see app.py's
-    UNKNOWN_RELEASE_RANK), and should get a real row added once its actual
-    release date is known -- never guessed.
+    Superseded by `Set` above (see issue #133) -- app.py's Inventory sort no
+    longer reads this table, and `db.py`'s `_backfill_sets()` only reads it
+    once, to carry any existing `release_rank` row over onto the matching
+    new `Set` row during backfill. Kept in place (not dropped/renamed) as a
+    safety net per CLAUDE.md's additive-only `init_db()` rule -- nothing new
+    should write to this table going forward; edit `Set.release_rank`
+    instead.
+
+    Was empty by default -- the ~100-row table from the Excel work needed to
+    be supplied separately (see README) to enable release-order sorting.
+    Without rows here, the app fell back to alphabetical (series, set). A
+    (series, set) missing here sorted after every known set rather than
+    guessing (see app.py's former UNKNOWN_RELEASE_RANK usage against this
+    table), and should have gotten a real row added once its actual release
+    date was known -- never guessed. Same rules now apply to `Set` instead.
     """
 
     __tablename__ = "set_release_order"

@@ -63,7 +63,7 @@ class Base(DeclarativeBase):
 # path *around* the migration chain, not a replacement for it: every
 # function in the chain must stay idempotent and safe to re-run regardless
 # of this gate, per README.md "Database migrations".
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
@@ -190,6 +190,74 @@ def _widen_card_snapshot_source_constraint():
             )
 
 
+def _backfill_sets():
+    """Get-or-create a `models.Set` row for every distinct (series, set)
+    pair present on `cards`, carrying over any matching `set_release_order`
+    row's `release_rank` (see HANDOFF.md -- checked before writing this:
+    `set_release_order` has never been seeded directly against prod outside
+    git, it just ships empty per README, so there's nothing to special-case
+    here beyond reading whatever rows happen to exist), then links every
+    card with that pair via `Card.set_id`. Idempotent, safe to call
+    unconditionally.
+
+    Deliberately called on *every* `init_db()` invocation, not gated behind
+    `CURRENT_SCHEMA_VERSION`'s fast path like the rest of the chain below --
+    unlike those steps, this isn't one-time schema/data cleanup, it's an
+    ongoing sync that needs to keep linking newly-imported cards too.
+    `importer.py` doesn't write `Card.set_id` itself (that's issue #134,
+    not this one), so without re-running this on every cold start, a card
+    synced after this shipped would stay unlinked until some future
+    version bump happened to run the chain again. The extra queries this
+    costs on an already-migrated database are cheap (a handful of
+    read/write statements over at most a few hundred distinct sets).
+    """
+    import models
+
+    inspector = inspect(engine)
+    if not inspector.has_table("cards") or not inspector.has_table("sets"):
+        return  # brand new database -- create_all() hasn't run yet this call
+    with SessionLocal() as session:
+        pairs = (
+            session.query(models.Card.series, models.Card.set)
+            .filter(models.Card.series.isnot(None), models.Card.set.isnot(None))
+            .distinct()
+            .all()
+        )
+        if not pairs:
+            return
+
+        release_ranks = {}
+        if inspector.has_table("set_release_order"):
+            release_ranks = {
+                (row.series, row.set): row.release_rank
+                for row in session.query(
+                    models.SetReleaseOrder.series,
+                    models.SetReleaseOrder.set,
+                    models.SetReleaseOrder.release_rank,
+                )
+            }
+
+        existing_sets = {(s.series, s.name): s for s in session.query(models.Set).all()}
+
+        for series, set_name in pairs:
+            set_row = existing_sets.get((series, set_name))
+            if set_row is None:
+                set_row = models.Set(
+                    series=series,
+                    name=set_name,
+                    release_rank=release_ranks.get((series, set_name)),
+                )
+                session.add(set_row)
+                session.flush()  # assigns set_row.id
+                existing_sets[(series, set_name)] = set_row
+
+            session.query(models.Card).filter(
+                models.Card.series == series, models.Card.set == set_name
+            ).update({models.Card.set_id: set_row.id}, synchronize_session=False)
+
+        session.commit()
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
@@ -204,11 +272,13 @@ def init_db():
     # prod (see HANDOFF.md) must also bump schema_meta's row, or this gate
     # will incorrectly skip migrations that should still apply going
     # forward.
-    if _get_schema_version() == CURRENT_SCHEMA_VERSION:
-        return
+    if _get_schema_version() != CURRENT_SCHEMA_VERSION:
+        Base.metadata.create_all(bind=engine)
+        _add_missing_columns()
+        _normalize_legacy_transaction_types()
+        _widen_card_snapshot_source_constraint()
+        _set_schema_version(CURRENT_SCHEMA_VERSION)
 
-    Base.metadata.create_all(bind=engine)
-    _add_missing_columns()
-    _normalize_legacy_transaction_types()
-    _widen_card_snapshot_source_constraint()
-    _set_schema_version(CURRENT_SCHEMA_VERSION)
+    # Not part of the version-gated chain above -- see _backfill_sets()'s
+    # docstring for why this needs to keep running every call.
+    _backfill_sets()

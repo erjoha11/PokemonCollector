@@ -1161,6 +1161,12 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     db.add(SetReleaseOrder(series="Scarlet & Violet", set="151", release_rank=50))
     db.commit()
     db.close()
+    # The sort itself reads Card.set_id -> Set.release_rank, not
+    # SetReleaseOrder directly -- re-run init_db() so its _backfill_sets()
+    # step get-or-creates the matching Set rows (carrying release_rank over
+    # from the SetReleaseOrder rows just added) and links the seeded cards,
+    # same as would happen automatically on the next real app startup.
+    db_module.init_db()
 
     response = client.get("/inventory")
     # Scope to the results table -- the KPI module above it can also caption
@@ -1172,6 +1178,54 @@ def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):
     pos_old10 = text.index("OldCard10")
     pos_new1 = text.index("NewCard")
     assert pos_old2 < pos_old10 < pos_new1
+
+
+def test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets(client):
+    import db as db_module
+    from models import Card, Set
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "ranked1", "name": "RankedCard", "series": "Original", "set": "Base Set", "number": "1/102"},
+            {"id": "norank1", "name": "NoRankCard", "series": "Original", "set": "Jungle", "number": "1/64"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    db.add(Set(series="Original", name="Base Set", release_rank=1))
+    # A card with no series/set at all (e.g. bad/incomplete Dex data) --
+    # _backfill_sets() has no (series, set) pair to link it to, unlike
+    # NoRankCard below, which does get a (linked-but-unranked) Set row.
+    db.add(Card(card_id="nolink1", variant=None, name="NoLinkCard", series=None, set=None, number="1/1"))
+    db.commit()
+    db.close()
+    # NoRankCard's (Original, Jungle) pair still gets its own Set row from
+    # this -- just with a null release_rank, since none was researched (see
+    # Set's docstring) -- it's "linked but unranked", not "unlinked".
+    # NoLinkCard has no series/set at all, so _backfill_sets() has no pair
+    # to link it to -- it's the "actually unlinked" (set_id IS NULL) case.
+    db_module.init_db()
+
+    db = db_module.SessionLocal()
+    ranked = db.query(Card).filter_by(name="RankedCard").one()
+    unranked = db.query(Card).filter_by(name="NoRankCard").one()
+    unlinked = db.query(Card).filter_by(name="NoLinkCard").one()
+    assert ranked.set_id is not None
+    assert unranked.set_id is not None
+    assert ranked.linked_set.release_rank == 1
+    assert unranked.linked_set.release_rank is None
+    assert unlinked.set_id is None  # no series/set -- nothing to link to
+    db.close()
+
+    text = client.get("/inventory").text.split('id="inventory-results"', 1)[1]
+    # The known/ranked set sorts before both fallback cases (unranked-but-
+    # linked, and fully unlinked), which both land on UNKNOWN_RELEASE_RANK --
+    # same semantics as before, sourced from the Card.set_id -> Set.release_rank
+    # FK now instead of a string match.
+    assert text.index("RankedCard") < text.index("NoRankCard")
+    assert text.index("RankedCard") < text.index("NoLinkCard")
 
 
 def test_inventory_dup_filter_shows_only_cards_with_duplicates(client):

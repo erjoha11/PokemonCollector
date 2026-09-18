@@ -643,3 +643,37 @@ def listing_entry(db: Session, listing_id: int) -> ListingOverview | None:
         return None
     invested_by_card = net_invested_by_card(db)
     return _build_listing_overview(listing, invested_by_card)
+
+
+@dataclass
+class UnlinkedSetCards:
+    series: str | None
+    set: str | None
+    card_count: int
+
+
+def unlinked_set_cards(db: Session) -> list[UnlinkedSetCards]:
+    """Distinct (series, set) pairs among cards with no `Card.set_id`
+    linked to a real `Set` row -- surfaces drift/gaps (e.g. a Dex rename
+    db.py's `_backfill_sets()` hasn't caught up with yet, or a card
+    imported before the FK existed and not yet re-synced) instead of
+    letting it only silently fall back to `UNKNOWN_RELEASE_RANK` in the
+    Inventory "release order" sort (see app.py, and issue #133). In
+    practice `_backfill_sets()` runs on every app startup and links every
+    card that has a non-null `series`/`set`, so a non-empty result here
+    means either the app hasn't restarted since the last import, or a card
+    has a null `series`/`set` to begin with (nothing to link it to).
+    Grouped with a count rather than one row per card -- the useful signal
+    is which sets are missing a link, not the individual cards.
+    """
+    rows = (
+        db.query(Card.series, Card.set, func.count(Card.id))
+        .filter(Card.set_id.is_(None))
+        .group_by(Card.series, Card.set)
+        .order_by(func.count(Card.id).desc())
+        .all()
+    )
+    return [
+        UnlinkedSetCards(series=series, set=set_name, card_count=count)
+        for series, set_name, count in rows
+    ]

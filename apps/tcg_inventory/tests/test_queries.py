@@ -3,7 +3,7 @@ from conftest import make_csv
 
 import queries
 from importer import import_dex_csv_files
-from models import SetReleaseOrder
+from models import Card, Set, SetReleaseOrder
 
 
 def _seed(db_session):
@@ -403,3 +403,42 @@ def test_economic_summary_includes_purchase_shipping(db_session):
     assert sum(invested.values()) == 360
     assert invested[cards["a"]] == 100 + 10 + 50
     assert invested[cards["b"]] == 200
+
+
+def test_unlinked_set_cards_groups_unlinked_cards_by_series_and_set(db_session):
+    _seed(db_session)  # importer.py doesn't write set_id -- none of these are linked yet
+
+    unlinked = queries.unlinked_set_cards(db_session)
+    by_pair = {(row.series, row.set): row.card_count for row in unlinked}
+
+    assert by_pair == {
+        ("Scarlet & Violet", "Test Set"): 2,  # Pikachu, Charizard
+        ("Sword & Shield", "Test Set"): 1,  # Bulbasaur
+    }
+
+
+def test_unlinked_set_cards_excludes_cards_with_a_linked_set(db_session):
+    _seed(db_session)
+    linked_card = db_session.query(Card).filter_by(name="Pikachu").one()
+    set_row = Set(series=linked_card.series, name=linked_card.set, release_rank=1)
+    db_session.add(set_row)
+    db_session.flush()
+    linked_card.set_id = set_row.id
+    db_session.commit()
+
+    unlinked = queries.unlinked_set_cards(db_session)
+    by_pair = {(row.series, row.set): row.card_count for row in unlinked}
+
+    # Charizard shares Pikachu's (series, set) but isn't itself linked --
+    # only the actually-linked card drops out of the count.
+    assert by_pair[("Scarlet & Violet", "Test Set")] == 1
+    assert by_pair[("Sword & Shield", "Test Set")] == 1
+
+
+def test_unlinked_set_cards_includes_cards_with_no_series_or_set(db_session):
+    db_session.add(Card(card_id="1", variant=None, name="Solo", series=None, set=None, set_id=None))
+    db_session.commit()
+
+    assert queries.unlinked_set_cards(db_session) == [
+        queries.UnlinkedSetCards(series=None, set=None, card_count=1)
+    ]

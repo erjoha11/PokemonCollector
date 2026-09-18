@@ -64,8 +64,9 @@ run).
 `cards`, `collections`, `card_collections` (many-to-many), `binders`,
 `transactions`, `card_snapshots` (see "Value history" below),
 `listings`/`listing_cards` (many-to-many, see "Sales listings (finn.no)"
-below), plus `set_release_order` (a lookup table for chronological sorting
-— see "Chronological sorting" below).
+below), `sets` (real Set entity, FK'd from `Card.set_id` — see
+"Chronological sorting" below), plus `set_release_order` (the older lookup
+table `sets` replaces — kept in place, unused going forward).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -114,12 +115,33 @@ without updating both the code and this doc.
      untouched — this is what stops a sync without a fresh Vintage export
      from wiping existing Vintage Collection tags.
 6. **Chronological sorting.** Sets should be sortable by actual release
-   order, not alphabetically. `set_release_order` (`Series`, `Set`,
-   `release_rank`) is the lookup table for this — it ships **empty**. The
-   ~100-row table from the Excel work needs to be supplied separately to
-   populate it (ask for it / provide a CSV and it can be loaded directly
-   into that table). Until then, sorting falls back to name/series/set
-   order in the Inventory table.
+   order, not alphabetically. `models.Set` (`series`, `name`, nullable
+   `release_rank`, nullable `total_cards`) is a real entity, one row per
+   distinct set, unique on `(series, name)` — `Card.set_id` is a nullable
+   FK to it. `db.py`'s `_backfill_sets()` (part of `init_db()`, re-run on
+   every app startup, not just once) automatically get-or-creates a `Set`
+   row for every distinct `(series, set)` pair seen on `cards` and links
+   every matching card's `set_id`, so nothing needs to be imported or
+   seeded by hand for the link itself to exist. `release_rank` is still
+   null for most sets, though — it isn't known automatically, only ever
+   set by hand once a set's actual release date is researched (never
+   guessed). The Inventory table's default "release order" sort reads
+   `Card.set_id -> Set.release_rank`; a card with no linked `Set` row, or
+   a linked one with a null `release_rank`, sorts after every ranked set
+   (`UNKNOWN_RELEASE_RANK` in app.py) rather than before, falling back to
+   name/series/set order among themselves. `queries.unlinked_set_cards()`
+   lists `(series, set)` pairs with cards that have no `set_id` linked yet,
+   so drift (e.g. a card with a null `series`/`set` to begin with) is
+   visible instead of only silently falling back.
+
+   `set_release_order` (`Series`, `Set`, `release_rank`) is the older
+   lookup table `Set` replaces — kept in the schema (nothing drops/renames
+   tables, see "Database migrations" below) but no longer read by the sort;
+   `_backfill_sets()` only reads it once per `(series, set)` pair, to carry
+   an existing `release_rank` row over onto the new matching `Set` row.
+   Nothing should write to `set_release_order` going forward — edit
+   `Set.release_rank` directly instead (e.g. via a script or a future admin
+   UI; none exists yet).
 7. **Sales listings (finn.no).** `Card.condition` is real per-card data
    (nullable, vocabulary in `constants.CARD_CONDITIONS`) — deliberately the
    same values as `apps/finn_ad_scraper/card_identifier.CONDITIONS`, kept
@@ -419,5 +441,10 @@ network access or the app's real `tcg_inventory.db` involved.
     against prod (see `HANDOFF.md`) instead of through this chain, also
     bump `schema_meta`'s stored version accordingly — otherwise this gate
     will skip a migration that should still run.
+  - `_backfill_sets()` (see "Chronological sorting" above) is the one
+    exception to that gate — it runs on every `init_db()` call regardless
+    of `schema_meta`'s stored version, since it's an ongoing data sync
+    (linking newly-imported cards to their `Set` row), not one-time
+    schema/data cleanup like the rest of the chain.
 - Silent session refresh — an expired Supabase session redirects to
   `/login` instead of refreshing quietly in the background.
