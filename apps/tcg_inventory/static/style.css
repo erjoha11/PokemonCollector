@@ -569,6 +569,27 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   box-shadow: 0 1px 0 var(--border-strong);
   z-index: 1;
 }
+/* Sits beside Market Value now (see #dashboard-top-cards-card below), so at
+   half the row's width a long card/set name would otherwise force the
+   .breakdown-grid .card's overflow-x:auto into a horizontal scrollbar --
+   fix the table's column widths and ellipsis-truncate instead. */
+#dashboard-top-cards-card {
+  overflow-x: hidden;
+}
+.top-cards-scroll table {
+  table-layout: fixed;
+  width: 100%;
+}
+.top-cards-scroll td,
+.top-cards-scroll th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-cards-scroll th:nth-child(1) { width: 42%; }
+.top-cards-scroll th:nth-child(2) { width: 12%; }
+.top-cards-scroll th:nth-child(3) { width: 31%; }
+.top-cards-scroll th:nth-child(4) { width: 15%; }
 
 /* Every dashboard row is a pair (Inventory+Topp 10, Serie+Rarity) -- wrap
    each in its own auto-fit pair instead of the top-level grid, so exactly
@@ -581,7 +602,9 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   gap: 1.25rem;
 }
 
-#dashboard-market-value-card,
+/* Only the Transactions-page chart spans the full row -- the dashboard's
+   Market Value chart instead sits in its .card-pair next to Most valuable
+   cards, side by side like every other dashboard pair. */
 #market-value-card {
   grid-column: 1 / -1;
 }
