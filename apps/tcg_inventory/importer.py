@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 import card_images
 import constants
+from db import get_or_create_set
 from models import Binder, Card, Collection, ImportLog
 
 MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
@@ -202,6 +203,11 @@ def import_dex_csv_files(
         image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
         price_lookup_budget = _MAX_PRICE_LOOKUPS_PER_IMPORT
         price_stale_cutoff = today - dt.timedelta(days=_PRICE_STALE_AFTER_DAYS)
+        # Reused across every row in this import call so get_or_create_set()
+        # only queries/creates once per distinct (series, set) pair seen in
+        # this sync, not once per card -- see get_or_create_set()'s docstring
+        # (db.py) and issue #134.
+        sets_cache: dict[tuple[str, str], "models.Set"] = {}
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -224,6 +230,16 @@ def import_dex_csv_files(
             card.number_int = _parse_number_int(card.number)
             card.series = (row.get("Series") or "").strip() or None
             card.set = (row.get("Set") or "").strip() or None
+            if card.series and card.set:
+                # Link Card.set_id inline at import time rather than relying
+                # solely on db.py's init_db()-time _backfill_sets() to catch
+                # up on the next restart (issue #134) -- a set seen for the
+                # first time gets a real, unranked Set row here (never
+                # silently skipped); release_rank/total_cards fill in later
+                # via set_sync.py or a manual edit.
+                card.set_id = get_or_create_set(db, card.series, card.set, cache=sets_cache).id
+            else:
+                card.set_id = None
             card.language = (row.get("Locale") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None

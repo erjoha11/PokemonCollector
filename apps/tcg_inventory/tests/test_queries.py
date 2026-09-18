@@ -487,8 +487,24 @@ def test_economic_summary_includes_purchase_shipping(db_session):
     assert invested[cards["b"]] == 200
 
 
+def _seed_unlinked_cards(db_session):
+    # Built directly via the ORM (bypassing import_dex_csv_files), which
+    # since issue #134 links Card.set_id inline at import time -- this
+    # tests queries.unlinked_set_cards()'s own grouping logic against cards
+    # that are genuinely unlinked (e.g. predating that change, or reached
+    # the database some other way), independent of the importer.
+    db_session.add_all(
+        [
+            Card(card_id="a", variant=None, name="Pikachu", series="Scarlet & Violet", set="Test Set", set_id=None),
+            Card(card_id="b", variant=None, name="Charizard", series="Scarlet & Violet", set="Test Set", set_id=None),
+            Card(card_id="c", variant=None, name="Bulbasaur", series="Sword & Shield", set="Test Set", set_id=None),
+        ]
+    )
+    db_session.commit()
+
+
 def test_unlinked_set_cards_groups_unlinked_cards_by_series_and_set(db_session):
-    _seed(db_session)  # importer.py doesn't write set_id -- none of these are linked yet
+    _seed_unlinked_cards(db_session)
 
     unlinked = queries.unlinked_set_cards(db_session)
     by_pair = {(row.series, row.set): row.card_count for row in unlinked}
@@ -500,7 +516,7 @@ def test_unlinked_set_cards_groups_unlinked_cards_by_series_and_set(db_session):
 
 
 def test_unlinked_set_cards_excludes_cards_with_a_linked_set(db_session):
-    _seed(db_session)
+    _seed_unlinked_cards(db_session)
     linked_card = db_session.query(Card).filter_by(name="Pikachu").one()
     set_row = Set(series=linked_card.series, name=linked_card.set, release_rank=1)
     db_session.add(set_row)
@@ -527,15 +543,16 @@ def test_unlinked_set_cards_includes_cards_with_no_series_or_set(db_session):
 
 
 def test_sets_missing_release_rank_only_lists_null_rank_sets(db_session):
+    # Since issue #134, import_dex_csv_files() already get-or-creates and
+    # links the Set rows for these cards inline -- reuse those rows (just
+    # setting a release_rank on one) rather than creating new ones, which
+    # would collide with the unique (series, name) constraint.
     _seed(db_session)
     linked_card = db_session.query(Card).filter_by(name="Pikachu").one()
-    ranked = Set(series=linked_card.series, name=linked_card.set, release_rank=1)
-    unranked = Set(series="Sword & Shield", name="Test Set", release_rank=None)
-    db_session.add_all([ranked, unranked])
-    db_session.flush()
-    linked_card.set_id = ranked.id
-    bulbasaur = db_session.query(Card).filter_by(name="Bulbasaur").one()
-    bulbasaur.set_id = unranked.id
+    ranked = db_session.query(Set).filter_by(series=linked_card.series, name=linked_card.set).one()
+    ranked.release_rank = 1
+    unranked = db_session.query(Set).filter_by(series="Sword & Shield", name="Test Set").one()
+    assert unranked.release_rank is None  # unranked from import, as expected below
     db_session.commit()
 
     missing = queries.sets_missing_release_rank(db_session)

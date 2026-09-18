@@ -118,11 +118,19 @@ without updating both the code and this doc.
    order, not alphabetically. `models.Set` (`series`, `name`, nullable
    `release_rank`, nullable `total_cards`) is a real entity, one row per
    distinct set, unique on `(series, name)` — `Card.set_id` is a nullable
-   FK to it. `db.py`'s `_backfill_sets()` (part of `init_db()`, re-run on
-   every app startup, not just once) automatically get-or-creates a `Set`
-   row for every distinct `(series, set)` pair seen on `cards` and links
-   every matching card's `set_id`, so nothing needs to be imported or
-   seeded by hand for the link itself to exist. `release_rank` used to be
+   FK to it. `importer.py`'s Dex CSV sync path get-or-creates a `Set` row
+   (via `db.py`'s shared `get_or_create_set()` helper) and links `Card.set_id`
+   inline as it writes each card (issue #134), so a freshly-synced card is
+   linked immediately, not just eventually — a set encountered for the
+   first time gets a real, unranked `Set` row on the spot rather than being
+   silently skipped. `db.py`'s `_backfill_sets()` (part of `init_db()`,
+   re-run on every app startup, not just once) does the same get-or-create
+   for every distinct `(series, set)` pair seen on `cards` and links every
+   matching card's `set_id`; since #134 this is no longer the primary
+   linking mechanism, just a catch-all/safety net for cards that predate
+   that change or otherwise reached the database unlinked (nothing needs
+   to be imported or seeded by hand for the link itself to exist either
+   way). `release_rank` used to be
    null for most sets and only ever set by hand once a set's actual release
    date was researched (never guessed) — `set_sync.py` (issue #136,
    fast-follow to #133) is a deliberate, explicitly-approved change to that
@@ -464,8 +472,10 @@ network access or the app's real `tcg_inventory.db` involved.
     will skip a migration that should still run.
   - `_backfill_sets()` (see "Chronological sorting" above) is the one
     exception to that gate — it runs on every `init_db()` call regardless
-    of `schema_meta`'s stored version, since it's an ongoing data sync
-    (linking newly-imported cards to their `Set` row), not one-time
+    of `schema_meta`'s stored version. Since issue #134, `importer.py`
+    links `Card.set_id` inline as it syncs, so this is no longer the
+    primary mechanism keeping cards linked — it's an ongoing catch-all for
+    any card that ends up unlinked some other way, not one-time
     schema/data cleanup like the rest of the chain.
 - Silent session refresh — an expired Supabase session redirects to
   `/login` instead of refreshing quietly in the background.
