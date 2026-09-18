@@ -1194,10 +1194,15 @@ def test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets(client)
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
-    db.add(Set(series="Original", name="Base Set", release_rank=1))
+    # Since issue #134, the import above already get-or-created the
+    # ("Original", "Base Set") Set row inline (unranked) -- update it in
+    # place rather than adding a new row, which would collide with the
+    # unique (series, name) constraint.
+    db.query(Set).filter_by(series="Original", name="Base Set").update({Set.release_rank: 1})
     # A card with no series/set at all (e.g. bad/incomplete Dex data) --
-    # _backfill_sets() has no (series, set) pair to link it to, unlike
-    # NoRankCard below, which does get a (linked-but-unranked) Set row.
+    # neither the importer nor _backfill_sets() has a (series, set) pair to
+    # link it to, unlike NoRankCard below, which does get a
+    # (linked-but-unranked) Set row.
     db.add(Card(card_id="nolink1", variant=None, name="NoLinkCard", series=None, set=None, number="1/1"))
     db.commit()
     db.close()

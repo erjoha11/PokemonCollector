@@ -552,3 +552,69 @@ def test_collection_row_for_unknown_card_id_produces_a_warning(db_session):
 
     assert any("does-not-exist" in w for w in result.warnings)
     assert db_session.query(Collection).filter(Collection.name == "Vintage Collection").one().cards == []
+
+
+def test_import_links_a_new_card_to_a_newly_created_unranked_set(db_session):
+    # Issue #134: importer.py links Card.set_id inline, at import time,
+    # rather than waiting for db.py's init_db()-time _backfill_sets() to
+    # catch up on the next restart.
+    csv = make_csv("My Collection", [{"id": "a", "series": "Scarlet & Violet", "set": "Obsidian Flames"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.set_id is not None
+    assert card.linked_set.series == "Scarlet & Violet"
+    assert card.linked_set.name == "Obsidian Flames"
+    # Never guessed -- a set seen for the first time via import gets an
+    # unranked row, not a fabricated release_rank.
+    assert card.linked_set.release_rank is None
+
+
+def test_import_reuses_an_existing_set_row_instead_of_duplicating_it(db_session):
+    from models import Set
+
+    existing = Set(series="Scarlet & Violet", name="Obsidian Flames", release_rank=5)
+    db_session.add(existing)
+    db_session.commit()
+
+    csv = make_csv("My Collection", [{"id": "a", "series": "Scarlet & Violet", "set": "Obsidian Flames"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.set_id == existing.id
+    # Reused, not overwritten -- a pre-existing researched rank survives.
+    assert card.linked_set.release_rank == 5
+    assert db_session.query(Set).filter(
+        Set.series == "Scarlet & Violet", Set.name == "Obsidian Flames"
+    ).count() == 1
+
+
+def test_full_sync_leaves_no_unlinked_cards_without_a_subsequent_init_db_call(db_session):
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "series": "Scarlet & Violet", "set": "Obsidian Flames"},
+            {"id": "b", "series": "Scarlet & Violet", "set": "Obsidian Flames"},
+            {"id": "c", "series": "Sword & Shield", "set": "Vivid Voltage"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    cards = db_session.query(Card).all()
+    assert len(cards) == 3
+    assert all(card.set_id is not None for card in cards)
+
+
+def test_import_updates_set_id_when_an_existing_card_moves_sets(db_session):
+    # A Dex re-categorization (or correction) of an existing card's set
+    # should re-link it, not leave it pointing at its old Set row.
+    csv1 = make_csv("My Collection", [{"id": "a", "series": "Scarlet & Violet", "set": "Obsidian Flames"}])
+    import_dex_csv_files(db_session, [("main.csv", csv1)])
+    first_set_id = db_session.query(Card).filter(Card.card_id == "a").one().set_id
+
+    csv2 = make_csv("My Collection", [{"id": "a", "series": "Sword & Shield", "set": "Vivid Voltage"}])
+    import_dex_csv_files(db_session, [("main.csv", csv2)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.set_id != first_set_id
+    assert card.linked_set.name == "Vivid Voltage"

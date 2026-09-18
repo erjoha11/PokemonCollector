@@ -190,26 +190,67 @@ def _widen_card_snapshot_source_constraint():
             )
 
 
+def get_or_create_set(session, series, set_name, *, release_rank=None, cache=None):
+    """Get-or-create a `models.Set` row for a (series, set_name) pair,
+    returning it with `.id` populated (flushed if newly created).
+
+    Shared by `_backfill_sets()` below (the startup catch-all) and
+    `importer.py`'s Dex CSV sync path (issue #134 -- inline linking at
+    import time, so a freshly-synced card's `Card.set_id` doesn't have to
+    wait for the next `init_db()` call to get linked) -- one implementation
+    of "get or create a Set row", not two independently-maintained ones.
+
+    `release_rank` is only used when creating a brand-new row (an existing
+    row's rank is never overwritten here -- that's `set_sync.py`'s job, or
+    a manual edit); omit it (default None) for a set encountered for the
+    first time with no known rank, which is the normal case for a newly
+    released set Dex exports before `set_sync.py` next runs -- it still
+    gets a real, usable (if unranked) `Set` row rather than being skipped.
+
+    `cache` is an optional `{(series, name): Set}` dict the caller can pass
+    in (and reuse across many calls in the same session) to avoid a
+    query-per-row when processing a batch -- checked first, and kept in
+    sync with anything this function creates.
+    """
+    import models
+
+    key = (series, set_name)
+    if cache is not None and key in cache:
+        return cache[key]
+
+    set_row = session.query(models.Set).filter(
+        models.Set.series == series, models.Set.name == set_name
+    ).one_or_none()
+    if set_row is None:
+        set_row = models.Set(series=series, name=set_name, release_rank=release_rank)
+        session.add(set_row)
+        session.flush()  # assigns set_row.id
+
+    if cache is not None:
+        cache[key] = set_row
+    return set_row
+
+
 def _backfill_sets():
-    """Get-or-create a `models.Set` row for every distinct (series, set)
-    pair present on `cards`, carrying over any matching `set_release_order`
-    row's `release_rank` (see HANDOFF.md -- checked before writing this:
-    `set_release_order` has never been seeded directly against prod outside
-    git, it just ships empty per README, so there's nothing to special-case
-    here beyond reading whatever rows happen to exist), then links every
-    card with that pair via `Card.set_id`. Idempotent, safe to call
-    unconditionally.
+    """Get-or-create a `models.Set` row (via `get_or_create_set()` above)
+    for every distinct (series, set) pair present on `cards`, carrying over
+    any matching `set_release_order` row's `release_rank` (see HANDOFF.md --
+    checked before writing this: `set_release_order` has never been seeded
+    directly against prod outside git, it just ships empty per README, so
+    there's nothing to special-case here beyond reading whatever rows
+    happen to exist), then links every card with that pair via
+    `Card.set_id`. Idempotent, safe to call unconditionally.
 
     Deliberately called on *every* `init_db()` invocation, not gated behind
-    `CURRENT_SCHEMA_VERSION`'s fast path like the rest of the chain below --
-    unlike those steps, this isn't one-time schema/data cleanup, it's an
-    ongoing sync that needs to keep linking newly-imported cards too.
-    `importer.py` doesn't write `Card.set_id` itself (that's issue #134,
-    not this one), so without re-running this on every cold start, a card
-    synced after this shipped would stay unlinked until some future
-    version bump happened to run the chain again. The extra queries this
-    costs on an already-migrated database are cheap (a handful of
-    read/write statements over at most a few hundred distinct sets).
+    `CURRENT_SCHEMA_VERSION`'s fast path like the rest of the chain below.
+    Since issue #134, `importer.py`'s sync path links `Card.set_id` inline
+    as it writes each card, so this function is no longer the *primary*
+    linking mechanism -- it's now mainly a catch-all/safety net for cards
+    that predate that change (or reached the database some other way, e.g.
+    a direct edit) and would otherwise stay unlinked. Cheap enough (a
+    handful of read/write statements over at most a few hundred distinct
+    sets) to keep running unconditionally rather than adding a separate
+    one-time-migration path for it.
     """
     import models
 
@@ -237,19 +278,12 @@ def _backfill_sets():
                 )
             }
 
-        existing_sets = {(s.series, s.name): s for s in session.query(models.Set).all()}
+        cache = {(s.series, s.name): s for s in session.query(models.Set).all()}
 
         for series, set_name in pairs:
-            set_row = existing_sets.get((series, set_name))
-            if set_row is None:
-                set_row = models.Set(
-                    series=series,
-                    name=set_name,
-                    release_rank=release_ranks.get((series, set_name)),
-                )
-                session.add(set_row)
-                session.flush()  # assigns set_row.id
-                existing_sets[(series, set_name)] = set_row
+            set_row = get_or_create_set(
+                session, series, set_name, release_rank=release_ranks.get((series, set_name)), cache=cache
+            )
 
             session.query(models.Card).filter(
                 models.Card.series == series, models.Card.set == set_name
