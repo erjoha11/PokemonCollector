@@ -65,7 +65,8 @@
   {% endcall %}
 
   <div class="card" id="dashboard-top-cards-card">
-    <h2>Top 10 most valuable cards {{ info('The ten individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
+    <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
+    <div class="top-cards-scroll">
     <table>
       <thead>
         <tr>
@@ -86,6 +87,7 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
   </div>
 

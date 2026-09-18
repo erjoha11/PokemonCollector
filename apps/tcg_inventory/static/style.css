@@ -554,6 +554,22 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   box-shadow: var(--shadow);
 }
 
+/* "Most valuable cards" fetches far more rows than fit in the card (see
+   app.py's limit=50) -- cap the table to roughly its original ~10-row
+   height and let it scroll, same frozen-header/scrolling-body pattern as
+   .inventory-table-wrap, instead of growing the card to fit every row. */
+.top-cards-scroll {
+  max-height: 24rem;
+  overflow-y: auto;
+}
+.top-cards-scroll thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  box-shadow: 0 1px 0 var(--border-strong);
+  z-index: 1;
+}
+
 /* Every dashboard row is a pair (Inventory+Topp 10, Serie+Rarity) -- wrap
    each in its own auto-fit pair instead of the top-level grid, so exactly
    two cards split the row 50/50 (auto-fit collapses unused tracks)
