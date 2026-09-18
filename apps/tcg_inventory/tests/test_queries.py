@@ -524,3 +524,33 @@ def test_unlinked_set_cards_includes_cards_with_no_series_or_set(db_session):
     assert queries.unlinked_set_cards(db_session) == [
         queries.UnlinkedSetCards(series=None, set=None, card_count=1)
     ]
+
+
+def test_sets_missing_release_rank_only_lists_null_rank_sets(db_session):
+    _seed(db_session)
+    linked_card = db_session.query(Card).filter_by(name="Pikachu").one()
+    ranked = Set(series=linked_card.series, name=linked_card.set, release_rank=1)
+    unranked = Set(series="Sword & Shield", name="Test Set", release_rank=None)
+    db_session.add_all([ranked, unranked])
+    db_session.flush()
+    linked_card.set_id = ranked.id
+    bulbasaur = db_session.query(Card).filter_by(name="Bulbasaur").one()
+    bulbasaur.set_id = unranked.id
+    db_session.commit()
+
+    missing = queries.sets_missing_release_rank(db_session)
+
+    assert missing == [
+        queries.SetMissingReleaseRank(series="Sword & Shield", name="Test Set", card_count=1)
+    ]
+
+
+def test_sets_missing_release_rank_includes_sets_with_no_cards(db_session):
+    db_session.add(Set(series="Empty Series", name="Empty Set", release_rank=None))
+    db_session.commit()
+
+    missing = queries.sets_missing_release_rank(db_session)
+
+    assert missing == [
+        queries.SetMissingReleaseRank(series="Empty Series", name="Empty Set", card_count=0)
+    ]
