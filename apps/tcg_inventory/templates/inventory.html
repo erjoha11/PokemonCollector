@@ -36,6 +36,12 @@
     {% for l in all_languages %}<option value="{{ l }}" {{ 'selected' if l == language }}>{{ l }}</option>{% endfor %}
   </select>
 
+  <label class="unowned-toggle">
+    <input type="checkbox" name="unowned" value="1" {{ 'checked' if unowned }}
+           hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    Show cards I no longer own
+  </label>
+
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
   <input type="hidden" name="dup" value="{{ '1' if dup else '' }}">
@@ -43,13 +49,13 @@
   {% if dup %}
   <span class="muted">
     Showing only cards with duplicates.
-    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}">Clear filter</a>
+    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}&unowned={{ '1' if unowned else '' }}">Clear filter</a>
   </span>
   {% endif %}
   {% if rarity %}
   <span class="muted">
     Filtered by rarity: {{ rarity }}
-    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}">Clear filter</a>
+    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}&unowned={{ '1' if unowned else '' }}">Clear filter</a>
   </span>
   {% endif %}
 </form>
