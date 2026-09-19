@@ -43,6 +43,7 @@ from models import (
     ImportLog,
     Listing,
     PokemonAlias,
+    Release,
     Set,
     Transaction,
 )
@@ -1676,6 +1677,56 @@ def transactions_charts(request: Request, metric: str = "unique"):
 @app.get("/wiki")
 def wiki(request: Request):
     return templates.TemplateResponse(request, "wiki.html", {})
+
+
+# --------------------------------------------------------------------------
+# Release notes -- a plain, manually-written "what changed and when" log,
+# separate from git history. Newest first; an inline add-form at the top of
+# the list is the only way to create one. No edit route by design (see
+# README/HANDOFF) -- delete-and-re-add covers a typo.
+# --------------------------------------------------------------------------
+@app.get("/releases")
+def releases(request: Request):
+    db = get_db_session()
+    try:
+        entries = db.query(Release).order_by(Release.date.desc(), Release.id.desc()).all()
+        return templates.TemplateResponse(
+            request, "releases.html", {"entries": entries, "today": dt.date.today().isoformat()}
+        )
+    finally:
+        db.close()
+
+
+@app.post("/releases")
+def create_release(
+    request: Request,
+    date: str = Form(...),
+    title: str = Form(...),
+    body: str = Form(...),
+):
+    db = get_db_session()
+    try:
+        db.add(Release(date=dt.date.fromisoformat(date), title=title, body=body))
+        db.commit()
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/releases/{release_id}/delete")
+def delete_release(release_id: int):
+    db = get_db_session()
+    try:
+        release = db.query(Release).filter(Release.id == release_id).first()
+        if release is not None:
+            db.delete(release)
+            db.commit()
+        # Already gone (e.g. double-submit or two tabs) is treated as a no-op,
+        # not an error -- the user's intent (this entry should not exist) is
+        # already satisfied.
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------

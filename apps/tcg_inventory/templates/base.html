@@ -18,6 +18,7 @@
     <a href="/sales" class="{{ 'active' if request.url.path == '/sales' }}">Sell on finn.no</a>
     <a href="/listings" class="{{ 'active' if request.url.path == '/listings' }}">Listings</a>
     <a href="/wiki" class="{{ 'active' if request.url.path == '/wiki' }}">Wiki</a>
+    <a href="/releases" class="{{ 'active' if request.url.path == '/releases' }}">Releases</a>
     <a href="/import" class="{{ 'active' if request.url.path == '/import' }}">Sync Log</a>
     {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Log out</a>{% endif %}
   </nav>

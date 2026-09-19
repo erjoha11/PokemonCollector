@@ -58,6 +58,52 @@ generation feature — see HANDOFF.md's matching entry for the shipped code).
 **Status:** Addressed — see HANDOFF.md's "New 'Sell on finn.no' module —
 2026-09-17 session" entry for what shipped.
 
+## 2026-09-19 — Release Notes page (issue #144)
+
+**Reviewed:** templates/releases.html, the `/releases` GET/POST/delete routes
+in app.py, and wiki.html's Releases section, prompted by the first draft of
+the in-app Release Notes page (commit 40b4d23 on
+`claude/release-note-uhcis5`).
+
+**Findings — fixed on this branch:**
+- The delete form's `confirm()` didn't name the entry. Since wiki.html tells
+  users "there's no edit — delete and re-add to fix a typo," Delete is the
+  documented correction mechanism here, not a rare cleanup action, so the
+  confirm dialog itself needs to be the safety net. Changed to
+  `Delete '<title>'? This cannot be undone.`, with the title
+  backslash/quote-escaped before Jinja's autoescaping so a title containing
+  an apostrophe or quote can't break out of the JS string or the HTML
+  attribute.
+- `POST /releases/{id}/delete` raised a raw `HTTPException(404)` when the row
+  was already gone (double-submit, two tabs), landing the user on a bare
+  error page. Changed to a no-op that redirects back to `/releases` (303)
+  either way — the user's intent ("this entry shouldn't exist") is already
+  satisfied. `tests/test_releases.py`'s
+  `test_delete_unknown_release_returns_404` renamed to
+  `test_delete_unknown_release_redirects_without_error` and updated to
+  assert the redirect.
+
+**Findings — reviewed, fine as-is (no change made):**
+- No-htmx, full-page-reload interaction model (plain `<form method="post">`
+  everywhere, no `hx-*` attributes): consistent with the page's own stated
+  design and not out of step with the rest of the app's mix of htmx and
+  plain-form pages.
+- Form layout/hierarchy (stacked labels, Add-form above the list, newest
+  entries first) and the English-only UI copy: consistent with existing
+  patterns elsewhere in the app.
+- Delete button has no per-entry `aria-label` (screen-reader users get
+  several indistinguishable "Delete" buttons). Flagged, but it's
+  pre-existing and not specific to this feature — the Listings page's
+  per-row action buttons have the same gap, so this isn't a regression this
+  feature introduced.
+- No server-side re-render of the add-release form's entered values on
+  validation failure (e.g. malformed date) — user has to retype. Also
+  pre-existing behavior shared with other simple POST-form pages in the app,
+  not something introduced here.
+
+**Status:** Addressed — fixes shipped on `claude/release-note-uhcis5` (see
+this session's commit closing #144).
+
 ## 2026-09-16 — Full-app review (value charts + card image rollout)
 
 **Reviewed:** every template in templates/ and templates/partials/, static/style.css, static/tcg-charts.js, card_images.py, and the app.py routes feeding them. Prompted by the current uncommitted diff (value-growth/KPI chart rework + new `card.image_url` thumbnails).
