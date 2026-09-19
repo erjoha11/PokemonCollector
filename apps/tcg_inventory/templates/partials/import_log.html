@@ -1,21 +1,27 @@
+{# Lives inside the merged /releases page (issue #159) at #sync-log. Sort
+   links swap this whole partial's outerHTML back into that same target
+   instead of doing a plain page navigation -- otherwise sorting would
+   reload the page and land at the top, above the Release Notes section
+   below it, forcing a scroll back down on every sort. #}
 {% from "partials/macros.html" import sort_th with context %}
-<div class="card" id="import-log" style="margin-top: 1.5rem;">
+{% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'lsort', 'ldir', lsort, ldir, path='/releases/sync-log', hx_target='#sync-log', hx_swap='outerHTML') }}{% endmacro %}
+<div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;">
   <h2>Sync Log</h2>
   {% if logs %}
   <div class="table-scroll">
     <table>
       <thead>
         <tr>
-          <th>{{ sort_th('Timestamp', 'ran_at', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th>{{ sort_th('Source', 'source', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th>{{ sort_th('Files', 'files', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th class="num">{{ sort_th('Created', 'cards_created', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th class="num">{{ sort_th('Updated', 'cards_updated', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th class="num">{{ sort_th('Flagged', 'cards_flagged_missing', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th class="num">{{ sort_th('Deleted', 'cards_deleted', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th class="num">{{ sort_th('Warnings', 'warnings_count', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th>{{ sort_th('Collections', 'collections_touched', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
-          <th>{{ sort_th('Binders', 'binders_touched', 'lsort', 'ldir', lsort, ldir, '/import') }}</th>
+          <th>{{ sort_th_hx('Timestamp', 'ran_at') }}</th>
+          <th>{{ sort_th_hx('Source', 'source') }}</th>
+          <th>{{ sort_th_hx('Files', 'files') }}</th>
+          <th class="num">{{ sort_th_hx('Created', 'cards_created') }}</th>
+          <th class="num">{{ sort_th_hx('Updated', 'cards_updated') }}</th>
+          <th class="num">{{ sort_th_hx('Flagged', 'cards_flagged_missing') }}</th>
+          <th class="num">{{ sort_th_hx('Deleted', 'cards_deleted') }}</th>
+          <th class="num">{{ sort_th_hx('Warnings', 'warnings_count') }}</th>
+          <th>{{ sort_th_hx('Collections', 'collections_touched') }}</th>
+          <th>{{ sort_th_hx('Binders', 'binders_touched') }}</th>
         </tr>
       </thead>
       <tbody>

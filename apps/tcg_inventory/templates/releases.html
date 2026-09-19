@@ -1,40 +1,74 @@
 {% extends "base.html" %}
-{% block title %}Release Notes – TCG Inventory{% endblock %}
+{% block title %}Activity Log – TCG Inventory{% endblock %}
 {% block content %}
-<h1>Release Notes</h1>
-
+<h1>Activity Log</h1>
 <p class="muted">
-  What's changed in the app recently. Written by hand, newest first — see the
-  <a href="/wiki">Wiki</a> for how the app works day to day.
+  <a href="#sync-log">Sync Log</a> · <a href="#release-notes">Release Notes</a>
 </p>
 
-<div class="result-box" style="margin-bottom: 1.5rem;">
-  <p style="margin: 0 0 0.5rem;"><strong>Add an entry</strong></p>
-  <form method="post" action="/releases" class="release-form">
-    <input type="date" name="date" value="{{ today }}" required>
-    <input type="text" name="title" placeholder="Title (e.g. Release Notes page)" required style="flex: 1; min-width: 12rem;">
-    <textarea name="body" placeholder="What changed, in a few sentences..." rows="3" required style="flex-basis: 100%;"></textarea>
-    <button type="submit">Add entry</button>
-  </form>
+{% include "partials/import_log.html" %}
+
+<hr style="margin: 2rem 0;">
+
+<div id="release-notes">
+  <h2>Release Notes</h2>
+  <p class="muted">
+    What's changed in the app recently. Written by hand, newest first — see the
+    <a href="/wiki">Wiki</a> for how the app works day to day.
+  </p>
+
+  <div class="result-box" style="margin-bottom: 1.5rem;">
+    <p style="margin: 0 0 0.5rem;"><strong>Add an entry</strong></p>
+    <form method="post" action="/releases" class="release-form">
+      <input type="date" name="date" value="{{ today }}" required>
+      <input type="text" name="title" placeholder="Title (e.g. Release Notes page)" required style="flex: 1; min-width: 12rem;">
+      <textarea name="body" placeholder="What changed, in a few sentences..." rows="3" required style="flex-basis: 100%;"></textarea>
+      <button type="submit">Add entry</button>
+    </form>
+  </div>
+
+  {% macro release_entry(release) %}
+  <div class="result-box" style="margin-bottom: 1rem;">
+    <div class="tx-order-summary">
+      <span class="tx-order-id">{{ release.title }}</span>
+      <span class="tx-order-stat">{{ release.date.isoformat() }}</span>
+      <span class="listing-actions">
+        <form method="post" action="/releases/{{ release.id }}/delete" style="display:inline;"
+              onsubmit="return confirm('Delete \'{{ release.title | replace("\\", "\\\\") | replace("'", "\\'") }}\'? This cannot be undone.');">
+          <button type="submit" class="secondary">Delete</button>
+        </form>
+      </span>
+    </div>
+    <p style="white-space: pre-wrap; margin: 0.5rem 0 0;">{{ release.body }}</p>
+  </div>
+  {% endmacro %}
+
+  {% if not releases %}
+  <p class="muted">No release notes recorded yet.</p>
+  {% else %}
+  {% for release in recent_releases %}
+  {{ release_entry(release) }}
+  {% endfor %}
+  {% if older_releases %}
+  <details>
+    <summary class="muted" style="cursor: pointer;">Show {{ older_releases | length }} older entr{{ 'y' if older_releases | length == 1 else 'ies' }}</summary>
+    {% for release in older_releases %}
+    {{ release_entry(release) }}
+    {% endfor %}
+  </details>
+  {% endif %}
+  {% endif %}
 </div>
 
-{% if not releases %}
-<p class="muted">No release notes recorded yet.</p>
-{% else %}
-{% for release in releases %}
-<div class="result-box" style="margin-bottom: 1rem;">
-  <div class="tx-order-summary">
-    <span class="tx-order-id">{{ release.title }}</span>
-    <span class="tx-order-stat">{{ release.date.isoformat() }}</span>
-    <span class="listing-actions">
-      <form method="post" action="/releases/{{ release.id }}/delete" style="display:inline;"
-            onsubmit="return confirm('Delete \'{{ release.title | replace("\\", "\\\\") | replace("'", "\\'") }}\'? This cannot be undone.');">
-        <button type="submit" class="secondary">Delete</button>
-      </form>
-    </span>
-  </div>
-  <p style="white-space: pre-wrap; margin: 0.5rem 0 0;">{{ release.body }}</p>
-</div>
-{% endfor %}
-{% endif %}
+<script>
+// Landing here via the old /import bookmark (redirected to
+// /releases#sync-log) scrolls #sync-log into view, but a fragment doesn't
+// move keyboard/screen-reader focus -- an AT user would otherwise hear the
+// page announced from the top instead of "Sync Log". #sync-log has
+// tabindex="-1" so it's focusable without being in the normal tab order.
+if (location.hash) {
+  var target = document.querySelector(location.hash);
+  if (target) target.focus();
+}
+</script>
 {% endblock %}

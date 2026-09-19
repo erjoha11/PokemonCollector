@@ -51,7 +51,7 @@ def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/import")
-    log_section = response.text.split('id="import-log"', 1)[1]
+    log_section = response.text.split('id="sync-log"', 1)[1]
     assert '<div class="table-scroll">' in log_section
 
 
@@ -62,7 +62,7 @@ def test_import_log_table_can_be_sorted_by_column(client):
     seed_import(client, [("files", ("aaa.csv", abra, "text/csv"))])
 
     def _log_body(html: str) -> str:
-        section = html.split('id="import-log"', 1)[1]
+        section = html.split('id="sync-log"', 1)[1]
         return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
     asc = _log_body(client.get("/import?lsort=files&ldir=asc").text)
@@ -70,6 +70,31 @@ def test_import_log_table_can_be_sorted_by_column(client):
 
     desc = _log_body(client.get("/import?lsort=files&ldir=desc").text)
     assert desc.index("zzz.csv") < desc.index("aaa.csv")
+
+
+def test_import_redirects_to_releases_sync_log(client):
+    response = client.get("/import", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/releases#sync-log"
+
+
+def test_import_redirect_preserves_sort_query_string(client):
+    response = client.get("/import?lsort=files&ldir=asc", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/releases?lsort=files&ldir=asc#sync-log"
+
+
+def test_sync_log_sort_partial_swaps_just_that_section(client):
+    zebra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    abra = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("zzz.csv", zebra, "text/csv"))])
+    seed_import(client, [("files", ("aaa.csv", abra, "text/csv"))])
+
+    response = client.get("/releases/sync-log?lsort=files&ldir=asc")
+    assert response.status_code == 200
+    assert 'id="sync-log"' in response.text
+    assert "Release Notes" not in response.text
+    assert response.text.index("aaa.csv") < response.text.index("zzz.csv")
 
 
 def test_dashboard_kpi_tiles_and_section_headings_have_info_tooltips(client):

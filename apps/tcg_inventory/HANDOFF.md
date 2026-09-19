@@ -789,3 +789,49 @@ the same lines).
   a real `ux` pass before shipping; this session's environment again had no
   `Agent` tool to spawn `ux` directly (same caveat #126's session logged),
   so that pass still hasn't happened.
+
+# Handoff notes — 2026-09-19 session (Order #17 price split)
+
+## Direct production-database changes (not in git history)
+
+At the user's request: Order #17 (`purchase_id = 17`) was created with all
+40 cards paid 210 kr total plus 40 kr shipping (250 kr grand total), but
+with `price = 0` on every card row (none individually priced yet) and
+`purchase_total` stored as 210 (just the card total, not the grand total
+the field is meant to hold per its own tooltip: "The full amount you paid
+for the order"). Ran directly against the production Supabase database
+(via the Supabase MCP connection, project `nverpumoregkjfeddrwa`):
+
+```sql
+UPDATE transactions
+SET price = 5.25, purchase_total = 250
+WHERE purchase_id = 17;
+```
+
+`5.25` = `210 / 40`, exact — shipping is tracked separately via
+`purchase_shipping` (unchanged at 40) and deliberately *not* folded into
+the per-card price, since `queries`'s diff calculation
+(`purchase_total - total_price - purchase_shipping`) already subtracts it
+once on its own; splitting it into each card's price too would double
+count it. `purchase_total` corrected from 210 to 250 (cards + shipping) to
+match that same formula — `250 - 210 - 40 = 0`, exactly matching this
+order having no remaining/undeclared amount.
+
+(Two earlier passes in this same session got this wrong before landing
+here: first assumed 39 cards instead of 40, and used 4.36/card with a few
+øre of rounding drift; second used the correct 40-card count but treated
+the stored 210 as the grand total instead of just the card total, missing
+that shipping needed to be added on top rather than subtracted from it.
+Both were caught and corrected via further `UPDATE`s before this file was
+written, so only the final, correct state is recorded here.) All 40 rows
+confirmed updated (40 rows returned by the query's `RETURNING` clause).
+
+No code change: this exact "distribute remaining" capability already
+exists in the New Order cart UI but not on the Edit Order page
+(`/transactions/purchase/{id}/edit`) for an already-committed order like
+this one — that's why it was done directly against the database instead
+of through the app. Worth a small future enhancement to add the same
+"distribute remaining across unpriced rows" button to `purchase_edit.html`
+so this doesn't need a direct DB edit next time (not filed as an issue
+yet — flagging here per this file's convention for open items raised but
+not built).
