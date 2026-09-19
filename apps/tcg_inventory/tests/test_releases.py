@@ -65,10 +65,11 @@ def test_delete_release_removes_it(client):
     assert "No release notes yet" in page.text
 
 
-def test_delete_unknown_release_returns_404(client):
+def test_delete_unknown_release_redirects_without_error(client):
     response = client.post("/releases/999/delete")
 
-    assert response.status_code == 404
+    assert response.status_code == 200  # redirect to /releases followed by TestClient
+    assert response.url.path == "/releases"
 
 
 def test_releases_nav_link_present(client):

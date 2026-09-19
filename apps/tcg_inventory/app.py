@@ -1718,10 +1718,12 @@ def delete_release(release_id: int):
     db = get_db_session()
     try:
         release = db.query(Release).filter(Release.id == release_id).first()
-        if release is None:
-            raise HTTPException(status_code=404, detail="Release not found")
-        db.delete(release)
-        db.commit()
+        if release is not None:
+            db.delete(release)
+            db.commit()
+        # Already gone (e.g. double-submit or two tabs) is treated as a no-op,
+        # not an error -- the user's intent (this entry should not exist) is
+        # already satisfied.
         return RedirectResponse("/releases", status_code=303)
     finally:
         db.close()

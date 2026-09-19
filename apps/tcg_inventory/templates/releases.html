@@ -36,7 +36,7 @@
       <span class="muted">{{ entry.date.strftime('%Y-%m-%d') }}</span>
     </div>
     <p style="white-space: pre-wrap; margin: 0.75rem 0 1rem;">{{ entry.body }}</p>
-    <form method="post" action="/releases/{{ entry.id }}/delete" onsubmit="return confirm('Delete this release note?');">
+    <form method="post" action="/releases/{{ entry.id }}/delete" onsubmit="return confirm('Delete \'{{ entry.title | replace("\\", "\\\\") | replace("'", "\\'") }}\'? This cannot be undone.');">
       <button type="submit" class="secondary">Delete</button>
     </form>
   </div>
