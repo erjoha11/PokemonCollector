@@ -794,24 +794,37 @@ the same lines).
 
 ## Direct production-database changes (not in git history)
 
-At the user's request: Order #17 (`purchase_id = 17`) was created with an
-agreed `purchase_total` of 210 kr and `purchase_shipping` of 40 kr, all 40
-cards added but with `price = 0` on every row (none individually priced
-yet). Ran directly against the production Supabase database (via the
-Supabase MCP connection, project `nverpumoregkjfeddrwa`):
+At the user's request: Order #17 (`purchase_id = 17`) was created with all
+40 cards paid 210 kr total plus 40 kr shipping (250 kr grand total), but
+with `price = 0` on every card row (none individually priced yet) and
+`purchase_total` stored as 210 (just the card total, not the grand total
+the field is meant to hold per its own tooltip: "The full amount you paid
+for the order"). Ran directly against the production Supabase database
+(via the Supabase MCP connection, project `nverpumoregkjfeddrwa`):
 
 ```sql
 UPDATE transactions
-SET price = 4.25
+SET price = 5.25, purchase_total = 250
 WHERE purchase_id = 17;
 ```
 
-`4.25` = `(210 - 40) / 40`, exact, no rounding needed. (An earlier pass in
-this same session miscounted the order at 39 cards instead of 40 and wrote
-4.36/row with a few øre of rounding drift — caught and corrected via a
-second `UPDATE` before this file was written, so only the final, correct
-state is recorded here.) All 40 rows confirmed updated (40 rows returned by
-the query's `RETURNING` clause), summing to exactly 170 kr.
+`5.25` = `210 / 40`, exact — shipping is tracked separately via
+`purchase_shipping` (unchanged at 40) and deliberately *not* folded into
+the per-card price, since `queries`'s diff calculation
+(`purchase_total - total_price - purchase_shipping`) already subtracts it
+once on its own; splitting it into each card's price too would double
+count it. `purchase_total` corrected from 210 to 250 (cards + shipping) to
+match that same formula — `250 - 210 - 40 = 0`, exactly matching this
+order having no remaining/undeclared amount.
+
+(Two earlier passes in this same session got this wrong before landing
+here: first assumed 39 cards instead of 40, and used 4.36/card with a few
+øre of rounding drift; second used the correct 40-card count but treated
+the stored 210 as the grand total instead of just the card total, missing
+that shipping needed to be added on top rather than subtracted from it.
+Both were caught and corrected via further `UPDATE`s before this file was
+written, so only the final, correct state is recorded here.) All 40 rows
+confirmed updated (40 rows returned by the query's `RETURNING` clause).
 
 No code change: this exact "distribute remaining" capability already
 exists in the New Order cart UI but not on the Edit Order page
