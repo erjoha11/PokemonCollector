@@ -789,3 +789,38 @@ the same lines).
   a real `ux` pass before shipping; this session's environment again had no
   `Agent` tool to spawn `ux` directly (same caveat #126's session logged),
   so that pass still hasn't happened.
+
+# Handoff notes — 2026-09-19 session (Order #17 price split)
+
+## Direct production-database changes (not in git history)
+
+At the user's request: Order #17 (`purchase_id = 17`) was created with an
+agreed `purchase_total` of 210 kr and `purchase_shipping` of 40 kr, all 39
+cards added but with `price = 0` on every row (none individually priced
+yet). Ran directly against the production Supabase database (via the
+Supabase MCP connection, project `nverpumoregkjfeddrwa`):
+
+```sql
+UPDATE transactions
+SET price = 4.36
+WHERE purchase_id = 17 AND price = 0;
+```
+
+`4.36` = `round((210 - 40) / 39, 2)` — the app's own "Distribute evenly
+across empty prices" cart button (`distributeRemaining()` in
+`transactions.html`) uses the identical `Math.round(x * 100) / 100`
+rounding, so this matches existing in-app behavior rather than introducing
+a new convention. All 39 rows confirmed updated (39 rows returned by the
+query's `RETURNING` clause). Sum of new prices is 170.04 kr against a
+170 kr target (4 øre of rounding drift across 39 rows) — same drift the
+in-app button would itself produce, not a new issue.
+
+No code change: this exact "distribute remaining" capability already
+exists in the New Order cart UI but not on the Edit Order page
+(`/transactions/purchase/{id}/edit`) for an already-committed order like
+this one — that's why it was done directly against the database instead
+of through the app. Worth a small future enhancement to add the same
+"distribute remaining across unpriced rows" button to `purchase_edit.html`
+so this doesn't need a direct DB edit next time (not filed as an issue
+yet — flagging here per this file's convention for open items raised but
+not built).
