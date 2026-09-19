@@ -1559,6 +1559,54 @@ def purchase_edit_relink_select(request: Request, purchase_id: int, tx_id: int, 
         db.close()
 
 
+@app.get("/transactions/purchase/{purchase_id}/edit/add-card-search")
+def purchase_edit_add_card_search(request: Request, purchase_id: int, q: str = ""):
+    db = get_db_session()
+    try:
+        results = []
+        if q and len(q) >= 2:
+            like = _like_pattern(q)
+            results = (
+                db.query(Card)
+                .filter(func.lower(Card.name).like(like) | func.lower(Card.card_id).like(like))
+                .order_by(Card.name)
+                .limit(20)
+                .all()
+            )
+        return templates.TemplateResponse(
+            request, "partials/purchase_edit_add_card_results.html", {"results": results, "purchase_id": purchase_id}
+        )
+    finally:
+        db.close()
+
+
+@app.post("/transactions/purchase/{purchase_id}/edit/add-card")
+def purchase_edit_add_card(request: Request, purchase_id: int, card_id: int):
+    """Appends a brand-new card to an already-committed order (issue #155) --
+    creates one Transaction row immediately, defaulted to today/purchase/0,
+    then returns it rendered through the same row markup the edit form's own
+    rows use so it's immediately editable and included in the next Save.
+    Deliberately its own route rather than folded into update_purchase's
+    tx_id-keyed loop, which only ever edits rows that already exist.
+    """
+    db = get_db_session()
+    try:
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        if card is None:
+            return HTMLResponse("")
+        tx = Transaction(card_id=card.id, type="purchase", date=dt.date.today(), price=0, purchase_id=purchase_id)
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_edit_new_row.html",
+            {"purchase_id": purchase_id, "tx": tx, "next_purchase_id": _next_purchase_id(db)},
+        )
+    finally:
+        db.close()
+
+
 @app.post("/transactions/purchase/{purchase_id}/edit")
 def update_purchase(
     request: Request,

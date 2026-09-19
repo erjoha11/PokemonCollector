@@ -199,6 +199,90 @@ def test_moving_a_row_to_a_new_purchase_id_clears_its_total_and_shipping(client)
         db.close()
 
 
+def test_purchase_edit_add_card_search_returns_matches(client):
+    _seed_two_card_order(client, purchase_id=5)
+
+    response = client.get("/transactions/purchase/5/edit/add-card-search", params={"q": "Char"})
+    assert response.status_code == 200
+    assert "Charizard" in response.text
+
+
+def test_purchase_edit_add_card_creates_a_row_against_this_order(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    _seed_two_card_order(client, purchase_id=5)
+
+    db = db_module.SessionLocal()
+    try:
+        eevee = Card(card_id="c", name="Eevee", qty=1)
+        db.add(eevee)
+        db.commit()
+        eevee_id = eevee.id
+    finally:
+        db.close()
+
+    response = client.post(f"/transactions/purchase/5/edit/add-card?card_id={eevee_id}")
+    assert response.status_code == 200
+    assert "Eevee" in response.text
+
+    db = db_module.SessionLocal()
+    try:
+        tx = db.query(Transaction).filter(Transaction.purchase_id == 5, Transaction.card_id == eevee_id).one()
+        assert tx.type == "purchase"
+        assert tx.price == 0
+        assert tx.date == dt.date.today()
+    finally:
+        db.close()
+
+
+def test_purchase_edit_added_card_is_included_in_the_next_save(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    ids = _seed_two_card_order(client, purchase_id=5)
+    tx_ids = _tx_ids(5)
+
+    db = db_module.SessionLocal()
+    try:
+        eevee = Card(card_id="c", name="Eevee", qty=1)
+        db.add(eevee)
+        db.commit()
+        eevee_id = eevee.id
+    finally:
+        db.close()
+
+    client.post(f"/transactions/purchase/5/edit/add-card?card_id={eevee_id}")
+    new_tx_id = _tx_ids(5)
+    added_tx_id = [t for t in new_tx_id if t not in tx_ids][0]
+
+    response = client.post(
+        "/transactions/purchase/5/edit",
+        data={
+            "tx_id": [str(tx_ids[0]), str(tx_ids[1]), str(added_tx_id)],
+            "card_id": [str(ids["a"]), str(ids["b"]), str(eevee_id)],
+            "type": ["purchase", "purchase", "purchase"],
+            "date": ["2026-01-01", "2026-01-01", "2026-03-01"],
+            "price": ["10", "20", "5"],
+            "platform": ["", "", ""],
+            "note": ["", "", ""],
+            "new_purchase_id": ["5", "5", "5"],
+        },
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    try:
+        tx = db.query(Transaction).filter(Transaction.id == added_tx_id).one()
+        assert tx.price == 5
+        assert tx.date.isoformat() == "2026-03-01"
+    finally:
+        db.close()
+
+
 def test_moving_every_row_out_leaves_no_dangling_empty_order(client):
     ids = _seed_two_card_order(client, purchase_id=5)
     tx_ids = _tx_ids(5)
