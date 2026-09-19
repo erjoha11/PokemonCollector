@@ -58,6 +58,13 @@ run).
   by default, with a "Show delisted" toggle to reveal them. Delisting never
   changes `qty`/`card_collections`/`binder_id` — there is still no "mark as
   sold" action here, see "Sales listings (finn.no)" below.
+- **Releases** (`/releases`) — a plain, manually-written "what changed and
+  when" log, separate from git history — a dated title + free-text note per
+  entry, newest first, added via an inline form at the top of the page.
+  `body` is rendered as plain, autoescaped text with `white-space: pre-wrap`
+  (no Markdown). No edit route by design — delete-and-re-add
+  (`POST /releases/{id}/delete`) covers a typo; this is deliberately kept
+  small (no versioning scheme, tags, or filtering).
 
 ## Data model
 
@@ -66,7 +73,8 @@ run).
 `listings`/`listing_cards` (many-to-many, see "Sales listings (finn.no)"
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
-table `sets` replaces — kept in place, unused going forward).
+table `sets` replaces — kept in place, unused going forward), and
+`releases` (see "Releases" above — standalone, not linked to any card).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /

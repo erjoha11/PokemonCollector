@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Releases – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Releases</h1>
+
+<div class="result-box" style="margin-bottom: 1.5rem;">
+  <h2>Add a release note</h2>
+  <form method="post" action="/releases">
+    <p style="margin: 0 0 0.5rem;">
+      <label>
+        Date<br>
+        <input type="date" name="date" required value="{{ today }}">
+      </label>
+    </p>
+    <p style="margin: 0 0 0.5rem;">
+      <label>
+        Title<br>
+        <input type="text" name="title" required style="width: 100%; max-width: 32rem;">
+      </label>
+    </p>
+    <p style="margin: 0 0 0.5rem;">
+      <label>
+        Notes<br>
+        <textarea name="body" rows="4" required style="width: 100%; max-width: 32rem;"></textarea>
+      </label>
+    </p>
+    <button type="submit">Add release note</button>
+  </form>
+</div>
+
+{% if entries %}
+  {% for entry in entries %}
+  <div class="result-box" style="margin-bottom: 1.5rem;">
+    <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;">
+      <h2 style="margin: 0;">{{ entry.title }}</h2>
+      <span class="muted">{{ entry.date.strftime('%Y-%m-%d') }}</span>
+    </div>
+    <p style="white-space: pre-wrap; margin: 0.75rem 0 1rem;">{{ entry.body }}</p>
+    <form method="post" action="/releases/{{ entry.id }}/delete" onsubmit="return confirm('Delete this release note?');">
+      <button type="submit" class="secondary">Delete</button>
+    </form>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="result-box">
+    <p class="muted">No release notes yet — add the first one above.</p>
+  </div>
+{% endif %}
+{% endblock %}

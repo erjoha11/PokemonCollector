@@ -380,6 +380,28 @@ class ImportLog(Base):
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class Release(Base):
+    """One entry on the in-app Release Notes page (`/releases`) -- a plain,
+    manually-written record of "what changed and when", separate from git
+    history so a non-technical read of what shipped doesn't require reading
+    commit messages. `body` is rendered as plain, autoescaped text with
+    `white-space: pre-wrap` in the template -- no Markdown dependency, so
+    line breaks in what's typed are preserved as-is and nothing else needs
+    escaping/sanitizing beyond Jinja's default autoescaping.
+
+    No edit route by design (see README) -- delete-and-re-add covers a typo,
+    keeping this deliberately small for v1.
+    """
+
+    __tablename__ = "releases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False, default=dt.datetime.utcnow)
+
+
 class FavoritePokemon(Base):
     """A Pokemon (by name, e.g. "Sableye") the user flagged as a favorite on
     the Dashboard's Pokemon breakdown -- not tied to any one physical card,
