@@ -952,6 +952,97 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     assert "Add to order" in collapsed_section
 
 
+def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    db.query(Card).filter(Card.card_id.in_(["a", "b"])).update({"created_at": None}, synchronize_session=False)
+    charizard_id = db.query(Card).filter(Card.card_id == "b").one().id
+    db.add(Transaction(card_id=charizard_id, type="purchase", date=dt.date.today(), price=10, purchase_id=1))
+    db.commit()
+    db.close()
+
+    response = client.get("/transactions")
+    text = response.text
+    assert "Legacy import" in text
+    collapsed_section = text.split('<details class="collapsible">', 1)[1]
+    # Charizard already has an order -- dropped from this table even though
+    # its created_at is still unknown; Pikachu has neither, so it stays.
+    assert "Pikachu" in collapsed_section
+    assert "Charizard" not in collapsed_section
+
+
+def test_add_card_to_existing_order_creates_a_row_and_redirects(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.add(Transaction(card_id=ids["a"], type="purchase", date=dt.date.today(), price=10, purchase_id=3))
+    db.commit()
+    db.close()
+
+    response = client.post(
+        "/transactions/purchase/add-existing-card",
+        data={"card_id": str(ids["b"]), "purchase_id": "3"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/transactions?open_order=3"
+
+    db = db_module.SessionLocal()
+    try:
+        tx = db.query(Transaction).filter(Transaction.card_id == ids["b"]).one()
+        assert tx.purchase_id == 3
+        assert tx.type == "purchase"
+        assert tx.price == 0
+    finally:
+        db.close()
+
+
+def test_add_card_to_existing_order_rejects_an_order_id_that_does_not_exist(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.close()
+
+    response = client.post(
+        "/transactions/purchase/add-existing-card",
+        data={"card_id": str(card_id), "purchase_id": "999"},
+    )
+    assert response.status_code == 200
+    assert "exist yet" in response.text
+    assert "Order #999" in response.text
+
+    db = db_module.SessionLocal()
+    try:
+        assert db.query(Transaction).filter(Transaction.card_id == card_id).count() == 0
+    finally:
+        db.close()
+
+
 def test_transactions_history_table_scrolls_instead_of_widening_the_page(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])

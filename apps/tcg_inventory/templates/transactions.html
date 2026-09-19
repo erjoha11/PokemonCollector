@@ -149,8 +149,9 @@
 <details class="collapsible">
   <summary>Legacy import — cards from before "date added" tracking ({{ unknown_cards | length }} card{{ '' if unknown_cards | length == 1 else 's' }})</summary>
   <p class="muted">
-    Cards synced before this app tracked an "added" date. Not related to whether a card
-    has a linked order — see the Order column below, or check History above.
+    Cards synced before this app tracked an "added" date, that don't have an order yet
+    either — once a card gets an order (from here, or the New Order cart), it drops off
+    this list. Not related to date tracking itself; see History above for order status.
   </p>
   <div class="inventory-table-wrap" style="max-height: 400px;">
     <table class="inventory-table">
@@ -162,7 +163,6 @@
           <th>{{ sort_th('Set', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th class="num">{{ sort_th('Price', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th>Order</th>
           <th></th>
         </tr>
       </thead>
@@ -175,23 +175,17 @@
           <td>{{ card.set or '' }}</td>
           <td class="num">{{ card.display_price | kr }}</td>
           <td>{{ card.card_id }}</td>
-          <td class="num">
-            {% if card.id in registered_prices %}
-              Ordered · {{ registered_prices[card.id] }}
-            {% else %}
-              <span class="muted">No order yet</span>
-            {% endif %}
-          </td>
           <td>
-            <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}"
-                    hx-target="#cart-body" hx-swap="beforeend"
-                    title="Open a new order above first (+ New Order) — this button then adds the card into that order.">
-              + Add to order
-            </button>
+            <form method="post" action="/transactions/purchase/add-existing-card" style="display: flex; gap: 0.25rem;">
+              <input type="hidden" name="card_id" value="{{ card.id }}">
+              <input type="number" name="purchase_id" placeholder="Order #" required style="width: 80px;"
+                     title="The Order ID to add this card to — see History above for existing order numbers.">
+              <button type="submit">+ Add to order</button>
+            </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="8" class="muted">No legacy cards — every card now has an added date.</td></tr>
+        <tr><td colspan="7" class="muted">No legacy cards — every card now has an added date, or already has an order.</td></tr>
         {% endfor %}
       </tbody>
     </table>
