@@ -43,6 +43,7 @@ from models import (
     ImportLog,
     Listing,
     PokemonAlias,
+    Release,
     Set,
     Transaction,
 )
@@ -467,7 +468,7 @@ def _top_collection_and_series(collection_breakdown: dict, series_breakdown: lis
     return top_collection, top_series
 
 
-def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language):
+def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language, unowned):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
     if q:
         like = _like_pattern(q)
@@ -491,6 +492,14 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, d
         query = query.filter(Card.rarity == rarity)
     if language:
         query = query.filter(Card.language == language)
+    # qty == 0 ("traded/sold away, but still present in the export" -- see
+    # models.Card.unique_value's docstring / issue #132) is hidden from the
+    # default browse view; `unowned=1` (the "Show cards I no longer own"
+    # toggle) reveals them. Deliberately not applied to
+    # pokemon_search_results.html's own query (see app.py's `/pokemon/search`
+    # route) -- re-buying a previously-traded-away card there is intended.
+    if not unowned:
+        query = query.filter(Card.qty > 0)
     return query
 
 
@@ -510,12 +519,15 @@ def inventory(
     dup: str = "",
     rarity: str = "",
     language: str = "",
+    # Same query-string presence/truthiness idiom as `dup` above -- "Show
+    # cards I no longer own" (qty == 0), default OFF/hidden. See issue #132.
+    unowned: str = "",
     sort: str = "release",
     direction: str = "asc",
 ):
     db = get_db_session()
     try:
-        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity, language)
+        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity, language, unowned)
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -566,6 +578,7 @@ def inventory(
             "collection": collection,
             "binder": binder,
             "dup": dup,
+            "unowned": unowned,
             "rarity": rarity,
             "language": language,
             "sort": sort,
@@ -2000,6 +2013,55 @@ def transactions_charts(request: Request, metric: str = "unique"):
 @app.get("/wiki")
 def wiki(request: Request):
     return templates.TemplateResponse(request, "wiki.html", {})
+
+
+# --------------------------------------------------------------------------
+# Release Notes (issue #144) -- a small, hand-authored log of user-facing
+# changes, stored in the `releases` table (see models.Release's docstring
+# for why a DB table, not a CHANGELOG.md file or git/PR-history generation).
+# No new RBAC: both routes pass through the same auth_guard middleware as
+# every other non-public route. No edit-in-place for v1 -- delete and
+# re-add a mistaken entry instead.
+# --------------------------------------------------------------------------
+@app.get("/releases")
+def releases_page(request: Request):
+    db = get_db_session()
+    try:
+        releases = db.query(Release).order_by(Release.date.desc(), Release.id.desc()).all()
+        context = {"releases": releases, "today": dt.date.today().isoformat()}
+        return templates.TemplateResponse(request, "releases.html", context)
+    finally:
+        db.close()
+
+
+@app.post("/releases")
+def releases_create(
+    request: Request,
+    date: dt.date = Form(...),
+    title: str = Form(...),
+    body: str = Form(...),
+):
+    db = get_db_session()
+    try:
+        db.add(Release(date=date, title=title, body=body, created_at=dt.datetime.utcnow()))
+        db.commit()
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/releases/{release_id}/delete")
+def releases_delete(request: Request, release_id: int):
+    db = get_db_session()
+    try:
+        release = db.query(Release).filter(Release.id == release_id).first()
+        if release is None:
+            raise HTTPException(status_code=404, detail="Release not found")
+        db.delete(release)
+        db.commit()
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------

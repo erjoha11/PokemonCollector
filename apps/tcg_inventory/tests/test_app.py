@@ -1360,6 +1360,39 @@ def test_inventory_accepts_an_empty_dup_query_value(client):
     assert "Pikachu" in response.text
 
 
+def test_inventory_hides_qty_zero_cards_by_default_and_unowned_toggle_reveals_them(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "qty": 1},
+            {"id": "b", "name": "Charizard", "qty": 0},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    default_response = client.get("/inventory")
+    assert "Pikachu" in default_response.text
+    assert "Charizard" not in default_response.text
+    assert "1 card" in default_response.text
+
+    unowned_response = client.get("/inventory?unowned=1")
+    assert "Pikachu" in unowned_response.text
+    assert "Charizard" in unowned_response.text
+    assert "2 cards" in unowned_response.text
+    # 0-qty row gets the dimmed/badged treatment.
+    assert "card-row-unowned" in unowned_response.text
+    assert "0 owned" in unowned_response.text
+
+
+def test_inventory_accepts_an_empty_unowned_query_value(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/inventory?unowned=&series=&language=")
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+
+
 def test_inventory_shows_and_filters_by_language(client):
     main = make_csv(
         "My Collection",

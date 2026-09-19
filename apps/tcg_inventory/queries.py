@@ -391,10 +391,15 @@ def merge_pokemon(db: Session, name: str, canonical: str) -> None:
 
 
 def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
+    """The "Most valuable cards" dashboard tile -- excludes qty == 0 cards
+    (traded/sold away, but still present in the export) so a card no longer
+    owned can't appear here as if it still were -- see issue #132, same
+    reasoning as `Card.unique_value`'s qty gating.
+    """
     display_price = func.coalesce(Card.tcgplayer_price, Card.reference_price)
     return (
         db.query(Card)
-        .filter(display_price.isnot(None))
+        .filter(display_price.isnot(None), Card.qty > 0)
         .order_by(display_price.desc())
         .limit(limit)
         .all()

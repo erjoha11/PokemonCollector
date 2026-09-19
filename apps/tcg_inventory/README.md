@@ -24,7 +24,13 @@ run).
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
   series, most valuable cards (scrollable list), by rarity.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
-  table.
+  table. A qty == 0 card (traded/sold away, but still present in the latest
+  Dex export — distinct from `flagged_missing_since`, which is a card absent
+  from the export entirely) is hidden by default and shown dimmed with a
+  small "0 owned" badge when the "Show cards I no longer own" toggle is
+  checked (`?unowned=1`) — the search used to add a card to a sales listing
+  (`/pokemon/search`) is a separate query and is unaffected, since re-buying
+  a previously-traded-away card there is the intended path.
 - **Transactions** (`/transactions`) — a purchase/sale log per card, plus a
   compact economic snapshot (net invested, current value, paper gain/loss)
   and a collapsible "Vis grafer" section with the value-growth and cash-flow
@@ -64,6 +70,8 @@ run).
   excludes delisted listings by default, with a "Show delisted" toggle to
   reveal them, and a separate "Sold only" toggle to narrow to just sold
   listings. Delisting never changes `qty`/`card_collections`/`binder_id`.
+- **Release Notes** (`/releases`) — a small, hand-authored log of
+  user-facing changes to the app, newest first. See "Release Notes" below.
 
 ## Data model
 
@@ -72,14 +80,19 @@ run).
 `listings`/`listing_cards` (many-to-many, see "Sales listings (finn.no)"
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
-table `sets` replaces — kept in place, unused going forward).
+table `sets` replaces — kept in place, unused going forward), `releases`
+(see "Release Notes" below).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
 `Card.unique_value` in `models.py`, and the dashboard aggregates in
 `queries.py`). A stored, independently-maintained `duplicates` value going
 out of sync with `qty` was a real bug in the Excel version this app
-replaces — the fix is to never store it at all.
+replaces — the fix is to never store it at all. All three are gated on
+`qty > 0`, so a card traded/sold away (qty == 0, but still present in the
+latest export) contributes nothing to any "Value" KPI, breakdown bucket, or
+`queries.top_valuable_cards` — `Card.unique_value` wasn't originally gated
+this way (issue #132) even though `duplicates`/`total_value` always were.
 
 ## Business rules (from the Excel system this replaces)
 
@@ -261,6 +274,40 @@ each row's `Category` value. `Type` is read but unused — every real Dex
 export sets it to the constant `Card` on every row, so it carries no
 per-card information.
 
+## Release Notes
+
+`/releases` (issue #144) is a small in-app log of user-facing changes,
+backed by a `releases` table (`Release` in `models.py`), not a
+`CHANGELOG.md` file and not something generated from git/PR history at
+build/deploy time:
+
+- **Not a file** — `db.py` already treats "is this host's filesystem
+  writable" as a first-class distinction (its `DB_PATH.touch()` probe and
+  fail-fast error). A file works fine for reading on Vercel (baked into the
+  deploy), but an in-app authoring form could never write to it there —
+  only locally — forcing prod authoring back through a git commit +
+  redeploy, which is exactly the friction this feature removes for the rest
+  of the app's data.
+- **Not generated from git/PR history** — `templates`/`static` explicitly
+  ship with no build step (see repo `CLAUDE.md`), and `api/index.py` is a
+  bare re-export with no pipeline to hang generation off. Raw commit/PR
+  history also mixes internal refactors with user-facing changes, so it'd
+  need the same curation step anyway.
+- **A DB table** fits the existing data-model pattern, uses the same
+  additive-migration convention as everything else (`Base.metadata.create_all`
+  + `CURRENT_SCHEMA_VERSION` bump in `db.py`), and behaves identically on
+  local SQLite and prod Postgres.
+
+`GET /releases` lists entries newest-first (by `date`, then `id`), with an
+inline form at the top (`POST /releases`: date, title, body) to add one and
+a "Delete" button per entry (`POST /releases/{id}/delete`) to remove a
+mistaken one — there is no edit-in-place for v1; delete and re-add instead.
+Both routes pass through the same `auth_guard` middleware as every other
+non-public route — no separate admin check. `body` is rendered as plain,
+Jinja-autoescaped text with `white-space: pre-wrap` (no Markdown parser) —
+one owner writing a few sentences per entry doesn't justify a templating
+dependency.
+
 ## Dropbox import setup
 
 Dropbox is how card data gets into the app at all — there is no manual
@@ -428,6 +475,30 @@ a manual look, unlike a low-confidence match this still updates the price
 rather than withholding it, since it's still the right card, just possibly
 the wrong print.
 
+### Image backfill (one-off, manual)
+
+`Card.image_url` (used for the Dashboard's "Most valuable cards" #1-spot
+thumbnail, see `templates/partials/kpi_module.html`) is only ever set
+best-effort during a Dex sync (`importer.py`, capped at
+`_MAX_IMAGE_LOOKUPS_PER_IMPORT` lookups per sync), so a card that missed its
+budget slot or had no confident match on a given day can stay `NULL`
+indefinitely — the normal sync never retries it. `backfill_images.py` is a
+standalone script to retry those:
+
+```bash
+python backfill_images.py            # up to 200 lookups (default budget)
+python backfill_images.py --limit 50 # smaller/larger pass
+```
+
+Same `DATABASE_URL` convention as `seed_set_release_order.py` — run it
+locally against SQLite, or with `DATABASE_URL` set to the Supabase
+connection string to backfill prod. Only ever fills a `NULL` `image_url`
+in from a confident `card_images.fetch_card_data` match; cards with no
+confident match are left `NULL` (never guessed — a wrong image is worse
+than no image, see the 2026-09-16 `assets.tcgdex.net` incident in
+`HANDOFF.md`). It's a manual, explicitly-triggered pass, not part of the
+daily Dropbox/price crons.
+
 ### Value history
 
 `card_snapshots` records real history going forward — every sync writes one
@@ -480,6 +551,8 @@ the Dropbox-based ones above and the price-refresh cron).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
   sync (see "Price refresh" above).
+- `backfill_images.py` — standalone, manually-triggered backfill for cards
+  with a `NULL` `image_url` (see "Image backfill" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
 - `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.

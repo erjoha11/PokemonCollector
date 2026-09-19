@@ -288,6 +288,18 @@ go indefinitely without ever getting a successful match retried.
 (respecting the same rate-limit/best-effort behavior already in
 `card_images.py`), write results back to the DB. Not built yet.
 
+**Addressed 2026-09-19** (issue #128): `backfill_images.py` — finds cards
+with `image_url IS NULL`, retries `card_images.fetch_card_data()` (reused
+over the older `fetch_image_url()` wrapper so a pass also refreshes
+`tcgplayer_price` for the same cards) up to a `--limit` budget (200 by
+default), writes back only confident matches, leaves the rest `NULL`. Does
+not touch `importer.py`'s per-sync budget/staleness logic — a separate,
+explicitly-triggered pass, not a cron change. See README's "Image backfill"
+section. Not yet run against prod as part of this session — run it there
+(`DATABASE_URL` set to the Supabase connection string) to actually improve
+the Dashboard's "Most valuable cards" #1-spot coverage; this session only
+shipped the script and its tests.
+
 ## Live TCGPlayer prices — 2026-09-16 session
 
 Per HANDOFF #85's note that the user is "standardizing on TCGPlayer as the
@@ -566,6 +578,56 @@ database changes — code only.
 - **Not yet exercised in a real browser** — same caveat as the entries
   above; only exercised via the test client.
 
+## 0-qty card value/visibility fix (issue #132) — 2026-09-19 session
+
+Code only, no direct database changes.
+
+- `Card.unique_value` (`models.py`) was the one computed property not gated
+  on `qty > 0` the way `duplicates`/`total_value` already were — a
+  traded/sold-away card (qty == 0, still present in the latest export,
+  distinct from `flagged_missing_since`) was still counting its full market
+  price toward every "Value" KPI, dashboard breakdown bucket, and
+  `queries.top_valuable_cards` (also fixed to filter `Card.qty > 0`). Both
+  gated the same way, both README-documented.
+- Inventory table + dashboard drill-down leaf rows (`dashboard.html`'s
+  shared `card_leaf_row` macro) now dim a qty==0 row and add a small
+  neutral "0 owned" badge (`.card-row-unowned` / `.unowned-badge`, reusing
+  `.tx-platform-badge`'s pill styling per the app's one established
+  convention).
+- Inventory gained a "Show cards I no longer own" checkbox
+  (`?unowned=1`, `app.py`'s `_apply_inventory_filters`), default unchecked
+  — qty==0 cards are hidden from the default browse view. `/pokemon/search`
+  (used when adding a card to a sales listing) is a separate query,
+  deliberately untouched — re-buying a previously-traded-away card there is
+  the intended path, per the issue.
+- **Deliberately left untouched** (both explicitly out of the issue's
+  acceptance criteria, flagged there only as "worth a look"):
+  - `app.py::_sale_items_from_form`'s `qty = ... if card.qty else max(1, qty)`
+    branch, which means a qty==0 card added to a sales listing isn't
+    clamped to its own qty at all. Low severity — a `Listing` never mutates
+    real `qty` either way — but a future pass on the sales-listing flow
+    should look at it.
+  - `CardSnapshot.unique_value` (`models.py`) has the exact same
+    not-gated-on-qty shape as `Card.unique_value` had, and theoretically
+    affects `queries.real_value_history`'s "unique" metric the same way.
+    Not touched here since the issue scoped this to `Card`/`top_valuable_cards`
+    specifically and `real_value_history`'s own qty>0 `card_count` logic
+    already suggested the qty==0 case was considered there; worth a
+    follow-up look if `real_value_history`'s "unique" numbers ever look
+    inflated.
+- New tests: `tests/test_queries.py` (qty==0 card's `unique_value`/
+  `total_value`, `top_valuable_cards` exclusion, headline/bucket totals
+  excluding a qty==0 card), `tests/test_app.py` (Inventory hides qty==0 by
+  default, `unowned=1` reveals with badge, empty-`unowned`-value doesn't
+  422). Full suite: 282 passed. 5 pre-existing failures in
+  `test_app.py` (`test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets`
+  and 4 others) are unrelated to this change — reproduced identically on
+  `main` before this branch's changes, caused by this environment's
+  SQLAlchemy 2.0.54 vs. whatever pinned/tested version the repo's CI
+  normally runs (`requirements.txt` only pins `sqlalchemy>=2.0`); not fixed
+  here since it's a pre-existing environment/CI issue, not something this
+  issue's diff introduced.
+
 # Handoff notes — 2026-09-19 session (issue #126, listing edit/delete)
 
 Built on top of `main` (which, at branch-cut time, did **not** yet include
@@ -620,6 +682,42 @@ change, no direct database changes — code only.
   form and delete-confirmation UX (same note the issue itself makes) is
   still recommended before this ships to real users, not done here.
 
+## Release Notes page (issue #144) — 2026-09-19 session
+
+Branched directly off `main` (independent of the in-flight listings work
+above — own model, own route, own template, no shared files). No direct
+database changes — code only.
+
+- New `releases` table (`Release` in `models.py`: `id`, `date`, `title`,
+  `body`, `created_at`) — `CURRENT_SCHEMA_VERSION` bumped 3 → 4 in `db.py`
+  so `init_db()`'s `create_all()` picks it up on next deploy; purely
+  additive, no existing table touched.
+- New `GET /releases` (list, newest-first by date then id) / `POST
+  /releases` (create) / `POST /releases/{id}/delete` in `app.py`, all
+  behind the existing `auth_guard` middleware — no new RBAC. New
+  `templates/releases.html` (inline add-entry form + one `result-box` per
+  entry, same visual idiom as `wiki.html`), nav link in `base.html` next to
+  Wiki, and a `/releases` link added to the Wiki page's own Contents list.
+  `body` renders via Jinja's default autoescaping with `white-space:
+  pre-wrap` — no Markdown dependency added, per the issue's explicit call.
+- New tests: `tests/test_releases.py` (model round-trip, empty state,
+  create + redirect, newest-first ordering, autoescaping/line-break
+  rendering, delete + 404-on-unknown-id, nav link present). Full suite:
+  286 passed + these 8 new ones, plus 4 pre-existing unrelated failures in
+  `test_app.py` (`test_inventory_can_be_sorted_by_language`,
+  `test_inventory_price_sort_keeps_unpriced_cards_last`,
+  `test_inventory_shows_net_paid_and_per_print_gain`,
+  `test_inventory_value_sorts_treat_missing_cost_as_less_than_zero`) —
+  confirmed present on `main` before this branch too (a SQLite date-binding
+  issue in `Transaction`-seeding test helpers, unrelated to this change);
+  not touched.
+- **Not yet exercised in a real browser** — same caveat as the listings
+  entry above; only exercised via the test client. A `ux` pass on the
+  actual rendered page (spacing/entry-density/form placement) was
+  recommended by the issue itself once a first draft exists, since the
+  issue's UI-placement call was made by `architect` without a live `ux`
+  consult.
+
 # Handoff notes — 2026-09-19 session (issue #127, mark listing sold)
 
 Built on a new branch off `claude/issue-126-listing-edit-delete` (issue
@@ -631,10 +729,18 @@ the same lines).
 
 - **Schema change**: added `Transaction.listing_id` (nullable FK →
   `listings.id`, additive — `db.py`'s `_add_missing_columns()` picks it up
-  automatically) and bumped `db.CURRENT_SCHEMA_VERSION` 3 → 4, per this
-  repo's established migration convention. No direct production-database
-  edits — this is a normal, additive code migration, applied automatically
-  the next time `init_db()` runs against prod (next deploy/cold start).
+  automatically) and bumped `db.CURRENT_SCHEMA_VERSION`, per this repo's
+  established migration convention. Originally authored as a 3 → 4 bump;
+  by the time this PR was merged, PR #149 (issue #144, Release Notes) had
+  already landed and taken version 4 for its own additive `releases` table,
+  so this PR's version bump was resolved to **4 → 5** instead during the
+  merge-order pass described in this app's PR history — both are purely
+  additive schema changes (a new table from #149, a new nullable FK column
+  from this ticket), so there's no data-loss risk from the renumbering, just
+  keeping the version sequence monotonic. No direct production-database
+  edits either way — this is a normal, additive code migration, applied
+  automatically the next time `init_db()` runs against prod (next
+  deploy/cold start).
 - `GET`/`POST /listings/{id}/mark-sold` (`templates/listing_mark_sold.html`)
   reuses the purchase-cart form's shape (search-free here, since the card
   set is fixed to the listing's current `cards`) rather than a new UI
