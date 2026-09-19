@@ -391,6 +391,33 @@ class FavoritePokemon(Base):
     name: Mapped[str] = mapped_column(String, primary_key=True)
 
 
+class Release(Base):
+    """One entry in the in-app "Release Notes" page (`/releases`, issue
+    #144) -- a small, hand-authored log of user-facing changes, written
+    directly to the database (not a `CHANGELOG.md` file, and not generated
+    from git/PR history) so authoring works identically on local SQLite and
+    the read-only-filesystem Vercel deploy alike. See db.py's module
+    docstring/`DB_PATH.touch()` probe for why a file can't be authored to
+    in place on Vercel, and CLAUDE.md's computed-vs-stored precedent for why
+    "one small additive table, same code path everywhere" beats an
+    environment-specific trick here too.
+
+    `body` is rendered as plain, Jinja-autoescaped text with
+    `white-space: pre-wrap` -- no Markdown parser, deliberately: this is one
+    owner writing a few sentences per entry, not a dependency worth adding.
+    No edit-in-place for v1 (delete and re-add instead) and no versioning/
+    tags/categories -- see issue #144's "Sequencing / fast-follows" section.
+    """
+
+    __tablename__ = "releases"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    body: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+
+
 class PokemonAlias(Base):
     """Maps one printed card name (e.g. "Dark Celebi") onto the folder name
     it should be grouped/favorited under (e.g. "Celebi") -- lets the user

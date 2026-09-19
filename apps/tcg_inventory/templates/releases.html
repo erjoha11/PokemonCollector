@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Release Notes – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Release Notes</h1>
+
+<p class="muted">
+  What's changed in the app recently. Written by hand, newest first — see the
+  <a href="/wiki">Wiki</a> for how the app works day to day.
+</p>
+
+<div class="result-box" style="margin-bottom: 1.5rem;">
+  <p style="margin: 0 0 0.5rem;"><strong>Add an entry</strong></p>
+  <form method="post" action="/releases" class="release-form">
+    <input type="date" name="date" value="{{ today }}" required>
+    <input type="text" name="title" placeholder="Title (e.g. Release Notes page)" required style="flex: 1; min-width: 12rem;">
+    <textarea name="body" placeholder="What changed, in a few sentences..." rows="3" required style="flex-basis: 100%;"></textarea>
+    <button type="submit">Add entry</button>
+  </form>
+</div>
+
+{% if not releases %}
+<p class="muted">No release notes recorded yet.</p>
+{% else %}
+{% for release in releases %}
+<div class="result-box" style="margin-bottom: 1rem;">
+  <div class="tx-order-summary">
+    <span class="tx-order-id">{{ release.title }}</span>
+    <span class="tx-order-stat">{{ release.date.isoformat() }}</span>
+    <span class="listing-actions">
+      <form method="post" action="/releases/{{ release.id }}/delete" style="display:inline;"
+            onsubmit="return confirm('Delete this release note entry?');">
+        <button type="submit" class="secondary">Delete</button>
+      </form>
+    </span>
+  </div>
+  <p style="white-space: pre-wrap; margin: 0.5rem 0 0;">{{ release.body }}</p>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

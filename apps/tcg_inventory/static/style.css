@@ -829,6 +829,24 @@ button.secondary {
 }
 .merge-form input { flex: 1 1 200px; width: auto; min-width: 0; }
 
+.release-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.release-form input,
+.release-form textarea {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.87rem;
+  font-family: inherit;
+}
+.release-form textarea { width: 100%; resize: vertical; }
+
 .folder-list { list-style: none; padding: 0; margin: 0.6rem 0 0 0; }
 .folder-list > li {
   margin-bottom: 0.6rem;

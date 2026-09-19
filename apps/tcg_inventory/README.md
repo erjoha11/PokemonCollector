@@ -58,6 +58,8 @@ run).
   by default, with a "Show delisted" toggle to reveal them. Delisting never
   changes `qty`/`card_collections`/`binder_id` — there is still no "mark as
   sold" action here, see "Sales listings (finn.no)" below.
+- **Release Notes** (`/releases`) — a small, hand-authored log of
+  user-facing changes to the app, newest first. See "Release Notes" below.
 
 ## Data model
 
@@ -66,7 +68,8 @@ run).
 `listings`/`listing_cards` (many-to-many, see "Sales listings (finn.no)"
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
-table `sets` replaces — kept in place, unused going forward).
+table `sets` replaces — kept in place, unused going forward), `releases`
+(see "Release Notes" below).
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -205,6 +208,40 @@ binder / collection / excluded) is applied per the rules above based on
 each row's `Category` value. `Type` is read but unused — every real Dex
 export sets it to the constant `Card` on every row, so it carries no
 per-card information.
+
+## Release Notes
+
+`/releases` (issue #144) is a small in-app log of user-facing changes,
+backed by a `releases` table (`Release` in `models.py`), not a
+`CHANGELOG.md` file and not something generated from git/PR history at
+build/deploy time:
+
+- **Not a file** — `db.py` already treats "is this host's filesystem
+  writable" as a first-class distinction (its `DB_PATH.touch()` probe and
+  fail-fast error). A file works fine for reading on Vercel (baked into the
+  deploy), but an in-app authoring form could never write to it there —
+  only locally — forcing prod authoring back through a git commit +
+  redeploy, which is exactly the friction this feature removes for the rest
+  of the app's data.
+- **Not generated from git/PR history** — `templates`/`static` explicitly
+  ship with no build step (see repo `CLAUDE.md`), and `api/index.py` is a
+  bare re-export with no pipeline to hang generation off. Raw commit/PR
+  history also mixes internal refactors with user-facing changes, so it'd
+  need the same curation step anyway.
+- **A DB table** fits the existing data-model pattern, uses the same
+  additive-migration convention as everything else (`Base.metadata.create_all`
+  + `CURRENT_SCHEMA_VERSION` bump in `db.py`), and behaves identically on
+  local SQLite and prod Postgres.
+
+`GET /releases` lists entries newest-first (by `date`, then `id`), with an
+inline form at the top (`POST /releases`: date, title, body) to add one and
+a "Delete" button per entry (`POST /releases/{id}/delete`) to remove a
+mistaken one — there is no edit-in-place for v1; delete and re-add instead.
+Both routes pass through the same `auth_guard` middleware as every other
+non-public route — no separate admin check. `body` is rendered as plain,
+Jinja-autoescaped text with `white-space: pre-wrap` (no Markdown parser) —
+one owner writing a few sentences per entry doesn't justify a templating
+dependency.
 
 ## Dropbox import setup
 

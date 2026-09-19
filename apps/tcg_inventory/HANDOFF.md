@@ -565,3 +565,39 @@ database changes — code only.
   passed) on top of PR #119's branch.
 - **Not yet exercised in a real browser** — same caveat as the entries
   above; only exercised via the test client.
+
+## Release Notes page (issue #144) — 2026-09-19 session
+
+Branched directly off `main` (independent of the in-flight listings work
+above — own model, own route, own template, no shared files). No direct
+database changes — code only.
+
+- New `releases` table (`Release` in `models.py`: `id`, `date`, `title`,
+  `body`, `created_at`) — `CURRENT_SCHEMA_VERSION` bumped 3 → 4 in `db.py`
+  so `init_db()`'s `create_all()` picks it up on next deploy; purely
+  additive, no existing table touched.
+- New `GET /releases` (list, newest-first by date then id) / `POST
+  /releases` (create) / `POST /releases/{id}/delete` in `app.py`, all
+  behind the existing `auth_guard` middleware — no new RBAC. New
+  `templates/releases.html` (inline add-entry form + one `result-box` per
+  entry, same visual idiom as `wiki.html`), nav link in `base.html` next to
+  Wiki, and a `/releases` link added to the Wiki page's own Contents list.
+  `body` renders via Jinja's default autoescaping with `white-space:
+  pre-wrap` — no Markdown dependency added, per the issue's explicit call.
+- New tests: `tests/test_releases.py` (model round-trip, empty state,
+  create + redirect, newest-first ordering, autoescaping/line-break
+  rendering, delete + 404-on-unknown-id, nav link present). Full suite:
+  286 passed + these 8 new ones, plus 4 pre-existing unrelated failures in
+  `test_app.py` (`test_inventory_can_be_sorted_by_language`,
+  `test_inventory_price_sort_keeps_unpriced_cards_last`,
+  `test_inventory_shows_net_paid_and_per_print_gain`,
+  `test_inventory_value_sorts_treat_missing_cost_as_less_than_zero`) —
+  confirmed present on `main` before this branch too (a SQLite date-binding
+  issue in `Transaction`-seeding test helpers, unrelated to this change);
+  not touched.
+- **Not yet exercised in a real browser** — same caveat as the listings
+  entry above; only exercised via the test client. A `ux` pass on the
+  actual rendered page (spacing/entry-density/form placement) was
+  recommended by the issue itself once a first draft exists, since the
+  issue's UI-placement call was made by `architect` without a live `ux`
+  consult.
