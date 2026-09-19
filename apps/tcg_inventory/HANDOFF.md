@@ -565,3 +565,53 @@ database changes — code only.
   passed) on top of PR #119's branch.
 - **Not yet exercised in a real browser** — same caveat as the entries
   above; only exercised via the test client.
+
+## 0-qty card value/visibility fix (issue #132) — 2026-09-19 session
+
+Code only, no direct database changes.
+
+- `Card.unique_value` (`models.py`) was the one computed property not gated
+  on `qty > 0` the way `duplicates`/`total_value` already were — a
+  traded/sold-away card (qty == 0, still present in the latest export,
+  distinct from `flagged_missing_since`) was still counting its full market
+  price toward every "Value" KPI, dashboard breakdown bucket, and
+  `queries.top_valuable_cards` (also fixed to filter `Card.qty > 0`). Both
+  gated the same way, both README-documented.
+- Inventory table + dashboard drill-down leaf rows (`dashboard.html`'s
+  shared `card_leaf_row` macro) now dim a qty==0 row and add a small
+  neutral "0 owned" badge (`.card-row-unowned` / `.unowned-badge`, reusing
+  `.tx-platform-badge`'s pill styling per the app's one established
+  convention).
+- Inventory gained a "Show cards I no longer own" checkbox
+  (`?unowned=1`, `app.py`'s `_apply_inventory_filters`), default unchecked
+  — qty==0 cards are hidden from the default browse view. `/pokemon/search`
+  (used when adding a card to a sales listing) is a separate query,
+  deliberately untouched — re-buying a previously-traded-away card there is
+  the intended path, per the issue.
+- **Deliberately left untouched** (both explicitly out of the issue's
+  acceptance criteria, flagged there only as "worth a look"):
+  - `app.py::_sale_items_from_form`'s `qty = ... if card.qty else max(1, qty)`
+    branch, which means a qty==0 card added to a sales listing isn't
+    clamped to its own qty at all. Low severity — a `Listing` never mutates
+    real `qty` either way — but a future pass on the sales-listing flow
+    should look at it.
+  - `CardSnapshot.unique_value` (`models.py`) has the exact same
+    not-gated-on-qty shape as `Card.unique_value` had, and theoretically
+    affects `queries.real_value_history`'s "unique" metric the same way.
+    Not touched here since the issue scoped this to `Card`/`top_valuable_cards`
+    specifically and `real_value_history`'s own qty>0 `card_count` logic
+    already suggested the qty==0 case was considered there; worth a
+    follow-up look if `real_value_history`'s "unique" numbers ever look
+    inflated.
+- New tests: `tests/test_queries.py` (qty==0 card's `unique_value`/
+  `total_value`, `top_valuable_cards` exclusion, headline/bucket totals
+  excluding a qty==0 card), `tests/test_app.py` (Inventory hides qty==0 by
+  default, `unowned=1` reveals with badge, empty-`unowned`-value doesn't
+  422). Full suite: 282 passed. 5 pre-existing failures in
+  `test_app.py` (`test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets`
+  and 4 others) are unrelated to this change — reproduced identically on
+  `main` before this branch's changes, caused by this environment's
+  SQLAlchemy 2.0.54 vs. whatever pinned/tested version the repo's CI
+  normally runs (`requirements.txt` only pins `sqlalchemy>=2.0`); not fixed
+  here since it's a pre-existing environment/CI issue, not something this
+  issue's diff introduced.

@@ -24,7 +24,13 @@ run).
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
   series, most valuable cards (scrollable list), by rarity.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
-  table.
+  table. A qty == 0 card (traded/sold away, but still present in the latest
+  Dex export — distinct from `flagged_missing_since`, which is a card absent
+  from the export entirely) is hidden by default and shown dimmed with a
+  small "0 owned" badge when the "Show cards I no longer own" toggle is
+  checked (`?unowned=1`) — the search used to add a card to a sales listing
+  (`/pokemon/search`) is a separate query and is unaffected, since re-buying
+  a previously-traded-away card there is the intended path.
 - **Transactions** (`/transactions`) — a purchase/sale log per card, plus a
   compact economic snapshot (net invested, current value, paper gain/loss)
   and a collapsible "Vis grafer" section with the value-growth and cash-flow
@@ -73,7 +79,11 @@ they're computed live (`Card.duplicates` / `Card.total_value` /
 `Card.unique_value` in `models.py`, and the dashboard aggregates in
 `queries.py`). A stored, independently-maintained `duplicates` value going
 out of sync with `qty` was a real bug in the Excel version this app
-replaces — the fix is to never store it at all.
+replaces — the fix is to never store it at all. All three are gated on
+`qty > 0`, so a card traded/sold away (qty == 0, but still present in the
+latest export) contributes nothing to any "Value" KPI, breakdown bucket, or
+`queries.top_valuable_cards` — `Card.unique_value` wasn't originally gated
+this way (issue #132) even though `duplicates`/`total_value` always were.
 
 ## Business rules (from the Excel system this replaces)
 
