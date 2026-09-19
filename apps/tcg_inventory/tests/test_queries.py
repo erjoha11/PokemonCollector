@@ -94,6 +94,55 @@ def test_top_valuable_cards_ranks_by_reference_price_not_total_value(db_session)
     assert top[0].card_id == "expensive-single"
 
 
+def test_qty_zero_card_unique_value_is_zero_but_total_value_stays_zero_too(db_session):
+    # Issue #132: unique_value wasn't gated on qty > 0 the way
+    # duplicates/total_value already were, so a traded/sold-away (qty=0)
+    # card's full market price still counted toward "Value" KPIs.
+    main = make_csv(
+        "My Collection",
+        [{"id": "traded-away", "qty": 0, "price": "400"}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).filter(Card.card_id == "traded-away").one()
+    assert card.qty == 0
+    assert card.unique_value == 0.0
+    assert card.total_value == 0.0
+    assert card.duplicates == 0
+
+
+def test_top_valuable_cards_excludes_qty_zero_cards(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "traded-away", "qty": 0, "price": "9999"},
+            {"id": "still-owned", "qty": 1, "price": "10"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    top = queries.top_valuable_cards(db_session, limit=10)
+    assert [c.card_id for c in top] == ["still-owned"]
+
+
+def test_headline_and_bucket_unique_value_exclude_qty_zero_cards(db_session):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "traded-away", "name": "Pikachu", "qty": 0, "price": "9999", "series": "Test Series"},
+            {"id": "still-owned", "name": "Charizard", "qty": 1, "price": "10", "series": "Test Series"},
+        ],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+
+    headline = queries.headline_summary(db_session)
+    assert headline["unique_value"] == 10
+    assert headline["total_value"] == 10
+
+    series_breakdown = queries.by_series_breakdown(db_session)
+    bucket = next(b for b in series_breakdown if b.name == "Test Series")
+    assert bucket.unique_value == 10
+    assert bucket.total_value == 10
+
+
 def _link_set(db_session, series, set_name, release_rank=None, total_cards=None):
     """Test helper mirroring db.py's `_backfill_sets()`: get-or-create a
     `Set` row for (series, set_name) and link every matching card's

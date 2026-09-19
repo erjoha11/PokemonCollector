@@ -146,7 +146,14 @@ class Card(Base):
 
     @property
     def unique_value(self) -> float:
-        return self.display_price or 0.0
+        """A qty=0 card (traded/sold away, but still present in the export --
+        see `qty`'s own docstring context in importer.py) contributes nothing
+        here, same as it already contributes nothing to `duplicates`/
+        `total_value` above -- see issue #132. Gated the same way
+        `total_value` naturally is via the `self.qty *` multiplication, just
+        made explicit since `unique_value` doesn't otherwise multiply by qty.
+        """
+        return (self.display_price or 0.0) if self.qty > 0 else 0.0
 
     @property
     def total_value(self) -> float:
