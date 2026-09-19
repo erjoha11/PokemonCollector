@@ -1847,13 +1847,27 @@ def _recent_import_logs(db: Session, lsort: str = "ran_at", ldir: str = "desc", 
 
 
 @app.get("/import")
-def import_form(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
+def import_redirect(request: Request):
+    """The Sync Log used to be its own page -- now merged into /releases
+    (issue #159) as its own section. Redirects old bookmarks/links there,
+    carrying over any lsort/ldir query string so a saved sorted view still
+    sorts the same way.
+    """
+    query = f"?{request.query_params}" if request.query_params else ""
+    return RedirectResponse(f"/releases{query}#sync-log", status_code=308)
+
+
+@app.get("/releases/sync-log")
+def sync_log_partial(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
+    """Sync Log's own column-sort target (see partials/import_log.html) --
+    swaps just that section back in via htmx instead of a plain page
+    navigation, which would otherwise reload /releases and land at the top,
+    above the Release Notes section below it.
+    """
     db = get_db_session()
     try:
         return templates.TemplateResponse(
-            request,
-            "import.html",
-            {"result": None, "logs": _recent_import_logs(db, lsort, ldir), "lsort": lsort, "ldir": ldir},
+            request, "partials/import_log.html", {"logs": _recent_import_logs(db, lsort, ldir), "lsort": lsort, "ldir": ldir}
         )
     finally:
         db.close()
@@ -2096,12 +2110,29 @@ def wiki(request: Request):
 # every other non-public route. No edit-in-place for v1 -- delete and
 # re-add a mistaken entry instead.
 # --------------------------------------------------------------------------
+_RECENT_RELEASES_LIMIT = 15
+
+
 @app.get("/releases")
-def releases_page(request: Request):
+def releases_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
+    """Merged with the former Sync Log page (issue #159) -- an operational,
+    read-only sync history and a hand-authored, editable release changelog
+    don't share an action model, so they're two stacked sections here
+    (#sync-log first, since it's the more routinely checked one) rather than
+    interleaved into one timeline.
+    """
     db = get_db_session()
     try:
         releases = db.query(Release).order_by(Release.date.desc(), Release.id.desc()).all()
-        context = {"releases": releases, "today": dt.date.today().isoformat()}
+        context = {
+            "releases": releases,
+            "recent_releases": releases[:_RECENT_RELEASES_LIMIT],
+            "older_releases": releases[_RECENT_RELEASES_LIMIT:],
+            "today": dt.date.today().isoformat(),
+            "logs": _recent_import_logs(db, lsort, ldir),
+            "lsort": lsort,
+            "ldir": ldir,
+        }
         return templates.TemplateResponse(request, "releases.html", context)
     finally:
         db.close()

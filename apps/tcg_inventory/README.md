@@ -50,9 +50,6 @@ run).
   purchase transaction at all (both "Recently Added" and "Legacy import"
   cards, capped at 50 with a total count) instead of requiring a typed
   query, for picking cards to price straight into the order being built.
-- **Sync Log** (`/import`) — read-only history of past syncs (daily cron,
-  or a manual Dropbox sync). There is no manual CSV-upload page; see
-  "Dropbox import setup" below for the only way to sync outside the cron.
 - **Sell on finn.no** (`/sales`) — check cards on Inventory (a new leading
   checkbox column, selection tracked client-side and cleared on refresh —
   see `static/sale-list.js`), click "Generate finn.no ad", then set
@@ -77,8 +74,16 @@ run).
   excludes delisted listings by default, with a "Show delisted" toggle to
   reveal them, and a separate "Sold only" toggle to narrow to just sold
   listings. Delisting never changes `qty`/`card_collections`/`binder_id`.
-- **Release Notes** (`/releases`) — a small, hand-authored log of
-  user-facing changes to the app, newest first. See "Release Notes" below.
+- **Activity Log** (`/releases`, merged with the former standalone Sync
+  Log page, issue #159) — two stacked sections: **Sync Log** first (a
+  read-only history of past syncs — daily cron or a manual Dropbox sync;
+  there is no manual CSV-upload page, see "Dropbox import setup" below for
+  the only way to sync outside the cron), then **Release Notes** (a small,
+  hand-authored log of user-facing changes, newest first, capped to the 15
+  most recent with older entries tucked into a "Show N older entries"
+  toggle — see "Release Notes" below). `GET /import` redirects here
+  (`#sync-log`, preserving any `lsort`/`ldir` query string) for old
+  bookmarks/links.
 
 ## Data model
 
@@ -313,16 +318,21 @@ Both routes pass through the same `auth_guard` middleware as every other
 non-public route — no separate admin check. `body` is rendered as plain,
 Jinja-autoescaped text with `white-space: pre-wrap` (no Markdown parser) —
 one owner writing a few sentences per entry doesn't justify a templating
-dependency.
+dependency. Since issue #159, this section shares the page with Sync Log
+(see "Pages" above) — only the 15 most recent entries render directly, with
+anything older tucked into a collapsed "Show N older entries" `<details>`,
+so an ever-growing hand-written list doesn't push Sync Log further down the
+page over time.
 
 ## Dropbox import setup
 
 Dropbox is how card data gets into the app at all — there is no manual
 CSV-upload page (removed; nobody used it). This pulls CSV files directly
 from a Dropbox folder (read-only: `files.metadata.read` +
-`files.content.read`), either via the daily cron or the manual Dropbox
-picker below, so setting this up is required before the app has any data
-to show.
+`files.content.read`), via the daily cron (see "Automatic daily sync"
+below) or a manual off-schedule run of that same endpoint
+(`GET /cron/dropbox-sync?secret=...`), so setting this up is required
+before the app has any data to show.
 
 One-time setup:
 
@@ -342,11 +352,13 @@ One-time setup:
 4. Copy `.env.example` to `.env` in `apps/tcg_inventory/` and paste those
    three values in, plus `DROPBOX_FOLDER` (the path to the folder you save
    Dex exports to, e.g. `/Dex Exports`).
-5. Restart `python app.py`. The Dropbox picker (reachable at
-   `/import/dropbox/list`) now lists CSV files from that folder with
-   checkboxes — select the ones for this sync (main export + Vintage
-   export together, per the sync-semantics rule above) and click "Hent
-   valgte filer og synk".
+5. Restart `python app.py`. The daily cron (see "Automatic daily sync"
+   below) picks up every CSV currently in that folder automatically — for
+   an immediate off-schedule sync instead of waiting for it, hit
+   `GET /cron/dropbox-sync?secret=<CRON_SECRET>` directly. There is no
+   in-app file picker for this — `/import/dropbox/list` and
+   `/import/dropbox/sync` are backend routes with no page pointing at them
+   (the browser-based picker UI was removed, see HANDOFF.md #87).
 
 The refresh token doesn't expire, so this is a one-time setup. Nothing is
 ever written back to Dropbox.
