@@ -468,3 +468,232 @@ def test_edit_nonexistent_listing_redirects_to_listings(client):
 
     assert response.status_code in (303, 307)
     assert response.headers["location"] == "/listings"
+
+
+# --------------------------------------------------------------------------
+# Mark sold (issue #127)
+# --------------------------------------------------------------------------
+
+def test_mark_sold_form_prefills_cards_and_split_price(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"], ids["b"]], suggested_price="40")
+    listing_id = _listing_id(client)
+
+    response = client.get(f"/listings/{listing_id}/mark-sold")
+
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+    assert "Charizard" in response.text
+    # 40 / 2 cards = 20 kr each, pre-filled as an editable starting guess.
+    assert 'value="20.0"' in response.text
+
+
+def _mark_sold(client, listing_id, ids, prices, date="2026-02-01", platform="finn.no"):
+    return client.post(
+        f"/listings/{listing_id}/mark-sold",
+        data={
+            "date": date,
+            "platform": platform,
+            "card_id": [str(cid) for cid in ids],
+            "price": [str(p) for p in prices],
+        },
+        follow_redirects=False,
+    )
+
+
+def test_mark_sold_creates_one_sale_transaction_per_card_with_listing_id_and_shared_purchase_id(client):
+    import db as db_module
+    from models import Transaction
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"], ids["b"]], suggested_price="40")
+    listing_id = _listing_id(client)
+
+    response = _mark_sold(client, listing_id, [ids["a"], ids["b"]], [15, 25])
+
+    assert response.status_code == 303
+
+    db = db_module.SessionLocal()
+    try:
+        txs = db.query(Transaction).filter(Transaction.listing_id == listing_id).all()
+        assert len(txs) == 2
+        assert all(t.type == "sale" for t in txs)
+        assert {t.price for t in txs} == {15.0, 25.0}
+        purchase_ids = {t.purchase_id for t in txs}
+        assert len(purchase_ids) == 1 and next(iter(purchase_ids)) is not None
+    finally:
+        db.close()
+
+
+def test_mark_sold_flips_status_to_sold(client):
+    import db as db_module
+    from models import Listing
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [30])
+
+    db = db_module.SessionLocal()
+    try:
+        listing = db.query(Listing).filter(Listing.id == listing_id).one()
+        assert listing.status == "sold"
+    finally:
+        db.close()
+
+
+def test_mark_sold_does_not_touch_qty_collections_or_binder(client):
+    import db as db_module
+    from models import Card
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [30])
+
+    db = db_module.SessionLocal()
+    try:
+        card = db.query(Card).filter(Card.id == ids["a"]).one()
+        assert card.qty == 1
+        assert card.binder_id is None
+        assert list(card.collections) == []
+    finally:
+        db.close()
+
+
+def test_mark_sold_rejects_missing_price_for_a_card_and_creates_no_transactions(client):
+    import db as db_module
+    from models import Listing, Transaction
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"], ids["b"]], suggested_price="40")
+    listing_id = _listing_id(client)
+
+    # Only price the first card -- second card in the lot gets no price row.
+    response = client.post(
+        f"/listings/{listing_id}/mark-sold",
+        data={
+            "date": "2026-02-01",
+            "platform": "finn.no",
+            "card_id": [str(ids["a"])],
+            "price": ["20"],
+        },
+    )
+
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    try:
+        assert db.query(Transaction).filter(Transaction.listing_id == listing_id).count() == 0
+        listing = db.query(Listing).filter(Listing.id == listing_id).one()
+        assert listing.status == "active"
+    finally:
+        db.close()
+
+
+def test_mark_sold_rejects_invalid_price_and_creates_no_transactions(client):
+    import db as db_module
+    from models import Listing, Transaction
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    response = _mark_sold(client, listing_id, [ids["a"]], ["not-a-number"])
+
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    try:
+        assert db.query(Transaction).filter(Transaction.listing_id == listing_id).count() == 0
+        listing = db.query(Listing).filter(Listing.id == listing_id).one()
+        assert listing.status == "active"
+    finally:
+        db.close()
+
+
+def test_rerunning_mark_sold_on_already_sold_listing_is_a_noop(client):
+    import db as db_module
+    from models import Transaction
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [30])
+    _mark_sold(client, listing_id, [ids["a"]], [99])  # second attempt, different price
+
+    db = db_module.SessionLocal()
+    try:
+        txs = db.query(Transaction).filter(Transaction.listing_id == listing_id).all()
+        assert len(txs) == 1
+        assert txs[0].price == 30.0
+    finally:
+        db.close()
+
+
+def test_mark_sold_form_redirects_when_already_sold(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [30])
+    response = client.get(f"/listings/{listing_id}/mark-sold", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/listings"
+
+
+def test_listings_page_shows_sold_price_after_marking_sold(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [22])
+    response = client.get("/listings")
+
+    assert response.status_code == 200
+    assert "22 kr" in response.text
+    assert "sold" in response.text
+
+
+def test_mark_sold_transactions_feed_economic_queries_with_zero_special_casing(client):
+    import db as db_module
+    import queries
+
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id = _listing_id(client)
+
+    _mark_sold(client, listing_id, [ids["a"]], [25])
+
+    db = db_module.SessionLocal()
+    try:
+        summary = queries.economic_summary(db)
+        assert summary["total_sold"] == 25.0
+
+        cash_flow = queries.cash_flow_by_month(db)
+        month = next(b for b in cash_flow if b["label"] == "2026-02")
+        assert month["sold"] == 25.0
+
+        invested_by_card = queries.net_invested_by_card(db)
+        assert invested_by_card[ids["a"]] == -25.0
+    finally:
+        db.close()
+
+
+def test_sold_only_filter_shows_only_sold_listings(client):
+    ids = _seed_cards(client)
+    _mark_listed(client, [ids["a"]], suggested_price="30")
+    listing_id_a = _listing_id(client)
+    _mark_sold(client, listing_id_a, [ids["a"]], [30])
+
+    _mark_listed(client, [ids["b"]], suggested_price="50")
+
+    response = client.get("/listings", params={"sold_only": "true"})
+
+    assert response.status_code == 200
+    assert "Pikachu" in response.text
+    assert "Charizard" not in response.text

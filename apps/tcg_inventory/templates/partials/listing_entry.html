@@ -8,10 +8,14 @@
     </span>
     <span class="tx-platform-badge">{{ entry.listing.platform }}</span>
     <span class="listing-actions">
+      {% if entry.listing.status != 'sold' %}
+      <a href="/listings/{{ entry.listing.id }}/mark-sold"><button type="button">Mark sold</button></a>
+      {% endif %}
       <a href="/listings/{{ entry.listing.id }}/edit"><button type="button" class="secondary">Edit</button></a>
       {% if entry.listing.status == 'active' %}
       <form hx-post="/listings/{{ entry.listing.id }}/delist" hx-target="#listing-{{ entry.listing.id }}" hx-swap="outerHTML">
         <input type="hidden" name="show_delisted" value="{{ 'true' if show_delisted else '' }}">
+        <input type="hidden" name="sold_only" value="{{ 'true' if sold_only else '' }}">
         <button type="submit" class="secondary">Remove listing</button>
       </form>
       {% endif %}
@@ -29,6 +33,7 @@
           <th class="num">Cost</th>
           <th class="num">Market price</th>
           <th class="num">Listed price</th>
+          <th class="num">Sold price</th>
         </tr>
       </thead>
       <tbody>
@@ -40,6 +45,7 @@
           <td class="num">{{ row.cost | kr }}</td>
           <td class="num">{{ row.market_price | kr }}</td>
           <td class="num">{{ row.listed_price | kr }}</td>
+          <td class="num">{{ row.sold_price | kr }}</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Mark Listing Sold – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Mark Listing Sold</h1>
+<p class="muted">
+  "{{ listing.title }}" — confirm the real price each card actually sold for. Nothing is recorded
+  until you submit: this creates one real <a href="/transactions">Transaction</a> per card below (all
+  sharing one order), then marks the listing sold. Prices are pre-filled as an even split of the
+  listed price ({{ listing.suggested_price | kr }}) — edit each one to what the card actually sold
+  for before saving. See <a href="/listings">Listings</a>.
+</p>
+
+{% if error %}
+<p class="warnings">{{ error }}</p>
+{% endif %}
+
+<form method="post" action="/listings/{{ listing.id }}/mark-sold">
+  <div class="filters" style="margin-bottom: 0.9rem;">
+    <input type="date" name="date" value="{{ today }}" required>
+    <input type="text" name="platform" placeholder="Platform" value="{{ listing.platform }}">
+  </div>
+
+  <div class="table-scroll">
+    <table style="margin-bottom: 0.9rem;">
+      <thead>
+        <tr><th>Card</th><th class="num">Sold price</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            {{ row.card.name }} ({{ row.card.set or '' }} {{ '#' + row.card.number if row.card.number }})
+            <input type="hidden" name="card_id" value="{{ row.card.id }}">
+          </td>
+          <td class="num">
+            <input type="number" step="0.01" min="0.01" name="price" required style="width: 110px;"
+                   value="{{ row.default_price if row.default_price is not none else '' }}">
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <button type="submit">Confirm sold</button>
+  <a href="/listings"><button type="button">Cancel</button></a>
+</form>
+{% endblock %}

@@ -632,17 +632,22 @@ def assign_bucket_investment(buckets, invested_by_card: dict[int, float]) -> Non
 
 @dataclass
 class ListingCardPricing:
-    """One card within a `Listing`, annotated with the three prices the
-    /listings page compares side by side -- see the "Sales listings
-    (finn.no)" business rule in README.md. `listed_price` is the listing's
-    own `suggested_price` (one price per listing, not per card, since a
-    listing covers a lot rather than pricing each card in it separately).
+    """One card within a `Listing`, annotated with the prices the /listings
+    page compares side by side -- see the "Sales listings (finn.no)"
+    business rule in README.md. `listed_price` is the listing's own
+    `suggested_price` (one price per listing, not per card, since a listing
+    covers a lot rather than pricing each card in it separately).
+    `sold_price` (issue #127) is per-card, unlike `listed_price` -- it's the
+    real price this specific card's `Transaction(type="sale", listing_id=...)`
+    row was recorded at via `POST /listings/{id}/mark-sold`; None until the
+    listing is actually marked sold.
     """
 
     card: Card
     cost: float
     market_price: float | None
     listed_price: float | None
+    sold_price: float | None = None
 
 
 @dataclass
@@ -651,41 +656,81 @@ class ListingOverview:
     card_rows: list[ListingCardPricing]
 
 
-def _build_listing_overview(listing: Listing, invested_by_card: dict[int, float]) -> ListingOverview:
+def _sold_prices_by_listing_card(db: Session, listing_ids: list[int]) -> dict[tuple[int, int], float]:
+    """`{(listing_id, card_id): price}` from every sale `Transaction` linked
+    to one of `listing_ids` (issue #127's `Transaction.listing_id`). Summed
+    per (listing, card) rather than assumed-unique -- mark-sold itself only
+    ever writes one such row per card, but this stays correct even if that
+    ever changes (e.g. a manually added second sale row for the same card).
+    """
+    if not listing_ids:
+        return {}
+    rows = (
+        db.query(Transaction.listing_id, Transaction.card_id, Transaction.price)
+        .filter(Transaction.listing_id.in_(listing_ids), Transaction.type == "sale")
+        .all()
+    )
+    result: dict[tuple[int, int], float] = {}
+    for listing_id, card_id, price in rows:
+        key = (listing_id, card_id)
+        result[key] = result.get(key, 0.0) + price
+    return result
+
+
+def _build_listing_overview(
+    listing: Listing,
+    invested_by_card: dict[int, float],
+    sold_prices: dict[tuple[int, int], float] | None = None,
+) -> ListingOverview:
+    sold_prices = sold_prices or {}
     card_rows = [
         ListingCardPricing(
             card=card,
             cost=invested_by_card.get(card.id, 0.0),
             market_price=card.display_price,
             listed_price=listing.suggested_price,
+            sold_price=sold_prices.get((listing.id, card.id)),
         )
         for card in listing.cards
     ]
     return ListingOverview(listing=listing, card_rows=card_rows)
 
 
-def listing_overview(db: Session, include_delisted: bool = False) -> list[ListingOverview]:
+def listing_overview(
+    db: Session, include_delisted: bool = False, sold_only: bool = False
+) -> list[ListingOverview]:
     """Every `Listing`, newest first, with each of its cards annotated with
     cost (actual money spent, from `net_invested_by_card` -- the same
     Transaction-derived figure used everywhere else, not a second "cost"
-    concept), market price (`Card.display_price`), and listed price
-    (`Listing.suggested_price`). Never touches `qty`, `card_collections`, or
-    `binder_id` -- see README's "Sales listings (finn.no)" business rule.
+    concept), market price (`Card.display_price`), listed price
+    (`Listing.suggested_price`), and -- once marked sold -- the real
+    per-card sold price (`_sold_prices_by_listing_card`, issue #127). Never
+    touches `qty`, `card_collections`, or `binder_id` -- see README's "Sales
+    listings (finn.no)" business rule.
 
     Excludes `status == "delisted"` listings by default -- `/listings`' "Show
     delisted" toggle passes `include_delisted=True` to include them.
+    `sold_only=True` (the "Sold" filter option, issue #127) further narrows
+    to `status == "sold"` regardless of `include_delisted` -- a sold listing
+    is never also delisted in practice, but this keeps the two filters
+    independent rather than assuming that.
     """
     invested_by_card = net_invested_by_card(db)
     query = db.query(Listing).options(selectinload(Listing.cards)).order_by(Listing.created_at.desc())
     if not include_delisted:
         query = query.filter(Listing.status != "delisted")
-    return [_build_listing_overview(listing, invested_by_card) for listing in query.all()]
+    if sold_only:
+        query = query.filter(Listing.status == "sold")
+    listings = query.all()
+    sold_prices = _sold_prices_by_listing_card(db, [listing.id for listing in listings])
+    return [_build_listing_overview(listing, invested_by_card, sold_prices) for listing in listings]
 
 
 def listing_entry(db: Session, listing_id: int) -> ListingOverview | None:
     """Single-listing counterpart to `listing_overview`, used to re-render
-    one row after an htmx action (e.g. delisting) without recomputing
-    pricing for every listing. Returns None if the listing no longer exists.
+    one row after an htmx action (e.g. delisting, marking sold) without
+    recomputing pricing for every listing. Returns None if the listing no
+    longer exists.
     """
     listing = (
         db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
@@ -693,7 +738,8 @@ def listing_entry(db: Session, listing_id: int) -> ListingOverview | None:
     if listing is None:
         return None
     invested_by_card = net_invested_by_card(db)
-    return _build_listing_overview(listing, invested_by_card)
+    sold_prices = _sold_prices_by_listing_card(db, [listing_id])
+    return _build_listing_overview(listing, invested_by_card, sold_prices)
 
 
 @dataclass
