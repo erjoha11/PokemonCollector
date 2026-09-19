@@ -43,6 +43,7 @@ from models import (
     ImportLog,
     Listing,
     PokemonAlias,
+    Release,
     Set,
     Transaction,
 )
@@ -1880,6 +1881,55 @@ def transactions_charts(request: Request, metric: str = "unique"):
 @app.get("/wiki")
 def wiki(request: Request):
     return templates.TemplateResponse(request, "wiki.html", {})
+
+
+# --------------------------------------------------------------------------
+# Release Notes (issue #144) -- a small, hand-authored log of user-facing
+# changes, stored in the `releases` table (see models.Release's docstring
+# for why a DB table, not a CHANGELOG.md file or git/PR-history generation).
+# No new RBAC: both routes pass through the same auth_guard middleware as
+# every other non-public route. No edit-in-place for v1 -- delete and
+# re-add a mistaken entry instead.
+# --------------------------------------------------------------------------
+@app.get("/releases")
+def releases_page(request: Request):
+    db = get_db_session()
+    try:
+        releases = db.query(Release).order_by(Release.date.desc(), Release.id.desc()).all()
+        context = {"releases": releases, "today": dt.date.today().isoformat()}
+        return templates.TemplateResponse(request, "releases.html", context)
+    finally:
+        db.close()
+
+
+@app.post("/releases")
+def releases_create(
+    request: Request,
+    date: dt.date = Form(...),
+    title: str = Form(...),
+    body: str = Form(...),
+):
+    db = get_db_session()
+    try:
+        db.add(Release(date=date, title=title, body=body, created_at=dt.datetime.utcnow()))
+        db.commit()
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/releases/{release_id}/delete")
+def releases_delete(request: Request, release_id: int):
+    db = get_db_session()
+    try:
+        release = db.query(Release).filter(Release.id == release_id).first()
+        if release is None:
+            raise HTTPException(status_code=404, detail="Release not found")
+        db.delete(release)
+        db.commit()
+        return RedirectResponse("/releases", status_code=303)
+    finally:
+        db.close()
 
 
 # --------------------------------------------------------------------------
