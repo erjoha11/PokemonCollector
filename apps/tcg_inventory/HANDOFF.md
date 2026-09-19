@@ -835,3 +835,19 @@ of through the app. Worth a small future enhancement to add the same
 so this doesn't need a direct DB edit next time (not filed as an issue
 yet — flagging here per this file's convention for open items raised but
 not built).
+
+Separately, in the same session: order #17's 40 rows also had two
+different `date` values -- 5 rows at `2026-09-03` (the actual order date)
+and 35 at `2026-09-19` (today, the default fill-in for whichever were
+added individually rather than as part of the original cart submission).
+At the user's confirmation, normalized all 40 rows to the order's actual
+date:
+
+```sql
+UPDATE transactions SET date = '2026-09-03' WHERE purchase_id = 17;
+```
+
+There's no order-level date column (`Transaction.date` is per-row, per
+`models.py`) -- "the order's date" here just means the date the earliest,
+originally-submitted rows already carried, applied to every row sharing
+this `purchase_id`.
