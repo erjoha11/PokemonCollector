@@ -1,0 +1,8 @@
+<input type="text" id="edit-title" name="title" value="{{ draft.title }}" hx-swap-oob="true"
+       style="width: 100%;">
+<textarea id="edit-description" name="description" rows="10" hx-swap-oob="true"
+          style="width: 100%;">{{ draft.description }}</textarea>
+<input type="number" step="1" id="edit-suggested-price" name="suggested_price" hx-swap-oob="true"
+       value="{{ draft.suggested_price | round(0) | int if draft.suggested_price is not none else '' }}"
+       style="width: 160px;">
+<span class="muted" id="regenerate-hint" hx-swap-oob="true">Uses the cards listed below, including any not-yet-saved additions/removals.</span>

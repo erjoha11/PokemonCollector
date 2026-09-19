@@ -267,6 +267,19 @@ class Listing(Base):
     action, never touches `qty`/`card_collections`/`binder_id` -- delisting
     an ad is not the same as the cards being gone. `/listings` excludes
     delisted listings by default; its "Show delisted" toggle reveals them.
+
+    `GET`/`POST /listings/{id}/edit` (issue #126) lets `title`,
+    `description`, `suggested_price`, and the attached card set
+    (`listing_cards`) all be changed after creation -- a listed price gets
+    renegotiated, a card gets pulled from the lot, ad copy needs a tweak.
+    "Regenerate ad text" there reruns `ads.build_listing` off the
+    *currently selected* cards so the text doesn't go stale relative to an
+    edited card set. `POST /listings/{id}/delete` hard-removes the row
+    itself (distinct from delist -- for a mistaken/duplicate/test entry
+    that shouldn't remain in history even delisted); the client requires a
+    confirmation step first since, unlike delist, it's irreversible. Both
+    actions keep the same invariant as delist: never `qty`,
+    `card_collections`, `binder_id`, or `Transaction` rows.
     """
 
     __tablename__ = "listings"
