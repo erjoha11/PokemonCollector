@@ -396,6 +396,30 @@ a manual look, unlike a low-confidence match this still updates the price
 rather than withholding it, since it's still the right card, just possibly
 the wrong print.
 
+### Image backfill (one-off, manual)
+
+`Card.image_url` (used for the Dashboard's "Most valuable cards" #1-spot
+thumbnail, see `templates/partials/kpi_module.html`) is only ever set
+best-effort during a Dex sync (`importer.py`, capped at
+`_MAX_IMAGE_LOOKUPS_PER_IMPORT` lookups per sync), so a card that missed its
+budget slot or had no confident match on a given day can stay `NULL`
+indefinitely — the normal sync never retries it. `backfill_images.py` is a
+standalone script to retry those:
+
+```bash
+python backfill_images.py            # up to 200 lookups (default budget)
+python backfill_images.py --limit 50 # smaller/larger pass
+```
+
+Same `DATABASE_URL` convention as `seed_set_release_order.py` — run it
+locally against SQLite, or with `DATABASE_URL` set to the Supabase
+connection string to backfill prod. Only ever fills a `NULL` `image_url`
+in from a confident `card_images.fetch_card_data` match; cards with no
+confident match are left `NULL` (never guessed — a wrong image is worse
+than no image, see the 2026-09-16 `assets.tcgdex.net` incident in
+`HANDOFF.md`). It's a manual, explicitly-triggered pass, not part of the
+daily Dropbox/price crons.
+
 ### Value history
 
 `card_snapshots` records real history going forward — every sync writes one
@@ -448,6 +472,8 @@ the Dropbox-based ones above and the price-refresh cron).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
   sync (see "Price refresh" above).
+- `backfill_images.py` — standalone, manually-triggered backfill for cards
+  with a `NULL` `image_url` (see "Image backfill" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
 - `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.

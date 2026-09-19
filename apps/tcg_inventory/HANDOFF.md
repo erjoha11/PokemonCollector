@@ -288,6 +288,18 @@ go indefinitely without ever getting a successful match retried.
 (respecting the same rate-limit/best-effort behavior already in
 `card_images.py`), write results back to the DB. Not built yet.
 
+**Addressed 2026-09-19** (issue #128): `backfill_images.py` — finds cards
+with `image_url IS NULL`, retries `card_images.fetch_card_data()` (reused
+over the older `fetch_image_url()` wrapper so a pass also refreshes
+`tcgplayer_price` for the same cards) up to a `--limit` budget (200 by
+default), writes back only confident matches, leaves the rest `NULL`. Does
+not touch `importer.py`'s per-sync budget/staleness logic — a separate,
+explicitly-triggered pass, not a cron change. See README's "Image backfill"
+section. Not yet run against prod as part of this session — run it there
+(`DATABASE_URL` set to the Supabase connection string) to actually improve
+the Dashboard's "Most valuable cards" #1-spot coverage; this session only
+shipped the script and its tests.
+
 ## Live TCGPlayer prices — 2026-09-16 session
 
 Per HANDOFF #85's note that the user is "standardizing on TCGPlayer as the
