@@ -726,18 +726,19 @@ def sales_mark_listed(
 
 # --------------------------------------------------------------------------
 # Listings overview -- every `Listing` recorded via "Mark as listed" above,
-# with cost/market/listed prices side by side per card, plus per-row actions
-# (edit, delete, and "Remove listing"/delist). Excludes delisted listings by
-# default ("Show delisted" toggle reveals them). Still no "mark as sold"
-# here -- see queries.listing_overview's docstring and README's "Sales
-# listings (finn.no)" business rule.
+# with cost/market/listed/sold prices side by side per card, plus per-row
+# actions (mark sold, edit, delete, and "Remove listing"/delist). Excludes
+# delisted listings by default ("Show delisted" toggle reveals them); a
+# separate "Sold only" toggle (issue #127) narrows to just sold listings --
+# see queries.listing_overview's docstring and README's "Sales listings
+# (finn.no)" business rule.
 # --------------------------------------------------------------------------
 @app.get("/listings")
-def listings_page(request: Request, show_delisted: bool = False):
+def listings_page(request: Request, show_delisted: bool = False, sold_only: bool = False):
     db = get_db_session()
     try:
-        overview = queries.listing_overview(db, include_delisted=show_delisted)
-        context = {"overview": overview, "show_delisted": show_delisted}
+        overview = queries.listing_overview(db, include_delisted=show_delisted, sold_only=sold_only)
+        context = {"overview": overview, "show_delisted": show_delisted, "sold_only": sold_only}
         is_htmx = bool(request.headers.get("HX-Request"))
         template = "partials/listings_results.html" if is_htmx else "listings.html"
         return templates.TemplateResponse(request, template, context)
@@ -746,7 +747,9 @@ def listings_page(request: Request, show_delisted: bool = False):
 
 
 @app.post("/listings/{listing_id}/delist")
-def listings_delist(request: Request, listing_id: int, show_delisted: str = Form("")):
+def listings_delist(
+    request: Request, listing_id: int, show_delisted: str = Form(""), sold_only: str = Form("")
+):
     db = get_db_session()
     try:
         listing = db.query(Listing).filter(Listing.id == listing_id).first()
@@ -756,14 +759,18 @@ def listings_delist(request: Request, listing_id: int, show_delisted: str = Form
         db.commit()
 
         show_delisted_flag = show_delisted in ("true", "1", "on")
-        if not show_delisted_flag:
-            # Default view excludes delisted listings -- an empty response
-            # swapped into the row's own outerHTML removes it from the page.
+        sold_only_flag = sold_only in ("true", "1", "on")
+        if not show_delisted_flag or sold_only_flag:
+            # Default view excludes delisted listings, and "Sold only" now
+            # excludes this (just-delisted) row either way -- an empty
+            # response swapped into the row's own outerHTML removes it.
             return HTMLResponse("")
 
         entry = queries.listing_entry(db, listing_id)
         return templates.TemplateResponse(
-            request, "partials/listing_entry.html", {"entry": entry, "show_delisted": show_delisted_flag}
+            request,
+            "partials/listing_entry.html",
+            {"entry": entry, "show_delisted": show_delisted_flag, "sold_only": sold_only_flag},
         )
     finally:
         db.close()
@@ -957,6 +964,131 @@ def listing_edit_submit(
         listing.description = description
         listing.suggested_price = price
         listing.cards = cards
+        db.commit()
+        return RedirectResponse("/listings", status_code=303)
+    finally:
+        db.close()
+
+
+def _mark_sold_rows(listing: Listing) -> list[dict]:
+    """One row per card currently in `listing`, each pre-filled with a
+    starting-guess price (`suggested_price / card_count`, editable, never
+    auto-submitted -- see models.Listing's mark-sold docstring) for the
+    mark-sold form.
+    """
+    cards = list(listing.cards)
+    default_price = None
+    if listing.suggested_price and cards:
+        default_price = round(listing.suggested_price / len(cards), 2)
+    return [{"card": card, "default_price": default_price} for card in cards]
+
+
+@app.get("/listings/{listing_id}/mark-sold")
+def listing_mark_sold_form(request: Request, listing_id: int):
+    """Mark-sold form (issue #127) -- reuses the purchase-cart UI/route
+    pattern (`/transactions/purchase/start` + `.../add-row`) rather than a
+    single-click status flip: every card's real sale price must be
+    explicitly confirmed here before any `Transaction` is written. See
+    models.Listing's docstring for the full flow.
+    """
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
+        if listing is None or listing.status == "sold" or not listing.cards:
+            # No form to fill in for a missing listing, an already-sold one
+            # (re-running mark-sold must be a no-op, not a second round of
+            # Transactions -- see acceptance criteria), or an empty lot.
+            return RedirectResponse("/listings", status_code=303)
+        return templates.TemplateResponse(
+            request,
+            "listing_mark_sold.html",
+            {
+                "listing": listing,
+                "rows": _mark_sold_rows(listing),
+                "today": dt.date.today().isoformat(),
+                "error": None,
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.post("/listings/{listing_id}/mark-sold")
+def listing_mark_sold_submit(
+    request: Request,
+    listing_id: int,
+    date: str = Form(...),
+    platform: str = Form(""),
+    card_id: list[int] = Form(default=[]),
+    price: list[str] = Form(default=[]),
+):
+    """Creates one `Transaction(type="sale", listing_id=<this listing>.id)`
+    per card in the lot, all sharing one fresh `purchase_id` (same grouping
+    convention the purchase-cart form uses), then flips `Listing.status` to
+    `"sold"` -- all in a single `db.commit()` so a validation failure never
+    leaves orphaned Transactions or a status stuck between "active" and
+    "sold" (acceptance criteria). Never touches `qty`, `card_collections`,
+    or `binder_id` -- same invariant as every other listing action.
+    """
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
+        if listing is None:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        if listing.status == "sold":
+            # Re-running mark-sold on an already-sold listing is a no-op --
+            # no duplicate Transactions (acceptance criteria).
+            return RedirectResponse("/listings", status_code=303)
+
+        def _rerender(error: str) -> HTMLResponse:
+            return templates.TemplateResponse(
+                request,
+                "listing_mark_sold.html",
+                {
+                    "listing": listing,
+                    "rows": _mark_sold_rows(listing),
+                    "today": date or dt.date.today().isoformat(),
+                    "error": error,
+                },
+            )
+
+        lot_card_ids = {c.id for c in listing.cards}
+        submitted_ids = list(dict.fromkeys(card_id))
+        if not submitted_ids or set(submitted_ids) != lot_card_ids:
+            return _rerender("Every card currently in this lot needs a price — none can be added or skipped here.")
+
+        if len(price) != len(card_id):
+            return _rerender("Missing a price for one or more cards.")
+
+        parsed_prices: dict[int, float] = {}
+        for cid, price_raw in zip(card_id, price):
+            try:
+                p = float(price_raw)
+            except (TypeError, ValueError):
+                return _rerender("Every card needs a valid, positive sold price.")
+            if p <= 0:
+                return _rerender("Every card needs a valid, positive sold price.")
+            parsed_prices[cid] = p
+
+        try:
+            tx_date = dt.date.fromisoformat(date)
+        except ValueError:
+            return _rerender("Invalid date.")
+
+        new_purchase_id = _next_purchase_id(db)
+        for cid in submitted_ids:
+            db.add(
+                Transaction(
+                    card_id=cid,
+                    type="sale",
+                    date=tx_date,
+                    price=parsed_prices[cid],
+                    platform=platform or listing.platform or None,
+                    purchase_id=new_purchase_id,
+                    listing_id=listing.id,
+                )
+            )
+        listing.status = "sold"
         db.commit()
         return RedirectResponse("/listings", status_code=303)
     finally:

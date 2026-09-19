@@ -236,8 +236,21 @@ class Transaction(Base):
     # issue #109 / HANDOFF.md's 2026-09-14 entry, which set a note like this
     # directly in prod before this column existed.
     note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Set only for a "sale" row created by `POST /listings/{id}/mark-sold`
+    # (issue #127) -- links this real, completed sale back to the `Listing`
+    # lot it was sold out of. Nullable/additive: every other Transaction
+    # (plain purchases, sales registered directly via the purchase-cart form,
+    # and every row that predates this column) has no `Listing` to point at.
+    # Deliberately on `Transaction`, not a `sold_transaction_id` FK on
+    # `Listing` the other way around -- a lot of N cards sold together needs
+    # N Transaction rows (one per card, each with its own realized price and
+    # cost basis), not one row a single FK on Listing could name, so
+    # many-Transactions-to-one-Listing is the only relationship that fits.
+    # See models.Listing's docstring for the full flow.
+    listing_id: Mapped[int | None] = mapped_column(ForeignKey("listings.id"), nullable=True, index=True)
 
     card: Mapped[Card] = relationship(back_populates="transactions")
+    listing: Mapped["Listing | None"] = relationship(back_populates="sale_transactions")
 
 
 listing_cards = Table(
@@ -280,6 +293,24 @@ class Listing(Base):
     confirmation step first since, unlike delist, it's irreversible. Both
     actions keep the same invariant as delist: never `qty`,
     `card_collections`, `binder_id`, or `Transaction` rows.
+
+    `GET`/`POST /listings/{id}/mark-sold` (issue #127) is the one listing
+    action that *does* touch `Transaction`: it reuses the purchase-cart
+    UI/route pattern (`/transactions/purchase/start` + `.../add-row`),
+    pre-filled with this listing's cards and each defaulted to
+    `suggested_price / card_count` as an editable starting guess -- never
+    auto-submitted, since these numbers become real, permanent cost-basis
+    history the moment they're saved. Submitting creates one
+    `Transaction(type="sale", listing_id=<this listing>.id, ...)` per card,
+    all sharing one fresh `purchase_id` (same grouping convention the
+    purchase-cart form already uses), then flips `status` to `"sold"` only
+    after every row commits, in a single DB transaction -- a failure
+    partway must not leave orphaned Transactions or a `status` stuck
+    between the two. Re-running mark-sold against an already-`"sold"`
+    listing is a no-op (no duplicate Transactions). Like every other
+    listing action, this still never touches `qty`, `card_collections`, or
+    `binder_id` -- that invariant belongs to the Dex CSV sync alone (see
+    `importer.py`), not to any Transaction, sale-linked or otherwise.
     """
 
     __tablename__ = "listings"
@@ -292,12 +323,20 @@ class Listing(Base):
     # Free-text, not an enum, same precedent as Transaction.platform -- only
     # "finn.no" is generated today but nothing here assumes that.
     platform: Mapped[str] = mapped_column(String, nullable=False, default="finn.no")
-    # "active" | "delisted" | "sold" -- "sold" is reserved for a future link
-    # to a real Transaction (e.g. a `sold_transaction_id` FK) once that flow
-    # is built; nothing sets it yet.
+    # "active" | "delisted" | "sold" -- "sold" is set by
+    # `POST /listings/{id}/mark-sold` (issue #127) once every card's sale
+    # Transaction has committed; see that route and `sale_transactions`
+    # below.
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
 
     cards: Mapped[list["Card"]] = relationship(secondary=listing_cards)
+    # Real per-card sale rows created by mark-sold (issue #127) -- see
+    # Transaction.listing_id. Not `cards` above (that's the lot's current
+    # membership, editable via `/listings/{id}/edit`); this is the actual
+    # cash-flow history, which stays fixed to whichever cards were in the
+    # lot at the moment it was marked sold even if `cards` changes later
+    # (editing a sold listing's card set is not a flow this app exposes).
+    sale_transactions: Mapped[list["Transaction"]] = relationship(back_populates="listing")
 
 
 class Set(Base):

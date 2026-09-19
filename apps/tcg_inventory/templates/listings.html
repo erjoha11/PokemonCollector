@@ -4,10 +4,11 @@
 <h1>Listings</h1>
 
 <p class="muted">
-  Every ad recorded via "Mark as listed" on <a href="/sales">Sell on finn.no</a>, with cost, market
-  price, and listed price side by side per card. Removing a listing here only changes its status —
-  quantity/collection changes and marking a card actually sold still only ever happen via
-  <a href="/transactions">Transactions</a>.
+  Every ad recorded via "Mark as listed" on <a href="/sales">Sell on finn.no</a>, with cost, market,
+  listed, and (once sold) sold price side by side per card. Removing a listing here only changes its
+  status — quantity/collection changes never happen from here. A real sale is recorded via each
+  listing's own "Mark sold" action below, which requires confirming each card's actual sold price
+  first (see README's "Sales listings (finn.no)").
 </p>
 
 <form class="filters" hx-get="/listings" hx-target="#listings-results" hx-push-url="true">
@@ -15,6 +16,11 @@
     <input type="checkbox" name="show_delisted" value="true" {{ 'checked' if show_delisted }}
            hx-get="/listings" hx-target="#listings-results" hx-push-url="true" hx-include="closest form">
     Show delisted
+  </label>
+  <label>
+    <input type="checkbox" name="sold_only" value="true" {{ 'checked' if sold_only }}
+           hx-get="/listings" hx-target="#listings-results" hx-push-url="true" hx-include="closest form">
+    Sold only
   </label>
 </form>
 

@@ -63,7 +63,7 @@ class Base(DeclarativeBase):
 # path *around* the migration chain, not a replacement for it: every
 # function in the chain must stay idempotent and safe to re-run regardless
 # of this gate, per README.md "Database migrations".
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,

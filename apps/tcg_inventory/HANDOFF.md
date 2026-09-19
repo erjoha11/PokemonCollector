@@ -619,3 +619,67 @@ change, no direct database changes — code only.
   above; only exercised via the test client. A real `ux` pass on the edit
   form and delete-confirmation UX (same note the issue itself makes) is
   still recommended before this ships to real users, not done here.
+
+# Handoff notes — 2026-09-19 session (issue #127, mark listing sold)
+
+Built on a new branch off `claude/issue-126-listing-edit-delete` (issue
+#126/PR #147 was still open/unmerged at branch-cut time, per this ticket's
+own instructions — reuses that branch's code directly rather than waiting).
+If PR #147 merges to `main` before this one, expect a straightforward rebase
+(this branch's diff is additive on top of #126's, no overlapping edits to
+the same lines).
+
+- **Schema change**: added `Transaction.listing_id` (nullable FK →
+  `listings.id`, additive — `db.py`'s `_add_missing_columns()` picks it up
+  automatically) and bumped `db.CURRENT_SCHEMA_VERSION` 3 → 4, per this
+  repo's established migration convention. No direct production-database
+  edits — this is a normal, additive code migration, applied automatically
+  the next time `init_db()` runs against prod (next deploy/cold start).
+- `GET`/`POST /listings/{id}/mark-sold` (`templates/listing_mark_sold.html`)
+  reuses the purchase-cart form's shape (search-free here, since the card
+  set is fixed to the listing's current `cards`) rather than a new UI
+  pattern: one row per card, price pre-filled as `suggested_price /
+  card_count` (editable, never auto-submitted). Submitting requires a price
+  for every card currently in the lot — none can be silently skipped or
+  added — and creates one `Transaction(type="sale", listing_id=..., ...)`
+  per card sharing one fresh `purchase_id`, then flips `status` to `"sold"`,
+  all in a single `db.commit()` (nothing partially applies on a validation
+  failure — verified in tests). Re-running mark-sold on an already-`"sold"`
+  listing is a no-op (both the GET form and the POST route redirect/bail
+  without touching `Transaction` rows).
+- `queries.listing_overview`/`listing_entry` now also return each card's
+  real `sold_price` (via the new `Transaction.listing_id` join), rendered
+  as a new "Sold price" column in `partials/listing_entry.html`. `/listings`
+  gained a "Sold only" checkbox (`sold_only` query/form param) alongside the
+  existing "Show delisted" one — kept as two independent booleans rather
+  than a single three-way status selector, since the issue's own scoping
+  text describing #126 as already having a richer "active/delisted/all"
+  selector didn't match what #126 actually shipped (a plain "Show delisted"
+  boolean toggle) — extending that boolean pair was the smaller, safer
+  change and satisfies the same underlying ask (a way to see just sold
+  listings) without a larger UI rework nobody asked for explicitly.
+- Never touches `qty`, `card_collections`, or `binder_id` — same invariant
+  as every other listing action, asserted directly in tests.
+- `economic_summary`, `cash_flow_by_month`, `net_invested_by_card` pick up
+  mark-sold's Transactions with zero special-casing (they're just normal
+  `type="sale"` rows) — verified by a dedicated test rather than just
+  trusted.
+- `models.Transaction`/`models.Listing` docstrings and README's "Sales
+  listings (finn.no)" + Listings-page sections updated per the issue's own
+  doc-update discipline.
+- New tests in `tests/test_listings.py`: form prefill, one-Transaction-
+  per-card + shared `purchase_id` + `listing_id`, status flip, no qty/
+  collection/binder mutation, missing-price rejection (no partial
+  Transactions), invalid-price rejection, re-run-is-a-no-op, already-sold
+  form redirect, sold price shows on `/listings`, "Sold only" filter, and
+  the economic-queries-pick-it-up-for-free test above. Full
+  `apps/tcg_inventory` suite: 303 passed, same 4 pre-existing failures in
+  `test_app.py` as #126's session noted (confirmed present on this branch's
+  unmodified base too, unrelated to this change — a SQLite `Date`
+  type/string mismatch).
+- **Not exercised in a real browser**, same caveat as #125/#126 — only via
+  the test client. The issue itself flags this form (per-card price entry)
+  as the most complex net-new form in the Listing lifecycle and recommends
+  a real `ux` pass before shipping; this session's environment again had no
+  `Agent` tool to spawn `ux` directly (same caveat #126's session logged),
+  so that pass still hasn't happened.

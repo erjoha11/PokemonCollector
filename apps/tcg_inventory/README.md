@@ -46,18 +46,24 @@ run).
   quantity/condition/asking price per card and generate a copy-paste
   finn.no title + description (Norwegian ad copy — see "Sales listings"
   below). "Mark as listed" records the ad but never changes `qty`; a real
-  sale is still only ever recorded via Transactions.
+  sale is only ever recorded once the resulting `Listing` is marked sold
+  from `/listings` (see below), which is the only listing action that
+  writes `Transaction` rows.
 - **Listings** (`/listings`) — overview of every recorded `Listing`: its
-  card(s), status (active/delisted/sold), and three prices side by side per
-  card so a listing's margin is visible at a glance — cost
+  card(s), status (active/delisted/sold), and prices side by side per card
+  so a listing's margin is visible at a glance — cost
   (`queries.net_invested_by_card`, same figure used everywhere else),
-  market price (`Card.display_price`), and listed price
-  (`Listing.suggested_price`). Each active listing has a "Remove listing"
-  control (`POST /listings/{id}/delist`, htmx partial-swap, no confirm
-  dialog) that sets its status to `"delisted"`; excludes delisted listings
-  by default, with a "Show delisted" toggle to reveal them. Delisting never
-  changes `qty`/`card_collections`/`binder_id` — there is still no "mark as
-  sold" action here, see "Sales listings (finn.no)" below.
+  market price (`Card.display_price`), listed price
+  (`Listing.suggested_price`), and — once marked sold — the real per-card
+  sold price. Each not-yet-sold listing has a "Mark sold" action
+  (`GET`/`POST /listings/{id}/mark-sold`) that requires confirming each
+  card's actual sold price before creating anything — see "Sales listings
+  (finn.no)" below for the full flow. Each active listing also has a
+  "Remove listing" control (`POST /listings/{id}/delist`, htmx
+  partial-swap, no confirm dialog) that sets its status to `"delisted"`;
+  excludes delisted listings by default, with a "Show delisted" toggle to
+  reveal them, and a separate "Sold only" toggle to narrow to just sold
+  listings. Delisting never changes `qty`/`card_collections`/`binder_id`.
 
 ## Data model
 
@@ -200,6 +206,42 @@ without updating both the code and this doc.
    step first since, unlike delist, this is irreversible. Both actions keep
    the same invariant as delist: `qty`, `card_collections`, `binder_id`, and
    `Transaction` rows are never touched.
+
+   **Marking a listing sold** (`GET`/`POST /listings/{id}/mark-sold`) is
+   the one listing action that *does* write `Transaction` rows — a real,
+   completed sale. `Transaction` is strictly per-card and its `price` is
+   real cash flow every economic query (`economic_summary`,
+   `cash_flow_by_month`, `net_invested_by_card`) sums directly and
+   unconditionally, while `Listing` covers a lot at one lot-level
+   `suggested_price` with no per-card price captured anywhere — so a lot of
+   N cards sold together needs N `Transaction` rows, one per card, each
+   with its own realized price and cost basis, not a single
+   `sold_transaction_id` FK a `Listing` could point at instead. The
+   relationship is `Transaction.listing_id` (many `Transaction` rows → one
+   `Listing`), a plain nullable/additive FK.
+
+   The mark-sold form reuses the purchase-cart UI/route pattern
+   (`/transactions/purchase/start` + `.../add-row`) rather than a new cart
+   UI, pre-filled with the listing's current cards and each row defaulted
+   to `suggested_price / card_count` as an editable starting guess — never
+   auto-submitted, since these become permanent cost-basis history the
+   moment they're saved. Submitting creates one
+   `Transaction(type="sale", listing_id=<listing>.id, purchase_id=<one
+   fresh id shared by every row>, ...)` per card, then flips
+   `Listing.status` to `"sold"` only after every row commits, all in one
+   `db.commit()` — a failure partway (e.g. a missing/invalid price) leaves
+   neither orphaned `Transaction` rows nor a `status` stuck between
+   `"active"` and `"sold"`. Every card currently in the lot must get a
+   price; nothing can be silently skipped or added beyond the lot's current
+   card set. Re-running mark-sold against an already-`"sold"` listing is a
+   no-op — no duplicate `Transaction` rows. Like every other listing
+   action, mark-sold never touches `qty`, `card_collections`, or
+   `binder_id`; qty is driven solely by the Dex CSV sync (`importer.py`),
+   never by any `Transaction`, sale-linked or otherwise. `/listings` then
+   shows each card's real sold price (via the `Transaction.listing_id`
+   join) alongside cost/market/listed price, and a "Sold only" toggle
+   narrows the page to just sold listings, alongside the existing "Show
+   delisted" toggle.
 
 ## CSV import format
 
