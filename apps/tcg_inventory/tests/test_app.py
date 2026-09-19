@@ -827,6 +827,52 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
     assert "2 cards" in history
 
 
+def test_browse_unordered_lists_cards_with_no_purchase_transaction(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Charizard ex"}, {"id": "b", "name": "Blastoise ex"}],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    # Neither card has an order yet -- both show up.
+    response = client.get("/transactions/purchase/browse-unordered")
+    assert response.status_code == 200
+    assert "Charizard ex" in response.text
+    assert "Blastoise ex" in response.text
+    assert "2 cards without an order" in response.text
+
+    # Registering a purchase for Charizard removes it from the list --
+    # "no order" is about linked transactions, not import date.
+    db = db_module.SessionLocal()
+    db.add(Transaction(card_id=ids["a"], type="purchase", date=dt.date.today(), price=10))
+    db.commit()
+    db.close()
+
+    response = client.get("/transactions/purchase/browse-unordered")
+    assert "Charizard ex" not in response.text
+    assert "Blastoise ex" in response.text
+    assert "1 card without an order" in response.text
+
+
+def test_browse_unordered_caps_and_reports_the_full_count(client):
+    cards = [{"id": str(i), "name": f"Card {i}"} for i in range(60)]
+    main = make_csv("My Collection", cards)
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/transactions/purchase/browse-unordered")
+    assert response.status_code == 200
+    assert "Showing 50 of 60 cards without an order." in response.text
+
+
 def test_purchase_cart_rejects_submitting_with_no_cards(client):
     response = client.post(
         "/transactions/purchase",

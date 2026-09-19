@@ -1399,6 +1399,32 @@ def purchase_cart_search(request: Request, q: str = ""):
         db.close()
 
 
+_BROWSE_UNORDERED_LIMIT = 50
+
+
+@app.get("/transactions/purchase/browse-unordered")
+def purchase_cart_browse_unordered(request: Request):
+    """Cards with no linked "purchase" transaction at all -- the same "no
+    order yet" concept the Transactions page's per-row Order column
+    (issue #153) already surfaces, but browsable from inside the New Order
+    cart (issue #156) instead of requiring a scroll-and-click on the main
+    page. Spans both "Recently Added" and "Legacy import" cards, not just
+    the latter -- "no order" isn't the same question as "no known date".
+    Capped since the unordered backlog can be the whole collection.
+    """
+    db = get_db_session()
+    try:
+        ordered_card_ids = db.query(Transaction.card_id).filter(Transaction.type == "purchase").distinct()
+        base = db.query(Card).filter(~Card.id.in_(ordered_card_ids))
+        total_count = base.count()
+        results = base.order_by(Card.name).limit(_BROWSE_UNORDERED_LIMIT).all()
+        return templates.TemplateResponse(
+            request, "partials/purchase_cart_unordered_results.html", {"results": results, "total_count": total_count}
+        )
+    finally:
+        db.close()
+
+
 @app.get("/transactions/purchase/add-row")
 def purchase_cart_add_row(request: Request, card_id: int):
     db = get_db_session()
