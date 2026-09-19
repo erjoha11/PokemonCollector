@@ -45,7 +45,11 @@ run).
   rather than guessing how to split it (set the destination order's
   total/shipping afterward). A single ungrouped
   row can still be edited in place via its own quick-edit form, including
-  its Order ID.
+  its Order ID. The "+ New Order" cart's search box has a "Show cards
+  without an order" toggle next to it — browses cards with no linked
+  purchase transaction at all (both "Recently Added" and "Legacy import"
+  cards, capped at 50 with a total count) instead of requiring a typed
+  query, for picking cards to price straight into the order being built.
 - **Sync Log** (`/import`) — read-only history of past syncs (daily cron,
   or a manual Dropbox sync). There is no manual CSV-upload page; see
   "Dropbox import setup" below for the only way to sync outside the cron.

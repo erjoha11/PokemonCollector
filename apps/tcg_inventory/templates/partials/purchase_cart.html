@@ -20,7 +20,8 @@
     <div class="autocomplete" style="max-width: 420px; margin: 0.75rem 0;">
       <input type="text" placeholder="Search for a card to add (name or card ID)..." autocomplete="off"
              hx-get="/transactions/purchase/search" hx-trigger="keyup changed delay:250ms" hx-target="#cart-search-results"
-             name="q">
+             oninput="resetBrowseUnorderedToggle()" name="q">
+      <button type="button" class="muted" id="browse-unordered-toggle" onclick="toggleBrowseUnordered(this)">Show cards without an order</button>
       <div id="cart-search-results"></div>
     </div>
 

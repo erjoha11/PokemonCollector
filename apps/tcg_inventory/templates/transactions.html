@@ -215,6 +215,36 @@ function confirmDiscardCart() {
   return confirm('Discard the in-progress order?');
 }
 
+// Toggle for the New Order cart's "Show cards without an order" button
+// (issue #156) -- reuses the same #cart-search-results target as the typed
+// search box, since browsing is just another way to fill the same list.
+// Opt-in and cleared on hide rather than loaded automatically when the
+// cart opens, since the unordered backlog can be the whole collection.
+function toggleBrowseUnordered(btn) {
+  var results = document.getElementById('cart-search-results');
+  if (btn.dataset.active === '1') {
+    btn.dataset.active = '';
+    btn.textContent = 'Show cards without an order';
+    results.innerHTML = '';
+  } else {
+    btn.dataset.active = '1';
+    btn.textContent = 'Hide';
+    htmx.ajax('GET', '/transactions/purchase/browse-unordered', { target: '#cart-search-results', swap: 'innerHTML' });
+  }
+}
+
+// Typing a search query while the browse-unordered list is showing replaces
+// #cart-search-results with search results underneath it (via the input's
+// own hx-get) -- reset the toggle's label so it doesn't keep claiming
+// "Hide" for content that's no longer there.
+function resetBrowseUnorderedToggle() {
+  var btn = document.getElementById('browse-unordered-toggle');
+  if (btn && btn.dataset.active === '1') {
+    btn.dataset.active = '';
+    btn.textContent = 'Show cards without an order';
+  }
+}
+
 // Splits the "Remaining amount" value evenly across every still-empty price
 // input in the purchase-cart table -- the "one lump sum, distribute
 // automatically" half of registering a purchase (the other half: type a

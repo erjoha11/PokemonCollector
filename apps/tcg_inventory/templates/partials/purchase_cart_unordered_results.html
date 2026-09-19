@@ -1,0 +1,18 @@
+<div class="autocomplete-results">
+  {% if total_count %}
+  <div class="muted" style="padding: 0.25rem 0.5rem;">
+    {% if total_count > results | length %}
+    Showing {{ results | length }} of {{ total_count }} cards without an order.
+    {% else %}
+    {{ total_count }} card{{ '' if total_count == 1 else 's' }} without an order.
+    {% endif %}
+  </div>
+  {% endif %}
+  {% for card in results %}
+  <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}" hx-target="#cart-body" hx-swap="beforeend">
+    {{ card.name }} — {{ card.set }} ({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})
+  </button>
+  {% else %}
+  <div class="muted">No cards without an order — everything's been priced.</div>
+  {% endfor %}
+</div>
