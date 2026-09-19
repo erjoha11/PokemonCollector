@@ -28,7 +28,7 @@
     <span class="tx-order-stat">{{ release.date.isoformat() }}</span>
     <span class="listing-actions">
       <form method="post" action="/releases/{{ release.id }}/delete" style="display:inline;"
-            onsubmit="return confirm('Delete this release note entry?');">
+            onsubmit="return confirm('Delete \'{{ release.title | replace("\\", "\\\\") | replace("'", "\\'") }}\'? This cannot be undone.');">
         <button type="submit" class="secondary">Delete</button>
       </form>
     </span>

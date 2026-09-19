@@ -74,6 +74,20 @@ def test_releases_body_is_autoescaped_with_preserved_line_breaks(client):
     assert "white-space: pre-wrap" in response.text
 
 
+def test_delete_confirm_names_entry_and_escapes_quotes(client):
+    client.post(
+        "/releases",
+        data={"date": "2026-09-19", "title": "Fix 'typo' in \"title\"", "body": "Body."},
+    )
+
+    response = client.get("/releases")
+
+    assert (
+        "onsubmit=\"return confirm('Delete \\'Fix \\&#39;typo\\&#39; in &#34;title&#34;\\'? This cannot be undone.');\""
+        in response.text
+    )
+
+
 def test_post_releases_delete_removes_entry(client):
     client.post("/releases", data={"date": "2026-09-19", "title": "To delete", "body": "Body."})
 
@@ -98,10 +112,11 @@ def test_post_releases_delete_removes_entry(client):
         db.close()
 
 
-def test_delete_unknown_release_returns_404(client):
+def test_delete_unknown_release_redirects_without_error(client):
     response = client.post("/releases/999999/delete")
 
-    assert response.status_code == 404
+    assert response.status_code == 200  # redirect to /releases followed by TestClient
+    assert response.url.path == "/releases"
 
 
 def test_releases_nav_link_present(client):
