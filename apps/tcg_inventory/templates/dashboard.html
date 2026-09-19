@@ -20,8 +20,8 @@
 {% macro fav_sort(label, field) %}{{ sort_th(label, field, 'fsort', 'fdir', fsort, fdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {% macro top10_sort(label, field) %}{{ sort_th(label, field, 'psort', 'pdir', psort, pdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false) %}
-<tr class="{{ css_class }}" data-group="{{ group_id }}" hidden>
-  <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</td>
+<tr class="{{ css_class }}{{ ' card-row-unowned' if card.qty == 0 else '' }}" data-group="{{ group_id }}" hidden>
+  <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}</td>
   {% if show_set_series %}
   <td>{% if card.set %}{{ filter_link('set', card.set) }}{% else %}-{% endif %}</td>
   <td>{% if card.series %}{{ filter_link('series', card.series) }}{% else %}-{% endif %}</td>

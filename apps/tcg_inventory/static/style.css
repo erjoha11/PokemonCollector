@@ -446,6 +446,22 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   white-space: nowrap;
 }
 
+/* qty == 0 row (traded/sold away, still present in the export -- see
+   models.Card.unique_value's docstring / issue #132), on both the Inventory
+   table and dashboard drill-down leaf rows: dimmed, plus a small neutral
+   pill (reuses .tx-platform-badge's "neutral metadata pill" convention --
+   not a warning color, since this is a normal collection state, not an
+   error). */
+.card-row-unowned {
+  opacity: 0.55;
+}
+.unowned-badge {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  vertical-align: middle;
+}
+
 /* Supporting numbers ride below a hairline, smaller and quieter than the
    hero -- never competing with it for attention. */
 .kpi-support {
@@ -712,6 +728,21 @@ form.filters input, form.filters select {
   background: var(--surface);
   color: var(--ink);
   font-size: 0.87rem;
+}
+
+/* "Show cards I no longer own" checkbox toggle -- distinct from the
+   text/select filters above, so it shouldn't inherit their box styling. */
+.unowned-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.87rem;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.unowned-toggle input[type="checkbox"] {
+  width: auto;
+  padding: 0;
 }
 
 form.filters input:focus, form.filters select:focus,

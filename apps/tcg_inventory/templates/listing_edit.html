@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Edit Listing – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Edit Listing</h1>
+<p class="muted">
+  Update the ad text, asking price, or which cards are in this lot. "Regenerate ad text" rebuilds
+  title/description from the cards currently listed below (not the original draft) — see
+  <a href="/listings">Listings</a>.
+</p>
+
+{% if error %}
+<p class="warnings">{{ error }}</p>
+{% endif %}
+
+<form method="post" action="/listings/{{ listing_id }}/edit">
+  <label>Title
+    <input type="text" id="edit-title" name="title" value="{{ title }}" required style="width: 100%;">
+  </label>
+  <label>Description
+    <textarea id="edit-description" name="description" rows="10" required style="width: 100%;">{{ description }}</textarea>
+  </label>
+  <label>Suggested price (kr)
+    <input type="number" step="1" id="edit-suggested-price" name="suggested_price"
+           value="{{ suggested_price }}" style="width: 160px;">
+  </label>
+
+  <p>
+    <button type="button" hx-post="/listings/{{ listing_id }}/edit/regenerate"
+            hx-include="#selected-cards-body input[name='card_id']" hx-target="this" hx-swap="none">
+      Regenerate ad text
+    </button>
+    <span class="muted" id="regenerate-hint">Uses the cards listed below, including any not-yet-saved additions/removals.</span>
+  </p>
+
+  <h3>Cards in this lot</h3>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr><th>Card</th><th></th></tr>
+      </thead>
+      <tbody id="selected-cards-body">
+        {% for card in cards %}
+        {% include "partials/listing_edit_card_row.html" %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="autocomplete" style="max-width: 320px; margin-bottom: 1rem;">
+    <input type="text" placeholder="Search to add a card..." autocomplete="off"
+           hx-get="/listings/{{ listing_id }}/edit/card-search" hx-trigger="keyup changed delay:250ms"
+           hx-target="#card-search-results" name="q">
+    <div id="card-search-results"></div>
+  </div>
+
+  <button type="submit">Save changes</button>
+  <a href="/listings"><button type="button">Cancel</button></a>
+</form>
+{% endblock %}

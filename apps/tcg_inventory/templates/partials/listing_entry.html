@@ -8,12 +8,17 @@
     </span>
     <span class="tx-platform-badge">{{ entry.listing.platform }}</span>
     <span class="listing-actions">
+      <a href="/listings/{{ entry.listing.id }}/edit"><button type="button" class="secondary">Edit</button></a>
       {% if entry.listing.status == 'active' %}
       <form hx-post="/listings/{{ entry.listing.id }}/delist" hx-target="#listing-{{ entry.listing.id }}" hx-swap="outerHTML">
         <input type="hidden" name="show_delisted" value="{{ 'true' if show_delisted else '' }}">
         <button type="submit" class="secondary">Remove listing</button>
       </form>
       {% endif %}
+      <form hx-post="/listings/{{ entry.listing.id }}/delete" hx-target="#listing-{{ entry.listing.id }}"
+            hx-swap="outerHTML" hx-confirm="Delete this listing permanently? This cannot be undone.">
+        <button type="submit" class="secondary">Delete</button>
+      </form>
     </span>
   </div>
   <div class="table-scroll">

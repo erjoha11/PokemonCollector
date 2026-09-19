@@ -288,6 +288,18 @@ go indefinitely without ever getting a successful match retried.
 (respecting the same rate-limit/best-effort behavior already in
 `card_images.py`), write results back to the DB. Not built yet.
 
+**Addressed 2026-09-19** (issue #128): `backfill_images.py` — finds cards
+with `image_url IS NULL`, retries `card_images.fetch_card_data()` (reused
+over the older `fetch_image_url()` wrapper so a pass also refreshes
+`tcgplayer_price` for the same cards) up to a `--limit` budget (200 by
+default), writes back only confident matches, leaves the rest `NULL`. Does
+not touch `importer.py`'s per-sync budget/staleness logic — a separate,
+explicitly-triggered pass, not a cron change. See README's "Image backfill"
+section. Not yet run against prod as part of this session — run it there
+(`DATABASE_URL` set to the Supabase connection string) to actually improve
+the Dashboard's "Most valuable cards" #1-spot coverage; this session only
+shipped the script and its tests.
+
 ## Live TCGPlayer prices — 2026-09-16 session
 
 Per HANDOFF #85's note that the user is "standardizing on TCGPlayer as the
@@ -565,6 +577,110 @@ database changes — code only.
   passed) on top of PR #119's branch.
 - **Not yet exercised in a real browser** — same caveat as the entries
   above; only exercised via the test client.
+
+## 0-qty card value/visibility fix (issue #132) — 2026-09-19 session
+
+Code only, no direct database changes.
+
+- `Card.unique_value` (`models.py`) was the one computed property not gated
+  on `qty > 0` the way `duplicates`/`total_value` already were — a
+  traded/sold-away card (qty == 0, still present in the latest export,
+  distinct from `flagged_missing_since`) was still counting its full market
+  price toward every "Value" KPI, dashboard breakdown bucket, and
+  `queries.top_valuable_cards` (also fixed to filter `Card.qty > 0`). Both
+  gated the same way, both README-documented.
+- Inventory table + dashboard drill-down leaf rows (`dashboard.html`'s
+  shared `card_leaf_row` macro) now dim a qty==0 row and add a small
+  neutral "0 owned" badge (`.card-row-unowned` / `.unowned-badge`, reusing
+  `.tx-platform-badge`'s pill styling per the app's one established
+  convention).
+- Inventory gained a "Show cards I no longer own" checkbox
+  (`?unowned=1`, `app.py`'s `_apply_inventory_filters`), default unchecked
+  — qty==0 cards are hidden from the default browse view. `/pokemon/search`
+  (used when adding a card to a sales listing) is a separate query,
+  deliberately untouched — re-buying a previously-traded-away card there is
+  the intended path, per the issue.
+- **Deliberately left untouched** (both explicitly out of the issue's
+  acceptance criteria, flagged there only as "worth a look"):
+  - `app.py::_sale_items_from_form`'s `qty = ... if card.qty else max(1, qty)`
+    branch, which means a qty==0 card added to a sales listing isn't
+    clamped to its own qty at all. Low severity — a `Listing` never mutates
+    real `qty` either way — but a future pass on the sales-listing flow
+    should look at it.
+  - `CardSnapshot.unique_value` (`models.py`) has the exact same
+    not-gated-on-qty shape as `Card.unique_value` had, and theoretically
+    affects `queries.real_value_history`'s "unique" metric the same way.
+    Not touched here since the issue scoped this to `Card`/`top_valuable_cards`
+    specifically and `real_value_history`'s own qty>0 `card_count` logic
+    already suggested the qty==0 case was considered there; worth a
+    follow-up look if `real_value_history`'s "unique" numbers ever look
+    inflated.
+- New tests: `tests/test_queries.py` (qty==0 card's `unique_value`/
+  `total_value`, `top_valuable_cards` exclusion, headline/bucket totals
+  excluding a qty==0 card), `tests/test_app.py` (Inventory hides qty==0 by
+  default, `unowned=1` reveals with badge, empty-`unowned`-value doesn't
+  422). Full suite: 282 passed. 5 pre-existing failures in
+  `test_app.py` (`test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets`
+  and 4 others) are unrelated to this change — reproduced identically on
+  `main` before this branch's changes, caused by this environment's
+  SQLAlchemy 2.0.54 vs. whatever pinned/tested version the repo's CI
+  normally runs (`requirements.txt` only pins `sqlalchemy>=2.0`); not fixed
+  here since it's a pre-existing environment/CI issue, not something this
+  issue's diff introduced.
+
+# Handoff notes — 2026-09-19 session (issue #126, listing edit/delete)
+
+Built on top of `main` (which, at branch-cut time, did **not** yet include
+PR #145/issue #132 — that PR was still open/unmerged, contrary to what this
+session was told when spawned; flagging in case #145 lands with conflicts
+against this branch's `app.py`/dashboard-adjacent changes, though this
+ticket didn't touch dashboard code so a clean rebase is expected). No schema
+change, no direct database changes — code only.
+
+- `POST /listings/{id}/delete` hard-deletes the `Listing` row; SQLAlchemy's
+  ORM removes the matching `listing_cards` association rows itself
+  (verified in tests — not relying on the `ondelete="CASCADE"` FK, since
+  this app's SQLite connections don't turn on `PRAGMA foreign_keys`).
+  Confirmation is `hx-confirm` on the "Delete" button (`partials/
+  listing_entry.html`) — a plain browser `confirm()`, not a custom modal;
+  flagged as the same "no real `ux` pass" caveat the issue itself notes.
+- `GET`/`POST /listings/{id}/edit` (`templates/listing_edit.html`) — editable
+  title/description/suggested_price plus add/remove against the card set,
+  mirroring the Transactions per-order edit pattern (search-then-append row,
+  no full autocomplete widget). "Regenerate ad text" reruns `ads.build_listing`
+  off whatever's currently in the edit form's card rows (via `hx-include`,
+  htmx out-of-band swaps into the title/description/price fields), not
+  what's saved in the DB — so an in-progress add/remove is reflected before
+  Save is even clicked. Per-card qty/condition/price inputs from the
+  original `/sales` draft aren't stored on `Listing`, so regenerate always
+  uses qty=1 and the card's current `display_price` — a best-effort
+  re-derivation, not a replay of the original draft's inputs. At least one
+  card is required to save (server-side validation, re-renders the form
+  with an error and the submitted values on violation).
+- Both actions keep the existing invariant: never touch `qty`,
+  `card_collections`, `binder_id`, or `Transaction` rows — asserted directly
+  in tests.
+- `models.Listing`'s docstring and README's "Sales listings (finn.no)"
+  section updated per the issue's doc-update discipline.
+- Explicitly out of scope, per the issue: mark-as-sold/Transaction-linking
+  (separate ticket), and any Inventory-side "already listed" badge.
+- New/updated tests in `tests/test_listings.py` (delete + cascade + no
+  qty/collection/binder/transaction mutation + 404 + htmx-empty-response +
+  confirm-attribute-present; edit prefill + update fields + card set add/
+  remove + reject-empty-card-set + no side-effect mutation + regenerate
+  reflects current selection + regenerate-with-nothing-selected +
+  nonexistent-listing redirect). Full `apps/tcg_inventory` suite green
+  except 4 pre-existing failures in `test_app.py`
+  (`test_inventory_can_be_sorted_by_language`,
+  `test_inventory_price_sort_keeps_unpriced_cards_last`,
+  `test_inventory_shows_net_paid_and_per_print_gain`,
+  `test_inventory_value_sorts_treat_missing_cost_as_less_than_zero`) —
+  confirmed present on unmodified `main` too (a SQLite `Date` type/string
+  mismatch unrelated to this ticket), not introduced by this branch.
+- **Not yet exercised in a real browser** — same caveat as the entries
+  above; only exercised via the test client. A real `ux` pass on the edit
+  form and delete-confirmation UX (same note the issue itself makes) is
+  still recommended before this ships to real users, not done here.
 
 ## Release Notes page (issue #144) — 2026-09-19 session
 
