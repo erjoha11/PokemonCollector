@@ -147,7 +147,11 @@
 {{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
 
 <details class="collapsible">
-  <summary>The rest of the collection with no known date ({{ unknown_cards | length }} card{{ '' if unknown_cards | length == 1 else 's' }})</summary>
+  <summary>Legacy import — cards from before "date added" tracking ({{ unknown_cards | length }} card{{ '' if unknown_cards | length == 1 else 's' }})</summary>
+  <p class="muted">
+    Cards synced before this app tracked an "added" date. Not related to whether a card
+    has a linked order — see the Order column below, or check History above.
+  </p>
   <div class="inventory-table-wrap" style="max-height: 400px;">
     <table class="inventory-table">
       <thead>
@@ -158,6 +162,8 @@
           <th>{{ sort_th('Set', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th class="num">{{ sort_th('Price', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
           <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          <th>Order</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
@@ -169,9 +175,23 @@
           <td>{{ card.set or '' }}</td>
           <td class="num">{{ card.display_price | kr }}</td>
           <td>{{ card.card_id }}</td>
+          <td class="num">
+            {% if card.id in registered_prices %}
+              Ordered · {{ registered_prices[card.id] }}
+            {% else %}
+              <span class="muted">No order yet</span>
+            {% endif %}
+          </td>
+          <td>
+            <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}"
+                    hx-target="#cart-body" hx-swap="beforeend"
+                    title="Open a new order above first (+ New Order) — this button then adds the card into that order.">
+              + Add to order
+            </button>
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="muted">None.</td></tr>
+        <tr><td colspan="8" class="muted">No legacy cards — every card now has an added date.</td></tr>
         {% endfor %}
       </tbody>
     </table>

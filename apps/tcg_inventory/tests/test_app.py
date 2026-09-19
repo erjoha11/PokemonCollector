@@ -871,13 +871,14 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     # doesn't dominate the page -- Pikachu (known date) sits in the always-
     # visible "Recently Added" section, Charizard (no date) is tucked away.
     assert "<details class=\"collapsible\">" in text
-    assert "The rest of the collection with no known date (1 card)" in text
+    assert 'Legacy import — cards from before "date added" tracking (1 card)' in text
     collapsed_section = text.split("<details class=\"collapsible\">", 1)[1]
     assert "Charizard" in collapsed_section
     assert "Pikachu" not in collapsed_section
-    # No inline purchase form for the old back-catalog -- only "Recently
-    # Added" (the actually-new cards) gets the quick-register button.
-    assert "Add to order" not in collapsed_section
+    # Legacy cards can be added to an order too -- being untracked by date
+    # doesn't mean untracked by order, so this table gets the same
+    # quick-register button as "Recently Added".
+    assert "Add to order" in collapsed_section
 
 
 def test_transactions_history_table_scrolls_instead_of_widening_the_page(client):

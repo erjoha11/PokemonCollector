@@ -1322,7 +1322,6 @@ def _transactions_context(
         "known_cards": known_cards,
         "known_count": known_count,
         "unknown_cards": unknown_cards,
-        "total_count": known_count + len(unknown_cards),
         # Display string (every price, comma-joined, if bought more than
         # once) -- vs. the single raw value below, only present when there's
         # exactly one to safely prefill/overwrite in the quick-register form.
