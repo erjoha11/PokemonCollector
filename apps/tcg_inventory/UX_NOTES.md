@@ -72,3 +72,54 @@ generation feature — see HANDOFF.md's matching entry for the shipped code).
 - Judgment calls needing a visual check (no browser/screenshot access): whether 32px `.card-thumb` images cause row-height jitter in dense inventory/transaction tables when a row has no image; whether the new fixed-height (220px) Chart.js canvases render proportionally on Dashboard's compact card vs. Transactions' full-width one.
 
 **Status:** Open
+
+---
+
+## 2026-09-19 — Transactions "rest of the collection with no known date" table
+
+**Reviewed:** templates/transactions.html (lines ~149-179, plus surrounding
+"Recently Added"/"History" sections for context), app.py's
+_cards_with_known_added_date() (~1133-1148) and _transactions_context()
+(~1254+), importer.py (~line 224), static/style.css.
+
+**Findings:**
+- Root cause: filters on `Card.created_at IS NULL`, a legacy data-migration
+  flag — unrelated to whether a card has a linked order.
+  `importer.py:224` sets `created_at` on every newly created Card, so this
+  bucket is fixed/shrinking, not an ongoing state — copy should say "legacy
+  import" rather than reading like a queue.
+- Heading/position reads as "cards without an order" (sits right below the
+  order tables) but isn't. Reword the `<summary>` to name the actual filter
+  (e.g. "Legacy import — cards from before 'date added' tracking (N
+  cards)") and add a `.muted` sub-caption like "Recently Added" has,
+  explicitly noting this is unrelated to order status.
+- Missing "+ Add to order" button is a real, cheap gap: "Recently Added"'s
+  button (transactions.html:66-70) keys off `card.id` directly via
+  `/transactions/purchase/add-row` (app.py:1403-1412) — no search step, no
+  new route needed, same markup drops into this table's rows verbatim.
+- No per-row "already has an order" indicator, and this table is exactly
+  where one would be useful (cleanup/archaeology on old data). The dict
+  this needs (`registered_prices`, keyed by card.id) is already computed
+  and passed to the template (used today only in "Recently Added") —
+  reusing it here is a template-only change, no new query.
+- `total_count` (app.py:1325) computed, never rendered — dead code, wire in
+  or remove.
+- Accessibility: all `<details class="collapsible">` sections on this page
+  (this table and "View charts") label themselves via `<summary>` text
+  only, no real `<h2>`/`<h3>` inside, unlike the rest of the page — invisible
+  to screen-reader heading navigation despite matching heading-level visual
+  weight (static/style.css:206-215). App-wide pattern, not unique to this
+  table; fix both collapsibles together or file as a small a11y pass.
+- Empty-state copy ("None.", line 174) is terser than its siblings on the
+  same page ("No cards with a known date yet.", "No individually registered
+  transactions.") — align voice, and use the copy to reinforce that this
+  bucket should shrink to zero over time.
+- Verified NOT a bug: the `unknown_cards | length` count in the `<summary>`
+  and the rendered `<tbody>` rows share the same sorted list object — no
+  mismatch.
+- No rendered-page access this session — visual/density calls (badge
+  placement in the 0.7rem-font `.inventory-table`, heading-wrapped
+  `<summary>` visual parity) should be eyeballed in a real browser before
+  implementing.
+
+**Status:** Open
