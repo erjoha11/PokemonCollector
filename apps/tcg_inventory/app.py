@@ -738,13 +738,11 @@ def sales_mark_listed(
 
 # --------------------------------------------------------------------------
 # Listings overview -- every `Listing` recorded via "Mark as listed" above,
-# with cost/market/listed prices side by side per card, plus a "Remove
-# listing" (delist) action per row. Excludes delisted listings by default
-# ("Show delisted" toggle reveals them). Still no "mark as sold" here --
-# see queries.listing_overview's docstring and README's "Sales listings
-# (finn.no)" business rule. The per-row action area (currently just
-# "Remove listing") is deliberately generic so future actions (edit,
-# mark as sold) can slot into the same spot.
+# with cost/market/listed prices side by side per card, plus per-row actions
+# (edit, delete, and "Remove listing"/delist). Excludes delisted listings by
+# default ("Show delisted" toggle reveals them). Still no "mark as sold"
+# here -- see queries.listing_overview's docstring and README's "Sales
+# listings (finn.no)" business rule.
 # --------------------------------------------------------------------------
 @app.get("/listings")
 def listings_page(request: Request, show_delisted: bool = False):
@@ -779,6 +777,200 @@ def listings_delist(request: Request, listing_id: int, show_delisted: str = Form
         return templates.TemplateResponse(
             request, "partials/listing_entry.html", {"entry": entry, "show_delisted": show_delisted_flag}
         )
+    finally:
+        db.close()
+
+
+@app.post("/listings/{listing_id}/delete")
+def listings_delete(request: Request, listing_id: int):
+    """Hard-deletes the `Listing` row itself (issue #126) -- distinct from
+    delist above, which only flips status and keeps history. The client is
+    required to confirm first (`hx-confirm` on the "Delete" button in
+    partials/listing_entry.html), since unlike delist this is irreversible.
+
+    `listing.cards` is a many-to-many via `listing_cards` -- SQLAlchemy's ORM
+    removes the matching association rows itself on delete, independent of
+    listing_cards' `ondelete="CASCADE"` (which only fires if the DB
+    connection has FK enforcement on, not guaranteed for SQLite here).
+    Never touches `qty`, `card_collections`, `binder_id`, or `Transaction`
+    rows -- same invariant as every other listing action.
+    """
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        if listing is None:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        db.delete(listing)
+        db.commit()
+        # Row removed outright regardless of the "Show delisted" toggle --
+        # unlike delist, there's no state where a deleted listing reappears.
+        return HTMLResponse("")
+    finally:
+        db.close()
+
+
+def _listing_edit_context(
+    listing_id: int,
+    title: str,
+    description: str,
+    suggested_price: str,
+    cards: list[Card],
+    error: str | None = None,
+) -> dict:
+    return {
+        "listing_id": listing_id,
+        "title": title,
+        "description": description,
+        "suggested_price": suggested_price,
+        "cards": cards,
+        "error": error,
+    }
+
+
+@app.get("/listings/{listing_id}/edit")
+def listing_edit_form(request: Request, listing_id: int):
+    """Edit view (issue #126) -- title/description/suggested_price plus the
+    attached card set (add/remove against `listing_cards`), mirroring the
+    per-group edit pattern already established for Transactions
+    (`/transactions/purchase/{id}/edit`) rather than inventing a new one.
+    """
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
+        if listing is None:
+            return RedirectResponse("/listings", status_code=303)
+        context = _listing_edit_context(
+            listing_id,
+            listing.title,
+            listing.description,
+            "" if listing.suggested_price is None else str(int(listing.suggested_price))
+            if float(listing.suggested_price).is_integer()
+            else str(listing.suggested_price),
+            list(listing.cards),
+        )
+        return templates.TemplateResponse(request, "listing_edit.html", context)
+    finally:
+        db.close()
+
+
+@app.get("/listings/{listing_id}/edit/card-search")
+def listing_edit_card_search(request: Request, listing_id: int, q: str = ""):
+    """Same search-then-append pattern as the Transactions order-edit
+    relink search, but appends a new row instead of replacing one.
+    """
+    db = get_db_session()
+    try:
+        results = []
+        if q and len(q) >= 2:
+            like = _like_pattern(q)
+            results = (
+                db.query(Card)
+                .filter(func.lower(Card.name).like(like) | func.lower(Card.card_id).like(like))
+                .order_by(Card.name)
+                .limit(20)
+                .all()
+            )
+        return templates.TemplateResponse(
+            request,
+            "partials/listing_edit_card_search_results.html",
+            {"results": results, "listing_id": listing_id},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/listings/{listing_id}/edit/card-row")
+def listing_edit_card_row(request: Request, listing_id: int, card_id: int):
+    db = get_db_session()
+    try:
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        if card is None:
+            return HTMLResponse("")
+        return templates.TemplateResponse(request, "partials/listing_edit_card_row.html", {"card": card})
+    finally:
+        db.close()
+
+
+@app.post("/listings/{listing_id}/edit/regenerate")
+def listing_edit_regenerate(request: Request, listing_id: int, card_id: list[int] = Form(default=[])):
+    """"Regenerate ad text" (issue #126) -- reruns the existing pure
+    `ads.build_listing` off the *currently selected* cards in the edit form
+    (via hx-include, not what's saved in the DB yet), so title/description
+    don't go stale relative to which cards are actually in the lot after an
+    edit. Qty is always 1 and price is the card's current `display_price` --
+    Listing doesn't store a per-card qty/price the way a fresh /sales draft
+    does, so this is a best-effort re-derivation, not a replay of the
+    original draft's inputs.
+    """
+    db = get_db_session()
+    try:
+        unique_ids = list(dict.fromkeys(card_id))
+        cards_by_id = {c.id: c for c in db.query(Card).filter(Card.id.in_(unique_ids)).all()} if unique_ids else {}
+        ordered = [cards_by_id[cid] for cid in unique_ids if cid in cards_by_id]
+        if not ordered:
+            return templates.TemplateResponse(request, "partials/listing_edit_regenerate_empty.html", {})
+        items = [
+            ads.SaleItem(
+                card_id=card.id,
+                name=card.name,
+                set=card.set,
+                number=card.number,
+                variant=card.variant,
+                language=card.language,
+                condition=card.condition,
+                qty=1,
+                price=card.display_price,
+            )
+            for card in ordered
+        ]
+        draft = ads.build_listing(items)
+        return templates.TemplateResponse(request, "partials/listing_edit_regenerate.html", {"draft": draft})
+    finally:
+        db.close()
+
+
+@app.post("/listings/{listing_id}/edit")
+def listing_edit_submit(
+    request: Request,
+    listing_id: int,
+    title: str = Form(...),
+    description: str = Form(...),
+    suggested_price: str = Form(""),
+    card_id: list[int] = Form(default=[]),
+):
+    db = get_db_session()
+    try:
+        listing = db.query(Listing).filter(Listing.id == listing_id).first()
+        if listing is None:
+            return RedirectResponse("/listings", status_code=303)
+
+        unique_ids = list(dict.fromkeys(card_id))
+        cards = db.query(Card).filter(Card.id.in_(unique_ids)).all() if unique_ids else []
+        if not cards:
+            # A listing with no cards in it isn't meaningful -- re-render the
+            # form with what the user submitted rather than saving an empty
+            # lot or silently falling back to the old card set.
+            context = _listing_edit_context(
+                listing_id,
+                title,
+                description,
+                suggested_price,
+                [],
+                error="Select at least one card before saving.",
+            )
+            return templates.TemplateResponse(request, "listing_edit.html", context)
+
+        try:
+            price = float(suggested_price) if suggested_price else None
+        except ValueError:
+            price = None
+
+        listing.title = title
+        listing.description = description
+        listing.suggested_price = price
+        listing.cards = cards
+        db.commit()
+        return RedirectResponse("/listings", status_code=303)
     finally:
         db.close()
 

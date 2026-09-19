@@ -1,0 +1,7 @@
+<tr>
+  <td>
+    {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }})
+    <input type="hidden" name="card_id" value="{{ card.id }}">
+  </td>
+  <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">Remove</button></td>
+</tr>

@@ -198,6 +198,19 @@ without updating both the code and this doc.
    the `Listing` row's own status. `/listings` excludes delisted listings by
    default; a "Show delisted" toggle reveals them.
 
+   A listing can also be edited (`GET`/`POST /listings/{id}/edit`) —
+   `title`, `description`, `suggested_price`, and the card set
+   (`listing_cards`) are all real CRUD against existing columns, no schema
+   change. A "Regenerate ad text" action reruns `ads.build_listing` off the
+   cards currently selected in the edit form (including not-yet-saved
+   additions/removals), so title/description don't go stale relative to an
+   edited card set. Separately, `POST /listings/{id}/delete` hard-deletes
+   the `Listing` row (SQLAlchemy's ORM removes the matching `listing_cards`
+   rows itself); the "Delete" control requires a client-side confirmation
+   step first since, unlike delist, this is irreversible. Both actions keep
+   the same invariant as delist: `qty`, `card_collections`, `binder_id`, and
+   `Transaction` rows are never touched.
+
 ## CSV import format
 
 Dex export, semicolon-separated:

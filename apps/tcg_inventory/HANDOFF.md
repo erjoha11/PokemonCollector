@@ -615,3 +615,57 @@ Code only, no direct database changes.
   normally runs (`requirements.txt` only pins `sqlalchemy>=2.0`); not fixed
   here since it's a pre-existing environment/CI issue, not something this
   issue's diff introduced.
+
+# Handoff notes — 2026-09-19 session (issue #126, listing edit/delete)
+
+Built on top of `main` (which, at branch-cut time, did **not** yet include
+PR #145/issue #132 — that PR was still open/unmerged, contrary to what this
+session was told when spawned; flagging in case #145 lands with conflicts
+against this branch's `app.py`/dashboard-adjacent changes, though this
+ticket didn't touch dashboard code so a clean rebase is expected). No schema
+change, no direct database changes — code only.
+
+- `POST /listings/{id}/delete` hard-deletes the `Listing` row; SQLAlchemy's
+  ORM removes the matching `listing_cards` association rows itself
+  (verified in tests — not relying on the `ondelete="CASCADE"` FK, since
+  this app's SQLite connections don't turn on `PRAGMA foreign_keys`).
+  Confirmation is `hx-confirm` on the "Delete" button (`partials/
+  listing_entry.html`) — a plain browser `confirm()`, not a custom modal;
+  flagged as the same "no real `ux` pass" caveat the issue itself notes.
+- `GET`/`POST /listings/{id}/edit` (`templates/listing_edit.html`) — editable
+  title/description/suggested_price plus add/remove against the card set,
+  mirroring the Transactions per-order edit pattern (search-then-append row,
+  no full autocomplete widget). "Regenerate ad text" reruns `ads.build_listing`
+  off whatever's currently in the edit form's card rows (via `hx-include`,
+  htmx out-of-band swaps into the title/description/price fields), not
+  what's saved in the DB — so an in-progress add/remove is reflected before
+  Save is even clicked. Per-card qty/condition/price inputs from the
+  original `/sales` draft aren't stored on `Listing`, so regenerate always
+  uses qty=1 and the card's current `display_price` — a best-effort
+  re-derivation, not a replay of the original draft's inputs. At least one
+  card is required to save (server-side validation, re-renders the form
+  with an error and the submitted values on violation).
+- Both actions keep the existing invariant: never touch `qty`,
+  `card_collections`, `binder_id`, or `Transaction` rows — asserted directly
+  in tests.
+- `models.Listing`'s docstring and README's "Sales listings (finn.no)"
+  section updated per the issue's doc-update discipline.
+- Explicitly out of scope, per the issue: mark-as-sold/Transaction-linking
+  (separate ticket), and any Inventory-side "already listed" badge.
+- New/updated tests in `tests/test_listings.py` (delete + cascade + no
+  qty/collection/binder/transaction mutation + 404 + htmx-empty-response +
+  confirm-attribute-present; edit prefill + update fields + card set add/
+  remove + reject-empty-card-set + no side-effect mutation + regenerate
+  reflects current selection + regenerate-with-nothing-selected +
+  nonexistent-listing redirect). Full `apps/tcg_inventory` suite green
+  except 4 pre-existing failures in `test_app.py`
+  (`test_inventory_can_be_sorted_by_language`,
+  `test_inventory_price_sort_keeps_unpriced_cards_last`,
+  `test_inventory_shows_net_paid_and_per_print_gain`,
+  `test_inventory_value_sorts_treat_missing_cost_as_less_than_zero`) —
+  confirmed present on unmodified `main` too (a SQLite `Date` type/string
+  mismatch unrelated to this ticket), not introduced by this branch.
+- **Not yet exercised in a real browser** — same caveat as the entries
+  above; only exercised via the test client. A real `ux` pass on the edit
+  form and delete-confirmation UX (same note the issue itself makes) is
+  still recommended before this ships to real users, not done here.
