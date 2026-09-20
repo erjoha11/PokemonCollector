@@ -913,3 +913,124 @@ alerting with a specific message and focusing the empty field instead of
 leaving it to native validation's easy-to-miss tooltip. Same client-side-
 only caveat as above: untestable via pytest, only that the attribute
 itself renders (asserted in a new test).
+
+# Handoff notes — 2026-09-20 session (merged work not previously logged)
+
+Catch-up log for PRs merged 2026-09-19 through 2026-09-20 that had no
+HANDOFF entry of their own (the card-search / "Register does nothing" fixes,
+#170 and #171, are covered by the entry above and not repeated here).
+
+**No direct production-database changes.** Checked each PR's file list and
+description below: all are code/template/docs-only, no schema changes, no
+seed or migration scripts, nothing run against Supabase. (The one direct-DB
+change from this window, Order #17's price split and date normalization, is
+already logged above in the "Order #17 price split" entry, which shipped
+inside #161's diff.)
+
+## Code shipped to prod (all merged to `main`)
+
+Transactions page / order flow (all `tcg_inventory`):
+
+- **#154** (issue #153): The "rest of the collection with no known date"
+  table on Transactions was easy to misread as "cards without an order",
+  but its filter is really `Card.created_at IS NULL` (the one-time legacy
+  import flag), unrelated to order status. Reworded heading and caption to
+  name the real filter, added a per-row order-status column ("Ordered ·
+  {price}" / "No order yet") from the already-computed `registered_prices`
+  (no new query), added the missing "+ Add to order" button, and dropped a
+  dead `total_count` context value. Findings in `UX_NOTES.md` (2026-09-19).
+- **#157** (issue #155): Edit Order (`/transactions/purchase/{id}/edit`)
+  can now append a card to an already-committed order via a search box and
+  a new `POST /transactions/purchase/{id}/edit/add-card`, which creates one
+  default `Transaction` row (today / purchase / price 0) against that
+  order. Deliberately its own endpoint rather than folded into
+  `update_purchase`'s `tx_id`-keyed loop, which only edits existing rows.
+  Row markup extracted into a shared `purchase_edit_row` macro. Replaces
+  the old workaround of registering the card under a new order and
+  hand-retyping the Order ID to merge.
+- **#158** (issue #156): New Order cart has an opt-in "Show cards without
+  an order" toggle backed by `GET /transactions/purchase/browse-unordered`
+  (cards with no linked purchase `Transaction` at all, capped at 50 with the
+  full count reported). Not scoped to the `created_at IS NULL` filter from
+  #153/#154, since "no order" and "no known date" are different questions.
+- **#161**: Legacy import table now hides cards that already have a
+  purchase transaction (its job is "still needs a date and an order").
+  Edit Order's **Agreed total** defaults to `shipping + sum(priced cards)`
+  when nothing has been saved yet; once a value is saved it is sticky and
+  never silently recalculated (confirmed with the user as deliberate). New
+  client-side "Distribute remaining across unpriced cards" button fills
+  `Agreed total - Shipping - sum(priced cards)` evenly into `price = 0`
+  rows, refusing (no changes) if all rows are priced or the remainder is
+  negative; nothing persists until "Save changes". Also carried the Order
+  #17 HANDOFF entry (see above). This PR also added a singular
+  `POST /transactions/purchase/add-existing-card` route, superseded by #166.
+- **#166**: Legacy import table gets per-row checkboxes plus a select-all
+  header checkbox and an order picker dropdown (existing orders from
+  `purchase_groups`), with one "+ Add checked cards to order" button.
+  Route renamed `add-existing-card` -> `add-existing-cards` (takes a list of
+  card IDs); rejects with no changes if nothing is checked or the order
+  does not exist. Each added card lands as today / purchase / price 0.
+- **#172**: When a New Order cart is open, the Legacy import bulk control
+  switches to "+ Add checked cards to open order", appending straight into
+  the cart via the existing `addCardToCart()`; with no cart open it shows
+  the #166 order picker. Toggled by `updateLegacyOrderControls()` (initial
+  load, after "+ New Order" opens a cart, after Cancel). The hidden order
+  `<select>` is also `disabled` while hidden so a hidden `required` field
+  cannot silently block submit. Template + inline JS only, no backend change.
+
+Other:
+
+- **#160** (issue #159): Release Notes (`/releases`) and the Sync Log
+  (`/import`) merged into one "Activity Log" page: Sync Log section first,
+  Release Notes second (latest 15 shown, older behind a `<details>`).
+  `GET /import` now 308-redirects to `/releases#sync-log`, preserving
+  `lsort`/`ldir`. Sync Log column sorts swap just that section via htmx so
+  sorting does not jump above Release Notes; `#sync-log` has
+  `tabindex="-1"` and takes focus on hash load. Nav shows a single
+  "Activity Log" link. Also fixed a stale README paragraph about the
+  Dropbox file-picker UI removed per #87 (its routes still exist but
+  nothing links to them; sync only happens via the daily cron or a direct
+  `GET /cron/dropbox-sync?secret=` call).
+- **#165** (issue #164): `chart.umd.js` and `tcg-charts.js` are no longer
+  loaded render-blocking on every page; a `chart_scripts` block in
+  `base.html` is filled in only by `dashboard.html` and `transactions.html`
+  (the only templates that call the `chart_card` macro). htmx's `<script>`
+  gets `defer`. **Gotcha for future work:** any new template that calls
+  `chart_card` must also fill `chart_scripts`, or its charts will silently
+  not render.
+- **#167** (issue #163): `economic_summary` and `net_invested_by_card`
+  (`queries.py`) accept an optional pre-loaded `txs` list; `dashboard()` and
+  `/inventory` now load `Transaction` once per request and thread it
+  through. The issue's suggestion to skip the `net_invested_by_card` load
+  when the sort is not a value sort was deliberately **not** done: the
+  Net paid / Gain columns render on every row regardless of sort, so gating
+  it would blank them. The dashboard.html htmx lazy-load follow-up and the
+  Vercel `DATABASE_URL` pooler-port check from that issue are still not
+  done.
+- **#168** (issue #162): `queries.real_value_history` now does the
+  per-date/per-source `GROUP BY` + `SUM` in SQL instead of loading every
+  `CardSnapshot` row into Python on each Dashboard load. Output was verified
+  byte-identical to the old implementation across all three metrics,
+  including its existing quirk that the `unique` metric does not gate on
+  `qty > 0` (unlike `Card.unique_value`). This makes reads cheap; it does
+  **not** reduce stored rows.
+
+## Open items raised but intentionally not built
+
+- **#169 (CardSnapshot downsampling/retention)** was filed as a fast-follow
+  to #168 and is a deliberate deferral needing a design decision before
+  anyone builds it: `card_snapshots` still grows by up to two rows per
+  card per day (cron + manual) indefinitely. Open questions on the issue:
+  retention window vs. downsampling; where the collapse happens (periodic
+  job vs. on read); how cron/manual sources and per-card granularity
+  (`card_count`) survive a rollup; and what resolution boundary the chart
+  should use, which wants UX input. Must stay additive/non-destructive by
+  default per repo convention.
+- Client-side-only behavior in #161 (Distribute remaining), #166 (select
+  all / submit guard) and #172 (cart/picker toggle) has no automated
+  coverage (no JS execution in pytest); each PR asked for a manual browser
+  check that is not recorded as done.
+- Test suite state: 5 `test_inventory_*` tests in `tests/test_app.py` fail
+  on `main` in this environment (SQLite `nulls_last`/Date-type
+  incompatibility), unrelated to any PR above and reported as pre-existing
+  in every one of them.
