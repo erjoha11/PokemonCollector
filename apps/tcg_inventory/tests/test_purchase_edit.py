@@ -44,6 +44,29 @@ def test_purchase_edit_form_renders_all_rows_of_the_order(client):
     assert "Charizard" in response.text
 
 
+def test_purchase_edit_agreed_total_defaults_to_shipping_plus_priced_cards(client):
+    _seed_two_card_order(client, purchase_id=5)
+    client.post("/transactions/purchase/5/total", data={"purchase_shipping": "5"})
+
+    response = client.get("/transactions/purchase/5/edit")
+    assert response.status_code == 200
+    # No agreed total saved yet -- defaults to shipping (5) + Pikachu (10) +
+    # Charizard (20) = 35, not blank/zero, so the field starts from a real
+    # number rather than requiring the user to do the math themselves.
+    assert 'name="purchase_total" id="purchase_total"\n             value="35' in response.text
+
+
+def test_purchase_edit_agreed_total_keeps_a_saved_value_instead_of_recalculating(client):
+    _seed_two_card_order(client, purchase_id=5)
+    client.post("/transactions/purchase/5/total", data={"purchase_total": "999", "purchase_shipping": "5"})
+
+    response = client.get("/transactions/purchase/5/edit")
+    assert response.status_code == 200
+    # A saved agreed total is a real value the user typed -- it stays
+    # exactly as saved, never silently recalculated back to the sum.
+    assert 'value="999.0"' in response.text
+
+
 def test_purchase_edit_updates_multiple_rows_in_one_atomic_commit(client):
     import db as db_module
     from models import Transaction

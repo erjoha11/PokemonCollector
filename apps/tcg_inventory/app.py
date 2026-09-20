@@ -1275,6 +1275,11 @@ def _transactions_context(
     known_count = len(known_cards)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
 
+    # Legacy import is for cards that still need an order -- once one
+    # exists, the row has nothing left to do here; it stays visible on
+    # Recently Added / in History instead.
+    unknown_cards = [c for c in unknown_cards if c.id not in purchase_prices_by_card]
+
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
     known_cards = _sorted_rows(known_cards, gsort, gdir, card_keys)
     unknown_cards = _sorted_rows(unknown_cards, usort, udir, _card_field_sort_keys())
@@ -1361,6 +1366,20 @@ def _next_purchase_id(db: Session) -> int:
     return (db.query(func.max(Transaction.purchase_id)).scalar() or 0) + 1
 
 
+def _create_default_purchase_transaction(db: Session, purchase_id: int, card_id: int) -> Transaction:
+    """One freshly-created Transaction against an already-committed order,
+    defaulted to today/purchase/0 so it's immediately editable rather than
+    blocking on a fully-filled-in form -- shared by the Edit Order page's
+    own add-card (issue #155) and the Legacy import table's "add to
+    existing order" control.
+    """
+    tx = Transaction(card_id=card_id, type="purchase", date=dt.date.today(), price=0, purchase_id=purchase_id)
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+    return tx
+
+
 @app.get("/transactions/purchase/start")
 def purchase_cart_start(request: Request, type: str = "purchase"):
     db = get_db_session()
@@ -1433,6 +1452,30 @@ def purchase_cart_add_row(request: Request, card_id: int):
         if card is None:
             return HTMLResponse("")
         return templates.TemplateResponse(request, "partials/purchase_cart_row.html", {"card": card})
+    finally:
+        db.close()
+
+
+@app.post("/transactions/purchase/add-existing-card")
+def add_card_to_existing_order(request: Request, card_id: int = Form(...), purchase_id: int = Form(...)):
+    """Adds a card directly to an already-committed order -- the Legacy
+    import table's own "add to order" control, for cards that were never
+    picked up by a New Order cart in the first place. Plain form POST +
+    redirect (not htmx) since this table can list hundreds of rows; reuses
+    the same default-row creation as the Edit Order page's add-card
+    (issue #155).
+    """
+    db = get_db_session()
+    try:
+        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        order_exists = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).first() is not None
+        if card is None or not order_exists:
+            error = "Card not found." if card is None else f"Order #{purchase_id} doesn't exist yet -- pick an existing Order ID from History above."
+            return templates.TemplateResponse(
+                request, "transactions.html", _transactions_context(db, request, "date", "desc", error=error)
+            )
+        _create_default_purchase_transaction(db, purchase_id, card.id)
+        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
     finally:
         db.close()
 
@@ -1533,6 +1576,15 @@ def purchase_edit_form(request: Request, purchase_id: int):
             return RedirectResponse("/transactions", status_code=303)
         purchase_total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None)
+        # No agreed total saved yet -- default the field to shipping + the
+        # cards already priced (price == 0 means "not priced yet", the same
+        # convention the Legacy import table's Order column uses), so the
+        # user starts from a real number rather than blank/zero. Once a
+        # total is actually saved, it's a real value the user typed and
+        # always wins here -- never silently recalculated out from under
+        # them.
+        if purchase_total is None:
+            purchase_total = round(sum(t.price for t in txs if t.price) + (purchase_shipping or 0), 2)
         return templates.TemplateResponse(
             request,
             "purchase_edit.html",
@@ -1620,10 +1672,7 @@ def purchase_edit_add_card(request: Request, purchase_id: int, card_id: int):
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
             return HTMLResponse("")
-        tx = Transaction(card_id=card.id, type="purchase", date=dt.date.today(), price=0, purchase_id=purchase_id)
-        db.add(tx)
-        db.commit()
-        db.refresh(tx)
+        tx = _create_default_purchase_transaction(db, purchase_id, card.id)
         return templates.TemplateResponse(
             request,
             "partials/purchase_edit_new_row.html",

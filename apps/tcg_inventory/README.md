@@ -43,13 +43,28 @@ run).
   by reassigning Order ID — all edits in a group commit atomically, and
   moving a row out of an order clears that row's agreed total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). A single ungrouped
+  total/shipping afterward). Agreed total defaults to shipping + the
+  cards already priced (price 0 = not priced yet) when nothing's been
+  saved yet, but a saved value is a real number the user typed and is
+  never silently recalculated back to the sum. A "Distribute remaining
+  across unpriced cards" button (client-side, same pattern as the New
+  Order cart's "Distribute evenly") fills `Agreed total − Shipping −
+  Σ(already-priced cards)` evenly into the still-unpriced rows — useful
+  for a lot where a few cards' values are known and the rest should
+  absorb the remainder; rejects if every card is already priced or the
+  result would be negative. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked
   purchase transaction at all (both "Recently Added" and "Legacy import"
   cards, capped at 50 with a total count) instead of requiring a typed
   query, for picking cards to price straight into the order being built.
+  The collapsed "Legacy import" table itself only lists cards that still
+  have neither a date nor an order — a card drops off it the moment either
+  gets set — and its own per-row control (an Order ID number field +
+  button) adds the card directly to an already-existing order without
+  needing a cart open first (`POST /transactions/purchase/add-existing-card`,
+  same default-row creation as the Edit Order page's add-card above).
 - **Sell on finn.no** (`/sales`) — check cards on Inventory (a new leading
   checkbox column, selection tracked client-side and cleared on refresh —
   see `static/sale-list.js`), click "Generate finn.no ad", then set
