@@ -552,8 +552,11 @@ def inventory(
             else:
                 sort_col = SORT_COLUMNS.get(sort, Card.name)
                 # Keep cards without a price at the bottom in either direction.
-                sort_col = sort_col.nulls_last()
+                # Direction first, THEN nulls_last(): the reverse order renders
+                # "<col> NULLS LAST ASC", a syntax error on both SQLite and
+                # Postgres (which expects "<col> ASC NULLS LAST"). See #176.
                 sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
+                sort_col = sort_col.nulls_last()
                 order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
 
         cards = query.order_by(*order_cols).all()
