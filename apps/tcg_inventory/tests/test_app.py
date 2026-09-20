@@ -1,3 +1,4 @@
+import datetime as dt
 import re
 
 from conftest import make_csv, seed_import
@@ -1437,7 +1438,9 @@ def test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets(client)
     # neither the importer nor _backfill_sets() has a (series, set) pair to
     # link it to, unlike NoRankCard below, which does get a
     # (linked-but-unranked) Set row.
-    db.add(Card(card_id="nolink1", variant=None, name="NoLinkCard", series=None, set=None, number="1/1"))
+    # qty=1: Card.qty defaults to 0, and qty == 0 cards are hidden from the
+    # default /inventory view (issue #132), so it wouldn't render otherwise.
+    db.add(Card(card_id="nolink1", variant=None, name="NoLinkCard", series=None, set=None, number="1/1", qty=1))
     db.commit()
     db.close()
     # NoRankCard's (Original, Jungle) pair still gets its own Set row from
@@ -1696,7 +1699,7 @@ def test_inventory_shows_net_paid_and_per_print_gain(client):
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
     db = db_module.SessionLocal()
     priced = db.query(Card).filter(Card.card_id == "priced").one()
-    db.add(Transaction(card_id=priced.id, type="purchase", date="2026-01-01", price=10, fees=2))
+    db.add(Transaction(card_id=priced.id, type="purchase", date=dt.date(2026, 1, 1), price=10, fees=2))
     db.commit()
     db.close()
 
@@ -1706,7 +1709,7 @@ def test_inventory_shows_net_paid_and_per_print_gain(client):
     assert "Gain" in response.text
     assert "12 kr" in rows
     assert "13 kr" in rows
-    assert rows.count("> -</td>") >= 2
+    assert rows.count(">-</td>") >= 2  # Net paid + Gain for the unpurchased card
 
 
 def test_inventory_value_sorts_treat_missing_cost_as_less_than_zero(client):
@@ -1723,7 +1726,7 @@ def test_inventory_value_sorts_treat_missing_cost_as_less_than_zero(client):
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
     db = db_module.SessionLocal()
     priced = db.query(Card).filter(Card.card_id == "priced").one()
-    db.add(Transaction(card_id=priced.id, type="purchase", date="2026-01-01", price=10))
+    db.add(Transaction(card_id=priced.id, type="purchase", date=dt.date(2026, 1, 1), price=10))
     db.commit()
     db.close()
 

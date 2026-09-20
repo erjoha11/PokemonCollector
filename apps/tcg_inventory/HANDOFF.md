@@ -1059,3 +1059,25 @@ Other:
   on `main` in this environment (SQLite `nulls_last`/Date-type
   incompatibility), unrelated to any PR above and reported as pre-existing
   in every one of them.
+  **Resolved 2026-09-20 in #176 (see the entry at the end of this file);
+  the suite is now fully green.**
+
+# Handoff notes — 2026-09-20 session (issue #176, 5 failing /inventory tests)
+
+**Production-affecting bug, fixed in code (no DB change).** `GET /inventory`
+with any non-default sort (`sort=` anything other than `release`, and not
+`net_invested`/`gain_loss`) built `ORDER BY <col> NULLS LAST ASC`
+(`app.py`: `.nulls_last()` was applied before `.asc()`/`.desc()`, introduced
+in 6a83553 on 2026-09-18). That is invalid SQL on SQLite **and Postgres**
+(`ASC NULLS LAST` is the valid order), so on Supabase prod those sort links
+returned a 500 from 2026-09-18 until this fix is deployed. Not an
+environment/version issue. The default `release` sort and the Net paid/Gain
+sorts (in-Python) were unaffected.
+
+The other three failures were wrong tests, not app regressions: two inserted
+`Transaction(date="2026-01-01")` as a string (SQLite's Date type requires a
+`date`); the `NoLinkCard` fixture relied on `Card.qty`'s default of 0, which
+the #132 default filter hides from `/inventory`; and the net-paid test
+searched for `"> -</td>"` when the template renders `<td class="num">-</td>`.
+No assertions were loosened. No CI exists yet, which is why these went
+unnoticed; a pytest workflow is a separate, not-yet-approved follow-up.
