@@ -59,6 +59,15 @@ run).
   purchase transaction at all (both "Recently Added" and "Legacy import"
   cards, capped at 50 with a total count) instead of requiring a typed
   query, for picking cards to price straight into the order being built.
+  Every free-text card-search box in the app (this one, Edit Order's
+  add-card and per-row relink, Listing edit's card search) guards against
+  Enter submitting the enclosing form instead of just searching — they all
+  share a form with a "Register"/"Save changes" submit button and nothing
+  before them to catch it otherwise. Every "+ Add to order" button that
+  targets the open cart (`#cart-body`) — Recently Added's row button, the
+  cart's own search results, its "Show cards without an order" results —
+  alerts if no cart is actually open yet instead of silently doing nothing
+  (`addCardToCart()` in `transactions.html`).
   The collapsed "Legacy import" table itself only lists cards that still
   have neither a date nor an order — a card drops off it the moment either
   gets set — and has its own bulk control: a checkbox per row (with a

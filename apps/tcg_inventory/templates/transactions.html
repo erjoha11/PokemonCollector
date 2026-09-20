@@ -67,8 +67,7 @@
           <td>{{ card.card_id }}</td>
           <td class="num">{{ registered_prices.get(card.id, '') }}</td>
           <td>
-            <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}"
-                    hx-target="#cart-body" hx-swap="beforeend"
+            <button type="button" onclick="addCardToCart({{ card.id }})"
                     title="Open a new order above first (+ New Order) — this button then adds the card into that order.">
               + Add to order
             </button>
@@ -209,6 +208,21 @@
 // only nag when there's actually something to lose: at least one card row
 // added, or a purchase_total/purchase_shipping value typed in. An empty,
 // just-opened cart (or no cart open at all) proceeds with no prompt.
+// Shared by every "+ Add to order" button that targets #cart-body (Recently
+// Added's row button, the New Order cart's own search results, and its
+// "Show cards without an order" results) -- that target only exists once a
+// New Order cart is actually open, so clicking one of these buttons before
+// that happened used to silently do nothing (a known, previously-flagged
+// gap -- see HANDOFF.md). Now it says so instead of staying silent.
+function addCardToCart(cardId) {
+  var cartBody = document.getElementById('cart-body');
+  if (!cartBody) {
+    alert('Open a New Order first (the "+ New Order" button above), then add cards to it.');
+    return;
+  }
+  htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend' });
+}
+
 function confirmDiscardCart() {
   var cartBody = document.getElementById('cart-body');
   var hasRows = !!cartBody && cartBody.children.length > 0;

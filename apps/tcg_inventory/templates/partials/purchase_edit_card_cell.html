@@ -8,7 +8,8 @@
     <div class="autocomplete" style="max-width: 320px;">
       <input type="text" placeholder="Search for replacement card..." autocomplete="off"
              hx-get="/transactions/purchase/{{ purchase_id }}/edit/row/{{ tx_id }}/relink-search"
-             hx-trigger="keyup changed delay:250ms" hx-target="#relink-results-{{ tx_id }}" name="q">
+             hx-trigger="keyup changed delay:250ms" hx-target="#relink-results-{{ tx_id }}"
+             onkeydown="if (event.key === 'Enter') event.preventDefault();" name="q">
       <div id="relink-results-{{ tx_id }}"></div>
     </div>
   </details>

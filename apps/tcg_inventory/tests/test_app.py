@@ -801,6 +801,28 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
     assert '<option value="sale" selected>' in response.text
 
 
+def test_purchase_cart_search_box_guards_against_enter_submitting_the_form(client):
+    # The search input lives inside the same <form> as the "Register" submit
+    # button, with no other submit button before it in DOM order -- without
+    # a guard, pressing Enter while typing a search query would submit the
+    # (likely still-empty) order form instead of just searching.
+    response = client.get("/transactions/purchase/start")
+    assert response.status_code == 200
+    assert "onkeydown=\"if (event.key === 'Enter') event.preventDefault();\"" in response.text
+
+
+def test_recently_added_add_to_order_button_warns_instead_of_silently_doing_nothing(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/transactions")
+    assert response.status_code == 200
+    # Was hx-get targeting #cart-body directly (silently no-op'd if no cart
+    # was open); now routes through addCardToCart(), which alerts instead.
+    assert "addCardToCart(" in response.text
+    assert 'hx-get="/transactions/purchase/add-row?card_id=' not in response.text
+
+
 def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transactions(client):
     import db as db_module
     from models import Card, Transaction
@@ -817,7 +839,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
 
     search = client.get("/transactions/purchase/search?q=charizard")
     assert "Charizard ex" in search.text
-    assert f"add-row?card_id={ids['a']}" in search.text
+    assert f"addCardToCart({ids['a']})" in search.text
 
     add_row = client.get(f"/transactions/purchase/add-row?card_id={ids['a']}")
     assert add_row.status_code == 200

@@ -49,7 +49,7 @@
   <div class="autocomplete" style="max-width: 320px; margin-bottom: 1rem;">
     <input type="text" placeholder="Search to add a card..." autocomplete="off"
            hx-get="/listings/{{ listing_id }}/edit/card-search" hx-trigger="keyup changed delay:250ms"
-           hx-target="#card-search-results" name="q">
+           hx-target="#card-search-results" onkeydown="if (event.key === 'Enter') event.preventDefault();" name="q">
     <div id="card-search-results"></div>
   </div>
 

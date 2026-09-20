@@ -123,9 +123,10 @@ plus this file and the conversation transcript.
   user as the single biggest real gap; they said current scope is fine and
   declined to prioritize it, but it'll very likely come up again.~~
   **Addressed 2026-09-17** (issue #109) — see the dated entry below.
-- The "+ Legg til i ordre" silent-no-op-when-no-cart-is-open issue (see #86
-  above) — **addressed below** (renamed to "+ Add to order", behavior
-  itself unchanged).
+- ~~The "+ Legg til i ordre" silent-no-op-when-no-cart-is-open issue (see
+  #86 above) — **addressed below** (renamed to "+ Add to order", behavior
+  itself unchanged).~~ **Actually fixed 2026-09-20** — see the dated entry
+  below (`addCardToCart()` now alerts instead of silently doing nothing).
 - The "Pris" / "Registrert pris" side-by-side naming ambiguity (see #85
   above) — **addressed below**, renamed to "Market price" / "Paid price".
 
@@ -851,3 +852,43 @@ There's no order-level date column (`Transaction.date` is per-row, per
 `models.py`) -- "the order's date" here just means the date the earliest,
 originally-submitted rows already carried, applied to every row sharing
 this `purchase_id`.
+
+# Handoff notes — 2026-09-20 session (card-search reliability fixes)
+
+Reported directly by the user: "a few issues trying to add new cards to a
+new order." Investigation found two real, previously-unnoticed bugs rather
+than one:
+
+1. **Enter key in a card-search box submitted the whole form instead of
+   searching.** Every free-text card-search input in the app (New Order
+   cart, Edit Order's add-card, Edit Order's per-row relink, Listing edit's
+   card-search) lives inside a `<form>` alongside a "Register"/"Save
+   changes" submit button, with nothing before it to catch Enter. Standard
+   HTML behavior: pressing Enter in any text input clicks the form's first
+   submit button. For the New Order cart specifically, that meant typing a
+   card name and hitting Enter (a very natural search habit) submitted the
+   in-progress order instead -- with no cards added yet, so `create_purchase`
+   rejected it and the cart panel reset, which reads exactly like "I
+   searched and nothing happened." Fixed with a one-line
+   `onkeydown="if (event.key === 'Enter') event.preventDefault();"` guard on
+   all four inputs -- htmx's own `keyup` trigger still fires normally,
+   Enter just no longer escalates to a form submit.
+2. **"+ Add to order" silently did nothing if no cart was open** -- a
+   long-known, previously-flagged-but-never-fixed limitation (see #86 in
+   this file's 2026-09-14 entry): the button's `hx-target="#cart-body"`
+   doesn't exist until a New Order cart is actually open, so clicking it
+   beforehand was a true no-op with only a hover tooltip to explain why.
+   Replaced the three buttons that target `#cart-body` (Recently Added's
+   row button, the cart's own search results, its "Show cards without an
+   order" results) with a shared `addCardToCart(cardId)` JS function that
+   checks for `#cart-body` first and alerts ("Open a New Order first...")
+   instead of doing nothing when it's missing; otherwise issues the same
+   `htmx.ajax(...)` request the old `hx-get` did.
+
+Both are template + inline-JS-only changes, no backend/route changes, no
+schema changes. New tests assert the guard attribute is present and that
+the old bare `hx-get="/transactions/purchase/add-row..."` markup is gone
+from Recently Added's button (replaced by `addCardToCart(...)`); the
+alert/guard behavior itself is untestable via the pytest test client (no
+JS execution) -- same caveat prior sessions have logged for other
+client-side-only fixes, worth a real-browser check before/after deploy.
