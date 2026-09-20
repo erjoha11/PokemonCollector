@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 {% block title %}Dashboard – TCG Inventory{% endblock %}
+{% block chart_scripts %}
+<script src="/static/chart.umd.js"></script>
+<script src="/static/tcg-charts.js"></script>
+{% endblock %}
 
 {% from "partials/macros.html" import sort_th with context %}
 {% from "partials/macros.html" import info %}

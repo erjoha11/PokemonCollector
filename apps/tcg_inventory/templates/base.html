@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}TCG Inventory{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
-  <script src="/static/htmx.min.js"></script>
-  <script src="/static/chart.umd.js"></script>
-  <script src="/static/tcg-charts.js"></script>
+  <script src="/static/htmx.min.js" defer></script>
+  {# Chart.js (204KB) + its renderer are only needed by pages that actually
+     render a chart_card (Dashboard, Transactions) -- see macros.html's
+     chart_card. Every other route (login, wiki, listings, sales, releases,
+     inventory) never fetches/parses them. See issue #164. #}
+  {% block chart_scripts %}{% endblock %}
 </head>
 <body>
   <nav>
