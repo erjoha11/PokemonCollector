@@ -263,10 +263,16 @@ def dashboard(
         cards = queries.all_cards_with_collections(db)
         alias_map = queries.pokemon_alias_map(db)
 
+        # Same idea for Transaction: economic_summary and net_invested_by_card
+        # each used to independently run their own `Transaction.query.all()`
+        # -- a full re-scan of the table twice per request (see #163) -- so
+        # it's loaded once here and threaded through both.
+        txs = db.query(Transaction).all()
+
         headline = queries.headline_summary(db, cards)
         collection_breakdown = queries.collection_bulk_breakdown(db, cards)
         series_breakdown = queries.by_series_breakdown(db, cards)
-        invested_by_card = queries.net_invested_by_card(db)
+        invested_by_card = queries.net_invested_by_card(db, txs)
         queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
         for series_bucket in series_breakdown:
@@ -329,7 +335,7 @@ def dashboard(
         # collection highlight ranks by unique_value (not total_value) so
         # duplicates can't inflate which collection looks "most valuable".
         top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
-        economic = queries.economic_summary(db)
+        economic = queries.economic_summary(db, txs)
 
         return templates.TemplateResponse(
             request,
@@ -551,7 +557,14 @@ def inventory(
                 order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
 
         cards = query.order_by(*order_cols).all()
-        invested_by_card = queries.net_invested_by_card(db)
+        # Net paid/Gain (see partials/inventory_table.html) are always shown
+        # per row regardless of the active sort, so the Transaction table
+        # load itself can't be skipped -- but it was previously re-run a
+        # second (and, via economic_summary, third) time later in this same
+        # request purely to feed the KPI module below. Loaded once here and
+        # reused for both instead (see #163).
+        txs = db.query(Transaction).all()
+        invested_by_card = queries.net_invested_by_card(db, txs)
         if sort in INVENTORY_VALUE_SORTS:
             def value_sort_key(card):
                 invested = invested_by_card.get(card.id)
@@ -597,7 +610,9 @@ def inventory(
             # filter keystroke/select change.
             collection_breakdown = queries.collection_bulk_breakdown(db)
             series_breakdown = queries.by_series_breakdown(db)
-            invested_by_card = queries.net_invested_by_card(db)
+            # Reuses the invested_by_card/txs already loaded above instead of
+            # re-scanning Transaction twice more (net_invested_by_card +
+            # economic_summary each used to run their own independent query).
             queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
             queries.assign_bucket_investment(series_breakdown, invested_by_card)
             for series_bucket in series_breakdown:
@@ -606,7 +621,7 @@ def inventory(
             context.update(
                 {
                     "headline": queries.headline_summary(db),
-                    "net_invested": queries.economic_summary(db)["net_invested"],
+                    "net_invested": queries.economic_summary(db, txs)["net_invested"],
                     "top_cards": queries.top_valuable_cards(db, limit=50),
                     "top_collection": top_collection,
                     "top_series": top_series,
