@@ -811,6 +811,16 @@ def test_purchase_cart_search_box_guards_against_enter_submitting_the_form(clien
     assert "onkeydown=\"if (event.key === 'Enter') event.preventDefault();\"" in response.text
 
 
+def test_purchase_cart_register_guards_against_silent_native_validation_failure(client):
+    # `price` (and `date`) are `required` on the cart form -- a blank price
+    # blocks the browser's native validation before any request reaches the
+    # server, so no server-rendered error can ever show for that case. The
+    # form needs its own client-side guard instead.
+    response = client.get("/transactions/purchase/start")
+    assert response.status_code == 200
+    assert 'onsubmit="return confirmRegisterOrder(this)"' in response.text
+
+
 def test_recently_added_add_to_order_button_warns_instead_of_silently_doing_nothing(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])

@@ -892,3 +892,24 @@ from Recently Added's button (replaced by `addCardToCart(...)`); the
 alert/guard behavior itself is untestable via the pytest test client (no
 JS execution) -- same caveat prior sessions have logged for other
 client-side-only fixes, worth a real-browser check before/after deploy.
+
+## Follow-up in the same session: "Register does nothing, not even an error"
+
+Reported right after the fixes above shipped. Root cause: the cart form's
+`price` input (`partials/purchase_cart_row.html`) and `date` input are both
+`required`, so a blank price blocks the browser's *native* HTML5 validation
+before the request ever reaches the server -- no server-rendered error can
+show for that case, because no request was sent at all. That's exactly
+"does nothing, not even an error": the only feedback was a small, easy-to-
+miss native validation tooltip, not a real error message. Confirmed the
+backend itself was fine the whole time (`create_purchase`'s own
+`test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transactions`
+test, which drives the full POST -> redirect -> re-render chain via the
+test client bypassing the browser entirely, still passed).
+
+Fix: `onsubmit="return confirmRegisterOrder(this)"` on the cart form --
+checks for at least one card row and that every price field is filled,
+alerting with a specific message and focusing the empty field instead of
+leaving it to native validation's easy-to-miss tooltip. Same client-side-
+only caveat as above: untestable via pytest, only that the attribute
+itself renders (asserted in a new test).

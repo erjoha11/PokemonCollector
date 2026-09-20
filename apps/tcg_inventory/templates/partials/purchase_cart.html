@@ -1,7 +1,8 @@
 <div class="card" style="margin-bottom: 1.5rem;">
   <h2>New Order <span class="muted">(Order ID {{ purchase_id }})</span></h2>
   <form method="post" action="/transactions/purchase"
-        hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">
+        hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
+        onsubmit="return confirmRegisterOrder(this)">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
