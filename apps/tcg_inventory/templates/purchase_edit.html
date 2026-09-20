@@ -8,9 +8,12 @@
   merge it into one, or split it into a new one — reassigning Order ID is the one primitive behind all three.
 </p>
 
-<form method="post" action="/transactions/purchase/{{ purchase_id }}/edit">
+<form method="post" action="/transactions/purchase/{{ purchase_id }}/edit"
+      hx-post="/transactions/purchase/{{ purchase_id }}/edit"
+      hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
+      hx-indicator="#save-order-indicator">
   <div class="table-scroll">
-    <table class="tx-table" style="margin-bottom: 1rem;">
+    <table class="tx-table mb-1">
       <thead>
         <tr>
           <th>Card</th>
@@ -31,24 +34,26 @@
     </table>
   </div>
 
-  <div class="autocomplete" style="max-width: 420px; margin-bottom: 1rem;">
+  <div class="autocomplete tx-search mb-1">
     <input type="text" placeholder="Search for a card to add to this order..." autocomplete="off"
            hx-get="/transactions/purchase/{{ purchase_id }}/edit/add-card-search"
            hx-trigger="keyup changed delay:250ms" hx-target="#add-card-results"
+           hx-indicator="#add-card-indicator"
            onkeydown="if (event.key === 'Enter') event.preventDefault();" name="q">
+    <span id="add-card-indicator" class="tx-search-spinner htmx-indicator">Searching…</span>
     <div id="add-card-results"></div>
   </div>
 
-  <div class="filters" style="margin-bottom: 0.5rem;">
+  <div class="filters mb-05">
     <label>Agreed total for rows staying in this order
       <input type="number" step="0.01" name="purchase_total" id="purchase_total"
-             value="{{ purchase_total if purchase_total is not none else '' }}" style="width: 160px;">
+             value="{{ purchase_total if purchase_total is not none else '' }}" class="tx-input-lg">
     </label>
     <label>Shipping
       <input type="number" step="0.01" name="purchase_shipping" id="purchase_shipping"
-             value="{{ purchase_shipping if purchase_shipping is not none else '' }}" style="width: 130px;">
+             value="{{ purchase_shipping if purchase_shipping is not none else '' }}" class="tx-input-md">
     </label>
-    <button type="button" onclick="distributeAgreedTotal()"
+    <button type="button" class="secondary" onclick="distributeAgreedTotal()"
             title="Splits Agreed total − Shipping − prices already set on other cards evenly across the cards in this order that still have no price.">
       Distribute remaining across unpriced cards
     </button>
@@ -65,7 +70,9 @@
   </p>
 
   <button type="submit">Save changes</button>
-  <a href="/transactions?open_order={{ purchase_id }}"><button type="button">Cancel</button></a>
+  <span id="save-order-indicator" class="tx-search-spinner htmx-indicator">Saving…</span>
+  <button type="button" class="secondary" hx-get="/transactions?open_order={{ purchase_id }}"
+          hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Cancel</button>
 </form>
 
 <script>

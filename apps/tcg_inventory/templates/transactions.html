@@ -15,10 +15,11 @@
 
 {% include "partials/kpi_module.html" %}
 
-<div class="filters" style="margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+<div class="filters tx-header-row mb-1">
   <span class="muted">Search for each card that was part of the deal and add them one by one — they automatically share the same Order ID.</span>
   <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"
-          hx-trigger="click[confirmDiscardCart()]">+ New Order</button>
+          hx-trigger="click[confirmDiscardCart()]" hx-indicator="#new-order-indicator">+ New Order</button>
+  <span id="new-order-indicator" class="tx-search-spinner htmx-indicator">Loading…</span>
 </div>
 <div id="purchase-cart-container"></div>
 
@@ -33,14 +34,14 @@
   <div id="tx-charts"><p class="muted">Loading charts…</p></div>
 </details>
 
-<h2 style="margin-top: 2rem;">Recently Added {{ info("Market price = Dex's market price. Paid price = what you actually recorded paying for the card (can differ from the market price).") }}</h2>
+<h2 class="mt-2">Recently Added {{ info("Market price = Dex's market price. Paid price = what you actually recorded paying for the card (can differ from the market price).") }}</h2>
 <p class="muted">
   Cards with a known "added" date: {{ known_count }}. These are the actual new cards to price.
   The date is set automatically the first time a card is imported.
 </p>
 
-<div class="card" style="margin-bottom: 1.25rem;">
-  <div class="inventory-table-wrap" style="max-height: 400px;">
+<div class="card mb-15">
+  <div class="inventory-table-wrap compact">
     <table class="inventory-table">
       <thead>
         <tr>
@@ -81,7 +82,7 @@
   </div>
 </div>
 
-<h2 style="margin-top: 2rem;">History {{ info("Each row is one recorded purchase or sale transaction. Price is what you actually entered for the transaction — not Dex's price. Cards bought together (same Order ID, e.g. a lot) are grouped into a collapsible group with a total. Set an agreed total and shipping on the group to see the diff against what you've actually recorded cards for — useful for tracking down common cards you haven't priced individually yet.") }}</h2>
+<h2 class="mt-2">History {{ info("Each row is one recorded purchase or sale transaction. Price is what you actually entered for the transaction — not Dex's price. Cards bought together (same Order ID, e.g. a lot) are grouped into a collapsible group with a total. Set an agreed total and shipping on the group to see the diff against what you've actually recorded cards for — useful for tracking down common cards you haven't priced individually yet.") }}</h2>
 
 {% macro tx_table(rows, empty_message, sortable=True) %}
 <div class="table-scroll">
@@ -117,7 +118,7 @@
 {% endmacro %}
 
 {% for group in purchase_groups %}
-<details class="collapsible" id="order-{{ group.purchase_id }}" style="margin-bottom: 0.75rem;"{% if open_order == group.purchase_id %} open{% endif %}>
+<details class="collapsible mb-075" id="order-{{ group.purchase_id }}"{% if open_order == group.purchase_id %} open{% endif %}>
   <summary class="tx-order-summary">
     <span class="tx-order-id">Order #{{ group.purchase_id }}</span>
     <span class="tx-order-stat">{{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}</span>
@@ -128,24 +129,27 @@
     {% if group.diff is not none and group.diff | round(2) != 0 %}<span class="tx-order-stat tx-diff-flag">Remaining {{ group.diff | kr }}</span>{% endif %}
     {% if group.summary_platform %}<span class="tx-platform-badge">{{ group.summary_platform }}</span>{% endif %}
   </summary>
-  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters" style="margin-bottom: 0.6rem;"
+  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters mb-05"
         hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
-        hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML">
+        hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML"
+        hx-indicator="#order-total-indicator-{{ group.purchase_id }}">
     <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total"
-           value="{{ group.purchase_total if group.purchase_total is not none else '' }}" style="width: 160px;">
+           value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg">
     <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
-           value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" style="width: 130px;">
+           value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md">
     <input type="text" name="platform" placeholder="Platform"
-           value="{{ group.platform if group.platform is not none else '' }}" style="width: 130px;">
+           value="{{ group.platform if group.platform is not none else '' }}" class="tx-input-md">
     <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
-    <a href="/transactions/purchase/{{ group.purchase_id }}/edit"><button type="button">Edit order</button></a>
+    <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
+    <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
+            hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
   </form>
   {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
 </details>
 {% endfor %}
 
 {% if purchase_groups %}
-<h3 style="margin-top: 1.5rem;">Individually registered <span class="muted">(without an Order ID)</span></h3>
+<h3 class="mt-15">Individually registered <span class="muted">(without an Order ID)</span></h3>
 {% endif %}
 {{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
 
@@ -158,9 +162,10 @@
   </p>
   <form method="post" action="/transactions/purchase/add-existing-cards"
         onsubmit="return confirmLegacyAddToOrder(this)">
-    <div class="filters" style="margin-bottom: 0.5rem;">
+    <div class="filters mb-05">
       <span id="legacy-open-order-controls" style="display: none;">
         <button type="button" onclick="addCheckedLegacyCardsToOpenOrder()">+ Add checked cards to open order</button>
+        <span class="muted">Using the currently open new order.</span>
       </span>
       <span id="legacy-existing-order-controls">
         <select name="purchase_id" id="legacy-existing-order-select" required>
@@ -172,9 +177,10 @@
           {% endfor %}
         </select>
         <button type="submit">+ Add checked cards to order</button>
+        <span class="muted">No new order is open — pick an existing one instead.</span>
       </span>
     </div>
-    <div class="inventory-table-wrap" style="max-height: 400px;">
+    <div class="inventory-table-wrap compact">
       <table class="inventory-table">
         <thead>
           <tr>
@@ -220,7 +226,7 @@ function addCardToCart(cardId) {
     alert('Open a New Order first (the "+ New Order" button above), then add cards to it.');
     return;
   }
-  htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend' });
+  htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend', indicator: '#cart-add-indicator' });
 }
 
 // Shared by "+ New Order" (this file) and "Cancel" (partials/purchase_cart.html)

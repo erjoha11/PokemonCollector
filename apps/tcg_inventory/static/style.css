@@ -791,6 +791,58 @@ button.secondary {
   border: 1px solid var(--border);
 }
 
+/* Transactions page quick-win utilities (UX_NOTES.md 2026-09-20). A small,
+   consistent width/spacing scale standing in for the ad-hoc per-input
+   `style="width: NNpx"` / `style="margin-...: Nrem"` values that used to be
+   scattered across transactions.html, purchase_edit.html and their row
+   partials -- same visual sizes, just consolidated so equivalent fields
+   (e.g. every "Platform" input) actually line up across the page instead of
+   each row picking its own number. */
+.tx-input-xs { width: 5rem; }      /* Order ID / "start new order" target */
+.tx-input-sm { width: 6rem; }      /* Price */
+.tx-input-md { width: 8rem; }      /* Platform, Shipping */
+.tx-input-date { width: 9.5rem; }  /* Date */
+.tx-input-lg { width: 10rem; }     /* Agreed/Order total, Note */
+.tx-input-xl { width: 12.5rem; }   /* Remaining amount to distribute */
+.tx-search { max-width: 26.25rem; }    /* Card search boxes */
+.tx-search-sm { max-width: 20rem; }    /* "Change card" relink search */
+
+.tx-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.inventory-table-wrap.compact { max-height: 400px; }
+
+.mt-05 { margin-top: 0.5rem; }
+.mt-1 { margin-top: 1rem; }
+.mt-15 { margin-top: 1.5rem; }
+.mt-2 { margin-top: 2rem; }
+.mb-05 { margin-bottom: 0.5rem; }
+.mb-075 { margin-bottom: 0.75rem; }
+.mb-1 { margin-bottom: 1rem; }
+.mb-15 { margin-bottom: 1.5rem; }
+
+/* htmx's own documented convention: `hx-indicator` points at an element that
+   stays invisible until htmx adds `.htmx-request` to it (or an ancestor)
+   for the duration of the in-flight request, then fades back out on
+   completion -- no spinner asset/JS needed, htmx.min.js toggles the class
+   automatically. */
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.htmx-request.htmx-indicator,
+.htmx-request .htmx-indicator {
+  opacity: 1;
+}
+.tx-search-spinner {
+  display: inline-block;
+  margin-left: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .sale-list-bar {
   position: sticky;
   bottom: 0;

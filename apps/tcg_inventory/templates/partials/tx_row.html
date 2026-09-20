@@ -45,7 +45,7 @@
       <input type="text" name="platform" value="{{ tx.platform or '' }}" placeholder="Platform" style="width: 140px;">
       <input type="number" name="purchase_id" value="{{ tx.purchase_id if tx.purchase_id is not none else '' }}" placeholder="Order ID" title="Order ID (blank = not part of an order)" style="width: 100px;">
       <button type="submit">Save</button>
-      <button type="button" hx-get="/transactions/{{ tx.id }}/row" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">Cancel</button>
+      <button type="button" class="secondary" hx-get="/transactions/{{ tx.id }}/row" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">Cancel</button>
     </form>
   </td>
 </tr>
