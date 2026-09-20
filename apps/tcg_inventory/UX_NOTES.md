@@ -24,6 +24,83 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-09-20 — Transactions page layout redesign
+
+**Reviewed:** templates/transactions.html, partials/{purchase_cart,
+purchase_cart_row,purchase_cart_search_results,purchase_cart_unordered_results,
+tx_row,kpi_module,transactions_charts,macros}.html, static/style.css, and
+app.py's `_transactions_context` / `list_transactions` /
+`_group_transactions_by_purchase` / `_cards_with_known_added_date` /
+`set_purchase_total`. Prompted by the user asking for a layout redesign;
+`ux` was consulted twice — once open-ended, then again against the layout
+the user chose (Order history first, one merged card table, selection-based
+adding).
+
+**Findings:**
+- **A column-sort click silently destroyed an in-progress order.** The New
+  Order cart is DOM-only until Register (rows in `#cart-body`, prices in
+  unsubmitted inputs), while every `sort_th` on this page renders a plain
+  `<a href>` full-page navigation. Add 12 cards, type prices, click "Name"
+  to find the next card → everything gone, no warning. Same failure family
+  as the sale-list selection loss solved in `static/sale-list.js`, and
+  caused by the layout itself: the picker tables with sort controls sat on
+  the same page as, and two screens below, a cart that only existed in the
+  DOM. **Addressed** — a page-level `beforeunload` guard (guarding the page
+  once, rather than each link, so a link added later can't reintroduce it),
+  plus `sessionStorage` persistence for the card picker's own selection.
+- **The inline order form silently wiped platform.** `POST
+  /transactions/purchase/{id}/total` blind-overwrites all three fields on
+  every row; `_group_transactions_by_purchase` deliberately leaves
+  `group.platform` blank when an order's rows disagree, while the summary
+  still shows a `summary_platform` badge. So: badge says "finn.no", input
+  looks empty, you edit a total, every row's platform becomes NULL.
+  **Partly addressed** — the field now says "Mixed — saving overwrites all
+  rows" and the summary badge gets a `*` marker, so it no longer looks
+  innocently empty. The underlying write semantics are unchanged (blank
+  clears, per the route's docstring); changing that is an architect/user
+  call, not a UI fix. **Still open.**
+- **Three value displays, two identical, one contradicting.** The KPI card's
+  "Market Value" (unique + duplicates), `.tx-kpi-bar`'s "Current value"
+  (unique only) and the charts' `market_value_stats` trio all answered
+  "what's it worth" within one screen, unlabelled as to basis. **Addressed**
+  — the user asked to keep the KPI cards as-is, so the bar was reduced to
+  the two figures that appear nowhere else (Net invested, Paper gain/loss)
+  as a header caption; "Current value" is gone.
+- **Three card-picking surfaces feeding one destination, with overlapping
+  contents and two different selection models.** Legacy import ⊂
+  browse-unordered, and the unpriced part of Recently Added ⊂
+  browse-unordered; ~40 lines of JS existed solely to keep two
+  mutually-exclusive submit paths in sync depending on whether a cart
+  happened to be open. **Addressed** — one merged table, one sort pair, one
+  selection model, one always-valid "Adding to" target. The "click + Add to
+  order with no cart open and nothing happens" dead end is now structurally
+  unreachable rather than better-worded, and `updateLegacyOrderControls()`
+  and friends are deleted.
+- **A merged table must not apply both tables' inclusion rules.** Recently
+  Added listed every dated card whether or not it had an order; Legacy
+  listed only cards without one. Membership is now "every card" with the
+  distinction as an explicit `?pick=` filter. A first implementation got
+  this wrong (the legacy pre-filter ran before the merge, so "All" wasn't
+  all) — caught by a test.
+- **Order history had no date and no scannable "needs work" signal.**
+  `group.min_date` was computed and never rendered, so collapsed orders
+  couldn't be told apart; and Remaining only rendered when nonzero, making
+  "settled" and "no agreed total set" both render as nothing. **Addressed**
+  — Date is a column, Remaining is a real column with ✓ / — / red diff.
+- **`top_cards` was dead work on this route.** `queries.top_valuable_cards(
+  db, limit=50)` ran on every load and every sort click, but
+  `kpi_module.html` only renders that tile on the Dashboard. **Addressed** —
+  removed from `_transactions_context`.
+- Not addressed, noted for later: the per-order `<summary>` rows still
+  carry heading weight without heading semantics (the app-wide gap logged
+  2026-09-19), and `/transactions/charts`'s known `metric` pill desync
+  (logged 2026-09-16) is untouched by this work.
+
+**Status:** Addressed except the platform-overwrite write semantics and the
+two pre-existing items named above.
+
+---
+
 ## 2026-09-17 — New "Sell on finn.no" module
 
 **Reviewed:** README.md, models.py, templates/inventory.html,

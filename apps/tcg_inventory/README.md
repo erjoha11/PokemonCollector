@@ -31,11 +31,71 @@ run).
   checked (`?unowned=1`) — the search used to add a card to a sales listing
   (`/pokemon/search`) is a separate query and is unaffected, since re-buying
   a previously-traded-away card there is the intended path.
-- **Transactions** (`/transactions`) — a purchase/sale log per card, plus a
-  compact economic snapshot (net invested, current value, paper gain/loss)
-  and a collapsible "Vis grafer" section with the value-growth and cash-flow
-  charts (formerly the standalone Analyse page). Each order group has an
-  "Edit order" link (`/transactions/purchase/{id}/edit`) for retyping,
+- **Transactions** (`/transactions`) — laid out as **Order history first**,
+  then individually-registered rows, then one card picker, then a
+  collapsible "View charts" section with the value-growth and cash-flow
+  charts (formerly the standalone Analyse page).
+
+  **Order history** is the page's primary content, directly under the KPI
+  cards: one row per order with the numbers that describe the deal — Order
+  #, Date, Qty, Value (sum of recorded per-card prices, trades excluded),
+  Shipping, Agreed total, Remaining, Platform. Remaining is a real column
+  rather than a badge that only appears when nonzero, so "settled" (✓) and
+  "no agreed total set yet" (—) are distinguishable at a glance instead of
+  both rendering as nothing. Expanding a row reveals that order's cards,
+  its agreed-total/shipping/platform form and an "+ Add cards to this
+  order" button. Each order stays a `<details id="order-N">`: that's
+  load-bearing, since `?open_order=N` deep-links by rendering `open` on it
+  and the agreed-total form swaps that same element
+  (`hx-select`/`hx-target="#order-N"` + `outerHTML`). Column alignment
+  comes from a shared CSS grid on the header row and every `<summary>`
+  (`.orders-row` in `style.css`) — keep those two in sync.
+
+  Net invested and paper gain/loss render as a caption on the Order history
+  header, not as a second KPI block. The page deliberately does **not**
+  show a "Current value" figure: it was `headline.unique_value`, which the
+  Market Value KPI card already shows as its "Unique value" row, sitting a
+  few hundred pixels from that same card's duplicate-inclusive "Market
+  Value" total — three names, two numbers, one screen.
+
+  **Cards** (`partials/card_picker.html`) is the single card-picking table,
+  merging what used to be two separate tables ("Recently Added" and a
+  collapsed "Legacy import"). Both existed only to feed the same order, and
+  they applied *different* inclusion rules — Recently Added listed every
+  dated card whether or not it already had an order, Legacy only cards
+  still missing one. In the merged table membership is "every card" and
+  that distinction is an explicit `?pick=` filter instead: `unordered`
+  (default — no purchase transaction yet), `recent` (has a known added
+  date), `all`. Cards imported before added-date tracking show "no date"
+  and sort to the bottom (`_sorted_rows` buckets null-key rows last — do
+  not "fix" this with an `or datetime.min` default, which would scatter
+  them through the list). An "Order" column names the order(s) a card is
+  already on, so merging doesn't lose the "does this still need an order?"
+  signal the old two-table split encoded positionally. One sort pair
+  (`gsort`/`gdir`) covers the whole table; `usort`/`udir` are retired but
+  still accepted so old links don't 422.
+
+  Adding cards is selection-based: a checkbox per row, a header select-all,
+  and a sticky action bar (shown only once something is selected) with an
+  "Adding to" target — "New order" plus every existing order. That target
+  is always a valid choice, which removes the old "click + Add to order
+  with no cart open and nothing happens" dead end structurally rather than
+  by wording its alert better. Picking an existing order is a plain POST to
+  `/transactions/purchase/add-existing-cards`; picking "New order" opens
+  the cart first and appends into `#cart-body` **in the swap callback**
+  (`htmx.ajax` is async — appending on the next line no-ops), one request
+  at a time, since concurrent appends to the same target drop rows. The
+  selection survives sort/filter clicks via `sessionStorage`, the same way
+  `/sales` does it — those links are full-page navigations and would
+  otherwise silently discard a half-built selection.
+
+  The page also guards the New Order cart against navigation
+  (`beforeunload` whenever `#cart-body` has rows or a total/shipping has
+  been typed): the cart is DOM-only until Register, so re-sorting the card
+  table mid-order used to wipe every row and typed price with no warning.
+
+  Each order group has an "Edit order" link
+  (`/transactions/purchase/{id}/edit`) for retyping,
   relinking a card, adding a note, deleting a row, adding a new card
   to the order (search below the table — created immediately against
   this order, defaulted to today/purchase/0 and editable in place, not
@@ -56,31 +116,18 @@ run).
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked
-  purchase transaction at all (both "Recently Added" and "Legacy import"
-  cards, capped at 50 with a total count) instead of requiring a typed
-  query, for picking cards to price straight into the order being built.
+  purchase transaction at all (capped at 50 with a total count) instead of
+  requiring a typed query, for picking cards to price straight into the
+  order being built.
   Every free-text card-search box in the app (this one, Edit Order's
   add-card and per-row relink, Listing edit's card search) guards against
   Enter submitting the enclosing form instead of just searching — they all
   share a form with a "Register"/"Save changes" submit button and nothing
-  before them to catch it otherwise. Every "+ Add to order" button that
-  targets the open cart (`#cart-body`) — Recently Added's row button, the
-  cart's own search results, its "Show cards without an order" results —
-  alerts if no cart is actually open yet instead of silently doing nothing
-  (`addCardToCart()` in `transactions.html`).
-  The collapsed "Legacy import" table itself only lists cards that still
-  have neither a date nor an order — a card drops off it the moment either
-  gets set — and has its own bulk control: a checkbox per row (with a
-  header checkbox to select all), plus one of two mutually exclusive
-  actions depending on whether a New Order cart is currently open
-  (`updateLegacyOrderControls()`, re-run whenever the cart opens/closes):
-  with a cart open, "+ Add checked cards to open order" appends them
-  straight into it (same client-side path as any other "+ Add to order"
-  button); with none open, an order picker populated from existing orders
-  plus "+ Add checked cards to order" adds them directly into the chosen
-  order without needing a cart open first (`POST
-  /transactions/purchase/add-existing-cards`, same default-row creation as
-  the Edit Order page's add-card above).
+  before them to catch it otherwise. The cart's own search results and its
+  "Show cards without an order" results append via `addCardToCart()`, which
+  alerts if no cart is open rather than silently doing nothing. (The Cards
+  picker no longer needs that guard — its target is always an explicit
+  choice — but those two callers still do.)
 - **Sell on finn.no** (`/sales`) — check cards on Inventory (a new leading
   checkbox column, selection tracked client-side and cleared on refresh —
   see `static/sale-list.js`), click "Generate finn.no ad", then set

@@ -13,77 +13,8 @@
 
 {% if error %}<p class="warnings">{{ error }}</p>{% endif %}
 
-{% include "partials/kpi_module.html" %}
-
-<div class="filters tx-header-row mb-1">
-  <span class="muted">Search for each card that was part of the deal and add them one by one — they automatically share the same Order ID.</span>
-  <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"
-          hx-trigger="click[confirmDiscardCart()]" hx-indicator="#new-order-indicator">+ New Order</button>
-  <span id="new-order-indicator" class="tx-search-spinner htmx-indicator">Loading…</span>
-</div>
-<div id="purchase-cart-container"></div>
-
-<div class="tx-kpi-bar">
-  <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span></div>
-  <div><span class="tx-kpi-label">Current value</span><span class="tx-kpi-value">{{ kpi.unique_value | kr }}</span></div>
-  <div><span class="tx-kpi-label">Paper gain/loss {{ info("Current value minus net invested. Not realized — compares today's price with what you actually paid, not an actual sale.") }}</span><span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span></div>
-</div>
-
-<details class="collapsible" hx-get="/transactions/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
-  <summary>View charts</summary>
-  <div id="tx-charts"><p class="muted">Loading charts…</p></div>
-</details>
-
-<h2 class="mt-2">Recently Added {{ info("Market price = Dex's market price. Paid price = what you actually recorded paying for the card (can differ from the market price).") }}</h2>
-<p class="muted">
-  Cards with a known "added" date: {{ known_count }}. These are the actual new cards to price.
-  The date is set automatically the first time a card is imported.
-</p>
-
-<div class="card mb-15">
-  <div class="inventory-table-wrap compact">
-    <table class="inventory-table">
-      <thead>
-        <tr>
-          <th>{{ sort_th('Date', 'date', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>{{ sort_th('Name', 'name', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>{{ sort_th('Series', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>{{ sort_th('Set', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th class="num">{{ sort_th('Market price', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th class="num">{{ sort_th('Paid price', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for card in known_cards %}
-        <tr>
-          <td class="muted">{{ card.created_at.date().isoformat() }}</td>
-          <td>{{ dex_link(card) }}</td>
-          <td>{{ card.variant or '' }}</td>
-          <td>{{ card.series or '' }}</td>
-          <td>{{ card.set or '' }}</td>
-          <td class="num">{{ card.display_price | kr }}</td>
-          <td>{{ card.card_id }}</td>
-          <td class="num">{{ registered_prices.get(card.id, '') }}</td>
-          <td>
-            <button type="button" onclick="addCardToCart({{ card.id }})"
-                    title="Open a new order above first (+ New Order) — this button then adds the card into that order.">
-              + Add to order
-            </button>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="9" class="muted">No cards with a known date yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-
-<h2 class="mt-2">History {{ info("Each row is one recorded purchase or sale transaction. Price is what you actually entered for the transaction — not Dex's price. Cards bought together (same Order ID, e.g. a lot) are grouped into a collapsible group with a total. Set an agreed total and shipping on the group to see the diff against what you've actually recorded cards for — useful for tracking down common cards you haven't priced individually yet.") }}</h2>
-
+{# Defined before use: Jinja binds a macro where it appears, and the order
+   groups below call this. #}
 {% macro tx_table(rows, empty_message, sortable=True) %}
 <div class="table-scroll">
   <table class="tx-table">
@@ -117,140 +48,192 @@
 </div>
 {% endmacro %}
 
-{% for group in purchase_groups %}
-<details class="collapsible mb-075" id="order-{{ group.purchase_id }}"{% if open_order == group.purchase_id %} open{% endif %}>
-  <summary class="tx-order-summary">
-    <span class="tx-order-id">Order #{{ group.purchase_id }}</span>
-    <span class="tx-order-stat">{{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}</span>
-    <span class="tx-order-stat">Value {{ group.total_price | kr }}</span>
-    {% if group.total_fees %}<span class="tx-order-stat">Fees {{ group.total_fees | kr }}</span>{% endif %}
-    {% if group.purchase_shipping %}<span class="tx-order-stat">Shipping {{ group.purchase_shipping | kr }}</span>{% endif %}
-    {% if group.purchase_total is not none %}<span class="tx-order-stat">Total {{ group.purchase_total | kr }}</span>{% endif %}
-    {% if group.diff is not none and group.diff | round(2) != 0 %}<span class="tx-order-stat tx-diff-flag">Remaining {{ group.diff | kr }}</span>{% endif %}
-    {% if group.summary_platform %}<span class="tx-platform-badge">{{ group.summary_platform }}</span>{% endif %}
-  </summary>
-  <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters mb-05"
-        hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
-        hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML"
-        hx-indicator="#order-total-indicator-{{ group.purchase_id }}">
-    <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total"
-           value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg">
-    <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
-           value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md">
-    <input type="text" name="platform" placeholder="Platform"
-           value="{{ group.platform if group.platform is not none else '' }}" class="tx-input-md">
-    <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
-    <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
-    <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
-            hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
-  </form>
-  {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
-</details>
-{% endfor %}
+{% include "partials/kpi_module.html" %}
 
-{% if purchase_groups %}
-<h3 class="mt-15">Individually registered <span class="muted">(without an Order ID)</span></h3>
-{% endif %}
-{{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
+{# ---------------------------------------------------------------------
+   Order history -- the page's primary content, first thing under the KPI
+   cards. One row per order with the numbers that describe the deal;
+   expanding a row reveals that order's cards and its agreed-total form.
 
-<details class="collapsible">
-  <summary>Legacy import — cards from before "date added" tracking ({{ unknown_cards | length }} card{{ '' if unknown_cards | length == 1 else 's' }})</summary>
-  <p class="muted">
-    Cards synced before this app tracked an "added" date, that don't have an order yet
-    either — once a card gets an order (from here, or the New Order cart), it drops off
-    this list. Not related to date tracking itself; see History above for order status.
-  </p>
-  <form method="post" action="/transactions/purchase/add-existing-cards"
-        onsubmit="return confirmLegacyAddToOrder(this)">
-    <div class="filters mb-05">
-      <span id="legacy-open-order-controls" style="display: none;">
-        <button type="button" onclick="addCheckedLegacyCardsToOpenOrder()">+ Add checked cards to open order</button>
-        <span class="muted">Using the currently open new order.</span>
+   Each order stays a <details id="order-N">, which is load-bearing rather
+   than stylistic: ?open_order=N deep-links by rendering `open` on it, and
+   the agreed-total form swaps itself with hx-select/hx-target="#order-N"
+   + outerHTML -- the <details> element *is* the swap target. Column
+   alignment comes from a CSS grid on the <summary>, not from a <table>.
+   --------------------------------------------------------------------- #}
+<section class="orders-section">
+  <div class="section-head">
+    <h2>Order history {{ info("Each order groups the cards bought or sold together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Agreed total is the amount for the whole order. Remaining is the difference — usually cards you haven't priced individually yet.") }}</h2>
+    <div class="section-actions">
+      {# What's left of the old standalone .tx-kpi-bar. Its "Current value"
+         was `headline.unique_value`, which the Market Value card above
+         already shows as its "Unique value" row -- two differently-named
+         numbers for the same thing, next to a third ("Market Value",
+         which counts duplicates), was the page's worst bit of number
+         confusion. So only the two figures that appear nowhere else
+         survive, as a caption rather than a second KPI block. #}
+      <span class="section-summary">
+        <span class="tx-kpi-label">Net invested</span> <span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span>
+        <span class="tx-kpi-label">Paper gain/loss {{ info("Today's price of the unique cards you own, minus what you actually paid. Not realized — nothing has been sold.") }}</span>
+        <span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span>
       </span>
-      <span id="legacy-existing-order-controls">
-        <select name="purchase_id" id="legacy-existing-order-select" required>
-          <option value="" disabled selected>Add checked cards to order…</option>
-          {% for group in purchase_groups %}
-          <option value="{{ group.purchase_id }}">
-            Order #{{ group.purchase_id }} ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }})
-          </option>
-          {% endfor %}
-        </select>
-        <button type="submit">+ Add checked cards to order</button>
-        <span class="muted">No new order is open — pick an existing one instead.</span>
-      </span>
+      <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"
+              hx-trigger="click[confirmDiscardCart()]" hx-indicator="#new-order-indicator">+ New Order</button>
+      <span id="new-order-indicator" class="tx-search-spinner htmx-indicator">Loading…</span>
     </div>
-    <div class="inventory-table-wrap compact">
-      <table class="inventory-table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" onclick="toggleAllLegacyCheckboxes(this)" title="Select all"></th>
-            <th>{{ sort_th('Name', 'name', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-            <th>{{ sort_th('Variant', 'variant', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-            <th>{{ sort_th('Series', 'series', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-            <th>{{ sort_th('Set', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-            <th class="num">{{ sort_th('Price', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-            <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for card in unknown_cards %}
-          <tr>
-            <td><input type="checkbox" name="card_id" value="{{ card.id }}" class="legacy-card-checkbox"></td>
-            <td>{{ dex_link(card) }}</td>
-            <td>{{ card.variant or '' }}</td>
-            <td>{{ card.series or '' }}</td>
-            <td>{{ card.set or '' }}</td>
-            <td class="num">{{ card.display_price | kr }}</td>
-            <td>{{ card.card_id }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="muted">No legacy cards — every card now has an added date, or already has an order.</td></tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  </div>
+
+  <div id="purchase-cart-container"></div>
+
+  {% if purchase_groups %}
+  <div class="orders-list">
+    <div class="orders-row orders-head">
+      <span class="oc-order">Order</span>
+      <span class="oc-date">Date</span>
+      <span class="oc-qty num">Qty</span>
+      <span class="oc-value num">Value</span>
+      <span class="oc-shipping num">Shipping</span>
+      <span class="oc-total num">Agreed total</span>
+      <span class="oc-remaining num">Remaining</span>
+      <span class="oc-platform">Platform</span>
     </div>
-  </form>
+
+    {% for group in purchase_groups %}
+    <details class="order-item" id="order-{{ group.purchase_id }}"{% if open_order == group.purchase_id %} open{% endif %}>
+      <summary class="orders-row order-summary">
+        <span class="oc-order">#{{ group.purchase_id }}</span>
+        <span class="oc-date muted">{{ group.min_date }}</span>
+        <span class="oc-qty num">{{ group.transactions | length }}</span>
+        <span class="oc-value num">{{ group.total_price | kr }}</span>
+        <span class="oc-shipping num">{% if group.purchase_shipping %}{{ group.purchase_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        <span class="oc-total num">{% if group.purchase_total is not none %}{{ group.purchase_total | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        {# A real column, not a badge that only appears when nonzero: with
+           the old conditional badge, "settled" and "no total set yet" both
+           rendered as nothing, so you couldn't scan for orders that still
+           need work -- which is this list's main job. #}
+        <span class="oc-remaining num">
+          {%- if group.purchase_total is none -%}<span class="muted">—</span>
+          {%- elif group.diff | round(2) != 0 -%}<span class="tx-diff-flag">{{ group.diff | kr }}</span>
+          {%- else -%}<span class="oc-settled" title="Recorded card prices and shipping add up to the agreed total.">✓</span>
+          {%- endif -%}
+        </span>
+        <span class="oc-platform">
+          {%- if group.summary_platform -%}
+            <span class="tx-platform-badge"{% if group.platform is none %} title="This order's rows don't all share one platform."{% endif %}>{{ group.summary_platform }}{% if group.platform is none %} *{% endif %}</span>
+          {%- endif -%}
+        </span>
+      </summary>
+
+      <div class="order-body">
+        <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters mb-05"
+              hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
+              hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML"
+              hx-indicator="#order-total-indicator-{{ group.purchase_id }}">
+          <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total"
+                 value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg">
+          <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
+                 value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md">
+          {# This form overwrites all three fields on every row of the order.
+             A group whose rows disagree on platform prefills blank on purpose
+             (see _group_transactions_by_purchase) -- so submitting would
+             silently wipe platform everywhere while the summary badge above
+             still shows one. Say that in the field rather than looking
+             innocently empty. #}
+          <input type="text" name="platform"
+                 placeholder="{{ 'Mixed — saving overwrites all rows' if group.platform is none and group.summary_platform else 'Platform' }}"
+                 value="{{ group.platform if group.platform is not none else '' }}"
+                 class="{{ 'tx-input-lg' if group.platform is none and group.summary_platform else 'tx-input-md' }}"
+                 {% if group.platform is none and group.summary_platform %}title="This order's rows don't all share one platform, so this starts blank. Saving sets whatever's here on every row — use Edit order for per-card platforms."{% endif %}>
+          <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
+          <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
+          <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
+                  hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
+          {% if group.total_fees %}<span class="muted">Fees {{ group.total_fees | kr }}</span>{% endif %}
+        </form>
+
+        {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
+
+        {# Points the page's single card picker at this order and scrolls to
+           it, rather than rendering a second copy of that whole table here
+           (which would duplicate its element ids for every expanded order). #}
+        <div class="order-add-cards">
+          <button type="button" onclick="pickCardsFor({{ group.purchase_id }})">+ Add cards to this order</button>
+          <span class="muted">Opens the card list below, set to add to order #{{ group.purchase_id }}.</span>
+        </div>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">No orders registered yet — “+ New Order” records the first one.</p>
+  {% endif %}
+</section>
+
+<section class="ungrouped-section">
+  <h3 class="mt-15">Individually registered <span class="muted">(without an Order ID)</span></h3>
+  {{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
+</section>
+
+{% include "partials/card_picker.html" %}
+
+<details class="collapsible mt-2" hx-get="/transactions/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
+  <summary>View charts</summary>
+  <div id="tx-charts"><p class="muted">Loading charts…</p></div>
 </details>
 
 <script>
-// Shared by every "+ Add to order" button that targets #cart-body (Recently
-// Added's row button, the New Order cart's own search results, and its
-// "Show cards without an order" results) -- that target only exists once a
-// New Order cart is actually open, so clicking one of these buttons before
-// that happened used to silently do nothing (a known, previously-flagged
-// gap -- see HANDOFF.md). Now it says so instead of staying silent.
+// Shared by the New Order cart's own search results and its "Show cards
+// without an order" results -- both append into #cart-body, which only
+// exists once a cart is actually open. The card picker below no longer
+// depends on this guard (its target is always an explicit choice), but
+// these two callers still do.
+// Returns the htmx promise so callers adding several cards can chain them
+// one at a time -- see addCardsToCart.
 function addCardToCart(cardId) {
   var cartBody = document.getElementById('cart-body');
   if (!cartBody) {
     alert('Open a New Order first (the "+ New Order" button above), then add cards to it.');
-    return;
+    return Promise.resolve();
   }
-  htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend', indicator: '#cart-add-indicator' });
+  return htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend', indicator: '#cart-add-indicator' });
 }
 
 // Shared by "+ New Order" (this file) and "Cancel" (partials/purchase_cart.html)
-// -- both discard whatever's currently in the purchase cart, so both should
-// only nag when there's actually something to lose: at least one card row
-// added, or a purchase_total/purchase_shipping value typed in. An empty,
-// just-opened cart (or no cart open at all) proceeds with no prompt.
+// -- both discard whatever's in the purchase cart, so both should only nag
+// when there's actually something to lose.
 function confirmDiscardCart() {
+  if (!cartHasUnsavedWork()) return true;
+  return confirm('Discard the in-progress order?');
+}
+
+function cartHasUnsavedWork() {
   var cartBody = document.getElementById('cart-body');
   var hasRows = !!cartBody && cartBody.children.length > 0;
   var hasTotalOrShipping = Array.prototype.some.call(
     document.querySelectorAll('#purchase-cart-container input[name="purchase_total"], #purchase-cart-container input[name="purchase_shipping"]'),
     function (el) { return el.value.trim() !== ''; }
   );
-  if (!hasRows && !hasTotalOrShipping) return true;
-  return confirm('Discard the in-progress order?');
+  return hasRows || hasTotalOrShipping;
 }
 
+// The New Order cart exists only in the DOM until Register: its rows and
+// every typed price are lost on any full-page navigation. Every sort header
+// and filter pill on this page is a plain <a href>, so "add 12 cards, type
+// prices, re-sort the card list to find the next one" used to wipe the lot
+// with no warning at all. Guard the page once rather than patching each
+// link, so a link added later can't quietly reintroduce it.
+var leavingDeliberately = false;
+window.addEventListener('beforeunload', function (evt) {
+  if (leavingDeliberately || !cartHasUnsavedWork()) return;
+  evt.preventDefault();
+  evt.returnValue = '';
+  return '';
+});
+
 // The cart form's price/date inputs are `required`, so a blank one blocks
-// the browser's native validation *before* the request ever reaches the
-// server -- no server-side error can show for that, since no request was
-// sent. That reads exactly like "clicking Register does nothing, not even
-// an error." Check the two actually-likely gaps explicitly and say so,
-// then let native validation (or the server) handle anything else.
+// native validation *before* the request reaches the server -- no
+// server-side error can show, which reads exactly like "Register does
+// nothing, not even an error". Check the two likely gaps explicitly.
 function confirmRegisterOrder(form) {
   var cartBody = document.getElementById('cart-body');
   var rows = cartBody ? cartBody.querySelectorAll('tr') : [];
@@ -267,14 +250,13 @@ function confirmRegisterOrder(form) {
     emptyPrice.focus();
     return false;
   }
+  leavingDeliberately = true;
   return true;
 }
 
 // Toggle for the New Order cart's "Show cards without an order" button
 // (issue #156) -- reuses the same #cart-search-results target as the typed
 // search box, since browsing is just another way to fill the same list.
-// Opt-in and cleared on hide rather than loaded automatically when the
-// cart opens, since the unordered backlog can be the whole collection.
 function toggleBrowseUnordered(btn) {
   var results = document.getElementById('cart-search-results');
   if (btn.dataset.active === '1') {
@@ -288,10 +270,6 @@ function toggleBrowseUnordered(btn) {
   }
 }
 
-// Typing a search query while the browse-unordered list is showing replaces
-// #cart-search-results with search results underneath it (via the input's
-// own hx-get) -- reset the toggle's label so it doesn't keep claiming
-// "Hide" for content that's no longer there.
 function resetBrowseUnorderedToggle() {
   var btn = document.getElementById('browse-unordered-toggle');
   if (btn && btn.dataset.active === '1') {
@@ -301,10 +279,7 @@ function resetBrowseUnorderedToggle() {
 }
 
 // Splits the "Remaining amount" value evenly across every still-empty price
-// input in the purchase-cart table -- the "one lump sum, distribute
-// automatically" half of registering a purchase (the other half: type a
-// known price straight into a row as you add it, and that row is left
-// untouched here).
+// input in the purchase-cart table.
 function distributeRemaining() {
   var sumInput = document.getElementById('remaining_sum');
   var sum = parseFloat(sumInput.value);
@@ -319,75 +294,123 @@ function distributeRemaining() {
   sumInput.value = '';
 }
 
-// Legacy import table's bulk "add checked cards to order" control -- the
-// header checkbox toggles every row's checkbox to match its own state.
-function toggleAllLegacyCheckboxes(headerCheckbox) {
-  document.querySelectorAll('.legacy-card-checkbox').forEach(function (el) {
-    el.checked = headerCheckbox.checked;
+// --- Card picker (partials/card_picker.html) ---------------------------
+// One picker per page, one explicit target. Replaces the old two-table,
+// two-submit-path arrangement and its "nothing happens when no cart is
+// open" failure.
+
+function pickerCheckboxes() {
+  return Array.prototype.slice.call(document.querySelectorAll('.card-pick-checkbox'));
+}
+
+function toggleAllCardCheckboxes(headerCheckbox) {
+  pickerCheckboxes().forEach(function (el) { el.checked = headerCheckbox.checked; });
+  updatePickerSelection();
+}
+
+function clearPickerSelection() {
+  pickerCheckboxes().forEach(function (el) { el.checked = false; });
+  var all = document.getElementById('picker-select-all');
+  if (all) all.checked = false;
+  updatePickerSelection();
+}
+
+// Shows/hides the sticky bar and keeps its count honest. The bar is the
+// only submit path, so an empty selection simply can't be submitted --
+// the old table let you submit nothing and complained afterwards.
+function updatePickerSelection() {
+  var checked = pickerCheckboxes().filter(function (el) { return el.checked; });
+  var bar = document.getElementById('picker-bar');
+  if (!bar) return;
+  bar.hidden = checked.length === 0;
+  document.getElementById('picker-bar-count').textContent =
+    checked.length + ' card' + (checked.length === 1 ? '' : 's') + ' selected';
+  savePickerSelection(checked);
+}
+
+// A sort or filter click is a full-page navigation, which would silently
+// drop a half-built selection -- the same failure /sales solved with
+// sessionStorage (see static/sale-list.js). Same approach here: remember
+// the checked ids for this tab and re-apply them on load.
+var PICKER_STORAGE_KEY = 'tcg-picker-selection';
+
+function savePickerSelection(checked) {
+  try {
+    var ids = checked.map(function (el) { return el.value; });
+    if (ids.length) sessionStorage.setItem(PICKER_STORAGE_KEY, JSON.stringify(ids));
+    else sessionStorage.removeItem(PICKER_STORAGE_KEY);
+  } catch (e) { /* private mode / storage disabled -- selection just won't persist */ }
+}
+
+function restorePickerSelection() {
+  var ids;
+  try {
+    ids = JSON.parse(sessionStorage.getItem(PICKER_STORAGE_KEY) || '[]');
+  } catch (e) { return; }
+  if (!ids || !ids.length) return;
+  var wanted = {};
+  ids.forEach(function (id) { wanted[id] = true; });
+  pickerCheckboxes().forEach(function (el) { if (wanted[el.value]) el.checked = true; });
+  updatePickerSelection();
+}
+
+// An order's "+ Add cards to this order" button: point the single picker at
+// that order and bring it into view, instead of rendering another copy of
+// the table inside the order.
+function pickCardsFor(purchaseId) {
+  var target = document.getElementById('picker-target');
+  if (target) target.value = String(purchaseId);
+  var picker = document.getElementById('card-picker');
+  if (picker) picker.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  updatePickerSelection();
+}
+
+// Two destinations, because a brand-new order has no server-side identity
+// yet: an existing order is a plain POST (this table can run to hundreds of
+// rows), while "New order" means filling the cart's #cart-body instead.
+function submitPicker(form) {
+  var checked = pickerCheckboxes().filter(function (el) { return el.checked; });
+  if (checked.length === 0) return false;
+  var target = document.getElementById('picker-target').value;
+
+  if (target !== 'new') {
+    document.getElementById('picker-purchase-id').value = target;
+    try { sessionStorage.removeItem(PICKER_STORAGE_KEY); } catch (e) {}
+    leavingDeliberately = true;
+    return true;
+  }
+
+  // "New order": append into the open cart, opening one first if needed.
+  // htmx.ajax is async, so the rows must be appended in the swap callback
+  // -- appending on the next line would no-op for every card, which is the
+  // exact "target doesn't exist yet" bug this page already had once.
+  var ids = checked.map(function (el) { return parseInt(el.value, 10); });
+  var cartBody = document.getElementById('cart-body');
+  if (cartBody) {
+    addCardsToCart(ids);
+  } else {
+    htmx.ajax('GET', '/transactions/purchase/start', { target: '#purchase-cart-container', swap: 'innerHTML' })
+      .then(function () { addCardsToCart(ids); });
+  }
+  return false;
+}
+
+// Strictly one request at a time. Firing all of them at once loses rows:
+// they're concurrent htmx requests appending into the same #cart-body, and
+// htmx drops the ones that collide (selecting 3 cards reliably landed 2).
+function addCardsToCart(ids) {
+  var chain = Promise.resolve();
+  ids.forEach(function (id) {
+    chain = chain.then(function () { return addCardToCart(id); });
+  });
+  return chain.then(function () {
+    clearPickerSelection();
+    var container = document.getElementById('purchase-cart-container');
+    if (container) container.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 }
 
-// The order <select> already has `required`, but there's no native HTML
-// validation for "at least one checkbox in a group" -- catch that here
-// instead of letting the server round-trip just to say the same thing.
-function confirmLegacyAddToOrder(form) {
-  var anyChecked = Array.prototype.some.call(
-    form.querySelectorAll('.legacy-card-checkbox'),
-    function (el) { return el.checked; }
-  );
-  if (!anyChecked) {
-    alert('Check at least one card first.');
-    return false;
-  }
-  return true;
-}
-
-// Legacy import's bulk control has two mutually exclusive modes: a New
-// Order cart open right now wants its checked cards appended straight into
-// that cart (one click, no picking an order that doesn't exist yet); no
-// cart open wants the existing-order dropdown instead, since there's
-// nothing open to add into. Re-run whenever the cart's existence could
-// have changed -- initial page render, opening a cart, and cancelling one
-// (Register itself navigates away via #main-content swap, which re-runs
-// this whole script on load, so it's covered without a separate hook).
-function updateLegacyOrderControls() {
-  var openControls = document.getElementById('legacy-open-order-controls');
-  var existingControls = document.getElementById('legacy-existing-order-controls');
-  var existingSelect = document.getElementById('legacy-existing-order-select');
-  if (!openControls || !existingControls) return;
-  var cartOpen = !!document.getElementById('cart-body');
-  openControls.style.display = cartOpen ? '' : 'none';
-  existingControls.style.display = cartOpen ? 'none' : '';
-  // A hidden `required` field silently blocks submission if the browser
-  // ever tries to validate it -- disabling it while hidden keeps it out of
-  // constraint validation entirely, not just out of sight.
-  if (existingSelect) existingSelect.disabled = cartOpen;
-}
-
-function addCheckedLegacyCardsToOpenOrder() {
-  var checked = Array.prototype.filter.call(
-    document.querySelectorAll('.legacy-card-checkbox'),
-    function (el) { return el.checked; }
-  );
-  if (checked.length === 0) {
-    alert('Check at least one card first.');
-    return;
-  }
-  checked.forEach(function (el) {
-    addCardToCart(parseInt(el.value, 10));
-    el.checked = false;
-  });
-}
-
-updateLegacyOrderControls();
-
-// Re-check after any htmx swap into the cart container (covers "+ New
-// Order" opening a cart) -- the Cancel button clears it via plain JS
-// instead of htmx, so it calls updateLegacyOrderControls() directly.
-document.body.addEventListener('htmx:afterSwap', function (evt) {
-  if (evt.detail.target && evt.detail.target.id === 'purchase-cart-container') {
-    updateLegacyOrderControls();
-  }
-});
+restorePickerSelection();
+updatePickerSelection();
 </script>
 {% endblock %}

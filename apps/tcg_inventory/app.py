@@ -90,6 +90,20 @@ def _sort_url(
 
 templates.env.globals["sort_url"] = _sort_url
 
+
+def _pick_url(request: Request, value: str, path: str = "/transactions") -> str:
+    """Link that switches the card picker's "without an order / all cards"
+    filter, preserving every other query param (the picker's own sort state,
+    and which order is expanded) -- same idiom as `_sort_url` above, so a
+    filter click never silently resets a sort and vice versa.
+    """
+    params = dict(request.query_params)
+    params["pick"] = value
+    return path + "?" + urlencode(params)
+
+
+templates.env.globals["pick_url"] = _pick_url
+
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
@@ -1174,6 +1188,25 @@ def _registered_purchase_prices_by_card(txs) -> dict[int, list[float]]:
     return by_card
 
 
+def _purchase_ids_by_card(txs) -> dict[int, list[int]]:
+    """Which order(s) each card is already on, for the merged card table's
+    "Order" column. When Recently Added and Legacy import were two separate
+    tables, "does this card still need an order?" was encoded positionally
+    -- which table the row appeared in. Merging them into one table loses
+    that unless it becomes a real column, so derive it here (over the
+    already-loaded `txs`, no extra query) rather than dropping the
+    information. A card can appear on more than one order across repeat
+    purchases, hence a list.
+    """
+    by_card: dict[int, list[int]] = {}
+    for tx in txs:
+        if tx.purchase_id is not None:
+            ids = by_card.setdefault(tx.card_id, [])
+            if tx.purchase_id not in ids:
+                ids.append(tx.purchase_id)
+    return by_card
+
+
 def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None = None) -> dict:
     """Sort keys for a flat list of Card rows -- used by both the "Recently
     Added" table and the "Ukjent dato" table. `registered_price` and `date`
@@ -1280,6 +1313,7 @@ def _transactions_context(
     udir: str = "asc",
     error: str | None = None,
     open_order: int | None = None,
+    pick: str = "unordered",
 ) -> dict:
     txs = (
         db.query(Transaction)
@@ -1290,17 +1324,51 @@ def _transactions_context(
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs)
     known_cards, unknown_cards = _cards_with_known_added_date(db)
-    known_count = len(known_cards)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
-
-    # Legacy import is for cards that still need an order -- once one
-    # exists, the row has nothing left to do here; it stays visible on
-    # Recently Added / in History instead.
-    unknown_cards = [c for c in unknown_cards if c.id not in purchase_prices_by_card]
-
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
-    known_cards = _sorted_rows(known_cards, gsort, gdir, card_keys)
-    unknown_cards = _sorted_rows(unknown_cards, usort, udir, _card_field_sort_keys())
+
+    # The page's single card-picking table: "Recently Added" (cards with a
+    # known added date) and the former separate "Legacy import" table
+    # (created_at IS NULL) merged into one list, since both existed only to
+    # feed the same order.
+    #
+    # They applied two *different* inclusion rules, which is the thing to be
+    # careful about when merging: Recently Added listed every dated card
+    # whether or not it already had an order, while Legacy was filtered down
+    # to cards still missing one. Merging them naively would apply both rules
+    # to one table. So membership here is "every card", and the distinction
+    # becomes an explicit filter (`pick`) instead:
+    #
+    #   unordered -- no purchase transaction yet (the old Legacy rule, and
+    #                what you actually want while filling an order)
+    #   recent    -- has a known added date (the old Recently Added rule)
+    #   all       -- everything
+    #
+    # Sorting is the single gsort/gdir pair for the merged table (usort/udir
+    # is retired but still accepted, so old links don't 422). `_sorted_rows`
+    # already buckets null-key rows to the end, so undated legacy rows sink
+    # below the dated ones on a date sort instead of needing a separate
+    # table -- no `or datetime.min` defence needed, and adding one would
+    # scatter them through the list instead.
+    # Built from the *unfiltered* lists: "All" has to mean all, including a
+    # card that's both undated and already on an order. (The old Legacy
+    # table pre-filtered those out, which was right when it was a
+    # "cards still needing an order" table and wrong once it became one
+    # filter of a general one.)
+    all_picker_cards = known_cards + unknown_cards
+    if pick == "unordered":
+        picker_cards = [c for c in all_picker_cards if c.id not in purchase_prices_by_card]
+    elif pick == "recent":
+        picker_cards = [c for c in all_picker_cards if c.created_at is not None]
+    else:
+        picker_cards = list(all_picker_cards)
+    picker_cards = _sorted_rows(picker_cards, gsort, gdir, card_keys)
+    undated_count = sum(1 for c in picker_cards if c.created_at is None)
+    pick_counts = {
+        "unordered": sum(1 for c in all_picker_cards if c.id not in purchase_prices_by_card),
+        "recent": sum(1 for c in all_picker_cards if c.created_at is not None),
+        "all": len(all_picker_cards),
+    }
 
     # Compact economic snapshot, folded in from the former standalone
     # Analyse page -- cheap enough (in-memory sums over already-fetched
@@ -1327,7 +1395,11 @@ def _transactions_context(
     return {
         "transactions": txs,
         "headline": headline,
-        "top_cards": queries.top_valuable_cards(db, limit=50),
+        # No "top_cards" here on purpose: kpi_module.html only renders its
+        # "Most valuable cards" tile on the Dashboard (`request.url.path ==
+        # '/'`), so computing a 50-card ranking for this page was pure work
+        # on every load and every sort click. The other breakdowns above
+        # stay -- the "Most valuable collection/series" tiles do render here.
         "top_collection": top_collection,
         "top_series": top_series,
         "kpi": kpi,
@@ -1342,9 +1414,15 @@ def _transactions_context(
         "usort": usort,
         "udir": udir,
         "open_order": open_order,
-        "known_cards": known_cards,
-        "known_count": known_count,
-        "unknown_cards": unknown_cards,
+        # known_cards/unknown_cards/known_count are gone with the two
+        # tables that rendered them -- both are now `picker_cards` under a
+        # `pick` filter.
+        "picker_cards": picker_cards,
+        "picker_count": len(picker_cards),
+        "undated_count": undated_count,
+        "pick": pick,
+        "pick_counts": pick_counts,
+        "purchase_ids_by_card": _purchase_ids_by_card(txs),
         # Display string (every price, comma-joined, if bought more than
         # once) -- vs. the single raw value below, only present when there's
         # exactly one to safely prefill/overwrite in the quick-register form.
@@ -1364,13 +1442,16 @@ def list_transactions(
     usort: str = "name",
     udir: str = "asc",
     open_order: int | None = None,
+    pick: str = "unordered",
 ):
     db = get_db_session()
     try:
         return templates.TemplateResponse(
             request,
             "transactions.html",
-            _transactions_context(db, request, tsort, tdir, gsort, gdir, usort, udir, open_order=open_order),
+            _transactions_context(
+                db, request, tsort, tdir, gsort, gdir, usort, udir, open_order=open_order, pick=pick
+            ),
         )
     finally:
         db.close()

@@ -1064,3 +1064,151 @@ button.secondary {
   color: var(--muted);
   margin: 0.4rem 0 0;
 }
+
+/* --------------------------------------------------------------------
+   Transactions: Order history
+   --------------------------------------------------------------------
+   The order list reads as a table (aligned Qty/Value/Shipping/Total/
+   Remaining columns) but is NOT one: each order has to stay a <details>,
+   because ?open_order=N deep-links by putting `open` on it and the
+   agreed-total form swaps that same element via hx-target="#order-N"
+   + outerHTML. So alignment comes from one shared grid template applied
+   to both the header row and every <summary>. Keep those two in sync --
+   they line up only because they share `grid-template-columns`. */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 2rem;
+}
+.section-head h2 { margin: 0; }
+.section-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.section-summary {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-right: 0.6rem;
+}
+.section-summary .tx-kpi-label { margin-left: 0.5rem; }
+.section-summary .tx-kpi-label:first-child { margin-left: 0; }
+
+.orders-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.orders-row {
+  display: grid;
+  grid-template-columns:
+    minmax(4.5rem, 0.7fr)   /* Order #   */
+    minmax(6rem, 1fr)       /* Date      */
+    minmax(3rem, 0.5fr)     /* Qty       */
+    minmax(6rem, 1fr)       /* Value     */
+    minmax(6rem, 1fr)       /* Shipping  */
+    minmax(7rem, 1fr)       /* Agreed    */
+    minmax(6.5rem, 1fr)     /* Remaining */
+    minmax(6rem, 1fr);      /* Platform  */
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.55rem 0.9rem 0.55rem 1.9rem;
+}
+
+.orders-head {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border);
+}
+
+.order-item { border-bottom: 1px solid var(--border); }
+.order-item:last-child { border-bottom: none; }
+
+/* The disclosure triangle is drawn into the row's left padding rather than
+   left as a real marker: as a grid container, <summary> would lay the
+   default marker out as a grid item and shift every column one cell right. */
+.order-summary {
+  cursor: pointer;
+  position: relative;
+  font-size: 0.82rem;
+  list-style: none;
+}
+.order-summary::-webkit-details-marker { display: none; }
+.order-summary::before {
+  content: "\25B8";
+  position: absolute;
+  left: 0.75rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+  transition: transform 0.15s ease;
+}
+.order-item[open] > .order-summary::before { transform: rotate(90deg); }
+.order-summary:hover { background: var(--accent-wash); }
+.order-item[open] > .order-summary { background: var(--accent-wash); }
+
+.orders-row .oc-order { font-weight: 700; color: var(--ink); }
+.orders-row .oc-remaining .tx-diff-flag { color: #d03b3b; font-weight: 600; }
+.oc-settled { color: #2f9e5f; font-weight: 700; }
+/* Overrides .tx-platform-badge's `margin-left: auto`, which suited the old
+   flex summary but would shove the badge out of its grid cell here. */
+.orders-row .oc-platform .tx-platform-badge { margin-left: 0; }
+
+.order-body { padding: 0.9rem 1.1rem 1.1rem 1.9rem; }
+.order-add-cards {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+}
+
+/* --------------------------------------------------------------------
+   Transactions: the merged card picker
+   -------------------------------------------------------------------- */
+.picker-filter {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0 0.8rem;
+}
+.picker-check { width: 1.8rem; text-align: center; }
+.picker-order-link { font-weight: 600; }
+
+/* Same sticky-bottom pattern as /sales' .sale-list-bar, hidden until at
+   least one row is checked so it never covers content while reading. */
+.picker-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: var(--surface);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 0.7rem 1.1rem;
+  margin-top: 0.8rem;
+}
+.picker-bar[hidden] { display: none; }
+.picker-bar-count { font-weight: 700; }
+.picker-bar-target { display: flex; align-items: center; gap: 0.45rem; color: var(--muted); font-size: 0.8rem; }
+
+@media (max-width: 900px) {
+  /* Below this the eight columns stop being readable; fall back to a
+     wrapped flex line so the summary still scans instead of squeezing. */
+  .orders-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.85rem;
+  }
+  .orders-head { display: none; }
+}

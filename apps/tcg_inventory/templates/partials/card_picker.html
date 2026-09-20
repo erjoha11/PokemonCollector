@@ -1,0 +1,114 @@
+{# The page's single card-picking table -- "Recently Added" and the former
+   separate "Legacy import" table merged into one (see app.py's
+   `picker_cards`). Both existed only to feed the same order, so they become
+   one table with one sort pair (gsort/gdir), one selection model, and one
+   filter, instead of two tables, two sort pairs and two mutually-exclusive
+   submit paths.
+
+   Rendered EXACTLY ONCE per page, deliberately -- never inside a per-order
+   <details>. Expanding two orders would otherwise put two copies of this
+   whole table in the DOM with duplicate element ids and duplicate
+   checkboxes. Instead the table has one explicit target: the "Adding to"
+   select in its action bar, which an order's "Add cards to this order"
+   button points at that order.
+
+   That also removes the old "nothing happens when no cart is open" trap
+   structurally rather than by wording an alert better: the target is always
+   a real, listed choice -- an existing order, or a new one. #}
+{% from "partials/macros.html" import sort_th with context %}
+{% from "partials/macros.html" import dex_link %}
+{% from "partials/macros.html" import info %}
+
+<section class="cards-section" id="card-picker">
+  <div class="section-head">
+    <h2>Cards {{ info("Every card, whether or not it has been registered on an order yet. Market price is Dex's price; Paid is what you actually recorded paying. Select rows and add them to an order with the bar at the bottom.") }}</h2>
+  </div>
+
+  <div class="picker-filter" role="group" aria-label="Filter cards">
+    {# Plain links, not a form: the filter is a query param, so sort_url's
+       preserve-every-other-param contract keeps a sort click from resetting
+       the filter and vice versa. Counts live in the labels because the
+       count is the thing that says whether there's work left to do. #}
+    <a class="viz-filter-pill {{ 'active' if pick == 'unordered' }}" href="{{ pick_url(request, 'unordered') }}"
+       title="Cards with no registered purchase yet — what you'd normally be filling an order with.">Without an order ({{ pick_counts.unordered }})</a>
+    <a class="viz-filter-pill {{ 'active' if pick == 'recent' }}" href="{{ pick_url(request, 'recent') }}"
+       title="Cards with a known added date, set the first time the card was imported.">Recently added ({{ pick_counts.recent }})</a>
+    <a class="viz-filter-pill {{ 'active' if pick == 'all' }}" href="{{ pick_url(request, 'all') }}"
+       title="Every card in the collection.">All ({{ pick_counts.all }})</a>
+  </div>
+
+  <form id="card-picker-form" method="post" action="/transactions/purchase/add-existing-cards"
+        onsubmit="return submitPicker(this);">
+    {# Set from the action bar's "Adding to" select on submit. #}
+    <input type="hidden" name="purchase_id" id="picker-purchase-id" value="">
+
+    <div class="inventory-table-wrap compact">
+      <table class="inventory-table">
+        <thead>
+          <tr>
+            <th class="picker-check"><input type="checkbox" id="picker-select-all" onclick="toggleAllCardCheckboxes(this)" title="Select all"></th>
+            <th>{{ sort_th('Added', 'date', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Name', 'name', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Series', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Set', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th class="num">{{ sort_th('Market price', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th class="num">{{ sort_th('Paid', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>Order</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for card in picker_cards %}
+          <tr>
+            <td class="picker-check">
+              <input type="checkbox" name="card_id" value="{{ card.id }}" class="card-pick-checkbox"
+                     data-card-label="{{ card.name }}" onchange="updatePickerSelection()">
+            </td>
+            <td class="muted">
+              {%- if card.created_at %}{{ card.created_at.date().isoformat() }}
+              {%- else %}<span title="Imported before the app tracked an added date.">no date</span>{% endif -%}
+            </td>
+            <td>{{ dex_link(card) }}</td>
+            <td>{{ card.variant or '' }}</td>
+            <td>{{ card.series or '' }}</td>
+            <td>{{ card.set or '' }}</td>
+            <td class="num">{{ card.display_price | kr }}</td>
+            <td class="num">{{ registered_prices.get(card.id, '') }}</td>
+            <td>{{ card.card_id }}</td>
+            <td>
+              {%- set order_ids = purchase_ids_by_card.get(card.id, []) -%}
+              {%- if order_ids -%}
+                {%- for oid in order_ids %}<a class="picker-order-link" href="/transactions?open_order={{ oid }}#order-{{ oid }}">#{{ oid }}</a>{% if not loop.last %} {% endif %}{% endfor -%}
+              {%- else -%}<span class="muted">—</span>{%- endif -%}
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="muted">
+            {% if pick == 'unordered' %}Every card is already registered on an order — switch to “All” to add one anyway.
+            {% else %}No cards yet.{% endif %}
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Sticky action bar, same pattern as /sales' .sale-list-bar. Hidden
+       until at least one row is checked, so it never covers content for
+       someone who's only reading. #}
+    <div class="picker-bar" id="picker-bar" hidden>
+      <span class="picker-bar-count" id="picker-bar-count">0 cards selected</span>
+      <label class="picker-bar-target">
+        Adding to
+        <select id="picker-target" onchange="updatePickerSelection()">
+          <option value="new">New order</option>
+          {% for group in purchase_groups %}
+          <option value="{{ group.purchase_id }}">Order #{{ group.purchase_id }} — {{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="picker-submit">Add</button>
+      <button type="button" class="secondary" onclick="clearPickerSelection()">Clear</button>
+    </div>
+  </form>
+</section>
