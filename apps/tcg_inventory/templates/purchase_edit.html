@@ -34,7 +34,8 @@
   <div class="autocomplete" style="max-width: 420px; margin-bottom: 1rem;">
     <input type="text" placeholder="Search for a card to add to this order..." autocomplete="off"
            hx-get="/transactions/purchase/{{ purchase_id }}/edit/add-card-search"
-           hx-trigger="keyup changed delay:250ms" hx-target="#add-card-results" name="q">
+           hx-trigger="keyup changed delay:250ms" hx-target="#add-card-results"
+           onkeydown="if (event.key === 'Enter') event.preventDefault();" name="q">
     <div id="add-card-results"></div>
   </div>
 

@@ -9,7 +9,7 @@
   </div>
   {% endif %}
   {% for card in results %}
-  <button type="button" hx-get="/transactions/purchase/add-row?card_id={{ card.id }}" hx-target="#cart-body" hx-swap="beforeend">
+  <button type="button" onclick="addCardToCart({{ card.id }})">
     {{ card.name }} — {{ card.set }} ({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %})
   </button>
   {% else %}
