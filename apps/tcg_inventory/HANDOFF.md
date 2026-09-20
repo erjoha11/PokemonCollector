@@ -791,6 +791,31 @@ the same lines).
   `Agent` tool to spawn `ux` directly (same caveat #126's session logged),
   so that pass still hasn't happened.
 
+# Handoff notes — 2026-09-19 session (seeding the Release Notes page)
+
+No code changes. **Direct production-database change**, not reflected
+anywhere else in git history:
+
+- Inserted 6 rows directly into the production `releases` table (issue
+  #144's page, shipped empty by PR #149) covering user-facing tcg_inventory
+  changes from the 2026-09-14–09-19 backfill: sales/listings, Set-based
+  completion %, TCGPlayer pricing fixes, dashboard value-correctness fixes,
+  the Transactions order-edit flow, and the Release Notes page itself.
+  Deliberately **tcg_inventory-only** — repo/agent-tooling changes (the
+  `.claude/agents/` pipeline work) and finn_ad_scraper (no changes in this
+  window anyway) were left out, since this page is user-facing inside the
+  tcg_inventory webapp specifically, not a repo-wide changelog. A separate
+  `CHANGELOG.md` was added at the repo root the same session for the
+  repo-wide view (all three categories, git/PR-history based); the two are
+  intentionally not kept in lockstep — this page stays hand-curated and
+  user-facing per its own docstring in `models.Release`.
+- Written via direct SQL against the Supabase project (`db.` prefix
+  `nverpumoregkjfeddrwa.supabase.co`), matching the exact shape the app's
+  own `POST /releases` form would write (`date`, `title`, `body`,
+  `created_at`) — same schema, same table, nothing bypassed. Each entry can
+  be edited only by delete-and-re-add (no edit route, by the page's own
+  v1 design) via the `/releases` UI.
+
 # Handoff notes — 2026-09-19 session (Order #17 price split)
 
 ## Direct production-database changes (not in git history)
