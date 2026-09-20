@@ -141,7 +141,8 @@
            value="{{ group.platform if group.platform is not none else '' }}" class="tx-input-md">
     <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
     <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
-    <a href="/transactions/purchase/{{ group.purchase_id }}/edit"><button type="button" class="secondary">Edit order</button></a>
+    <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
+            hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
   </form>
   {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
 </details>

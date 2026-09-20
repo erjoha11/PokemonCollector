@@ -212,9 +212,28 @@ htmx-indicator, (3) Edit Order → htmx partial-swap conversion (biggest
 "smooth workflow" win), (4) inline-style cleanup, (5) distribute-remaining
 callout + order-summary hierarchy.
 
-**Status:** Quick wins (1-5) Addressed 2026-09-20, same session — Top
-finding (Edit Order htmx conversion) and Medium items (6-8) still Open,
-deliberately out of scope for that pass:
+**Status:** Quick wins (1-5) Addressed 2026-09-20, same session. Top finding
+(Edit Order htmx conversion) Addressed 2026-09-20, follow-up session —
+`transactions.html`'s "Edit order" button and `purchase_edit.html`'s form
+now use `hx-get`/`hx-post` with `hx-select="#main-content"
+hx-target="#main-content" hx-swap="outerHTML"`, the exact pattern already
+used by the New Order cart's Register button (`purchase_cart.html`) and
+`create_purchase`/`set_purchase_total` — opening and saving Edit Order are
+now in-place partial swaps, no full-page navigation or reload. `Cancel` was
+also converted to an `hx-get` (`purchase_edit.html`), consistent with
+`tx_row_edit.html`'s existing pattern for other in-place edits on this page.
+`update_purchase` (app.py) is unchanged beyond this: it still does one
+`db.commit()` for the whole order edit (retype/relink/move/merge/split all
+still atomic) and still responds with a `RedirectResponse` to
+`/transactions?open_order={id}` — htmx (like the browser) follows that
+redirect and applies `hx-select` to the final page, so `open_order`
+reopening the just-edited group's `<details>` still works. Verified via
+curl (POST with `HX-Request: true` + `-L`, following the 303) that the edit
+persists atomically and the response contains the reopened
+`<details id="order-999" open>` group; full `python -m pytest
+apps/tcg_inventory` run shows no new failures (same 5 pre-existing,
+unrelated SQLite/SQLAlchemy-version failures as before). Medium items (6-8)
+still Open, out of scope for this pass:
 1. `button.secondary` now applied to Cancel (transactions.html,
    purchase_edit.html, tx_row.html's inline edit form), Edit order, Distribute
    evenly / Distribute remaining across unpriced cards, Remove (cart row),

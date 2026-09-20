@@ -8,7 +8,10 @@
   merge it into one, or split it into a new one — reassigning Order ID is the one primitive behind all three.
 </p>
 
-<form method="post" action="/transactions/purchase/{{ purchase_id }}/edit">
+<form method="post" action="/transactions/purchase/{{ purchase_id }}/edit"
+      hx-post="/transactions/purchase/{{ purchase_id }}/edit"
+      hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
+      hx-indicator="#save-order-indicator">
   <div class="table-scroll">
     <table class="tx-table mb-1">
       <thead>
@@ -67,7 +70,9 @@
   </p>
 
   <button type="submit">Save changes</button>
-  <a href="/transactions?open_order={{ purchase_id }}"><button type="button" class="secondary">Cancel</button></a>
+  <span id="save-order-indicator" class="tx-search-spinner htmx-indicator">Saving…</span>
+  <button type="button" class="secondary" hx-get="/transactions?open_order={{ purchase_id }}"
+          hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Cancel</button>
 </form>
 
 <script>
