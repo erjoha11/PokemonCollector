@@ -568,7 +568,7 @@ def _purchase_shipping_total(txs: list[Transaction]) -> float:
     return total
 
 
-def economic_summary(db: Session) -> dict:
+def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
     """Total real money in/out across every registered transaction, plus the
     "paper" gain/loss against today's collection value (unique_value, so
     duplicates don't inflate it) -- unrealized, since it compares a real
@@ -579,8 +579,14 @@ def economic_summary(db: Session) -> dict:
     here even though `_group_transactions_by_purchase`'s per-order diff line
     already accounted for it, understating the "Net invested"/"Paper
     gain/loss" KPIs whenever any order had shipping set.
+
+    `txs`, when given, is a caller-supplied `Transaction.query.all()` result
+    (e.g. `dashboard()` loading it once and threading it through both this
+    and `net_invested_by_card` instead of each independently re-scanning the
+    whole table -- same pattern as `all_cards_with_collections` for `cards`).
     """
-    txs = db.query(Transaction).all()
+    if txs is None:
+        txs = db.query(Transaction).all()
     total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "purchase") + _purchase_shipping_total(txs)
     total_sold = sum(t.price for t in txs if t.type == "sale")
     net_invested = total_bought - total_sold
@@ -591,23 +597,32 @@ def economic_summary(db: Session) -> dict:
     }
 
 
-def net_invested_by_card(db: Session) -> dict[int, float]:
+def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> dict[int, float]:
     """Return actual net investment per card using economic-summary rules.
 
     Like `economic_summary`, this now includes `purchase_shipping`. Since
     shipping is a per-order cost, not per-card, it's attributed in full to a
     single card per order -- the lowest transaction id in that `purchase_id`
-    group (the `order_by` below makes this deterministic) -- rather than
+    group (the sort below makes this deterministic) -- rather than
     split across every card in the lot. This keeps
     `sum(net_invested_by_card(db).values())` consistent with
     `economic_summary`'s `net_invested`; the tradeoff is that one card's own
     figure can look inflated relative to its lot-mates when a multi-card
     order has shipping set. A row with no `purchase_id` counts its own
     shipping on its own card, same as `_purchase_shipping_total`.
+
+    `txs`, when given, is a caller-supplied `Transaction.query.all()` result
+    -- see `economic_summary`'s docstring for why (avoids a second full-table
+    scan in the same request). Since a pre-loaded list isn't already ordered
+    by `(purchase_id, id)`, it's sorted here in Python instead of relying on
+    a SQL `ORDER BY`.
     """
+    if txs is None:
+        txs = db.query(Transaction).all()
+    ordered_txs = sorted(txs, key=lambda t: (t.purchase_id is None, t.purchase_id or 0, t.id))
     invested: dict[int, float] = {}
     seen_purchase_ids: set[int] = set()
-    for tx in db.query(Transaction).order_by(Transaction.purchase_id, Transaction.id).all():
+    for tx in ordered_txs:
         if tx.type == "purchase":
             amount = tx.price + (tx.fees or 0.0)
             if tx.purchase_shipping:
