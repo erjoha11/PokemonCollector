@@ -212,4 +212,31 @@ htmx-indicator, (3) Edit Order → htmx partial-swap conversion (biggest
 "smooth workflow" win), (4) inline-style cleanup, (5) distribute-remaining
 callout + order-summary hierarchy.
 
-**Status:** Open
+**Status:** Quick wins (1-5) Addressed 2026-09-20, same session — Top
+finding (Edit Order htmx conversion) and Medium items (6-8) still Open,
+deliberately out of scope for that pass:
+1. `button.secondary` now applied to Cancel (transactions.html,
+   purchase_edit.html, tx_row.html's inline edit form), Edit order, Distribute
+   evenly / Distribute remaining across unpriced cards, Remove (cart row),
+   Start new order — Register/Save changes/Update total/shipping stay the
+   one primary action per form.
+2. `purchase_cart_row.html`'s table now uses `class="tx-table"`, matching
+   Recently Added/History/Legacy.
+3. Inline `style="..."` widths/margins across transactions.html,
+   purchase_edit.html, purchase_edit_row.html and purchase_cart*.html
+   replaced with reusable classes in style.css (`.tx-input-xs/-sm/-md/-date/
+   -lg/-xl`, `.tx-search`/`.tx-search-sm`, `.mt-*`/`.mb-*` spacing utilities,
+   `.tx-header-row`, `.inventory-table-wrap.compact`) on a 0.5/0.75/1/1.5/2rem
+   scale — mechanical, no layout behavior changes. The one remaining inline
+   `style="display: none"` (`#legacy-open-order-controls`) is left as-is
+   since it's toggled directly by `updateLegacyOrderControls()`, not a static
+   layout value.
+4. Legacy Import's mode switch now has a `.muted` hint next to each variant
+   ("Using the currently open new order." / "No new order is open — pick an
+   existing one instead.").
+5. `hx-indicator` added to cart search, "+ Add to order" (via
+   `htmx.ajax`'s `indicator` option), Register, "+ New Order", relink search,
+   add-card search, and order total/shipping update, backed by a new
+   `.htmx-indicator`/`.tx-search-spinner` rule in style.css (opacity-fade,
+   htmx's standard convention, `includeIndicatorStyles` already on by
+   default).
