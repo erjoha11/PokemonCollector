@@ -1576,6 +1576,15 @@ def purchase_edit_form(request: Request, purchase_id: int):
             return RedirectResponse("/transactions", status_code=303)
         purchase_total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None)
+        # No agreed total saved yet -- default the field to shipping + the
+        # cards already priced (price == 0 means "not priced yet", the same
+        # convention the Legacy import table's Order column uses), so the
+        # user starts from a real number rather than blank/zero. Once a
+        # total is actually saved, it's a real value the user typed and
+        # always wins here -- never silently recalculated out from under
+        # them.
+        if purchase_total is None:
+            purchase_total = round(sum(t.price for t in txs if t.price) + (purchase_shipping or 0), 2)
         return templates.TemplateResponse(
             request,
             "purchase_edit.html",

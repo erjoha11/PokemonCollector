@@ -43,7 +43,16 @@ run).
   by reassigning Order ID — all edits in a group commit atomically, and
   moving a row out of an order clears that row's agreed total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). A single ungrouped
+  total/shipping afterward). Agreed total defaults to shipping + the
+  cards already priced (price 0 = not priced yet) when nothing's been
+  saved yet, but a saved value is a real number the user typed and is
+  never silently recalculated back to the sum. A "Distribute remaining
+  across unpriced cards" button (client-side, same pattern as the New
+  Order cart's "Distribute evenly") fills `Agreed total − Shipping −
+  Σ(already-priced cards)` evenly into the still-unpriced rows — useful
+  for a lot where a few cards' values are known and the rest should
+  absorb the remainder; rejects if every card is already priced or the
+  result would be negative. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked

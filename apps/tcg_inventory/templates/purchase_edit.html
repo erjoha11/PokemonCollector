@@ -40,14 +40,24 @@
 
   <div class="filters" style="margin-bottom: 0.5rem;">
     <label>Agreed total for rows staying in this order
-      <input type="number" step="0.01" name="purchase_total"
+      <input type="number" step="0.01" name="purchase_total" id="purchase_total"
              value="{{ purchase_total if purchase_total is not none else '' }}" style="width: 160px;">
     </label>
     <label>Shipping
-      <input type="number" step="0.01" name="purchase_shipping"
+      <input type="number" step="0.01" name="purchase_shipping" id="purchase_shipping"
              value="{{ purchase_shipping if purchase_shipping is not none else '' }}" style="width: 130px;">
     </label>
+    <button type="button" onclick="distributeAgreedTotal()"
+            title="Splits Agreed total − Shipping − prices already set on other cards evenly across the cards in this order that still have no price.">
+      Distribute remaining across unpriced cards
+    </button>
   </div>
+  <p class="muted">
+    Agreed total defaults to shipping + the cards already priced, but type over it with what you actually paid for the
+    order, then use "Distribute remaining across unpriced cards" to spread the difference over the ones you haven't
+    priced individually (price 0) — useful for a lot where you know a few cards' values and want the rest to absorb
+    the remainder. This doesn't save until you click "Save changes" below.
+  </p>
   <p class="muted">
     Moving a row to a different Order ID clears this order's agreed total/shipping for that row —
     set the destination order's total/shipping afterward from the Transactions page, it's never guessed or split automatically.
@@ -56,4 +66,38 @@
   <button type="submit">Save changes</button>
   <a href="/transactions?open_order={{ purchase_id }}"><button type="button">Cancel</button></a>
 </form>
+
+<script>
+// "Distribute remaining across unpriced cards" -- price 0 means "not priced
+// yet" (same convention as the Legacy import table's Order column), so a
+// card counts as unpriced here if its price field is 0 or blank. Client-side
+// only, same as the New Order cart's "Distribute evenly" button -- fills in
+// the price inputs but doesn't persist anything until Save changes is
+// clicked, so a mis-typed Agreed total costs nothing to undo.
+function distributeAgreedTotal() {
+  var total = parseFloat(document.getElementById('purchase_total').value);
+  if (isNaN(total)) { alert('Enter an Agreed total first.'); return; }
+  var shipping = parseFloat(document.getElementById('purchase_shipping').value) || 0;
+
+  var priceInputs = document.querySelectorAll('#purchase-edit-rows input[name="price"]');
+  var pricedSum = 0;
+  var unpriced = [];
+  priceInputs.forEach(function (el) {
+    var v = parseFloat(el.value);
+    if (v) { pricedSum += v; } else { unpriced.push(el); }
+  });
+
+  if (unpriced.length === 0) {
+    alert('Every card in this order already has a price -- nothing to distribute into.');
+    return;
+  }
+  var remaining = total - shipping - pricedSum;
+  if (remaining < 0) {
+    alert("Agreed total is less than shipping plus the cards already priced -- can't distribute a negative amount.");
+    return;
+  }
+  var each = Math.round((remaining / unpriced.length) * 100) / 100;
+  unpriced.forEach(function (el) { el.value = each; });
+}
+</script>
 {% endblock %}
