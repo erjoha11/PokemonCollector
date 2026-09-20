@@ -1014,6 +1014,23 @@ def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
     assert "Charizard" not in collapsed_section
 
 
+def test_legacy_import_table_has_both_open_and_existing_order_controls(client):
+    # Both blocks render server-side (client JS toggles which is visible,
+    # based on whether a New Order cart is currently open) -- assert the
+    # markup/toggle plumbing is present rather than the runtime visibility,
+    # which needs a browser to exercise.
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    response = client.get("/transactions")
+    text = response.text
+    assert 'id="legacy-open-order-controls"' in text
+    assert "addCheckedLegacyCardsToOpenOrder()" in text
+    assert 'id="legacy-existing-order-controls"' in text
+    assert 'id="legacy-existing-order-select"' in text
+    assert "function updateLegacyOrderControls()" in text
+
+
 def test_add_cards_to_existing_order_creates_rows_and_redirects(client):
     import datetime as dt
 

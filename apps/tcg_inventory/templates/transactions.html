@@ -159,15 +159,20 @@
   <form method="post" action="/transactions/purchase/add-existing-cards"
         onsubmit="return confirmLegacyAddToOrder(this)">
     <div class="filters" style="margin-bottom: 0.5rem;">
-      <select name="purchase_id" required>
-        <option value="" disabled selected>Add checked cards to order…</option>
-        {% for group in purchase_groups %}
-        <option value="{{ group.purchase_id }}">
-          Order #{{ group.purchase_id }} ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }})
-        </option>
-        {% endfor %}
-      </select>
-      <button type="submit">+ Add checked cards to order</button>
+      <span id="legacy-open-order-controls" style="display: none;">
+        <button type="button" onclick="addCheckedLegacyCardsToOpenOrder()">+ Add checked cards to open order</button>
+      </span>
+      <span id="legacy-existing-order-controls">
+        <select name="purchase_id" id="legacy-existing-order-select" required>
+          <option value="" disabled selected>Add checked cards to order…</option>
+          {% for group in purchase_groups %}
+          <option value="{{ group.purchase_id }}">
+            Order #{{ group.purchase_id }} ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }})
+          </option>
+          {% endfor %}
+        </select>
+        <button type="submit">+ Add checked cards to order</button>
+      </span>
     </div>
     <div class="inventory-table-wrap" style="max-height: 400px;">
       <table class="inventory-table">
@@ -330,5 +335,53 @@ function confirmLegacyAddToOrder(form) {
   }
   return true;
 }
+
+// Legacy import's bulk control has two mutually exclusive modes: a New
+// Order cart open right now wants its checked cards appended straight into
+// that cart (one click, no picking an order that doesn't exist yet); no
+// cart open wants the existing-order dropdown instead, since there's
+// nothing open to add into. Re-run whenever the cart's existence could
+// have changed -- initial page render, opening a cart, and cancelling one
+// (Register itself navigates away via #main-content swap, which re-runs
+// this whole script on load, so it's covered without a separate hook).
+function updateLegacyOrderControls() {
+  var openControls = document.getElementById('legacy-open-order-controls');
+  var existingControls = document.getElementById('legacy-existing-order-controls');
+  var existingSelect = document.getElementById('legacy-existing-order-select');
+  if (!openControls || !existingControls) return;
+  var cartOpen = !!document.getElementById('cart-body');
+  openControls.style.display = cartOpen ? '' : 'none';
+  existingControls.style.display = cartOpen ? 'none' : '';
+  // A hidden `required` field silently blocks submission if the browser
+  // ever tries to validate it -- disabling it while hidden keeps it out of
+  // constraint validation entirely, not just out of sight.
+  if (existingSelect) existingSelect.disabled = cartOpen;
+}
+
+function addCheckedLegacyCardsToOpenOrder() {
+  var checked = Array.prototype.filter.call(
+    document.querySelectorAll('.legacy-card-checkbox'),
+    function (el) { return el.checked; }
+  );
+  if (checked.length === 0) {
+    alert('Check at least one card first.');
+    return;
+  }
+  checked.forEach(function (el) {
+    addCardToCart(parseInt(el.value, 10));
+    el.checked = false;
+  });
+}
+
+updateLegacyOrderControls();
+
+// Re-check after any htmx swap into the cart container (covers "+ New
+// Order" opening a cart) -- the Cancel button clears it via plain JS
+// instead of htmx, so it calls updateLegacyOrderControls() directly.
+document.body.addEventListener('htmx:afterSwap', function (evt) {
+  if (evt.detail.target && evt.detail.target.id === 'purchase-cart-container') {
+    updateLegacyOrderControls();
+  }
+});
 </script>
 {% endblock %}

@@ -40,6 +40,6 @@
     </div>
 
     <button type="submit">Register</button>
-    <button type="button" onclick="if (!confirmDiscardCart()) return; document.getElementById('purchase-cart-container').innerHTML=''">Cancel</button>
+    <button type="button" onclick="if (!confirmDiscardCart()) return; document.getElementById('purchase-cart-container').innerHTML=''; updateLegacyOrderControls();">Cancel</button>
   </form>
 </div>
