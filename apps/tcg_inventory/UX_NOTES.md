@@ -123,3 +123,93 @@ _cards_with_known_added_date() (~1133-1148) and _transactions_context()
   implementing.
 
 **Status:** Open
+
+## 2026-09-20 — Transactions page usability/visual review
+
+**Reviewed:** templates/transactions.html, purchase_edit.html, and every
+partial they include (purchase_cart.html, purchase_cart_row.html,
+purchase_cart_search_results.html, purchase_cart_unordered_results.html,
+tx_row.html, tx_row_edit.html, tx_row_view.html, purchase_edit_row.html,
+purchase_edit_card_cell.html, purchase_edit_new_row.html,
+purchase_edit_relink_cell.html, purchase_edit_relink_results.html,
+purchase_edit_add_card_results.html, kpi_module.html,
+transactions_charts.html, macros.html), the relevant app.py routes
+(transactions_page, create_purchase/add-row/search, purchase_edit_form/
+update_purchase/add-card/relink routes, /transactions/{id}/edit,
+/transactions/purchase/{id}/total, /transactions/charts), and
+static/style.css (`.tx-*`, `.kpi-*`, `.autocomplete*`, `form.filters`,
+`button`, `details.collapsible`). Prompted by the user's "every function is
+a little bit stocky... professional page with a smooth workflow" ask.
+
+**Note:** the app's UI is fully English (HANDOFF.md: full translation done
+2026-09-15) — any brief assuming Norwegian labeling for this page is stale.
+
+**Findings:**
+
+*Top finding — structural:* "Edit order" (transactions.html:141) is a plain
+`<a href>` full-page navigation to purchase_edit.html, and `update_purchase`
+(app.py:1705-1763) saves via classic form POST → 303 redirect → another
+full-page load — even though every other control on this page (order
+total/shipping, add-to-cart, relink, add-card) is htmx partial-swap. This
+mismatch (2 full reloads to fix a typo on one row) is the single biggest
+contributor to the "stocky/bolted-on" feel. The order-level atomic-commit
+semantics (README) don't require abandoning htmx — an
+`hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"`
+on the edit form (same pattern already used by the New Order cart's
+Register button) would keep one-commit-per-save while dropping both full
+reloads. Template/route change only, no data-model change.
+
+Quick wins (small, high-value, mostly CSS/markup):
+1. Every button (New Order, Register, Distribute evenly, Cancel, Edit
+   order) shares one flat style (`style.css:775`) — no visual hierarchy
+   between primary actions and secondary/destructive ones. A
+   `button.secondary` class already exists (`style.css:788`) but is unused
+   on this page; applying it to Cancel/Edit-order/Distribute-evenly would
+   read as far more deliberate.
+2. `purchase_cart_row.html` (the row you build every purchase in) is a bare
+   unstyled `<table>` — the only table on the page with zero styling hooks,
+   while Recently Added/History/Legacy tables all have real padding/borders/
+   hover states. Give it `.tx-table`-equivalent treatment.
+3. ~15 inline `style="..."` attributes in transactions.html alone (ad-hoc
+   widths/margins, no consistent spacing scale), repeated in
+   purchase_edit.html/purchase_edit_row.html for input widths that visibly
+   don't line up across rows. Pull into a few reusable classes
+   (`.tx-input-sm`, `.tx-input-date`, a spacing utility) — mechanical pass.
+4. Legacy Import's checkbox-vs-order-select mode switch
+   (`updateLegacyOrderControls()`) has no visible explanation for why the
+   control changed shape when a cart is open — add a one-line `.muted` hint.
+5. No htmx-indicator anywhere on the page (search-as-you-type, add-to-order,
+   update total/shipping all give zero pending-state feedback) — cheap fix,
+   `hx-indicator` + a small `.htmx-indicator` opacity rule.
+
+Medium (real workflow friction, no schema change):
+6. Registering an order swaps all of `#main-content`, so scroll position
+   and any other manually-expanded order `<details>` reset/collapse — only
+   the just-registered order's group reopens (`open_order`). Worth
+   narrowing the swap target if feasible without complicating server-side
+   `purchase_groups` recomputation.
+7. "Distribute remaining across unpriced cards" (cart + edit-order) is
+   arguably the most powerful, least-discoverable control on the page and
+   looks identical to an ordinary filter input. A bordered/backgrounded
+   "Pricing helper" box around it would raise discoverability
+   proportionately (no tutorial/onboarding needed).
+8. Order-summary line (`tx-order-summary`) gives Value/Fees/Shipping/Total/
+   Remaining equal visual weight except Remaining (red). Given the app's
+   own "never silently recalculate a user-entered value" principle, Total
+   (user-entered) vs Value (derived sum) should be visually distinguished
+   (e.g. accent color on Total) so the derived-vs-truth distinction doesn't
+   require already knowing the convention.
+
+Correctness note, low-severity: `purchase_edit_row.html`'s "Start new
+order" button hardcodes `next_purchase_id` computed once at page-load
+(`app.py:1616`). Clicking "Start new order" on two different rows in one
+Edit-Order session, intending two separate new orders, silently merges both
+into the same new order instead. One-line fix if it ever bites (increment a
+client-side counter after first use).
+
+**Suggested priority:** (1) button hierarchy + cart-row table styling, (2)
+htmx-indicator, (3) Edit Order → htmx partial-swap conversion (biggest
+"smooth workflow" win), (4) inline-style cleanup, (5) distribute-remaining
+callout + order-summary hierarchy.
+
+**Status:** Open
