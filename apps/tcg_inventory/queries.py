@@ -14,7 +14,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
@@ -476,38 +476,58 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
     collection_value_growth -- CardSnapshot exposes the same
     duplicates/unique_value/total_value properties as Card, computed from
     that snapshot's own qty/reference_price instead of today's.
+
+    Aggregated in the database (GROUP BY date + source, SUM'd there) rather
+    than pulling every CardSnapshot row into Python -- this table grows with
+    calendar time regardless of collection size (see issue #162), so summing
+    in SQL keeps Dashboard load cheap no matter how much history has
+    accumulated. The three per-metric expressions below are the SQL
+    equivalent of the VALUE_GROWTH_METRICS lambdas applied to CardSnapshot's
+    own duplicates/unique_value/total_value properties -- including
+    `unique`'s quirk of *not* gating on qty > 0 (unlike Card.unique_value),
+    which the plain `func.sum(price)` below preserves on purpose to match
+    prior behavior byte-for-byte.
     """
     if metric not in VALUE_GROWTH_METRICS:
         raise ValueError(f"unknown metric: {metric!r} (expected one of {sorted(VALUE_GROWTH_METRICS)})")
-    _, value_of = VALUE_GROWTH_METRICS[metric]
 
-    by_date_source: dict[tuple[dt.date, str], float] = {}
-    snapshots_by_date_source: dict[tuple[dt.date, str], list[CardSnapshot]] = {}
-    for snap in db.query(CardSnapshot).all():
-        key = (snap.date, snap.source)
-        by_date_source[key] = by_date_source.get(key, 0.0) + value_of(snap)
-        snapshots_by_date_source.setdefault(key, []).append(snap)
+    price = func.coalesce(CardSnapshot.reference_price, 0.0)
+    if metric == "unique":
+        value_expr = func.sum(price)
+        count_expr = func.sum(case((CardSnapshot.qty > 0, 1), else_=0))
+    elif metric == "duplicates":
+        value_expr = func.sum(CardSnapshot.qty * price - price)
+        count_expr = func.sum(case((CardSnapshot.qty > 1, CardSnapshot.qty - 1), else_=0))
+    else:  # total
+        value_expr = func.sum(CardSnapshot.qty * price)
+        count_expr = func.sum(CardSnapshot.qty)
+
+    rows = (
+        db.query(
+            CardSnapshot.date,
+            CardSnapshot.source,
+            value_expr.label("value"),
+            count_expr.label("card_count"),
+        )
+        .group_by(CardSnapshot.date, CardSnapshot.source)
+        .all()
+    )
 
     sources_by_date: dict[dt.date, set[str]] = {}
-    for date, source in by_date_source:
+    for date, source, _, _ in rows:
         sources_by_date.setdefault(date, set()).add(source)
 
     source_order = {"cron": 0, "manual": 1}
     result = []
-    for (date, source), total in sorted(
-        by_date_source.items(), key=lambda item: (item[0][0], source_order.get(item[0][1], 2))
+    for date, source, value, card_count in sorted(
+        rows, key=lambda row: (row[0], source_order.get(row[1], 2))
     ):
         label = date.strftime("%Y-%m-%d")
         if len(sources_by_date[date]) > 1:
             label = f"{label} ({source})"
-        snapshots = snapshots_by_date_source[(date, source)]
-        if metric == "unique":
-            card_count = sum(snap.qty > 0 for snap in snapshots)
-        elif metric == "duplicates":
-            card_count = sum(snap.duplicates for snap in snapshots)
-        else:
-            card_count = sum(snap.qty for snap in snapshots)
-        result.append({"label": label, "cumulative_value": total, "card_count": card_count})
+        result.append(
+            {"label": label, "cumulative_value": value or 0.0, "card_count": int(card_count or 0)}
+        )
     return result
 
 
