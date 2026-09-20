@@ -1081,3 +1081,34 @@ the #132 default filter hides from `/inventory`; and the net-paid test
 searched for `"> -</td>"` when the template renders `<td class="num">-</td>`.
 No assertions were loosened. No CI exists yet, which is why these went
 unnoticed; a pytest workflow is a separate, not-yet-approved follow-up.
+
+## Transactions page layout redesign — 2026-09-20 session
+
+All in git (branch `worktree-transactions-redesign`); no database changes.
+Full detail in `UX_NOTES.md`'s 2026-09-20 entry and README's Transactions
+section. Summary: Order history moved to the top as a proper columnar list
+(Order/Date/Qty/Value/Shipping/Agreed total/Remaining/Platform), "Recently
+Added" and "Legacy import" merged into one card picker with a `?pick=`
+filter and checkbox selection, and the second KPI bar reduced to a header
+caption (the KPI cards themselves were left untouched, as the user asked).
+
+**Open item deliberately not built.** `POST
+/transactions/purchase/{id}/total` still blind-overwrites `purchase_total`,
+`purchase_shipping` **and** `platform` on every row of the order, so
+submitting that form with a blank platform NULLs platform everywhere — and
+it prefills blank by design whenever an order's rows disagree, while the
+summary still shows a platform badge. This redesign only made the trap
+*visible* (the field now reads "Mixed — saving overwrites all rows", and
+the summary badge gets a `*`). Actually changing the write semantics —
+e.g. only updating fields present and non-empty in the submission —
+contradicts the route's documented "blank clears" behavior and would change
+what an existing form submission does, so it wants a deliberate decision
+rather than being folded into a layout change. Same applies to shipping:
+filling only Agreed total still clears a previously-saved Shipping.
+
+**Also worth knowing:** `usort`/`udir` no longer drive anything (the table
+they sorted is gone) but are still accepted by the route so old links don't
+422 — there's a test pinning that. And `queries.top_valuable_cards(db,
+limit=50)` was removed from `_transactions_context`: it ran on every load
+and every sort click while `kpi_module.html` only renders that tile on the
+Dashboard.

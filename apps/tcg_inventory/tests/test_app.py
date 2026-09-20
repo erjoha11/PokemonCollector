@@ -4,6 +4,58 @@ import re
 from conftest import make_csv, seed_import
 
 
+# --- Transactions "Order history" helpers ---------------------------------
+# An order renders as <details id="order-N"> with a grid <summary> whose
+# cells are the Qty/Value/Shipping/Agreed-total/Remaining columns. Anchor on
+# that id rather than on the text "Order #N": the card picker's "Adding to"
+# <select> also lists every order by that label, so a plain text split lands
+# in the wrong part of the page.
+
+
+def order_section(text: str, purchase_id: int) -> str:
+    """Everything rendered for one order -- its summary row plus the
+    expanded body (agreed-total form, its cards, add-cards button)."""
+    start = text.index(f'id="order-{purchase_id}"')
+    end = text.find('<details class="order-item"', start + 1)
+    if end == -1:
+        end = text.find('<section class="ungrouped-section"', start)
+    return text[start:end if end != -1 else len(text)]
+
+
+def order_summary(text: str, purchase_id: int) -> str:
+    """Just the collapsed summary row for one order."""
+    section = order_section(text, purchase_id)
+    return section[: section.index("</summary>")]
+
+
+def summary_cell(text: str, purchase_id: int, column: str) -> str:
+    """Visible text of one summary column, tags stripped and whitespace
+    collapsed, e.g. summary_cell(text, 4, "value") -> '60 kr'. `column` is
+    the oc-* class suffix used in transactions.html (order/date/qty/value/
+    shipping/total/remaining/platform). Handles the columns that wrap their
+    value in a nested <span> (Remaining's diff flag, Platform's badge)."""
+    summary = order_summary(text, purchase_id)
+    after = summary.split(f'class="oc-{column}', 1)[1]
+    # Walk to the matching close of this cell's own <span>.
+    depth = 0
+    out = []
+    i = after.index(">") + 1
+    while i < len(after):
+        if after.startswith("<span", i):
+            depth += 1
+            i = after.index(">", i) + 1
+            continue
+        if after.startswith("</span>", i):
+            if depth == 0:
+                break
+            depth -= 1
+            i += len("</span>")
+            continue
+        out.append(after[i])
+        i += 1
+    return " ".join("".join(out).split())
+
+
 def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client):
     # Duplicated Collection has more raw value (500) once duplicates count,
     # but only 50 kr of *unique* value. Single Card Collection has just one
@@ -208,8 +260,12 @@ def test_transactions_page_shows_economic_kpi_strip(client):
     text = response.text
     assert "Net invested" in text
     assert "85 kr" in text  # 80 purchase price + 5 fee
-    assert "Current value" in text
     assert "Paper gain" in text or "Paper loss" in text or "Loss" in text or "Gain" in text
+    # "Current value" deliberately no longer appears here: it was the same
+    # number the Market Value KPI card already shows as "Unique value",
+    # under a third name, a few hundred pixels away from that card's own
+    # (duplicate-inclusive) "Market Value" total.
+    assert "Current value" not in text
     assert "View charts" in text
     # The charts themselves are lazy-loaded, not rendered on the initial page.
     assert "viz-chart-wrap" not in text
@@ -418,11 +474,11 @@ def test_transactions_history_groups_transactions_sharing_a_purchase_id(client):
 
     response = client.get("/transactions")
     text = response.text
-    assert "Order #7" in text
-    assert "2 cards" in text
-    assert "25 kr" in text  # 10 + 15, the group's subtotal
+    assert 'id="order-7"' in text
+    assert summary_cell(text, 7, "qty") == "2"
+    assert summary_cell(text, 7, "value") == "25 kr"  # 10 + 15, the group's subtotal
     assert "Individually registered" in text
-    group_section = text.split("Order #7", 1)[1].split("Individually registered", 1)[0]
+    group_section = order_section(text, 7)
     assert "Pikachu" in group_section
     assert "Charizard" in group_section
     assert "Eevee" not in group_section
@@ -458,11 +514,11 @@ def test_purchase_groups_rank_items_by_price_and_order_groups_by_purchase_id(cli
     )
 
     text = client.get("/transactions").text
-    assert text.index("Order #2") < text.index("Order #1")
+    assert text.index('id="order-2"') < text.index('id="order-1"')
 
-    # Within "Order #2", the pricier card (Charizard, 50) ranks above the
+    # Within order #2, the pricier card (Charizard, 50) ranks above the
     # cheaper one (Pikachu, 10) regardless of registration order.
-    group_section = text.split("Order #2", 1)[1]
+    group_section = order_section(text, 2)
     assert group_section.index("Charizard") < group_section.index("Pikachu")
 
 
@@ -503,10 +559,10 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     # the normal-print cards not priced individually yet are the
     # still-unaccounted-for 40 kr, flagged as Remaining since it's nonzero.
     text = client.get("/transactions").text
-    group_section = text.split("Order #4", 1)[1]
-    assert "Value 60 kr" in group_section
-    assert "Total 100 kr" in group_section
-    assert '<span class="tx-order-stat tx-diff-flag">Remaining 40 kr</span>' in group_section
+    assert summary_cell(text, 4, "value") == "60 kr"
+    assert summary_cell(text, 4, "total") == "100 kr"
+    assert summary_cell(text, 4, "remaining") == "40 kr"
+    assert "tx-diff-flag" in order_summary(text, 4)
 
 
 def test_purchase_shipping_is_subtracted_from_the_diff(client):
@@ -544,13 +600,15 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     db.close()
 
     text = client.get("/transactions").text
-    group_section = text.split("Order #1", 1)[1]
-    assert "Value 1 000 kr" in group_section
-    assert "Shipping 76 kr" in group_section
-    assert "Total 1 076 kr" in group_section
-    # Remaining is 0 once shipping is accounted for -- the flag stays hidden
-    # entirely rather than showing a "0 kr" line for a settled order.
-    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
+    assert summary_cell(text, 1, "value") == "1 000 kr"
+    assert summary_cell(text, 1, "shipping") == "76 kr"
+    assert summary_cell(text, 1, "total") == "1 076 kr"
+    # Remaining is 0 once shipping is accounted for -- a settled order shows
+    # the ✓ marker, not a red diff flag. (It is no longer rendered as
+    # *nothing*: blank could equally mean "no agreed total set yet", which
+    # made settled and untouched orders indistinguishable at a glance.)
+    assert "tx-diff-flag" not in order_summary(text, 1)
+    assert "oc-settled" in order_summary(text, 1)
 
 
 def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
@@ -580,13 +638,13 @@ def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
     db.close()
 
     text = client.get("/transactions").text
-    group_section = text.split("Order #9", 1)[1]
-    assert "Value 300 kr" in group_section
-    summary_section = group_section.split("</summary>", 1)[0]
+    assert summary_cell(text, 9, "value") == "300 kr"
+    summary_section = order_summary(text, 9)
     assert "9 999 kr" not in summary_section
-    # Remaining is 0 (the agreed total matches the real purchase row exactly)
-    # -- the flag stays hidden for a settled order.
+    # Remaining is 0 (the agreed total matches the real purchase row
+    # exactly) -- settled, so the ✓ marker rather than a red diff flag.
     assert "tx-diff-flag" not in summary_section
+    assert "oc-settled" in summary_section
 
 
 def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
@@ -635,10 +693,12 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
         data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
     )
 
-    # No declared total yet -- no Total or Remaining stat shown, just Value.
+    # No declared total yet -- Total and Remaining both render as an em
+    # dash, distinct from a settled order's ✓.
     text = client.get("/transactions").text
-    group_section = text.split("Order #6", 1)[1]
-    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
+    assert summary_cell(text, 6, "total") == "—"
+    assert summary_cell(text, 6, "remaining") == "—"
+    assert "tx-diff-flag" not in order_summary(text, 6)
 
     response = client.post(
         "/transactions/purchase/6/total", data={"purchase_total": "10"}, follow_redirects=True
@@ -655,12 +715,12 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     assert tx.purchase_total == 10
     db.close()
 
-    # Registered equals agreed now -- remaining is 0, so the flag stays
-    # hidden, but the newly-declared Total still shows.
+    # Registered equals agreed now -- the order reads as settled, and the
+    # newly-declared Total shows in its own column.
     text = client.get("/transactions").text
-    group_section = text.split("Order #6", 1)[1]
-    assert "Total 10 kr" in group_section
-    assert "tx-diff-flag" not in group_section.split("</summary>", 1)[0]
+    assert summary_cell(text, 6, "total") == "10 kr"
+    assert "tx-diff-flag" not in order_summary(text, 6)
+    assert "oc-settled" in order_summary(text, 6)
 
 
 def test_platform_can_be_bulk_set_on_an_existing_purchase(client):
@@ -695,8 +755,10 @@ def test_platform_can_be_bulk_set_on_an_existing_purchase(client):
 
     # The bulk-edit form's platform input reflects the now-uniform value.
     text = client.get("/transactions").text
-    group_section = text.split("Order #7", 1)[1]
-    assert 'name="platform" placeholder="Platform"\n           value="Cardmarket"' in group_section
+    group_section = order_section(text, 7)
+    platform_input = group_section.split('name="platform"', 1)[1].split(">", 1)[0]
+    assert 'value="Cardmarket"' in platform_input
+    assert 'placeholder="Platform"' in platform_input  # uniform, so no "Mixed" warning
 
 
 def test_platform_bulk_edit_blank_submission_clears_it(client):
@@ -769,8 +831,14 @@ def test_platform_bulk_edit_field_is_blank_when_group_rows_disagree(client):
     )
 
     text = client.get("/transactions").text
-    group_section = text.split("Order #9", 1)[1]
-    assert 'name="platform" placeholder="Platform"\n           value=""' in group_section
+    group_section = order_section(text, 9)
+    platform_input = group_section.split('name="platform"', 1)[1].split(">", 1)[0]
+    # Still blank, so saving can't silently adopt one row's platform...
+    assert 'value=""' in platform_input
+    # ...but the field now says so, instead of looking innocently empty
+    # while a "Cardmarket" badge shows in the summary above it. Submitting
+    # this form overwrites platform on every row of the order.
+    assert "Mixed" in platform_input
 
 
 def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
@@ -941,18 +1009,22 @@ def test_purchase_cart_rejects_submitting_with_no_cards(client):
     assert "search for at least one card" in response.text
 
 
-def test_transactions_page_groups_added_cards_by_date(client):
+def test_card_picker_lists_cards_with_a_filter_for_recently_added(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     response = client.get("/transactions")
     assert response.status_code == 200
-    assert "Recently Added" in response.text
-    assert "Pikachu" in response.text
-    assert 'Cards with a known "added" date: 1' in response.text
+    text = response.text
+    # "Recently Added" is no longer its own table -- it's one filter of the
+    # single merged card picker (which also absorbed the old, separate
+    # "Legacy import" table).
+    assert 'id="card-picker"' in text
+    assert "Recently added (1)" in text
+    assert "Pikachu" in text
 
 
-def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client):
+def test_card_picker_merges_dated_and_undated_cards_into_one_table(client):
     import datetime as dt
 
     import db as db_module
@@ -969,24 +1041,22 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     db.commit()
     db.close()
 
-    response = client.get("/transactions")
-    text = response.text
-    # Collapsed by default (no `open` attribute) so the old back-catalog
-    # doesn't dominate the page -- Pikachu (known date) sits in the always-
-    # visible "Recently Added" section, Charizard (no date) is tucked away.
-    assert "<details class=\"collapsible\">" in text
-    assert 'Legacy import — cards from before "date added" tracking (1 card)' in text
-    collapsed_section = text.split("<details class=\"collapsible\">", 1)[1]
-    assert "Charizard" in collapsed_section
-    assert "Pikachu" not in collapsed_section
-    # Legacy cards can be added to an order too -- being untracked by date
-    # doesn't mean untracked by order, so this table has its own bulk
-    # checkbox + "add to order" control.
-    assert "Add checked cards to order" in collapsed_section
-    assert 'class="legacy-card-checkbox"' in collapsed_section
+    # Both cards now live in the one merged picker: the dated card with its
+    # date, the undated one marked "no date" rather than shown blank (blank
+    # reads as a rendering bug) and sorted to the bottom by _sorted_rows'
+    # null-key bucketing, instead of exiled to a separate collapsed table.
+    text = client.get("/transactions?pick=all").text
+    picker = text.split('id="card-picker"', 1)[1]
+    assert "Pikachu" in picker
+    assert "Charizard" in picker
+    assert "no date" in picker
+    assert picker.index("Pikachu") < picker.index("Charizard")
+    # One selection model for every row, dated or not.
+    assert picker.count('class="card-pick-checkbox"') == 2
+    assert "Legacy import" not in text
 
 
-def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
+def test_card_picker_without_an_order_filter_hides_cards_that_have_one(client):
     import datetime as dt
 
     import db as db_module
@@ -1005,31 +1075,52 @@ def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
     db.commit()
     db.close()
 
-    response = client.get("/transactions")
-    text = response.text
-    assert "Legacy import" in text
-    collapsed_section = text.split('<details class="collapsible">', 1)[1]
-    # Charizard already has an order -- dropped from this table even though
-    # its created_at is still unknown; Pikachu has neither, so it stays.
-    assert "Pikachu" in collapsed_section
-    assert "Charizard" not in collapsed_section
+    # Default filter is "without an order" -- the old Legacy table's rule,
+    # now an explicit, switchable filter rather than table membership.
+    picker = client.get("/transactions").text.split('id="card-picker"', 1)[1]
+    assert "Pikachu" in picker
+    assert "Charizard" not in picker  # already on order #1
+
+    # ...and switching to "All" brings it back, which the old two-table
+    # split had no way to express.
+    picker_all = client.get("/transactions?pick=all").text.split('id="card-picker"', 1)[1]
+    assert "Pikachu" in picker_all
+    assert "Charizard" in picker_all
+    # The order it's already on is named, so merging the two tables doesn't
+    # lose the "does this card still need an order?" signal that used to be
+    # encoded by which table the row appeared in.
+    assert 'href="/transactions?open_order=1#order-1"' in picker_all
 
 
-def test_legacy_import_table_has_both_open_and_existing_order_controls(client):
-    # Both blocks render server-side (client JS toggles which is visible,
-    # based on whether a New Order cart is currently open) -- assert the
-    # markup/toggle plumbing is present rather than the runtime visibility,
-    # which needs a browser to exercise.
-    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+def test_card_picker_offers_one_target_selector_covering_new_and_existing_orders(client):
+    # The old page had two mutually-exclusive control groups whose
+    # visibility JS toggled on whether a cart happened to be open, and
+    # clicking "add" with no cart open did nothing at all. Now there is one
+    # always-valid target selector listing "New order" plus every existing
+    # order, so the no-cart-open dead end can't be reached.
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/transactions")
-    text = response.text
-    assert 'id="legacy-open-order-controls"' in text
-    assert "addCheckedLegacyCardsToOpenOrder()" in text
-    assert 'id="legacy-existing-order-controls"' in text
-    assert 'id="legacy-existing-order-select"' in text
-    assert "function updateLegacyOrderControls()" in text
+    db = db_module.SessionLocal()
+    charizard_id = db.query(Card).filter(Card.card_id == "b").one().id
+    db.add(Transaction(card_id=charizard_id, type="purchase", date=dt.date.today(), price=10, purchase_id=3))
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    assert 'id="picker-target"' in text
+    target_select = text.split('id="picker-target"', 1)[1].split("</select>", 1)[0]
+    assert '<option value="new">New order</option>' in target_select
+    assert '<option value="3">' in target_select
+    # The two dead control groups and their toggle are gone for good.
+    assert "legacy-open-order-controls" not in text
+    assert "legacy-existing-order-select" not in text
+    assert "updateLegacyOrderControls" not in text
 
 
 def test_add_cards_to_existing_order_creates_rows_and_redirects(client):
@@ -1143,11 +1234,11 @@ def test_added_cards_section_shows_the_registered_price_once_bought(client):
     assert tx.price == 25
     db.close()
 
-    # And the "Recently Added" row now shows that already-registered price,
-    # so a second visit doesn't risk double-registering the same card.
-    response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("History", 1)[0]
-    assert "25 kr" in added_section
+    # And the card picker's "Paid" column now shows that already-registered
+    # price, so a second visit doesn't risk double-registering the same
+    # card. The card has a purchase now, so it only appears under "All".
+    picker = client.get("/transactions?pick=all").text.split('id="card-picker"', 1)[1]
+    assert "25 kr" in picker
 
 
 def test_upsert_corrects_the_single_existing_price_instead_of_adding_a_second_one(client):
@@ -1255,16 +1346,15 @@ def test_upsert_does_not_guess_which_purchase_to_update_when_ambiguous(client):
     db.close()
 
 
-def test_added_cards_section_does_not_show_a_price_for_unpriced_cards(client):
+def test_card_picker_does_not_show_a_paid_price_for_unpriced_cards(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/transactions")
-    added_section = response.text.split("Recently Added", 1)[1].split("History", 1)[0]
-    assert "Paid price" in added_section
-    # The Paid price cell is empty (unlike Market price, which does
-    # show a value) -- no purchase has been registered for this card yet.
-    assert '<td class="num"></td>' in added_section
+    picker = client.get("/transactions").text.split('id="card-picker"', 1)[1]
+    assert "Paid" in picker
+    # The Paid cell is empty (unlike Market price, which does show a value)
+    # -- no purchase has been registered for this card yet.
+    assert '<td class="num"></td>' in picker
 
 
 def test_transactions_table_can_be_sorted_by_column(client):
@@ -1301,25 +1391,29 @@ def test_transactions_table_can_be_sorted_by_column(client):
     assert text_desc.index("Zebra") < text_desc.index("Abra")  # 100 kr before 50 kr
 
 
-def test_recently_added_table_can_be_sorted_by_column(client):
+def _picker_body(html: str) -> str:
+    section = html.split('id="card-picker"', 1)[1]
+    return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+
+
+def test_card_picker_can_be_sorted_by_column(client):
     main = make_csv(
         "My Collection",
         [{"id": "a", "name": "Zebra"}, {"id": "b", "name": "Abra"}],
     )
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    def _group_body(html: str) -> str:
-        section = html.split("Recently Added", 1)[1].split("History", 1)[0]
-        return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
-
-    asc = _group_body(client.get("/transactions?gsort=name&gdir=asc").text)
+    asc = _picker_body(client.get("/transactions?gsort=name&gdir=asc").text)
     assert asc.index("Abra") < asc.index("Zebra")
 
-    desc = _group_body(client.get("/transactions?gsort=name&gdir=desc").text)
+    desc = _picker_body(client.get("/transactions?gsort=name&gdir=desc").text)
     assert desc.index("Zebra") < desc.index("Abra")
 
 
-def test_unknown_date_table_can_be_sorted_by_column(client):
+def test_card_picker_sorts_undated_cards_with_the_same_column_params(client):
+    # The old "Unknown date" table had its own usort/udir pair. Merged into
+    # the one picker, undated rows sort by the same gsort/gdir as every
+    # other row -- one table, one sort contract.
     import db as db_module
     from models import Card
 
@@ -1330,19 +1424,24 @@ def test_unknown_date_table_can_be_sorted_by_column(client):
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
     db = db_module.SessionLocal()
-    db.query(Card).update({"created_at": None})  # move both into "Unknown date"
+    db.query(Card).update({"created_at": None})  # both are now undated
     db.commit()
     db.close()
 
-    def _unknown_body(html: str) -> str:
-        section = html.split("<details class=\"collapsible\">", 1)[1]
-        return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
-
-    asc = _unknown_body(client.get("/transactions?usort=name&udir=asc").text)
+    asc = _picker_body(client.get("/transactions?gsort=name&gdir=asc").text)
     assert asc.index("Abra") < asc.index("Zebra")
 
-    desc = _unknown_body(client.get("/transactions?usort=name&udir=desc").text)
+    desc = _picker_body(client.get("/transactions?gsort=name&gdir=desc").text)
     assert desc.index("Zebra") < desc.index("Abra")
+
+
+def test_retired_usort_param_is_still_accepted(client):
+    # usort/udir no longer drive anything (the table they sorted is gone),
+    # but an old bookmark carrying them must still render, not 422.
+    main = make_csv("My Collection", [{"id": "a", "name": "Zebra"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    assert client.get("/transactions?usort=name&udir=desc").status_code == 200
 
 
 def test_import_then_dashboard_reflects_the_sync(client):
