@@ -947,9 +947,10 @@ def test_transactions_page_puts_unknown_date_cards_in_a_collapsed_section(client
     assert "Charizard" in collapsed_section
     assert "Pikachu" not in collapsed_section
     # Legacy cards can be added to an order too -- being untracked by date
-    # doesn't mean untracked by order, so this table gets the same
-    # quick-register button as "Recently Added".
-    assert "Add to order" in collapsed_section
+    # doesn't mean untracked by order, so this table has its own bulk
+    # checkbox + "add to order" control.
+    assert "Add checked cards to order" in collapsed_section
+    assert 'class="legacy-card-checkbox"' in collapsed_section
 
 
 def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
@@ -981,7 +982,7 @@ def test_legacy_import_table_hides_cards_that_already_have_an_order(client):
     assert "Charizard" not in collapsed_section
 
 
-def test_add_card_to_existing_order_creates_a_row_and_redirects(client):
+def test_add_cards_to_existing_order_creates_rows_and_redirects(client):
     import datetime as dt
 
     import db as db_module
@@ -989,7 +990,7 @@ def test_add_card_to_existing_order_creates_a_row_and_redirects(client):
 
     main = make_csv(
         "My Collection",
-        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}],
+        [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}, {"id": "c", "name": "Blastoise"}],
     )
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
@@ -1000,8 +1001,8 @@ def test_add_card_to_existing_order_creates_a_row_and_redirects(client):
     db.close()
 
     response = client.post(
-        "/transactions/purchase/add-existing-card",
-        data={"card_id": str(ids["b"]), "purchase_id": "3"},
+        "/transactions/purchase/add-existing-cards",
+        data={"card_id": [str(ids["b"]), str(ids["c"])], "purchase_id": "3"},
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -1009,15 +1010,16 @@ def test_add_card_to_existing_order_creates_a_row_and_redirects(client):
 
     db = db_module.SessionLocal()
     try:
-        tx = db.query(Transaction).filter(Transaction.card_id == ids["b"]).one()
-        assert tx.purchase_id == 3
-        assert tx.type == "purchase"
-        assert tx.price == 0
+        for card_id in (ids["b"], ids["c"]):
+            tx = db.query(Transaction).filter(Transaction.card_id == card_id).one()
+            assert tx.purchase_id == 3
+            assert tx.type == "purchase"
+            assert tx.price == 0
     finally:
         db.close()
 
 
-def test_add_card_to_existing_order_rejects_an_order_id_that_does_not_exist(client):
+def test_add_cards_to_existing_order_rejects_an_order_id_that_does_not_exist(client):
     import db as db_module
     from models import Card, Transaction
 
@@ -1029,8 +1031,8 @@ def test_add_card_to_existing_order_rejects_an_order_id_that_does_not_exist(clie
     db.close()
 
     response = client.post(
-        "/transactions/purchase/add-existing-card",
-        data={"card_id": str(card_id), "purchase_id": "999"},
+        "/transactions/purchase/add-existing-cards",
+        data={"card_id": [str(card_id)], "purchase_id": "999"},
     )
     assert response.status_code == 200
     assert "exist yet" in response.text
@@ -1041,6 +1043,26 @@ def test_add_card_to_existing_order_rejects_an_order_id_that_does_not_exist(clie
         assert db.query(Transaction).filter(Transaction.card_id == card_id).count() == 0
     finally:
         db.close()
+
+
+def test_add_cards_to_existing_order_rejects_with_no_cards_selected(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.add(Transaction(card_id=card_id, type="purchase", date=dt.date.today(), price=10, purchase_id=3))
+    db.commit()
+    db.close()
+
+    response = client.post("/transactions/purchase/add-existing-cards", data={"purchase_id": "3"})
+    assert response.status_code == 200
+    assert "Select at least one card" in response.text
 
 
 def test_transactions_history_table_scrolls_instead_of_widening_the_page(client):
