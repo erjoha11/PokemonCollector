@@ -61,10 +61,12 @@ run).
   query, for picking cards to price straight into the order being built.
   The collapsed "Legacy import" table itself only lists cards that still
   have neither a date nor an order — a card drops off it the moment either
-  gets set — and its own per-row control (an Order ID number field +
-  button) adds the card directly to an already-existing order without
-  needing a cart open first (`POST /transactions/purchase/add-existing-card`,
-  same default-row creation as the Edit Order page's add-card above).
+  gets set — and has its own bulk control: a checkbox per row (with a
+  header checkbox to select all), an order picker populated from existing
+  orders, and one "+ Add checked cards to order" button that adds every
+  checked card directly into the chosen order without needing a cart open
+  first (`POST /transactions/purchase/add-existing-cards`, same
+  default-row creation as the Edit Order page's add-card above).
 - **Sell on finn.no** (`/sales`) — check cards on Inventory (a new leading
   checkbox column, selection tracked client-side and cleared on refresh —
   see `static/sale-list.js`), click "Generate finn.no ad", then set

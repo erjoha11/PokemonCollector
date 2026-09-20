@@ -1456,25 +1456,30 @@ def purchase_cart_add_row(request: Request, card_id: int):
         db.close()
 
 
-@app.post("/transactions/purchase/add-existing-card")
-def add_card_to_existing_order(request: Request, card_id: int = Form(...), purchase_id: int = Form(...)):
-    """Adds a card directly to an already-committed order -- the Legacy
-    import table's own "add to order" control, for cards that were never
-    picked up by a New Order cart in the first place. Plain form POST +
-    redirect (not htmx) since this table can list hundreds of rows; reuses
-    the same default-row creation as the Edit Order page's add-card
-    (issue #155).
+@app.post("/transactions/purchase/add-existing-cards")
+def add_cards_to_existing_order(request: Request, card_id: list[int] = Form(default=[]), purchase_id: int = Form(...)):
+    """Adds one or more cards directly to an already-committed order -- the
+    Legacy import table's own bulk "add to order" control (checkboxes +
+    one order picker), for cards that were never picked up by a New Order
+    cart in the first place. Plain form POST + redirect (not htmx) since
+    this table can list hundreds of rows; reuses the same default-row
+    creation as the Edit Order page's add-card (issue #155).
     """
     db = get_db_session()
     try:
-        card = db.query(Card).filter(Card.id == card_id).one_or_none()
+        cards = db.query(Card).filter(Card.id.in_(card_id)).all() if card_id else []
         order_exists = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).first() is not None
-        if card is None or not order_exists:
-            error = "Card not found." if card is None else f"Order #{purchase_id} doesn't exist yet -- pick an existing Order ID from History above."
+        if not cards or not order_exists:
+            error = (
+                "Select at least one card first."
+                if not cards
+                else f"Order #{purchase_id} doesn't exist yet -- pick an existing Order ID from History above."
+            )
             return templates.TemplateResponse(
                 request, "transactions.html", _transactions_context(db, request, "date", "desc", error=error)
             )
-        _create_default_purchase_transaction(db, purchase_id, card.id)
+        for card in cards:
+            _create_default_purchase_transaction(db, purchase_id, card.id)
         return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
     finally:
         db.close()

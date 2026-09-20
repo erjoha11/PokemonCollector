@@ -153,43 +153,50 @@
     either — once a card gets an order (from here, or the New Order cart), it drops off
     this list. Not related to date tracking itself; see History above for order status.
   </p>
-  <div class="inventory-table-wrap" style="max-height: 400px;">
-    <table class="inventory-table">
-      <thead>
-        <tr>
-          <th>{{ sort_th('Name', 'name', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th>{{ sort_th('Variant', 'variant', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th>{{ sort_th('Series', 'series', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th>{{ sort_th('Set', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th class="num">{{ sort_th('Price', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for card in unknown_cards %}
-        <tr>
-          <td>{{ dex_link(card) }}</td>
-          <td>{{ card.variant or '' }}</td>
-          <td>{{ card.series or '' }}</td>
-          <td>{{ card.set or '' }}</td>
-          <td class="num">{{ card.display_price | kr }}</td>
-          <td>{{ card.card_id }}</td>
-          <td>
-            <form method="post" action="/transactions/purchase/add-existing-card" style="display: flex; gap: 0.25rem;">
-              <input type="hidden" name="card_id" value="{{ card.id }}">
-              <input type="number" name="purchase_id" placeholder="Order #" required style="width: 80px;"
-                     title="The Order ID to add this card to — see History above for existing order numbers.">
-              <button type="submit">+ Add to order</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="muted">No legacy cards — every card now has an added date, or already has an order.</td></tr>
+  <form method="post" action="/transactions/purchase/add-existing-cards"
+        onsubmit="return confirmLegacyAddToOrder(this)">
+    <div class="filters" style="margin-bottom: 0.5rem;">
+      <select name="purchase_id" required>
+        <option value="" disabled selected>Add checked cards to order…</option>
+        {% for group in purchase_groups %}
+        <option value="{{ group.purchase_id }}">
+          Order #{{ group.purchase_id }} ({{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }})
+        </option>
         {% endfor %}
-      </tbody>
-    </table>
-  </div>
+      </select>
+      <button type="submit">+ Add checked cards to order</button>
+    </div>
+    <div class="inventory-table-wrap" style="max-height: 400px;">
+      <table class="inventory-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" onclick="toggleAllLegacyCheckboxes(this)" title="Select all"></th>
+            <th>{{ sort_th('Name', 'name', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+            <th>{{ sort_th('Variant', 'variant', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+            <th>{{ sort_th('Series', 'series', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+            <th>{{ sort_th('Set', 'set', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+            <th class="num">{{ sort_th('Price', 'reference_price', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+            <th>{{ sort_th('Card ID', 'card_id', 'usort', 'udir', usort, udir, '/transactions') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for card in unknown_cards %}
+          <tr>
+            <td><input type="checkbox" name="card_id" value="{{ card.id }}" class="legacy-card-checkbox"></td>
+            <td>{{ dex_link(card) }}</td>
+            <td>{{ card.variant or '' }}</td>
+            <td>{{ card.series or '' }}</td>
+            <td>{{ card.set or '' }}</td>
+            <td class="num">{{ card.display_price | kr }}</td>
+            <td>{{ card.card_id }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="muted">No legacy cards — every card now has an added date, or already has an order.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
 </details>
 
 <script>
@@ -256,6 +263,29 @@ function distributeRemaining() {
   var each = Math.round((sum / empties.length) * 100) / 100;
   empties.forEach(function (el) { el.value = each; });
   sumInput.value = '';
+}
+
+// Legacy import table's bulk "add checked cards to order" control -- the
+// header checkbox toggles every row's checkbox to match its own state.
+function toggleAllLegacyCheckboxes(headerCheckbox) {
+  document.querySelectorAll('.legacy-card-checkbox').forEach(function (el) {
+    el.checked = headerCheckbox.checked;
+  });
+}
+
+// The order <select> already has `required`, but there's no native HTML
+// validation for "at least one checkbox in a group" -- catch that here
+// instead of letting the server round-trip just to say the same thing.
+function confirmLegacyAddToOrder(form) {
+  var anyChecked = Array.prototype.some.call(
+    form.querySelectorAll('.legacy-card-checkbox'),
+    function (el) { return el.checked; }
+  );
+  if (!anyChecked) {
+    alert('Check at least one card first.');
+    return false;
+  }
+  return true;
 }
 </script>
 {% endblock %}
