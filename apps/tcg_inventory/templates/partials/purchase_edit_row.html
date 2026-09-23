@@ -7,6 +7,7 @@
       <option value="purchase" {% if tx.type == 'purchase' %}selected{% endif %}>Purchase</option>
       <option value="sale" {% if tx.type == 'sale' %}selected{% endif %}>Sale</option>
       <option value="trade" {% if tx.type == 'trade' %}selected{% endif %}>Trade</option>
+      <option value="ripped" {% if tx.type == 'ripped' %}selected{% endif %}>Ripped</option>
     </select>
     {# Only used when Type is Trade; always submitted so it stays
        index-aligned with the other per-row fields. #}

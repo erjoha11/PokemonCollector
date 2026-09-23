@@ -326,3 +326,14 @@ def test_moving_every_row_out_leaves_no_dangling_empty_order(client):
     )
     assert response.status_code == 303
     assert response.headers["location"] == "/transactions"
+
+
+def test_order_rows_show_their_share_of_shipping(client):
+    _seed_two_card_order(client, purchase_id=5)  # Pikachu 10, Charizard 20
+    client.post("/transactions/purchase/5/total", data={"purchase_shipping": "30"})
+
+    html = client.get("/transactions?open_order=5").text
+
+    # 30 kr shipping split 10:20 by price.
+    assert "+ 10.00 kr shipping" in html
+    assert "+ 20.00 kr shipping" in html

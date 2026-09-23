@@ -699,40 +699,61 @@ def trade_summary(txs: list[Transaction], prices_then: dict[int, float | None] |
     }
 
 
+def shipping_shares(txs: list[Transaction]) -> dict[int, float]:
+    """Each purchase row's share of its order's shipping, keyed by
+    transaction id -- shipping is part of what a card actually cost.
+
+    An order's `purchase_shipping` (stored redundantly on every row, see
+    `_purchase_shipping_total`) is split across the order's purchase-type
+    rows in proportion to their `price`, so a 100 kr card carries more of it
+    than a 5 kr card. When none of them has a price yet (price 0 = not
+    priced, e.g. before "Distribute remaining" has run) it's split evenly
+    instead. A row with no `purchase_id` carries its own shipping in full.
+    The shares of an order always add up to its shipping, so totals built
+    from them match `economic_summary`.
+    """
+    shares: dict[int, float] = {}
+    groups: dict[int, list[Transaction]] = {}
+    for t in txs:
+        if t.type != "purchase":
+            continue
+        if t.purchase_id is None:
+            if t.purchase_shipping:
+                shares[t.id] = t.purchase_shipping
+        else:
+            groups.setdefault(t.purchase_id, []).append(t)
+    for rows in groups.values():
+        shipping = next((t.purchase_shipping for t in rows if t.purchase_shipping), None)
+        if not shipping:
+            continue
+        price_sum = sum(t.price or 0.0 for t in rows)
+        for t in rows:
+            weight = (t.price or 0.0) / price_sum if price_sum > 0 else 1 / len(rows)
+            shares[t.id] = shipping * weight
+    return shares
+
+
 def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> dict[int, float]:
     """Return actual net investment per card using economic-summary rules.
 
-    Like `economic_summary`, this now includes `purchase_shipping`. Since
-    shipping is a per-order cost, not per-card, it's attributed in full to a
-    single card per order -- the lowest transaction id in that `purchase_id`
-    group (the sort below makes this deterministic) -- rather than
-    split across every card in the lot. This keeps
-    `sum(net_invested_by_card(db).values())` consistent with
-    `economic_summary`'s `net_invested`; the tradeoff is that one card's own
-    figure can look inflated relative to its lot-mates when a multi-card
-    order has shipping set. A row with no `purchase_id` counts its own
-    shipping on its own card, same as `_purchase_shipping_total`.
+    Like `economic_summary`, this includes `purchase_shipping`: each
+    purchase row carries its share of its order's shipping (see
+    `shipping_shares` -- split by price across the order's cards), so a
+    card's figure is what it really cost to get it home, and
+    `sum(net_invested_by_card(db).values())` still equals
+    `economic_summary`'s `net_invested`.
 
     `txs`, when given, is a caller-supplied `Transaction.query.all()` result
     -- see `economic_summary`'s docstring for why (avoids a second full-table
-    scan in the same request). Since a pre-loaded list isn't already ordered
-    by `(purchase_id, id)`, it's sorted here in Python instead of relying on
-    a SQL `ORDER BY`.
+    scan in the same request).
     """
     if txs is None:
         txs = db.query(Transaction).all()
-    ordered_txs = sorted(txs, key=lambda t: (t.purchase_id is None, t.purchase_id or 0, t.id))
+    shares = shipping_shares(txs)
     invested: dict[int, float] = {}
-    seen_purchase_ids: set[int] = set()
-    for tx in ordered_txs:
+    for tx in txs:
         if tx.type == "purchase":
-            amount = tx.price + (tx.fees or 0.0)
-            if tx.purchase_shipping:
-                if tx.purchase_id is None:
-                    amount += tx.purchase_shipping
-                elif tx.purchase_id not in seen_purchase_ids:
-                    seen_purchase_ids.add(tx.purchase_id)
-                    amount += tx.purchase_shipping
+            amount = tx.price + (tx.fees or 0.0) + shares.get(tx.id, 0.0)
         elif tx.type == "sale":
             amount = -tx.price
         else:

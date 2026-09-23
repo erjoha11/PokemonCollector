@@ -219,7 +219,11 @@ class Transaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
-    type: Mapped[str] = mapped_column(String, nullable=False)  # "purchase" | "sale" | "trade"
+    # "purchase" | "sale" | "trade" | "ripped". "ripped" = pulled from a pack
+    # yourself: always price 0 and, like "trade", never counted toward Net
+    # invested or any other money figure -- it only records how you got the
+    # card (see RIPPED in app.py).
+    type: Mapped[str] = mapped_column(String, nullable=False)
     # Only meaningful when type == "trade": "in" (card received) or "out"
     # (card given away). NULL on every non-trade row, and on trade rows
     # recorded before this column existed. On a trade row, `price` is any

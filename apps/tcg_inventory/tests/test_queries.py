@@ -583,11 +583,48 @@ def test_economic_summary_includes_purchase_shipping(db_session):
     assert summary["net_invested"] == 360
 
     invested = queries.net_invested_by_card(db_session)
-    # Shipping is attributed to exactly one card in the order (the lowest
-    # transaction id) so the per-card figures still sum to the same total.
-    assert sum(invested.values()) == 360
-    assert invested[cards["a"]] == 100 + 10 + 50
-    assert invested[cards["b"]] == 200
+    # Shipping is split across the order's cards by price (100 : 200), so
+    # the per-card figures still sum to the same total.
+    assert round(sum(invested.values()), 6) == 360
+    assert round(invested[cards["a"]], 6) == round(100 + 10 + 50 * 100 / 300, 6)
+    assert round(invested[cards["b"]], 6) == round(200 + 50 * 200 / 300, 6)
+
+
+def _purchase(card_id, price, purchase_id=1, shipping=None, tx_id=None):
+    import datetime as dt
+
+    from models import Transaction
+
+    return Transaction(
+        id=tx_id, card_id=card_id, type="purchase", date=dt.date(2026, 1, 5), price=price,
+        purchase_id=purchase_id, purchase_shipping=shipping,
+    )
+
+
+def test_shipping_shares_split_an_order_by_price():
+    # One 25 kr card + 38 kr shipping: the card really cost 63 kr.
+    single = _purchase(1, 25, shipping=38, tx_id=1)
+    assert queries.shipping_shares([single]) == {1: 38}
+
+    rows = [_purchase(1, 10, purchase_id=2, shipping=30, tx_id=2), _purchase(2, 20, purchase_id=2, shipping=30, tx_id=3)]
+    shares = queries.shipping_shares(rows)
+    assert shares == {2: 10, 3: 20}
+
+
+def test_shipping_shares_split_evenly_when_nothing_is_priced_yet():
+    rows = [_purchase(c, 0, shipping=44, tx_id=c) for c in (1, 2, 3, 4)]
+    assert queries.shipping_shares(rows) == {1: 11, 2: 11, 3: 11, 4: 11}
+
+
+def test_shipping_shares_ungrouped_row_keeps_its_own_shipping_and_trades_get_none():
+    import datetime as dt
+
+    from models import Transaction
+
+    loose = _purchase(1, 5, purchase_id=None, shipping=12, tx_id=1)
+    trade = Transaction(id=2, card_id=2, type="trade", direction="in", date=dt.date(2026, 1, 5), price=0,
+                        purchase_id=3, purchase_shipping=9)
+    assert queries.shipping_shares([loose, trade]) == {1: 12}
 
 
 def _seed_unlinked_cards(db_session):

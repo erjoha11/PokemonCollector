@@ -39,7 +39,7 @@
     </thead>
     <tbody>
       {% for tx in rows %}
-      {{ tx_row(tx) }}
+      {{ tx_row(tx, (shipping_by_tx or {}).get(tx.id)) }}
       {% else %}
       <tr><td colspan="6" class="muted">{{ empty_message }}</td></tr>
       {% endfor %}
@@ -238,6 +238,31 @@
 // these two callers still do.
 // Returns the htmx promise so callers adding several cards can chain them
 // one at a time -- see addCardsToCart.
+// The New Order cart's type drives which columns show: Trade adds In/Out,
+// Ripped hides Price and fills 0 (ripped cards are free -- the server
+// forces 0 anyway). Re-run after every row htmx appends, since those rows
+// arrive with an empty required price input.
+function syncCartType(form) {
+  if (!form) return;
+  var type = form.querySelector('select[name="type"]').value;
+  form.classList.toggle('cart-is-trade', type === 'trade');
+  form.classList.toggle('cart-is-ripped', type === 'ripped');
+  form.querySelectorAll('#cart-body input[name="price"]').forEach(function (el) {
+    if (type === 'ripped') {
+      el.value = 0;
+      el.readOnly = true;
+    } else if (el.readOnly) {
+      el.readOnly = false;
+      el.value = '';
+    }
+  });
+}
+document.body.addEventListener('htmx:afterSwap', function (e) {
+  if (e.detail.target && e.detail.target.id === 'cart-body') {
+    syncCartType(e.detail.target.closest('form'));
+  }
+});
+
 function addCardToCart(cardId) {
   var cartBody = document.getElementById('cart-body');
   if (!cartBody) {

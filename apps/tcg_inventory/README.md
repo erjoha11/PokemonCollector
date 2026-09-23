@@ -68,6 +68,17 @@ run).
   totals rather than guessed. Trades, including their cash, stay out of
   Value, Net invested and paper gain/loss, same as before.
 
+  **Ripped.** A card you pulled from a pack yourself is recorded as a
+  `ripped` transaction: pick "Ripped (pulled myself)" as the New Order
+  cart's type (the Price column disappears), or set a row's Type to Ripped
+  in Edit order / quick-edit. A ripped row is always price 0 (the server
+  forces it) and, like a trade, never counts toward an order's Value or
+  Remaining, Net invested, or a card's Net paid — the pack cost isn't
+  tracked. It does count as the card being accounted for, so ripped cards
+  don't show up under "Show cards without an order", and Inventory marks
+  them with a green "Ripped" badge. Edit order's Distribute skips ripped
+  rows.
+
   Net invested and paper gain/loss render as a caption on the Order history
   header, not as a second KPI block. The page deliberately does **not**
   show a "Current value" figure: it was `headline.unique_value`, which the
@@ -134,7 +145,17 @@ run).
   largest-remainder rounding, so they always add up to the remainder to
   the øre and the order lands on ✓. Trade rows and rows ticked for
   deletion are skipped. It rejects if every card is already priced or the
-  result would be negative. A single ungrouped
+  result would be negative. **Include shipping** (on by default) folds
+  the order's shipping into that remainder too, i.e. it distributes
+  `Agreed total − Σ(already-priced cards)`: in a lot, the cards you priced
+  keep their price and the unpriced ones absorb the rest *including*
+  shipping. It then sets Shipping to 0 in the form, since shipping now
+  lives in those cards' prices and would otherwise be counted twice in Net
+  invested. With it off, shipping stays recorded on the order, and each
+  purchase row carries a share of it split by price (`queries.shipping_shares`; evenly when nothing in the
+  order is priced yet). That share is shown under the row's price, and it
+  counts in the card's Net paid (`net_invested_by_card`) and in Net
+  invested, so a 25 kr card with 38 kr shipping shows as having cost 63 kr. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked

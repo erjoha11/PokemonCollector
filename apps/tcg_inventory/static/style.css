@@ -159,6 +159,8 @@ tbody tr:hover td { background: var(--accent-wash); }
 .tx-badge-buy { background: rgba(42, 120, 214, 0.12); color: #1d5bb0; }
 .tx-badge-sell { background: rgba(235, 104, 52, 0.14); color: #b8501f; }
 .tx-badge-trade { background: rgba(120, 90, 200, 0.14); color: #6a3fb0; }
+.tx-badge-ripped { background: rgba(20, 150, 110, 0.14); color: #0d7a57; }
+.ripped-flag { margin-left: 0.35rem; font-size: 0.65rem; padding: 0.05rem 0.4rem; }
 
 /* A purchase group's <summary> line: "Order #N" plus a run of small stats
    (card count, Value, shipping & cost, an optional diff flag) with the
@@ -1196,6 +1198,8 @@ button.secondary {
 /* New Order cart: the In/Out column only appears when the order's type is Trade. */
 .cart-trade-only { display: none; }
 .cart-is-trade .cart-trade-only { display: table-cell; }
+/* Ripped cards are free: the cart hides the price column and fills 0 (see syncCartType). */
+.cart-is-ripped .cart-price-col { display: none; }
 
 /* --------------------------------------------------------------------
    Transactions: the merged card picker

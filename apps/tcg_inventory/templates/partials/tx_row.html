@@ -1,6 +1,6 @@
 {% from "partials/macros.html" import dex_link %}
 
-{% macro tx_row(tx) %}
+{% macro tx_row(tx, shipping=None) %}
 <tr id="tx-row-{{ tx.id }}">
   <td class="muted">
     {{ tx.date }}
@@ -17,11 +17,13 @@
       {{ meta | join(' · ') }}
     </div>
   </td>
-  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span></td>
-  <td class="num tx-price{{ ' muted' if tx.type == 'trade' else '' }}"
+  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-ripped' if tx.type == 'ripped' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span></td>
+  <td class="num tx-price{{ ' muted' if tx.type in ('trade', 'ripped') else '' }}"
+      {%- if tx.type == 'ripped' %} title="Pulled from a pack yourself — always 0, and not counted toward Net invested or any other money figure."{% endif %}
       {%- if tx.type == 'trade' %} title="On a trade, price is cash that moved with the card (paid on In, received on Out). It counts in the trade's gain but not toward Net invested, Paper gain/loss, or any other KPI."{% endif %}>
     {{ tx.price | kr }}
     {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
+    {% if shipping %}<div class="tx-card-meta" title="This card's share of the order's shipping, split by price across the order's cards. Counted in Net invested and the card's Net paid.">+ {{ '%.2f' | format(shipping) }} kr shipping</div>{% endif %}
   </td>
   <td class="muted">{{ tx.platform or '' }}</td>
   <td>
@@ -39,6 +41,7 @@
         <option value="purchase" {% if tx.type == 'purchase' %}selected{% endif %}>Purchase</option>
         <option value="sale" {% if tx.type == 'sale' %}selected{% endif %}>Sale</option>
         <option value="trade" {% if tx.type == 'trade' %}selected{% endif %}>Trade</option>
+        <option value="ripped" {% if tx.type == 'ripped' %}selected{% endif %}>Ripped</option>
       </select>
       <select name="direction" title="Trade only: In = a card you received, Out = a card you gave away.">
         <option value="" {% if not tx.direction %}selected{% endif %}>—</option>
