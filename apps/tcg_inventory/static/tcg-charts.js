@@ -12,6 +12,7 @@
 // no date-adapter dependency), the y-axis is fitted to the visible data
 // instead of starting at 0, and the tooltip shows each day's change.
 var DAY_MS = 86400000;
+var CARD_CHANGE_COLOR = "#eb6834"; // the app's series-2 orange
 
 function tcgKr(v) {
   return Math.round(v).toLocaleString("nb-NO") + " kr";
@@ -98,6 +99,12 @@ function initTcgChart(cardId) {
   var timeSeries = !!cfg.timeSeries;
   var xs = timeSeries ? cfg.labels.map(tcgParseDay) : null;
   var nPoints = cfg.labels.length;
+  // Days where the number of cards changed (bought/sold/ripped...), so a
+  // jump can be told apart from pure price movement -- marked in orange.
+  var counts = timeSeries ? cfg.cardCounts : null;
+  var countChanged = counts
+    ? counts.map(function (c, j) { return j > 0 && c !== counts[j - 1]; })
+    : null;
 
   var datasets = cfg.datasets.map(function (ds, i) {
     return {
@@ -112,8 +119,16 @@ function initTcgChart(cardId) {
       borderRadius: cfg.type === "bar" ? 4 : 0,
       borderDash: cfg.type === "line" && i > 0 ? [6, 4] : undefined,
       tension: timeSeries ? 0.15 : 0.25,
-      pointRadius: timeSeries ? (nPoints > 45 ? 0 : 2) : 2,
-      pointHoverRadius: 4,
+      pointRadius: timeSeries && i === 0 && counts
+        ? xs.map(function (_, j) { return countChanged[j] ? 4 : (nPoints > 45 ? 0 : 2); })
+        : (timeSeries ? (nPoints > 45 ? 0 : 2) : 2),
+      pointBackgroundColor: timeSeries && i === 0 && counts
+        ? xs.map(function (_, j) { return countChanged[j] ? CARD_CHANGE_COLOR : ds.color; })
+        : ds.color,
+      pointBorderColor: timeSeries && i === 0 && counts
+        ? xs.map(function (_, j) { return countChanged[j] ? CARD_CHANGE_COLOR : ds.color; })
+        : ds.color,
+      pointHoverRadius: 5,
       // Portfolio mode fills down to the (fitted) bottom of the axis, not 0.
       fill: cfg.type === "line" && i === 0 && (timeSeries ? "start" : cfg.datasets.length === 1),
     };
@@ -167,7 +182,12 @@ function initTcgChart(cardId) {
               var prev = item.dataset.data[item.dataIndex - 1].y;
               var diff = item.parsed.y - prev;
               var pct = prev > 0 ? " (" + (diff > 0 ? "+" : "") + (diff / prev * 100).toFixed(1) + " %)" : "";
-              return "Change: " + tcgSignedKr(diff) + pct;
+              var lines = ["Change: " + tcgSignedKr(diff) + pct];
+              if (counts) {
+                var dc = counts[item.dataIndex] - counts[item.dataIndex - 1];
+                lines.push("Cards: " + counts[item.dataIndex] + (dc ? " (" + (dc > 0 ? "+" : "") + dc + ")" : " (no change — price only)"));
+              }
+              return lines;
             },
           },
         },

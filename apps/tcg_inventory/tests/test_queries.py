@@ -567,6 +567,45 @@ def test_real_value_history_live_value_never_invents_history(db_session):
     assert queries.real_value_history(db_session, live=(100.0, 1)) == []
 
 
+def test_value_change_breakdown_splits_price_moves_from_new_cards(db_session):
+    import datetime as dt
+
+    import snapshots
+    from models import Card
+
+    main = make_csv("My Collection", [{"id": "a", "qty": 1, "price": "100"}, {"id": "b", "qty": 0, "price": "50"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    a = db_session.query(Card).filter(Card.card_id == "a").one()
+    b = db_session.query(Card).filter(Card.card_id == "b").one()
+    start, end = dt.date(2026, 1, 1), dt.date(2026, 1, 10)
+    snapshots.record_daily_snapshot(db_session, as_of=start)
+    # Then: a's price rises 100 -> 120, a second copy of a is added, and b
+    # (worth 50 -> 60) is bought.
+    a.qty, a.reference_price = 2, 120
+    b.qty, b.reference_price = 1, 60
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=end)
+
+    total = queries.real_value_history(db_session, metric="total", today=end)
+    bd = queries.value_change_breakdown(db_session, "total", total)
+    assert bd == {"price": 20, "cards": 180, "card_delta": 2}  # 1*20; 1*120 + 1*60
+    assert bd["price"] + bd["cards"] == queries.period_change(total)["change"]
+
+    unique = queries.real_value_history(db_session, metric="unique", today=end)
+    assert queries.value_change_breakdown(db_session, "unique", unique) == {"price": 20, "cards": 60, "card_delta": 1}
+
+    dup = queries.real_value_history(db_session, metric="duplicates", today=end)
+    assert queries.value_change_breakdown(db_session, "duplicates", dup) == {"price": 0, "cards": 120, "card_delta": 1}
+
+    # Live cards stand in for the last point.
+    a.reference_price = 130
+    db_session.commit()
+    live = queries.value_change_breakdown(db_session, "total", total, live_cards=db_session.query(Card).all())
+    assert live == {"price": 30, "cards": 190, "card_delta": 2}
+
+    assert queries.value_change_breakdown(db_session, "total", total[:1]) is None
+
+
 def test_period_change_needs_two_points_and_handles_a_zero_start():
     assert queries.period_change([{"cumulative_value": 5}]) is None
     assert queries.period_change([{"cumulative_value": 0}, {"cumulative_value": 5}]) == {"change": 5, "pct": None}

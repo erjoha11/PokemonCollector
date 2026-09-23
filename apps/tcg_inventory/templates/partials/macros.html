@@ -150,6 +150,23 @@
     </button>
     {% endif %}
   </div>
+  {% set bd = market_value_breakdown %}
+  {% if bd %}
+  <div class="mv-breakdown" aria-label="What the change is made of">
+    <span title="Value change of the cards you already had at the start of the period">
+      <span class="mv-breakdown-key">Price development</span>
+      <span class="{{ 'viz-delta-gain' if bd.price >= 0 else 'viz-delta-loss' }}">{{ '+' if bd.price > 0 }}{{ bd.price | kr }}</span>
+    </span>
+    <span title="Value of cards added (or removed) during the period, at today's prices">
+      <span class="mv-breakdown-key">{{ 'More cards' if bd.card_delta > 0 else ('Fewer cards' if bd.card_delta < 0 else 'Cards added / removed') }}</span>
+      <span class="{{ 'viz-delta-gain' if bd.cards >= 0 else 'viz-delta-loss' }}">{{ '+' if bd.cards > 0 }}{{ bd.cards | kr }}</span>
+      <span class="muted">({{ '+' if bd.card_delta > 0 }}{{ bd.card_delta }} {{ 'card' if bd.card_delta in (1, -1) else 'cards' }})</span>
+    </span>
+    {% set ns = namespace(changed=false) %}
+    {% for row in history[1:] %}{% if row.card_count != history[loop.index0].card_count %}{% set ns.changed = true %}{% endif %}{% endfor %}
+    {% if ns.changed %}<span class="mv-breakdown-legend muted"><i class="mv-card-dot" aria-hidden="true"></i>Card count changed that day</span>{% endif %}
+  </div>
+  {% endif %}
   {% set datasets = [{"label": metric_label, "data": history | map(attribute="cumulative_value") | list, "color": "#0ca30c" if up else "#d03b3b"}] %}
   {% if market_value_invested %}
   {% set datasets = datasets + [{"label": "Net invested", "data": market_value_invested, "color": "#898781", "hidden": true}] %}
@@ -157,7 +174,7 @@
   <div class="viz-chart-wrap">
     <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
   </div>
-  <script type="application/json" id="{{ card_id }}-data">{{ {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "datasets": datasets} | tojson }}</script>
+  <script type="application/json" id="{{ card_id }}-data">{{ {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "cardCounts": history | map(attribute="card_count") | list, "datasets": datasets} | tojson }}</script>
   <script>initTcgChart("{{ card_id }}");</script>
   <details>
     <summary>View as table</summary>
@@ -166,7 +183,7 @@
       <tbody>
         {% for row in history | reverse %}
         {% set prev = history[history | length - loop.index - 1] if not loop.last else none %}
-        <tr><td>{{ row.label }}</td><td class="num">{{ row.card_count }}</td><td class="num">{{ row.cumulative_value | kr }}</td>
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.card_count }}{% if prev and row.card_count != prev.card_count %} <span class="muted">({{ '+' if row.card_count > prev.card_count }}{{ row.card_count - prev.card_count }})</span>{% endif %}</td><td class="num">{{ row.cumulative_value | kr }}</td>
           <td class="num">{% if prev %}{% set d = row.cumulative_value - prev.cumulative_value %}<span class="{{ 'viz-delta-gain' if d >= 0 else 'viz-delta-loss' }}">{{ '+' if d > 0 }}{{ d | kr }}</span>{% endif %}</td></tr>
         {% endfor %}
       </tbody>
