@@ -213,7 +213,8 @@ def test_dashboard_market_value_chart_mirrors_transactions_metric_filter(client)
     assert "Unique collection" in text
     assert "Duplicates" in text
     assert "Total" in text
-    assert 'class="viz-filter-pill active"' in text  # unique selected by default
+    assert 'class="viz-filter-pill active">Total</a>' in text  # total selected by default
+    assert "Cumulative value (Total)" in text
     assert "csort=name" in text
     assert "metric=total" in text
 
@@ -224,7 +225,7 @@ def test_dashboard_market_value_chart_mirrors_transactions_metric_filter(client)
 
     fallback_page = client.get("/?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Cumulative value (Unique collection)" in fallback_page.text
+    assert "Cumulative value (Total)" in fallback_page.text
 
 
 def test_all_pages_render(client):
@@ -323,7 +324,8 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     assert 'href="/transactions/charts?metric=unique"' in default_page.text
     assert 'href="/transactions/charts?metric=duplicates"' in default_page.text
     assert 'href="/transactions/charts?metric=total"' in default_page.text
-    assert 'class="viz-filter-pill active"' in default_page.text  # unique selected by default
+    assert 'class="viz-filter-pill active">Total</a>' in default_page.text  # total selected by default
+    assert "Cumulative value (Total)" in default_page.text
 
     total_page = client.get("/transactions/charts?metric=total")
     assert total_page.status_code == 200
@@ -335,7 +337,7 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     # An unknown metric falls back to the default instead of erroring.
     fallback_page = client.get("/transactions/charts?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Cumulative value (Unique collection)" in fallback_page.text
+    assert "Cumulative value (Total)" in fallback_page.text
 
 
 def test_wiki_page_documents_the_main_features(client):

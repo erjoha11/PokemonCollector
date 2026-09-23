@@ -265,11 +265,11 @@ def dashboard(
     fdir: str = "asc",
     tsort: str = "reference_price",
     tdir: str = "desc",
-    metric: str = "unique",
+    metric: str = "total",
     open_pokemon_folder: bool = False,
 ):
     if metric not in queries.VALUE_GROWTH_METRICS:
-        metric = "unique"
+        metric = "total"
     db = get_db_session()
     try:
         # Loaded once and threaded through every breakdown below, instead of
@@ -2274,9 +2274,9 @@ def analyse_redirect():
 
 
 @app.get("/transactions/charts")
-def transactions_charts(request: Request, metric: str = "unique"):
+def transactions_charts(request: Request, metric: str = "total"):
     if metric not in queries.VALUE_GROWTH_METRICS:
-        metric = "unique"
+        metric = "total"
     db = get_db_session()
     try:
         market_value_history = queries.real_value_history(db, metric=metric)

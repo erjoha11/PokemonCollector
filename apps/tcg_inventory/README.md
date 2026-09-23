@@ -653,7 +653,7 @@ row per card (`qty` + `reference_price` as of that day) right after it
 completes, so `queries.real_value_history` can report what the collection
 was *actually* worth on a given date, not an estimate. It's rendered as the
 **"Market Value" chart** on both Dashboard and Transactions' "View charts"
-section, using the unique/duplicates/total metric filter, with a stat row
+section, using the unique/duplicates/total metric filter (defaults to total), with a stat row
 (Net invested / Current value / Gain-loss, `queries.economic_summary` +
 `headline_summary`) built into the chart card itself (`chart_card`'s
 `stats` param in `macros.html`) rather than off in a separate KPI tile.
