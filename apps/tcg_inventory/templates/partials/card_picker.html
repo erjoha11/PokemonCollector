@@ -30,7 +30,7 @@
        the filter and vice versa. Counts live in the labels because the
        count is the thing that says whether there's work left to do. #}
     <a class="viz-filter-pill {{ 'active' if pick == 'unordered' }}" href="{{ pick_url(request, 'unordered') }}"
-       title="Cards with no registered purchase yet — what you'd normally be filling an order with.">Without an order ({{ pick_counts.unordered }})</a>
+       title="Cards not registered yet — no purchase, trade or ripped row. What you'd normally be filling an order with.">Without an order ({{ pick_counts.unordered }})</a>
     <a class="viz-filter-pill {{ 'active' if pick == 'recent' }}" href="{{ pick_url(request, 'recent') }}"
        title="Cards with a known added date, set the first time the card was imported.">Recently added ({{ pick_counts.recent }})</a>
     <a class="viz-filter-pill {{ 'active' if pick == 'all' }}" href="{{ pick_url(request, 'all') }}"
