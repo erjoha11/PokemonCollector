@@ -2,7 +2,13 @@
 {% block title %}Edit Order #{{ purchase_id }} – TCG Inventory{% endblock %}
 {% from "partials/purchase_edit_row.html" import purchase_edit_row %}
 {% block content %}
+<p class="mb-05">
+  <a href="/transactions?open_order={{ purchase_id }}" hx-get="/transactions?open_order={{ purchase_id }}"
+     hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">&larr; Back to Transactions</a>
+</p>
 <h1>Edit Order #{{ purchase_id }}</h1>
+{% if saved %}<p class="saved-note" role="status">Saved ✓</p>{% endif %}
+<p id="save-order-error" class="warnings" role="alert" hidden></p>
 <p class="muted">
   Retype, relink, add a note, delete a row, or reassign a row's Order ID to move it to another order,
   merge it into one, or split it into a new one — reassigning Order ID is the one primitive behind all three.
@@ -11,7 +17,8 @@
 <form method="post" action="/transactions/purchase/{{ purchase_id }}/edit"
       hx-post="/transactions/purchase/{{ purchase_id }}/edit"
       hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
-      hx-indicator="#save-order-indicator">
+      hx-indicator="#save-order-indicator"
+      hx-on::response-error="var e = document.getElementById('save-order-error'); e.textContent = 'Could not save (error ' + event.detail.xhr.status + ') -- nothing was changed. Try again, or reload the page.'; e.hidden = false; e.scrollIntoView({block: 'center'});">
   <div class="table-scroll">
     <table class="tx-table mb-1">
       <thead>
@@ -86,8 +93,10 @@
 
   <button type="submit">Save changes</button>
   <span id="save-order-indicator" class="tx-search-spinner htmx-indicator">Saving…</span>
+  {% if saved %}<span class="saved-note" role="status">Saved ✓</span>{% endif %}
   <button type="button" class="secondary" hx-get="/transactions?open_order={{ purchase_id }}"
-          hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Cancel</button>
+          hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true"
+          title="Back to Transactions -- unsaved changes on this page are discarded.">&larr; Back</button>
 </form>
 
 <script>
