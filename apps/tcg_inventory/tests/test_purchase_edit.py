@@ -1,3 +1,5 @@
+import datetime as dt
+
 from conftest import make_csv, seed_import
 
 
@@ -337,3 +339,74 @@ def test_order_rows_show_their_share_of_shipping(client):
     # 30 kr shipping split 10:20 by price.
     assert "+ 10.00 kr shipping" in html
     assert "+ 20.00 kr shipping" in html
+
+
+def test_update_purchase_stays_on_edit_page_with_saved_note_and_back_link(client):
+    ids = _seed_two_card_order(client, purchase_id=5)
+    tx_ids = _tx_ids(5)
+    response = client.post(
+        "/transactions/purchase/5/edit",
+        data={
+            "tx_id": [str(tx_ids[0]), str(tx_ids[1])],
+            "card_id": [str(ids["a"]), str(ids["b"])],
+            "type": ["purchase", "purchase"],
+            "date": ["2026-01-01", "2026-01-01"],
+            "price": ["10", "20"],
+            "platform": ["", ""],
+            "note": ["", ""],
+            "new_purchase_id": ["5", "5"],
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert response.headers["location"] == "/transactions/purchase/5/edit?saved=1"
+
+    html = client.get(response.headers["location"]).text
+    assert "Saved ✓" in html
+    assert 'href="/transactions?open_order=5"' in html
+    assert "Saved ✓" not in client.get("/transactions/purchase/5/edit").text
+
+
+def test_update_purchase_accepts_a_large_order_past_the_default_form_field_cap(client):
+    """Starlette rejects a form with >1000 fields with a 400 by default --
+    at ~10 fields per row an order of ~90+ cards could never be saved."""
+    import db as db_module
+    from models import Card, Transaction
+
+    db = db_module.SessionLocal()
+    cards = [Card(card_id=f"big{i}", name=f"Big {i}") for i in range(150)]
+    db.add_all(cards)
+    db.commit()
+    for c in cards:
+        db.add(Transaction(card_id=c.id, type="purchase", date=dt.date(2026, 1, 1), price=0, purchase_id=8))
+    db.commit()
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 8).all()
+    rows = [(t.id, t.card_id) for t in txs]
+    db.close()
+
+    n = len(rows)
+    response = client.post(
+        "/transactions/purchase/8/edit",
+        data={
+            "tx_id": [str(t) for t, _ in rows],
+            "card_id": [str(c) for _, c in rows],
+            "type": ["purchase"] * n,
+            "direction": [""] * n,
+            "date": ["2026-01-01"] * n,
+            "price": ["2.5"] * n,
+            "platform": [""] * n,
+            "note": [""] * n,
+            "new_purchase_id": ["8"] * n,
+            "q": [""] * n,
+            "purchase_total": "375",
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+
+    db = db_module.SessionLocal()
+    try:
+        prices = [t.price for t in db.query(Transaction).filter(Transaction.purchase_id == 8)]
+        assert prices == [2.5] * n
+    finally:
+        db.close()

@@ -138,7 +138,10 @@ run).
   by reassigning Order ID — all edits in a group commit atomically, and
   moving a row out of an order clears that row's agreed total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). Agreed total defaults to shipping + the
+  total/shipping afterward). Save keeps you on the edit page with a
+  "Saved ✓" note and a "← Back to Transactions" link (unless every row
+  was moved out, which lands on Transactions); a failed save shows an
+  error instead of silently doing nothing. Agreed total defaults to shipping + the
   cards already priced (price 0 = not priced yet) when nothing's been
   saved yet, but a saved value is a real number the user typed and is
   never silently recalculated back to the sum. A "Distribute remaining

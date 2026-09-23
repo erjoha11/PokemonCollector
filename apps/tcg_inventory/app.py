@@ -18,6 +18,7 @@ from urllib.parse import urlencode
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -55,7 +56,31 @@ async def lifespan(app: FastAPI):
     yield
 
 
+# Starlette caps a parsed form at 1000 fields and answers 400 past that --
+# which htmx then silently ignores. The bulk forms here send ~10 fields per
+# row (Edit Order, the New Order cart, add-existing-cards), so a lot of
+# ~90+ cards could never be saved. Raise the cap for every route; request
+# body size is still bounded by the host (e.g. Vercel's 4.5 MB).
+MAX_FORM_FIELDS = 50_000
+
+
+class _LargeFormRequest(Request):
+    def form(self, *, max_files=1000, max_fields=MAX_FORM_FIELDS, max_part_size=1024 * 1024):
+        return super().form(max_files=max_files, max_fields=max_fields, max_part_size=max_part_size)
+
+
+class _LargeFormRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+
+        async def large_form_handler(request: Request):
+            return await handler(_LargeFormRequest(request.scope, request.receive))
+
+        return large_form_handler
+
+
 app = FastAPI(title="TCG Inventory", lifespan=lifespan)
+app.router.route_class = _LargeFormRoute
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
 
@@ -1705,7 +1730,7 @@ def set_purchase_total(
 
 
 @app.get("/transactions/purchase/{purchase_id}/edit")
-def purchase_edit_form(request: Request, purchase_id: int):
+def purchase_edit_form(request: Request, purchase_id: int, saved: bool = False):
     """Order-level edit view (issue #109) -- one row per transaction sharing
     this purchase_id, all fields editable including relinking the card and
     reassigning purchase_id itself (which is how a row is moved to another
@@ -1743,6 +1768,7 @@ def purchase_edit_form(request: Request, purchase_id: int):
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
                 "next_purchase_id": _next_purchase_id(db),
+                "saved": saved,
             },
         )
     finally:
@@ -1889,8 +1915,11 @@ def update_purchase(
                 tx.purchase_total = purchase_total
                 tx.purchase_shipping = purchase_shipping
         db.commit()
+        # Stay on the edit page (with a "Saved" confirmation and a Back
+        # button) so the user can check the result or keep editing -- unless
+        # every row was moved out/deleted, leaving nothing here to show.
         remaining = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).count()
-        target = f"/transactions?open_order={purchase_id}" if remaining else "/transactions"
+        target = f"/transactions/purchase/{purchase_id}/edit?saved=1" if remaining else "/transactions"
         return RedirectResponse(target, status_code=303)
     finally:
         db.close()
