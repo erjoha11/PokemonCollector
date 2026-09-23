@@ -555,6 +555,12 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   grid-template-columns: 1.25rem 64px minmax(0, 1fr) auto;
   min-height: 82px;
 }
+/* A rank with no photo (the runners-up always, #1 when it has none yet)
+   must not keep an empty image column -- the name would land in that narrow
+   column and get cut to "Me…" while the price takes the wide one. */
+.top-card-rank.top-card-rank-noimg {
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto;
+}
 .top-card-runners-up {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -794,8 +800,8 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   overflow-x: hidden;
 }
 /* Ranked list, not a table: rank, card photo (placeholder when none yet --
-   see backfill_images.py), name + set/number/rarity, a bar for the price
-   relative to #1, price on the right. Top 3 get an accent rank. */
+   see backfill_images.py), name + set/number/rarity, price on the right.
+   Top 3 get an accent rank. Photo and name open the card viewer. */
 .top-card-list { list-style: none; margin: 0; padding: 0; }
 .top-card-item {
   display: grid;
@@ -843,8 +849,6 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.top-card-item-bar { height: 4px; margin-top: 0.35rem; border-radius: 2px; background: var(--page); overflow: hidden; }
-.top-card-item-bar span { display: block; height: 100%; border-radius: 2px; background: var(--accent); opacity: 0.55; }
 .top-card-item-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .top-cards-sort { flex-wrap: wrap; margin-top: 0; }
 
@@ -1489,4 +1493,95 @@ button.secondary {
     gap: 0.3rem 0.85rem;
   }
   .orders-head { display: none; }
+}
+
+/* Card viewer (partials/card_viewer.html, static/card-viewer.js): a card's
+   photo or name opens it large, with a button out to Dex. The triggers are
+   <button>s for keyboard access, reset to look like the photo/text they wrap. */
+.card-view-trigger {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: zoom-in;
+  display: block;
+  line-height: 0;
+  border-radius: 4px;
+}
+.card-view-trigger:hover { filter: none; }
+.card-view-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-view-name {
+  display: inline;
+  line-height: inherit;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  cursor: pointer;
+}
+.top-card-item-name .card-view-name { color: var(--accent); font-weight: 600; }
+.card-view-name:hover { text-decoration: underline; }
+
+.card-viewer {
+  border: 0;
+  border-radius: var(--radius);
+  padding: 0;
+  max-width: min(760px, calc(100vw - 32px));
+  width: 100%;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(20, 22, 26, 0.3);
+}
+.card-viewer::backdrop { background: rgba(20, 22, 26, 0.55); }
+.card-viewer-body {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
+  gap: 1.5rem;
+  padding: 1.5rem;
+  align-items: start;
+}
+.card-viewer-image {
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.card-viewer-noimage {
+  aspect-ratio: 245 / 342;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--page);
+}
+.card-viewer-noimage[hidden], .card-viewer-image[hidden] { display: none; }
+.card-viewer-info { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.card-viewer-name { margin: 0; padding: 0; border: 0; font-size: 1.3rem; overflow-wrap: anywhere; }
+.card-viewer-meta { margin: 0; font-size: 0.88rem; }
+.card-viewer-price { margin: 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-viewer-price:empty { display: none; }
+.card-viewer-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+.card-viewer-dex {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+.card-viewer-dex:hover { filter: brightness(0.92); }
+@media (max-width: 560px) {
+  .card-viewer-body { grid-template-columns: 1fr; padding: 1rem; }
+  .card-viewer-image, .card-viewer-noimage { max-width: 260px; justify-self: center; }
 }

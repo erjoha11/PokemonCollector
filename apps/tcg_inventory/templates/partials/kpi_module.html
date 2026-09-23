@@ -1,4 +1,4 @@
-{% from "partials/macros.html" import info %}
+{% from "partials/macros.html" import info, card_view_attrs %}
 <div class="kpi-grid">
   {# Overview: a full-width band answering, in reading order, the three
      questions a collector opens the page with --
@@ -57,10 +57,10 @@
       {% if gain.best %}
       {% set best_card, best_gain = gain.best %}
       <div class="kpi-ov-mover">
-        {% if best_card.image_url %}<img class="kpi-ov-thumb" src="{{ best_card.image_url }}" alt="" loading="lazy">{% else %}<span class="kpi-ov-thumb kpi-ov-thumb-empty" aria-hidden="true"></span>{% endif %}
+        {% if best_card.image_url %}<button type="button" class="card-view-trigger" {{ card_view_attrs(best_card) }} aria-label="Show {{ best_card.name }}"><img class="kpi-ov-thumb" src="{{ best_card.image_url }}" alt="" loading="lazy"></button>{% else %}<span class="kpi-ov-thumb kpi-ov-thumb-empty" aria-hidden="true"></span>{% endif %}
         <div class="kpi-ov-mover-text">
           <span class="kpi-ov-mover-label">Best card</span>
-          <span class="kpi-ov-mover-name" title="{{ best_card.name }}">{{ best_card.name }}</span>
+          <button type="button" class="card-view-trigger card-view-name kpi-ov-mover-name" title="{{ best_card.name }}" {{ card_view_attrs(best_card) }}>{{ best_card.name }}</button>
         </div>
         <div class="kpi-ov-mover-figures">
           <span class="kpi-ov-mover-value" title="Value today{{ ' (' ~ best_card.qty ~ ' copies)' if best_card.qty > 1 }}">{{ best_card.total_value | kr }}</span>
@@ -89,11 +89,11 @@
     {% if top_cards %}
     <div class="top-card-ranking">
       {% set first_card = top_cards[0] %}
-      <div class="top-card-rank top-card-rank-first">
+      <div class="top-card-rank top-card-rank-first{{ '' if first_card.image_url else ' top-card-rank-noimg' }}">
         <span class="top-card-place">1.</span>
-        {% if first_card.image_url %}<img class="top-card-image" src="{{ first_card.image_url }}" alt="{{ first_card.name }}" loading="lazy">{% endif %}
+        {% if first_card.image_url %}<button type="button" class="card-view-trigger" {{ card_view_attrs(first_card) }} aria-label="Show {{ first_card.name }}"><img class="top-card-image" src="{{ first_card.image_url }}" alt="{{ first_card.name }}" loading="lazy"></button>{% endif %}
         <div class="top-card-details">
-          <div class="top-card-name" title="{{ first_card.name }}">{{ first_card.name }}{% if first_card.number %} <span class="top-card-number">#{{ first_card.number }}</span>{% endif %}</div>
+          <div class="top-card-name" title="{{ first_card.name }}"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(first_card) }}>{{ first_card.name }}</button>{% if first_card.number %} <span class="top-card-number">#{{ first_card.number }}</span>{% endif %}</div>
           {% if first_card.rarity or first_card.language %}
           <div class="top-card-meta">
             {%- if first_card.rarity %}{{ first_card.rarity }}{% endif -%}
@@ -106,10 +106,10 @@
       {% if top_cards|length > 1 %}
       <div class="top-card-runners-up">
         {% for card in top_cards[1:3] %}
-        <div class="top-card-rank">
+        <div class="top-card-rank top-card-rank-noimg">
           <span class="top-card-place">{{ loop.index + 1 }}.</span>
           <div class="top-card-details">
-            <div class="top-card-name" title="{{ card.name }}">{{ card.name }}{% if card.number %} <span class="top-card-number">#{{ card.number }}</span>{% endif %}</div>
+            <div class="top-card-name" title="{{ card.name }}"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(card) }}>{{ card.name }}</button>{% if card.number %} <span class="top-card-number">#{{ card.number }}</span>{% endif %}</div>
             {% if card.rarity or card.language %}
             <div class="top-card-meta">
               {%- if card.rarity %}{{ card.rarity }}{% endif -%}

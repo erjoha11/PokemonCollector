@@ -91,6 +91,26 @@ def _format_kr(v: float | None) -> str:
 
 
 templates.env.filters["kr"] = _format_kr
+
+
+def _card_image_large(url: str | None) -> str | None:
+    """The bigger version of a stored card thumbnail, for the card viewer
+    (partials/card_viewer.html). Each image host serves its sizes under a
+    fixed naming scheme; an unknown host just gets the same URL back. The
+    viewer falls back to the thumbnail itself if the large one fails to load.
+    """
+    if not url:
+        return url
+    if "images.pokemontcg.io" in url and url.endswith(".png") and not url.endswith("_hires.png"):
+        return url[: -len(".png")] + "_hires.png"
+    if "images.scrydex.com" in url and url.endswith("/small"):
+        return url[: -len("/small")] + "/large"
+    if "assets.tcgdex.net" in url and url.endswith("/low.webp"):
+        return url[: -len("/low.webp")] + "/high.webp"
+    return url
+
+
+templates.env.filters["card_image_large"] = _card_image_large
 templates.env.globals["auth_enabled"] = auth.is_configured
 
 
