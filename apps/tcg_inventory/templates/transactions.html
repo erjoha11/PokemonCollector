@@ -39,7 +39,7 @@
     </thead>
     <tbody>
       {% for tx in rows %}
-      {{ tx_row(tx) }}
+      {{ tx_row(tx, (shipping_by_tx or {}).get(tx.id)) }}
       {% else %}
       <tr><td colspan="6" class="muted">{{ empty_message }}</td></tr>
       {% endfor %}

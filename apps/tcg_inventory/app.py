@@ -1420,6 +1420,9 @@ def _transactions_context(
         "top_series": top_series,
         "kpi": kpi,
         "purchase_groups": purchase_groups,
+        # Each purchase row's share of its order's shipping -- shown under
+        # the row's price, since it's part of what the card really cost.
+        "shipping_by_tx": queries.shipping_shares(txs),
         "ungrouped_transactions": ungrouped_transactions,
         "error": error,
         "today": dt.date.today().isoformat(),

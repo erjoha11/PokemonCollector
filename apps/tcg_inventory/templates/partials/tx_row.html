@@ -1,6 +1,6 @@
 {% from "partials/macros.html" import dex_link %}
 
-{% macro tx_row(tx) %}
+{% macro tx_row(tx, shipping=None) %}
 <tr id="tx-row-{{ tx.id }}">
   <td class="muted">
     {{ tx.date }}
@@ -22,6 +22,7 @@
       {%- if tx.type == 'trade' %} title="On a trade, price is cash that moved with the card (paid on In, received on Out). It counts in the trade's gain but not toward Net invested, Paper gain/loss, or any other KPI."{% endif %}>
     {{ tx.price | kr }}
     {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
+    {% if shipping %}<div class="tx-card-meta" title="This card's share of the order's shipping, split by price across the order's cards. Counted in Net invested and the card's Net paid.">+ {{ '%.2f' | format(shipping) }} kr shipping</div>{% endif %}
   </td>
   <td class="muted">{{ tx.platform or '' }}</td>
   <td>

@@ -134,7 +134,12 @@ run).
   largest-remainder rounding, so they always add up to the remainder to
   the øre and the order lands on ✓. Trade rows and rows ticked for
   deletion are skipped. It rejects if every card is already priced or the
-  result would be negative. A single ungrouped
+  result would be negative. Shipping is not part of that remainder: it
+  stays recorded on the order, and each purchase row carries a share of
+  it split by price (`queries.shipping_shares`; evenly when nothing in the
+  order is priced yet). That share is shown under the row's price, and it
+  counts in the card's Net paid (`net_invested_by_card`) and in Net
+  invested, so a 25 kr card with 38 kr shipping shows as having cost 63 kr. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked
