@@ -1112,3 +1112,29 @@ they sorted is gone) but are still accepted by the route so old links don't
 limit=50)` was removed from `_transactions_context`: it ran on every load
 and every sort click while `kpi_module.html` only renders that tile on the
 Dashboard.
+
+## Flagged-missing cleanup — 2026-09-23 session
+
+### Direct database changes (Supabase prod) — not in git
+
+Reviewed the three cards with `flagged_missing_since` set. The user confirmed two
+were mis-registrations they had already removed from Dex, so they were deleted by
+hand (the same end state a "Full load" would give for just these two):
+
+- `cards.id=897` — Psyduck, Mega Evolution Promos 7, Cosmos Holo, qty 1, flagged
+  2026-09-16. No transactions or listings.
+- `cards.id=193` — Persian, Generations 54/83, Normal, qty 1, flagged 2026-09-19.
+  Also deleted its one `transactions` row (id 541, purchase in order #2, price 0 —
+  the order total 419 + 44 shipping is still carried on the order's other rows).
+
+Their `card_snapshots` rows (32 total) were deleted too; no `card_collections` or
+`listing_cards` rows existed.
+
+Left as-is: `cards.id=164` Mega Venusaur ex (Mega Brave 3/63), qty 0, flagged
+2026-09-12. It was traded away (transaction id 56), so it stays for history.
+
+### Open item
+
+There is no UI for flagged cards: they don't appear in Inventory, and the dashboard
+doesn't exclude them. A per-card review page (delete / keep as qty 0 / ignore) was
+suggested but not built.
