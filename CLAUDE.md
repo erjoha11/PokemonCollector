@@ -6,7 +6,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a monorepo of small, independent Python apps for buying and collecting Pokemon cards, each under `apps/`. Apps do not import from each other. Each has its own `requirements.txt` and README with app-specific detail — read the relevant app's README before making non-trivial changes there.
 
-- `apps/finn_ad_scraper/` — scrapes a finn.no ad (title/description/price/photos) and identifies Pokemon cards in the photos via Claude vision.
 - `apps/tcg_inventory/` — FastAPI + Jinja2/HTMX webapp tracking a physical card collection (replaces an Excel workbook). Runs locally on SQLite or deployed on Vercel + Supabase.
 
 ## Setup and common commands
@@ -15,12 +14,11 @@ From repo root:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt      # installs both apps' requirements + pytest
-playwright install chromium              # only needed for finn_ad_scraper's headless-browser fallback
-cp .env.example .env                     # then fill in ANTHROPIC_API_KEY
+pip install -r requirements-dev.txt      # installs every app's requirements + pytest
+cp .env.example .env                     # optional -- all vars are optional locally
 ```
 
-Run the whole suite (both apps, offline — no network, API keys, or Playwright install required):
+Run the whole suite (offline — no network or API keys required):
 
 ```bash
 python -m pytest
@@ -37,18 +35,10 @@ python -m pytest apps/tcg_inventory/tests/test_importer.py::test_some_case -v
 Run each app directly:
 
 ```bash
-python -m finn_ad_scraper.cli "https://www.finn.no/recommerce/forsale/item/123456789"   # from apps/finn_ad_scraper's parent on the path, or via the package
 cd apps/tcg_inventory && python app.py    # serves http://localhost:8000, SQLite auto-created
 ```
 
 ## Architecture notes
-
-### finn_ad_scraper
-
-Two-step pipeline, both steps independently testable against fixtures/fake clients:
-
-1. `fetch_finn_ad(url)` (`finn_ad.py`) — plain HTTP GET first (finn.no embeds a JSON-LD `Product` block that needs no JS); falls back to headless Chromium via Playwright only if that fails.
-2. `identify_cards(images, ad_context)` (`card_identifier.py`) — sends ad photos to Claude vision, returns each card's name/set/number/holo/condition.
 
 ### tcg_inventory
 
@@ -75,8 +65,8 @@ An already-registered order can be edited (retype/relink/move/merge/split/add no
 Besides the default coding agent, project-scoped agents live in `.claude/agents/`. Claude Code supports subagents spawning further subagents (up to 3 layers deep by default, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` in `.claude/settings.json` to change it), and this repo's agents deliberately use that: it's not just the user driving every step.
 
 - **architect** — the entry point for developing a feature or a bigger/new idea, as well as standalone system-architecture-level thinking: module/app boundaries, data flow, deployment topology, coupling, design tradeoffs. It spawns `ux` itself when an idea touches `tcg_inventory`'s UI, and files the resulting ticket on GitHub itself (`gh issue create` — its only GitHub access). From there it either hands the ticket to `project-manager` or reports it back to the user, whichever fits. Consult before a change that ripples across the system, touches a documented decision (see e.g. the computed-vs-stored discussion above), or when an idea needs to be thought through before anyone writes code. Invoked directly, or via `/new_feature`.
-- **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`, not `finn_ad_scraper`): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish. Spawnable by anyone — the user, `architect`, `project-manager`, or `developer` — though `architect` spawning it during feature intake is the standard path. Can read and comment on issues (`gh issue view`/`gh issue comment`) but never create, edit, or close.
-- **project-manager** — the project-management assistant: maintains an overview of everything in flight across both apps (open issues, open/draft PRs, CI status, stale branches), triages and prioritizes the backlog, turns ideas or bug reports into tracked GitHub issues, and is the **only** agent allowed to spawn `developer` to actually build tracked work. Has full issue admin (create/edit/label/close/delete) and can merge (a PR it judges genuinely ready — checks green, no unresolved review comments, not a draft) or close PRs — still short of `developer`'s force-push/branch-delete/repo-settings access. Consult for a status/standup-style read of the project (`/pm_report`), for backlog triage, for merging a ready PR, for a bug/small change that should be tracked and built (`/new_fix`), or when a feature idea needs shaping into a concrete plan before `developer` builds it.
+- **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish. Spawnable by anyone — the user, `architect`, `project-manager`, or `developer` — though `architect` spawning it during feature intake is the standard path. Can read and comment on issues (`gh issue view`/`gh issue comment`) but never create, edit, or close.
+- **project-manager** — the project-management assistant: maintains an overview of everything in flight across the apps (open issues, open/draft PRs, CI status, stale branches), triages and prioritizes the backlog, turns ideas or bug reports into tracked GitHub issues, and is the **only** agent allowed to spawn `developer` to actually build tracked work. Has full issue admin (create/edit/label/close/delete) and can merge (a PR it judges genuinely ready — checks green, no unresolved review comments, not a draft) or close PRs — still short of `developer`'s force-push/branch-delete/repo-settings access. Consult for a status/standup-style read of the project (`/pm_report`), for backlog triage, for merging a ready PR, for a bug/small change that should be tracked and built (`/new_fix`), or when a feature idea needs shaping into a concrete plan before `developer` builds it.
 - **developer** — full Edit/Write and full GitHub read/write (including merge/close/force-push/delete). Spawnable directly by the user for a quick, untracked fix, or by `project-manager` to build a ticket. Has no `Agent` tool itself — it never spawns `ux`, `architect`, `project-manager`, or another `developer`; if it decides mid-task that it needs one of those, it says so in its report to whoever spawned it instead. When `project-manager` spawned it, it reports back to `project-manager`, not the user.
 
 `architect`, `ux`, and `project-manager` have no Edit/Write tools — they never implement application code themselves, only `developer` does. `developer` and `project-manager` are the two agents in this repo able to merge/close PRs. When a task needs input from more than one agent, the orchestrating session (or an agent that spawned another, per the roles above) keeps each spawned instance alive and relays findings between them rather than re-explaining context from scratch each time.

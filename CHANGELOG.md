@@ -13,6 +13,17 @@ This first entry backfills everything merged to `main` since 2026-09-14
 attempt to reconstruct the project's earlier history. From here on, each
 new entry should cover only what's merged since the previous one.
 
+## 2026-09-23
+
+### finn_ad_scraper
+
+- Removed. The app was an unused experiment that mostly added confusion;
+  `tcg_inventory` is now the only app. It remains in git history if it's
+  ever wanted back. `tcg_inventory`'s `CARD_CONDITIONS` (previously kept in
+  sync with the scraper's list by convention) is now the single source of
+  truth, and `.env.example` now lists `tcg_inventory`'s env vars instead of
+  the scraper's `ANTHROPIC_API_KEY`.
+
 ## 2026-09-19 — backfill covering 2026-09-14 through 2026-09-19
 
 ### tcg_inventory

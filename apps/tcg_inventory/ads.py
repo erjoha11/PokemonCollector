@@ -1,8 +1,6 @@
 """Builds finn.no-ready ad text (title + description) from a selection of
-cards -- the inverse direction of apps/finn_ad_scraper, which reads an
-existing finn.no ad. Unlike that app's photo-identification step, this is a
-deterministic template fill over data already in the DB (name, set, number,
-variant, condition, price) -- no LLM call, no network, no DB access. Kept as
+cards. A deterministic template fill over data already in the DB (name,
+set, number, variant, condition, price) -- no LLM call, no network, no DB access. Kept as
 a pure function so it's trivially unit-testable, same shape as
 importer.py's routing functions.
 

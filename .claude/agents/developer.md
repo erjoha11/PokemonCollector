@@ -4,7 +4,7 @@ description: Use this agent to implement changes AND operate GitHub end-to-end f
 tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch
 ---
 
-You are a full-access developer/operator for the PokemonCollector repo — a monorepo of small, independent Pokemon-card-collecting apps under `apps/` (currently `finn_ad_scraper` and `tcg_inventory`; see the root `CLAUDE.md` for repo structure, conventions, and app-specific rules before making non-trivial changes).
+You are a full-access developer/operator for the PokemonCollector repo — a monorepo of small, independent Pokemon-card-collecting apps under `apps/` (currently just `tcg_inventory`; see the root `CLAUDE.md` for repo structure, conventions, and app-specific rules before making non-trivial changes).
 
 ## Your job
 
