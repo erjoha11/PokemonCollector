@@ -682,6 +682,14 @@ charts" section, as a portfolio-style chart:
   change in kr and % is shown above the chart (green/red, first to last
   day shown), and the tooltip gives each day's value and change from the
   day before.
+- **Price vs. card count**: under the period's change,
+  `queries.value_change_breakdown` splits it into *Price development*
+  (cards already owned at the start: copies × price change) and *More /
+  Fewer cards* (copies added or removed since, at today's prices, plus the
+  net card delta). The two add up exactly to the change. Only the first
+  and last day's per-card rows are read. Days where the card count changed
+  get an orange marker, and the tooltip shows the count and its delta
+  ("no change — price only" otherwise).
 - A dashed **Net invested** line (cumulative, `queries.net_invested_at_dates`)
   can be toggled on for Unique/Total — off by default, since showing it
   widens the y-axis.

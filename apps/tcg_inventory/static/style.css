@@ -1249,6 +1249,10 @@ button.secondary {
 .mv-change-value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .mv-change-delta { font-weight: 600; font-variant-numeric: tabular-nums; }
 .mv-change-period { font-size: 0.8rem; }
+.mv-breakdown { display: flex; flex-wrap: wrap; gap: 0.2rem 1.2rem; font-size: 0.82rem; margin-bottom: 0.2rem; font-variant-numeric: tabular-nums; }
+.mv-breakdown-legend { display: inline-flex; align-items: center; gap: 0.35rem; }
+.mv-card-dot { width: 8px; height: 8px; border-radius: 50%; background: #eb6834; display: inline-block; }
+.mv-breakdown-key { color: var(--ink-secondary); margin-right: 0.3rem; }
 .mv-invested-toggle { margin-left: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
 .mv-invested-swatch { width: 14px; border-top: 2px dashed currentColor; display: inline-block; }
 

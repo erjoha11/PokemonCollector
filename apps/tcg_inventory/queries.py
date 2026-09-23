@@ -574,6 +574,63 @@ def real_value_history(
     ]
 
 
+# Per metric: how many copies of a card with `qty` count toward it -- the
+# per-card counterpart of the SQL expressions in real_value_history.
+_METRIC_COPIES = {
+    "unique": lambda qty: 1 if qty > 0 else 0,
+    "duplicates": lambda qty: max(qty - 1, 0),
+    "total": lambda qty: max(qty, 0),
+}
+
+
+def _snapshot_state(db: Session, date: dt.date) -> dict[int, tuple[int, float]]:
+    """card_id -> (qty, price) as of `date`'s last snapshot (same source
+    precedence as real_value_history's daily point)."""
+    rows = db.query(CardSnapshot).filter(CardSnapshot.date == date).all()
+    rows.sort(key=lambda r: _SNAPSHOT_SOURCE_ORDER.get(r.source, len(_SNAPSHOT_SOURCE_ORDER)))
+    return {r.card_id: (r.qty, r.reference_price or 0.0) for r in rows}  # later source wins
+
+
+def value_change_breakdown(
+    db: Session, metric: str, history: list[dict], live_cards: list[Card] | None = None
+) -> dict | None:
+    """Split a real_value_history period's change (first to last point)
+    into what the cards' prices did and what adding/removing cards did:
+
+        cards = sum over cards of (copies_last - copies_first) * price_last
+        price = sum over cards of  copies_first * (price_last - price_first)
+
+    which add up exactly to the period's change. So "price" is how the
+    cards already owned at the start moved, "cards" is the value of copies
+    gained (or lost) since, at today's prices. `card_delta` is the net
+    change in copies counted by `metric`.
+
+    `live_cards` (today's Card rows) stand in for the last point when it's
+    today's live value -- see real_value_history's `live`. Only two days of
+    per-card rows are read, so this stays cheap whatever the period length.
+    None with fewer than 2 points.
+    """
+    if len(history) < 2:
+        return None
+    copies = _METRIC_COPIES[metric]
+    first = _snapshot_state(db, history[0]["date"])
+    if live_cards is not None:
+        last = {c.id: (c.qty, c.display_price or 0.0) for c in live_cards}
+    else:
+        last = _snapshot_state(db, history[-1]["date"])
+
+    price_effect = cards_effect = 0.0
+    card_delta = 0
+    for card_id in first.keys() | last.keys():
+        q0, p0 = first.get(card_id, (0, 0.0))
+        q1, p1 = last.get(card_id, (0, 0.0))
+        c0, c1 = copies(q0), copies(q1)
+        price_effect += c0 * (p1 - p0)
+        cards_effect += (c1 - c0) * p1
+        card_delta += c1 - c0
+    return {"price": price_effect, "cards": cards_effect, "card_delta": card_delta}
+
+
 def net_invested_at_dates(txs: list[Transaction], dates: list[dt.date]) -> list[float]:
     """Cumulative Net invested (economic_summary's rules, shipping included)
     as of each of `dates` -- the "what had I paid by then" line drawn under

@@ -318,6 +318,9 @@ def _market_value_context(
     history = queries.real_value_history(
         db, metric=metric, period=period, live=(headline[value_key], headline[count_key])
     )
+    # history ends on the live value (real_value_history's `live`), so the
+    # breakdown's end state is today's cards too.
+    live_cards = db.query(Card).all()
     invested_line = None
     if metric != "duplicates" and history:
         invested_line = queries.net_invested_at_dates(txs, [row["date"] for row in history])
@@ -325,6 +328,7 @@ def _market_value_context(
         "market_value_history": history,
         "market_value_invested": invested_line,
         "market_value_change": queries.period_change(history),
+        "market_value_breakdown": queries.value_change_breakdown(db, metric, history, live_cards),
         "market_value_stats": _market_value_stats(headline, economic, metric),
         "metric": metric,
         "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],

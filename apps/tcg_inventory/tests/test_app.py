@@ -263,6 +263,29 @@ def test_market_value_key_figures_follow_the_selected_metric(client, path):
     assert duplicates.count(">–</span>") == 2  # no per-copy cost: Net invested and Gain / loss unknown
 
 
+def test_market_value_chart_shows_price_vs_card_count_breakdown(client):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+    from models import Card
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 1, "price": "100"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    snapshots.record_daily_snapshot(db, as_of=dt.date.today() - dt.timedelta(days=2))
+    card = db.query(Card).one()
+    card.qty = 2
+    db.commit()
+    db.close()
+
+    html = client.get("/?metric=total").text
+    assert "Price development" in html
+    assert "More cards" in html and "(+1 card)" in html
+    assert "Card count changed that day" in html
+    assert '"cardCounts": [1, 2]' in html
+
+
 def test_market_value_period_pills_switch_and_keep_other_params(client):
     import datetime as dt
 
