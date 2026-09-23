@@ -161,7 +161,7 @@ SORT_COLUMNS = {
     "reference_price": _DISPLAY_PRICE_COL,
     "qty": Card.qty,
     "total_value": Card.qty * func.coalesce(_DISPLAY_PRICE_COL, 0),
-    "rarity": Card.rarity,
+    "rarity": queries.rarity_sort_expr(Card.rarity),  # tier order, not alphabetical
     "illustrator": Card.illustrator,
     "language": Card.language,
 }
@@ -248,31 +248,97 @@ def get_db_session() -> Session:
 # --------------------------------------------------------------------------
 # Dashboard
 # --------------------------------------------------------------------------
-def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
-    """A link that switches a shared value-growth chart's metric (see
-    `chart_card` in macros.html), preserving every other query param
-    (each table's own sort state on Dashboard) -- same "keep everything else
-    as-is" idiom as `_sort_url` above. `path` is the page/endpoint the chart
-    lives on (Dashboard vs Transactions' `/transactions/charts`).
-    """
+def _query_url(request: Request, path: str, **overrides) -> str:
+    """A link to `path` with the current query params plus `overrides` --
+    same "keep everything else as-is" idiom as `_sort_url` above (e.g. each
+    Dashboard table's own sort state survives a chart toggle)."""
     params = dict(request.query_params)
-    params["metric"] = metric_key
+    params.update(overrides)
     return f"{path}?" + urlencode(params)
 
 
-def _market_value_stats(headline: dict, economic: dict) -> list[dict]:
+def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
+    """A link that switches a shared value-growth chart's metric (see
+    `chart_card` in macros.html), preserving every other query param. `path`
+    is the page/endpoint the chart lives on (Dashboard vs Transactions'
+    `/transactions/charts`).
+    """
+    return _query_url(request, path, metric=metric_key)
+
+
+# Per metric: (headline_summary key for today's value, headline key for the
+# matching card count). Only "unique" and "total" have a Net invested to
+# compare against -- purchase cost is recorded per card, not per copy, so
+# there is no honest way to split what was paid between a card's first copy
+# and its duplicates; Duplicates shows "–" for those two instead.
+_METRIC_HEADLINE_KEYS = {
+    "unique": ("unique_value", "qty_unique"),
+    "duplicates": ("duplicate_value", "duplicates"),
+    "total": ("total_value", "qty_physical"),
+}
+
+
+def _market_value_stats(headline: dict, economic: dict, metric: str) -> list[dict]:
     """The Net invested / Current value / Gain-loss row shown inside the
     Market Value chart itself (see `chart_card`'s `stats` param in
-    macros.html) -- same formula as Transactions' `.tx-kpi-bar` (`delta`
-    below), always against unique_value regardless of the chart's own
-    metric toggle, matching Bucket.gain_loss elsewhere.
+    macros.html). Follows the chart's own metric toggle: Current value is
+    today's value for that metric, Gain / loss is it minus Net invested
+    (Total's matches the Market Value KPI card's gain). Duplicates has no
+    Net invested of its own (see _METRIC_HEADLINE_KEYS), so both are None,
+    rendered as "–".
     """
-    gain_loss = headline["unique_value"] - economic["net_invested"]
+    current = headline[_METRIC_HEADLINE_KEYS[metric][0]]
+    if metric == "duplicates":
+        invested = gain_loss = None
+    else:
+        invested = economic["net_invested"]
+        gain_loss = current - invested
     return [
-        {"label": "Net invested", "value": economic["net_invested"]},
-        {"label": "Current value", "value": headline["unique_value"]},
-        {"label": "Gain / loss", "value": gain_loss, "delta_class": "gain" if gain_loss >= 0 else "loss"},
+        {"label": "Net invested", "value": invested},
+        {"label": "Current value", "value": current},
+        {
+            "label": "Gain / loss",
+            "value": gain_loss,
+            "delta_class": None if gain_loss is None else ("gain" if gain_loss >= 0 else "loss"),
+        },
     ]
+
+
+def _market_value_context(
+    request: Request, db: Session, headline: dict, economic: dict, txs, metric: str, period: str, path: str = "/"
+) -> dict:
+    """Everything the shared Market Value chart card needs (Dashboard and
+    Transactions' lazy-loaded charts render the same card): the per-day
+    history for `metric` over `period`, ending on today's live value; the
+    Net invested line under it (not for Duplicates -- see
+    _METRIC_HEADLINE_KEYS); the period's change; the key figures; and the
+    metric/period toggle links (each keeps every other query param).
+    """
+    value_key, count_key = _METRIC_HEADLINE_KEYS[metric]
+    history = queries.real_value_history(
+        db, metric=metric, period=period, live=(headline[value_key], headline[count_key])
+    )
+    invested_line = None
+    if metric != "duplicates" and history:
+        invested_line = queries.net_invested_at_dates(txs, [row["date"] for row in history])
+    return {
+        "market_value_history": history,
+        "market_value_invested": invested_line,
+        "market_value_change": queries.period_change(history),
+        "market_value_stats": _market_value_stats(headline, economic, metric),
+        "metric": metric,
+        "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
+        "metric_options": [
+            (key, label, _metric_url(request, key, path=path))
+            for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
+        ],
+        "period": period,
+        "period_label": queries.VALUE_HISTORY_PERIODS[period][0],
+        "period_options": [
+            (key, label, _query_url(request, path, period=key))
+            for key, (label, _days) in queries.VALUE_HISTORY_PERIODS.items()
+        ],
+    }
 
 
 @app.get("/")
@@ -291,10 +357,13 @@ def dashboard(
     tsort: str = "reference_price",
     tdir: str = "desc",
     metric: str = "total",
+    period: str = "all",
     open_pokemon_folder: bool = False,
 ):
     if metric not in queries.VALUE_GROWTH_METRICS:
         metric = "total"
+    if period not in queries.VALUE_HISTORY_PERIODS:
+        period = "all"
     db = get_db_session()
     try:
         # Loaded once and threaded through every breakdown below, instead of
@@ -318,15 +387,6 @@ def dashboard(
             queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
         top_cards = queries.top_valuable_cards(db, limit=50)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
-
-        # Renders via the shared chart_card macro (macros.html), the same
-        # module Transactions uses -- see /transactions for the full
-        # economic breakdown this is a compact preview of.
-        market_value_history = queries.real_value_history(db, metric=metric)
-        metric_label = queries.VALUE_GROWTH_METRICS[metric][0]
-        metric_options = [
-            (key, label, _metric_url(request, key)) for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
-        ]
 
         # Bucket rows (collection, series, set, rarity) always keep their
         # default order from queries.py -- clicking a column header only
@@ -380,6 +440,10 @@ def dashboard(
             request,
             "dashboard.html",
             {
+                # Renders via the shared chart_card macro (macros.html), the
+                # same module Transactions uses -- see /transactions for the
+                # full economic breakdown this is a compact preview of.
+                **_market_value_context(request, db, headline, economic, txs, metric, period),
                 "headline": headline,
                 "net_invested": economic["net_invested"],
                 "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
@@ -388,11 +452,6 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "rarity_breakdown": rarity_breakdown,
-                "market_value_history": market_value_history,
-                "market_value_stats": _market_value_stats(headline, economic),
-                "metric": metric,
-                "metric_label": metric_label,
-                "metric_options": metric_options,
                 "pokemon_top": pokemon_top,
                 "favorite_pokemon": favorite_names,
                 "favorite_breakdown": favorite_breakdown,
@@ -598,6 +657,8 @@ def inventory(
                 sort_col = sort_col.desc() if direction == "desc" else sort_col.asc()
                 sort_col = sort_col.nulls_last()
                 order_cols = [sort_col] if sort == "number" else [sort_col, number_sort.asc()]
+                if sort == "rarity":  # unrecognized names tie on rank -- break by name
+                    order_cols.insert(1, Card.rarity.desc() if direction == "desc" else Card.rarity.asc())
 
         cards = query.order_by(*order_cols).all()
         # Net paid/Gain (see partials/inventory_table.html) are always shown
@@ -1183,7 +1244,7 @@ TRANSACTION_SORT_KEYS = {
     "type": lambda t: t.type,
     "name": lambda t: t.card.name.lower(),
     "variant": lambda t: (t.card.variant or "").lower(),
-    "rarity": lambda t: (t.card.rarity or "").lower(),
+    "rarity": lambda t: queries.rarity_rank(t.card.rarity),
     "series": lambda t: (t.card.series or "").lower(),
     "set": lambda t: (t.card.set or "").lower(),
     "number": lambda t: t.card.number_int if t.card.number_int is not None else 999999,
@@ -1458,7 +1519,7 @@ def _transactions_context(
     kpi = {
         "net_invested": economic["net_invested"],
         "unique_value": headline["unique_value"],
-        "delta": headline["unique_value"] - economic["net_invested"],
+        "delta": headline["total_value"] - economic["net_invested"],  # same as the Market Value KPI's gain
     }
 
     return {
@@ -2303,29 +2364,26 @@ def analyse_redirect():
 
 
 @app.get("/transactions/charts")
-def transactions_charts(request: Request, metric: str = "total"):
+def transactions_charts(request: Request, metric: str = "total", period: str = "all"):
     if metric not in queries.VALUE_GROWTH_METRICS:
         metric = "total"
+    if period not in queries.VALUE_HISTORY_PERIODS:
+        period = "all"
     db = get_db_session()
     try:
-        market_value_history = queries.real_value_history(db, metric=metric)
+        txs = db.query(Transaction).all()
         cash_flow = queries.cash_flow_by_month(db)
         headline = queries.headline_summary(db)
-        economic = queries.economic_summary(db)
+        economic = queries.economic_summary(db, txs)
 
         return templates.TemplateResponse(
             request,
             "partials/transactions_charts.html",
             {
-                "market_value_history": market_value_history,
-                "market_value_stats": _market_value_stats(headline, economic),
+                **_market_value_context(
+                    request, db, headline, economic, txs, metric, period, path="/transactions/charts"
+                ),
                 "cash_flow": cash_flow,
-                "metric": metric,
-                "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
-                "metric_options": [
-                    (key, label, _metric_url(request, key, path="/transactions/charts"))
-                    for key, (label, _fn) in queries.VALUE_GROWTH_METRICS.items()
-                ],
             },
         )
     finally:

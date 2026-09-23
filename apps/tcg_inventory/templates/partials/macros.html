@@ -62,7 +62,7 @@
   {% if stats %}
   <div class="chart-kpi-bar">
     {% for s in stats %}
-    <div><span class="tx-kpi-label">{{ s.label }}</span><span class="tx-kpi-value{{ ' viz-delta-gain' if s.delta_class == 'gain' else (' viz-delta-loss' if s.delta_class == 'loss' else '') }}">{{ s.value | kr }}</span></div>
+    <div><span class="tx-kpi-label">{{ s.label }}</span><span class="tx-kpi-value{{ ' viz-delta-gain' if s.delta_class == 'gain' else (' viz-delta-loss' if s.delta_class == 'loss' else '') }}">{{ '–' if s.value is none else s.value | kr }}</span></div>
     {% endfor %}
   </div>
   {% endif %}
@@ -93,6 +93,85 @@
   <script type="application/json" id="{{ card_id }}-data">{{ {"type": chart_type, "labels": labels, "datasets": datasets} | tojson }}</script>
   <script>initTcgChart("{{ card_id }}");</script>
   {{ caller() if caller is defined }}
+  {% else %}
+  <p class="muted">No data yet.</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{# The Market Value card -- a portfolio-style value chart, shared by
+   Dashboard and Transactions' lazy-loaded charts. Reads the context
+   app._market_value_context builds (import this macro `with context`):
+   one point per day on a real time axis, y-axis fitted to the period
+   (not from 0), metric + period toggles (server-side, same hx-select swap
+   as chart_card), the period's change in kr and %, and an optional dashed
+   Net invested line (hidden until toggled, so it doesn't flatten the
+   value line's own scale). Rendered by tcg-charts.js's timeSeries mode. #}
+{% macro market_value_card(card_id, heading, extra_class='') %}
+{% set history = market_value_history %}
+{% set change = market_value_change %}
+{% set up = change is none or change.change >= 0 %}
+<div class="card mv-card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
+  <h2>{{ heading | safe }}</h2>
+  <div class="chart-kpi-bar">
+    {% for s in market_value_stats %}
+    <div><span class="tx-kpi-label">{{ s.label }}</span><span class="tx-kpi-value{{ ' viz-delta-gain' if s.delta_class == 'gain' else (' viz-delta-loss' if s.delta_class == 'loss' else '') }}">{{ '–' if s.value is none else s.value | kr }}</span></div>
+    {% endfor %}
+  </div>
+  <div class="mv-toolbar">
+    <div class="viz-filter" aria-label="Metric">
+      {% for key, label, href in metric_options %}
+      <a href="{{ href }}" hx-get="{{ href }}" hx-select="#{{ card_id }}" hx-target="#{{ card_id }}" hx-swap="outerHTML" hx-push-url="true"
+         class="viz-filter-pill{{ ' active' if key == metric else '' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <div class="viz-filter mv-periods" aria-label="Period">
+      {% for key, label, href in period_options %}
+      <a href="{{ href }}" hx-get="{{ href }}" hx-select="#{{ card_id }}" hx-target="#{{ card_id }}" hx-swap="outerHTML" hx-push-url="true"
+         class="viz-filter-pill{{ ' active' if key == period else '' }}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% if history %}
+  <div class="mv-change">
+    <span class="mv-change-value">{{ history[-1].cumulative_value | kr }}</span>
+    {% if change %}
+    <span class="mv-change-delta {{ 'viz-delta-gain' if up else 'viz-delta-loss' }}">
+      <span aria-hidden="true">{{ '▲' if up else '▼' }}</span>
+      {{ '+' if change.change > 0 }}{{ change.change | kr }}{% if change.pct is not none %} ({{ '+' if change.pct > 0 }}{{ '%.1f' | format(change.pct) }} %){% endif %}
+    </span>
+    <span class="muted mv-change-period">{{ 'all time' if period == 'all' else 'last ' ~ period_label }}</span>
+    {% else %}
+    <span class="muted mv-change-period">Only one day of history in this period</span>
+    {% endif %}
+    {% if market_value_invested %}
+    <button type="button" class="viz-filter-pill mv-invested-toggle" aria-pressed="false" onclick="tcgToggleDataset('{{ card_id }}', 1, this)">
+      <span class="mv-invested-swatch" aria-hidden="true"></span>Net invested
+    </button>
+    {% endif %}
+  </div>
+  {% set datasets = [{"label": metric_label, "data": history | map(attribute="cumulative_value") | list, "color": "#0ca30c" if up else "#d03b3b"}] %}
+  {% if market_value_invested %}
+  {% set datasets = datasets + [{"label": "Net invested", "data": market_value_invested, "color": "#898781", "hidden": true}] %}
+  {% endif %}
+  <div class="viz-chart-wrap">
+    <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
+  </div>
+  <script type="application/json" id="{{ card_id }}-data">{{ {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "datasets": datasets} | tojson }}</script>
+  <script>initTcgChart("{{ card_id }}");</script>
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Date</th><th class="num">Cards</th><th class="num">Value ({{ metric_label }})</th><th class="num">Change</th></tr></thead>
+      <tbody>
+        {% for row in history | reverse %}
+        {% set prev = history[history | length - loop.index - 1] if not loop.last else none %}
+        <tr><td>{{ row.label }}</td><td class="num">{{ row.card_count }}</td><td class="num">{{ row.cumulative_value | kr }}</td>
+          <td class="num">{% if prev %}{% set d = row.cumulative_value - prev.cumulative_value %}<span class="{{ 'viz-delta-gain' if d >= 0 else 'viz-delta-loss' }}">{{ '+' if d > 0 }}{{ d | kr }}</span>{% endif %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
   {% else %}
   <p class="muted">No data yet.</p>
   {% endif %}

@@ -5,14 +5,14 @@
        1. what is it worth, and am I up or down?  (value + gain, the hero)
        2. what's driving it?                      (cards up/down, best/worst)
        3. how big is it?                          (card counts, least urgent)
-     Gain is today's *unique* value minus Net invested (queries.gain_summary),
-     while the hero is the duplicate-inclusive total -- the equation row spells
-     that out so the two numbers never look like they disagree. #}
+     Gain is the hero itself -- today's duplicate-inclusive total value --
+     minus Net invested (queries.gain_summary); the equation row spells that
+     out. #}
   {% set up = gain.gain >= 0 %}
   <div class="kpi-card kpi-overview kpi-gain {{ 'kpi-gain-up' if up else 'kpi-gain-down' }}">
 
     <section class="kpi-ov-section kpi-ov-value">
-      <h3>Market Value {{ info("Total value of everything you own, duplicates included. Gain / loss is today's value of your unique cards minus everything you've paid (Net invested, shipping included) — not realized, nothing has been sold.") }}</h3>
+      <h3>Market Value {{ info("Total value of everything you own, duplicates included. Gain / loss is that total minus everything you've paid (Net invested, shipping included) — not realized, nothing has been sold.") }}</h3>
       <div class="kpi-ov-hero">
         <span class="kpi-ov-hero-value">{{ headline.total_value | kr }}</span>
         <span class="kpi-ov-gain-pill" title="Gain / loss">
@@ -22,7 +22,7 @@
         </span>
       </div>
       <div class="kpi-ov-equation">
-        <span>Unique value <strong>{{ gain.unique_value | kr }}</strong></span>
+        <span>Total value <strong>{{ gain.total_value | kr }}</strong></span>
         <span class="kpi-ov-op">−</span>
         <span>Paid <strong>{{ gain.net_invested | kr }}</strong></span>
         <span class="kpi-ov-op">=</span>
@@ -42,7 +42,7 @@
     </section>
 
     <section class="kpi-ov-section kpi-ov-movers">
-      <h3>Cards up / down {{ info("Compares each card's value today with what you paid for it. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
+      <h3>Cards up / down {{ info("Compares each card's value today (all copies you own) with what you paid for it. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
       {% set n_moved = gain.n_up + gain.n_down %}
       {% if n_moved %}
       <div class="kpi-ov-updown">

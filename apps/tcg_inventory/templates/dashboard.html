@@ -7,7 +7,7 @@
 
 {% from "partials/macros.html" import sort_th with context %}
 {% from "partials/macros.html" import info %}
-{% from "partials/macros.html" import chart_card %}
+{% from "partials/macros.html" import market_value_card with context %}
 {% from "partials/macros.html" import dex_link %}
 {% macro filter_link(param, value) %}<a href="/inventory?{{ param }}={{ value | urlencode }}">{{ value }}</a>{% endmacro %}
 {% macro dup_link(param, value, count) %}<a href="/inventory?{{ param }}={{ value | urlencode }}&dup=1">{{ count }}</a>{% endmacro %}
@@ -50,23 +50,8 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set dashboard_market_value_heading %}Market Value {{ info("The collection's actual value on each date a daily snapshot was taken — real historical prices, not an estimate. See Transactions for the full financial picture. Empty until at least one day of snapshots has accumulated.", below=true) }}{% endset %}
-  {% set dashboard_market_value_datasets = [
-    {"label": metric_label, "data": market_value_history | map(attribute="cumulative_value") | list, "color": "#2a78d6"},
-  ] %}
-  {% call chart_card('dashboard-market-value-card', dashboard_market_value_heading, 'line', market_value_history | map(attribute="label") | list, dashboard_market_value_datasets, metric_options, metric, extra_class='viz-root', stats=market_value_stats) %}
-  <details>
-    <summary>View as table</summary>
-    <table style="margin-top: 0.6rem;">
-      <thead><tr><th>Date</th><th class="num">Cards</th><th class="num">Cumulative value ({{ metric_label }})</th></tr></thead>
-      <tbody>
-        {% for row in market_value_history %}
-        <tr><td>{{ row.label }}</td><td class="num">{{ row.card_count }}</td><td class="num">{{ row.cumulative_value | kr }}</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </details>
-  {% endcall %}
+  {% set dashboard_market_value_heading %}Market Value {{ info("The collection's actual value per day, from the daily snapshots — real historical prices, not an estimate — ending on today's value. Pick what to count (unique cards, duplicates only, or everything) and a period; the change is from the first to the last day shown. See Transactions for the full financial picture. Empty until at least one day of snapshots has accumulated.", below=true) }}{% endset %}
+  {{ market_value_card('dashboard-market-value-card', dashboard_market_value_heading, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">
     <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
@@ -207,7 +192,7 @@
   </div>
 
   <div class="card" id="dashboard-rarity-card">
-    <h2>Rarity {{ info('Grouped by rarity, sorted from Common to the rarest (modern tier order). Unrecognized rarity names sort alphabetically last.', align_right=true, below=true) }}</h2>
+    <h2>Rarity {{ info('Grouped by rarity, sorted by tier: Common → Uncommon → Rare → Double Rare → Ultra Rare → Amazing Rare → Holo Rare → Holo Rare V → Triple Rare → Illustration Rare → Special Illustration Rare. Other rarity names follow alphabetically; No Rarity and Promo are always last.', align_right=true, below=true) }}</h2>
     <table>
       <thead>
         <tr>

@@ -1237,7 +1237,20 @@ button.secondary {
   padding-bottom: 0.7rem;
   border-bottom: 1px solid var(--border);
 }
-.chart-kpi-bar > div { display: flex; align-items: baseline; gap: 0.45rem; }
+.chart-kpi-bar > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.45rem; }
+.chart-kpi-bar .tx-kpi-value { white-space: nowrap; }
+
+/* Market Value card (macros.html market_value_card): metric + period pills
+   on one row, wrapping on narrow screens; then the period's change. */
+.mv-toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 1rem; }
+.mv-toolbar .viz-filter { flex-wrap: wrap; }
+.mv-periods .viz-filter-pill { padding: 0.3rem 0.55rem; }
+.mv-change { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 0.7rem; margin: 0.1rem 0 0.2rem; }
+.mv-change-value { font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.mv-change-delta { font-weight: 600; font-variant-numeric: tabular-nums; }
+.mv-change-period { font-size: 0.8rem; }
+.mv-invested-toggle { margin-left: auto; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
+.mv-invested-swatch { width: 14px; border-top: 2px dashed currentColor; display: inline-block; }
 
 .wiki-diagram {
   overflow-x: auto;

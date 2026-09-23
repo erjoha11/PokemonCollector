@@ -268,16 +268,24 @@ def by_series_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bu
     )
 
 
-# Modern (Scarlet & Violet-era) rarity tier order, low to high, per request.
-# Anything not in this list (older eras' own rarity names -- "Holo Rare",
-# "Promo", etc -- that don't share one single ranking across eras) sorts
-# alphabetically after these.
-_RARITY_TIER_ORDER = [
+# Rarity order, low to high -- the one ranking every rarity sort/filter in
+# the app uses (Dashboard's Rarity breakdown, Inventory's Rarity column,
+# Transactions' Rarity column; see rarity_rank / rarity_sort_expr). Modern
+# tiers first, then the older eras' "Holo Rare"/"Holo Rare V" and Triple
+# Rare, then the Illustration Rare tiers and the gold/secret tiers above
+# them. A name not in this list (another era's own rarity name) sorts
+# alphabetically after all of these but before the "no real rarity"
+# groups in _RARITY_TAIL -- so a new name never lands at the very bottom.
+RARITY_ORDER = [
     "Common",
     "Uncommon",
     "Rare",
     "Double Rare",  # includes ACE SPEC
     "Ultra Rare",  # full-art ex cards
+    "Amazing Rare",
+    "Holo Rare",
+    "Holo Rare V",
+    "Triple Rare",
     "Illustration Rare",
     "Special Illustration Rare",
     "Hyper Rare",  # gold cards
@@ -285,26 +293,44 @@ _RARITY_TIER_ORDER = [
     "Black White Rare",  # set-specific gold-symbol variants, e.g. Trainer Gallery
     "Secret Rare",  # numbered beyond the set's main size
 ]
+NO_RARITY_LABEL = "(uten rarity)"  # Dashboard bucket for cards with no rarity at all
+# Always last, in this order, after any unrecognized name.
+_RARITY_TAIL = ["No Rarity", NO_RARITY_LABEL, "Promo"]
+_RARITY_RANKS = {name: i for i, name in enumerate(RARITY_ORDER)}
+_UNKNOWN_RARITY_RANK = len(RARITY_ORDER)
+_RARITY_RANKS.update({name: _UNKNOWN_RARITY_RANK + 1 + i for i, name in enumerate(_RARITY_TAIL)})
+
+
+def rarity_rank(name: str | None) -> tuple[int, str]:
+    """Sort key for a rarity name (None = no rarity): tier rank, then name
+    (only breaks ties between unrecognized names)."""
+    name = name or NO_RARITY_LABEL
+    rank = _RARITY_RANKS.get(name, _UNKNOWN_RARITY_RANK)
+    return (rank, name.lower() if rank == _UNKNOWN_RARITY_RANK else "")
+
+
+def rarity_sort_expr(column):
+    """SQL equivalent of rarity_rank's first element, for ORDER BY on a
+    rarity column (pair it with the column itself for the name tie-break)."""
+    return case(
+        {name: rank for name, rank in _RARITY_RANKS.items() if name != NO_RARITY_LABEL},
+        value=column,
+        else_=case((column.is_(None), _RARITY_RANKS[NO_RARITY_LABEL]), else_=_UNKNOWN_RARITY_RANK),
+    )
 
 
 def by_rarity_breakdown(db: Session, cards: list[Card] | None = None) -> list[Bucket]:
     cards = all_cards_with_collections(db) if cards is None else cards
     buckets: dict[str, Bucket] = {}
     for card in cards:
-        key = card.rarity or "(uten rarity)"
+        key = card.rarity or NO_RARITY_LABEL
         bucket = buckets.setdefault(key, Bucket(name=key))
         bucket.add(card)
 
     for bucket in buckets.values():
         bucket.cards.sort(key=_card_sort_key)
 
-    def _rank(b: Bucket) -> tuple[int, str]:
-        try:
-            return (_RARITY_TIER_ORDER.index(b.name), "")
-        except ValueError:
-            return (len(_RARITY_TIER_ORDER), b.name)
-
-    return sorted(buckets.values(), key=_rank)
+    return sorted(buckets.values(), key=lambda b: rarity_rank(b.name))
 
 
 def pokemon_alias_map(db: Session) -> dict[str, str]:
@@ -457,46 +483,63 @@ def collection_value_growth(
     return result
 
 
-def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
+# Period buttons on the Market Value chart: key -> (button label, days back
+# from today, None = everything). Same shorthand as a stock-portfolio app.
+VALUE_HISTORY_PERIODS: dict[str, tuple[str, int | None]] = {
+    "1w": ("1U", 7),
+    "1m": ("1M", 30),
+    "3m": ("3M", 91),
+    "6m": ("6M", 182),
+    "1y": ("1Å", 365),
+    "all": ("Alt", None),
+}
+
+# Within one date, which snapshot source counts as that day's closing value:
+# the price refresh (06:00 UTC) runs after the Dropbox sync (05:00 UTC), and
+# a manual sync is the latest user-triggered state of the day.
+_SNAPSHOT_SOURCE_ORDER = {"cron": 0, "price-cron": 1, "manual": 2}
+
+
+def real_value_history(
+    db: Session,
+    metric: str = "unique",
+    period: str = "all",
+    today: dt.date | None = None,
+    live: tuple[float, int] | None = None,
+) -> list[dict]:
     """The real, non-approximated counterpart to collection_value_growth:
-    the collection's total value on each date a snapshot was actually taken
-    (see snapshots.record_daily_snapshot), summed across every card's
-    CardSnapshot row for that (date, source) -- what the collection was
-    actually worth on date X, not today's price applied retroactively.
-    Empty until at least one snapshot has accumulated (there is no way to
-    backfill snapshots for dates before this table existed).
+    the collection's value per day a snapshot was actually taken (see
+    snapshots.record_daily_snapshot) -- what it was actually worth on date X,
+    not today's price applied retroactively. Empty until at least one
+    snapshot has accumulated (there is no way to backfill snapshots for
+    dates before this table existed).
 
-    Up to two points per date: one from the scheduled cron sync, one from
-    the latest manual sync that day (see CardSnapshot.source). Points are
-    ordered cron-then-manual within a date; the label only gets a
-    "(cron)"/"(manual)" suffix when both exist for the same date, so the
-    common one-point-a-day case keeps its plain date label.
+    One point per date -- that day's last snapshot (see
+    _SNAPSHOT_SOURCE_ORDER), like a portfolio's daily close -- so the chart
+    can use a real time axis. `live` = (value, card_count) of the collection
+    right now, for `metric`: when given, today's point is that live figure
+    (added if no snapshot exists yet today), so the chart always ends on the
+    same number the Market Value key figures show. `period` (see
+    VALUE_HISTORY_PERIODS) keeps only the points from that many days back.
 
-    `metric` reuses the same VALUE_GROWTH_METRICS lambdas as
-    collection_value_growth -- CardSnapshot exposes the same
-    duplicates/unique_value/total_value properties as Card, computed from
-    that snapshot's own qty/reference_price instead of today's.
-
-    Aggregated in the database (GROUP BY date + source, SUM'd there) rather
-    than pulling every CardSnapshot row into Python -- this table grows with
-    calendar time regardless of collection size (see issue #162), so summing
-    in SQL keeps Dashboard load cheap no matter how much history has
-    accumulated. The three per-metric expressions below are the SQL
-    equivalent of the VALUE_GROWTH_METRICS lambdas applied to CardSnapshot's
-    own duplicates/unique_value/total_value properties -- including
-    `unique`'s quirk of *not* gating on qty > 0 (unlike Card.unique_value),
-    which the plain `func.sum(price)` below preserves on purpose to match
-    prior behavior byte-for-byte.
+    `metric` mirrors the VALUE_GROWTH_METRICS lambdas, summed in SQL over
+    CardSnapshot's own qty/reference_price (GROUP BY date + source rather
+    than pulling every row into Python -- this table grows with calendar
+    time regardless of collection size, see issue #162). "unique" only
+    counts cards owned that day (qty > 0), same as Card.unique_value.
     """
     if metric not in VALUE_GROWTH_METRICS:
         raise ValueError(f"unknown metric: {metric!r} (expected one of {sorted(VALUE_GROWTH_METRICS)})")
+    if period not in VALUE_HISTORY_PERIODS:
+        raise ValueError(f"unknown period: {period!r} (expected one of {sorted(VALUE_HISTORY_PERIODS)})")
+    today = today or dt.date.today()
 
     price = func.coalesce(CardSnapshot.reference_price, 0.0)
     if metric == "unique":
-        value_expr = func.sum(price)
+        value_expr = func.sum(case((CardSnapshot.qty > 0, price), else_=0.0))
         count_expr = func.sum(case((CardSnapshot.qty > 0, 1), else_=0))
     elif metric == "duplicates":
-        value_expr = func.sum(CardSnapshot.qty * price - price)
+        value_expr = func.sum(case((CardSnapshot.qty > 1, (CardSnapshot.qty - 1) * price), else_=0.0))
         count_expr = func.sum(case((CardSnapshot.qty > 1, CardSnapshot.qty - 1), else_=0))
     else:  # total
         value_expr = func.sum(CardSnapshot.qty * price)
@@ -513,22 +556,53 @@ def real_value_history(db: Session, metric: str = "unique") -> list[dict]:
         .all()
     )
 
-    sources_by_date: dict[dt.date, set[str]] = {}
-    for date, source, _, _ in rows:
-        sources_by_date.setdefault(date, set()).add(source)
-
-    source_order = {"cron": 0, "manual": 1}
-    result = []
-    for date, source, value, card_count in sorted(
-        rows, key=lambda row: (row[0], source_order.get(row[1], 2))
+    by_date: dict[dt.date, tuple[float, int]] = {}
+    for date, _source, value, card_count in sorted(
+        rows, key=lambda row: (row[0], _SNAPSHOT_SOURCE_ORDER.get(row[1], len(_SNAPSHOT_SOURCE_ORDER)))
     ):
-        label = date.strftime("%Y-%m-%d")
-        if len(sources_by_date[date]) > 1:
-            label = f"{label} ({source})"
-        result.append(
-            {"label": label, "cumulative_value": value or 0.0, "card_count": int(card_count or 0)}
-        )
+        by_date[date] = (value or 0.0, int(card_count or 0))  # later source wins
+
+    if live is not None and by_date:
+        by_date[today] = (live[0], int(live[1]))
+
+    days = VALUE_HISTORY_PERIODS[period][1]
+    start = today - dt.timedelta(days=days) if days is not None else None
+    return [
+        {"date": date, "label": date.strftime("%Y-%m-%d"), "cumulative_value": value, "card_count": count}
+        for date, (value, count) in sorted(by_date.items())
+        if start is None or date >= start
+    ]
+
+
+def net_invested_at_dates(txs: list[Transaction], dates: list[dt.date]) -> list[float]:
+    """Cumulative Net invested (economic_summary's rules, shipping included)
+    as of each of `dates` -- the "what had I paid by then" line drawn under
+    the Market Value chart."""
+    shares = shipping_shares(txs)
+    amounts = []
+    for tx in txs:
+        if tx.type == "purchase":
+            amounts.append((tx.date, tx.price + (tx.fees or 0.0) + shares.get(tx.id, 0.0)))
+        elif tx.type == "sale":
+            amounts.append((tx.date, -tx.price))
+    amounts.sort(key=lambda pair: pair[0])
+    result, running, i = [], 0.0, 0
+    for date in sorted(dates):
+        while i < len(amounts) and amounts[i][0] <= date:
+            running += amounts[i][1]
+            i += 1
+        result.append(running)
     return result
+
+
+def period_change(history: list[dict]) -> dict | None:
+    """First-to-last change across a real_value_history result: kr and %
+    (None % when the period starts at 0). None with fewer than 2 points."""
+    if len(history) < 2:
+        return None
+    first, last = history[0]["cumulative_value"], history[-1]["cumulative_value"]
+    change = last - first
+    return {"change": change, "pct": (change / first * 100) if first > 0 else None}
 
 
 def cash_flow_by_month(db: Session) -> list[dict]:
@@ -618,25 +692,30 @@ def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
 
 
 def gain_summary(cards: list[Card], invested_by_card: dict[int, float], net_invested: float) -> dict:
-    """The collector's headline number: how far today's value is above (or
-    below) what was paid -- same definition as Transactions' "Paper
-    gain/loss" (unique_value - net_invested), plus what's behind it.
+    """The collector's headline number: how far today's value of everything
+    owned (duplicates included -- total_value, the same figure the Market
+    Value hero shows) is above (or below) what was paid, plus what's behind
+    it. Net invested pays for every copy bought, so it's measured against
+    every copy owned, not just one per card.
 
     Per-card figures only cover owned cards (qty > 0) that have at least one
     registered transaction (i.e. appear in `invested_by_card`); a card never
-    registered has no known cost, so it can't be called up or down. A ripped
-    card (cost 0) counts as up by its full value.
+    registered has no known cost, so it can't be called up or down. Each is
+    that card's total_value (all copies) minus what it cost. A ripped card
+    (cost 0) counts as up by its full value.
     """
     unique_value = sum(c.unique_value for c in cards)
-    gain = unique_value - net_invested
+    total_value = sum(c.total_value for c in cards)
+    gain = total_value - net_invested
     per_card = [
-        (c, c.unique_value - invested_by_card[c.id]) for c in cards if c.qty > 0 and c.id in invested_by_card
+        (c, c.total_value - invested_by_card[c.id]) for c in cards if c.qty > 0 and c.id in invested_by_card
     ]
     per_card.sort(key=lambda pair: pair[1], reverse=True)
     return {
         "gain": gain,
         "pct": (gain / net_invested * 100) if net_invested > 0 else None,
         "unique_value": unique_value,
+        "total_value": total_value,
         "net_invested": net_invested,
         "n_up": sum(1 for _, g in per_card if g > 0),
         "n_down": sum(1 for _, g in per_card if g < 0),

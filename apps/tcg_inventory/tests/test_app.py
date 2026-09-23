@@ -1,6 +1,8 @@
 import datetime as dt
 import re
 
+import pytest
+
 from conftest import make_csv, seed_import
 
 
@@ -214,18 +216,99 @@ def test_dashboard_market_value_chart_mirrors_transactions_metric_filter(client)
     assert "Duplicates" in text
     assert "Total" in text
     assert 'class="viz-filter-pill active">Total</a>' in text  # total selected by default
-    assert "Cumulative value (Total)" in text
+    assert "Value (Total)" in text
     assert "csort=name" in text
     assert "metric=total" in text
 
     total_page = client.get("/?metric=total&csort=name&cdir=asc")
     assert total_page.status_code == 200
-    assert "Cumulative value (Total)" in total_page.text
+    assert "Value (Total)" in total_page.text
     assert "150 kr" in total_page.text  # 3 * 50, the "total" metric's value
 
     fallback_page = client.get("/?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Cumulative value (Total)" in fallback_page.text
+    assert "Value (Total)" in fallback_page.text
+
+
+@pytest.mark.parametrize("path", ["/", "/transactions/charts"])
+def test_market_value_key_figures_follow_the_selected_metric(client, path):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+    from models import Card
+
+    # unique 100, duplicates 200 (two extra copies), total 300; paid 250.
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 3, "price": "100"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).one().id
+    snapshots.record_daily_snapshot(db, as_of=dt.date.today() - dt.timedelta(days=3))
+    db.close()
+    client.post("/transactions", data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": "250"})
+
+    def stats(metric):
+        html = client.get(f"{path}?metric={metric}").text
+        bar = html[html.index('class="chart-kpi-bar"'):]
+        return bar[: bar.index("</div>\n  </div>")]
+
+    unique = stats("unique")
+    assert "250 kr" in unique and "100 kr" in unique and "-150 kr" in unique
+
+    total = stats("total")
+    assert "250 kr" in total and "300 kr" in total and "50 kr" in total
+
+    duplicates = stats("duplicates")
+    assert "200 kr" in duplicates
+    assert duplicates.count(">–</span>") == 2  # no per-copy cost: Net invested and Gain / loss unknown
+
+
+def test_market_value_period_pills_switch_and_keep_other_params(client):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 1, "price": "100"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    old = dt.date.today() - dt.timedelta(days=100)
+    snapshots.record_daily_snapshot(db, as_of=old)
+    db.close()
+
+    html = client.get("/?metric=unique&period=1m").text
+    for key, label in [("1w", "1U"), ("1m", "1M"), ("3m", "3M"), ("6m", "6M"), ("1y", "1Å"), ("all", "Alt")]:
+        assert f"period={key}" in html and f">{label}</a>" in html
+    assert 'class="viz-filter-pill active">1M</a>' in html
+    assert "metric=unique&amp;period=1w" in html  # period links keep the metric
+    assert old.isoformat() not in html  # outside the 1M window
+
+    all_time = client.get("/?period=all").text
+    assert old.isoformat() in all_time
+    assert "timeSeries" in all_time
+    assert client.get("/?period=bogus").status_code == 200
+
+
+def test_inventory_rarity_column_sorts_by_tier_not_alphabetically(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "PromoCard", "rarity": "Promo"},
+            {"id": "b", "name": "TripleCard", "rarity": "Triple Rare"},
+            {"id": "c", "name": "CommonCard", "rarity": "Common"},
+            {"id": "d", "name": "SirCard", "rarity": "Special Illustration Rare"},
+            {"id": "e", "name": "AmazingCard", "rarity": "Amazing Rare"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    def order(direction):
+        html = client.get(f"/inventory?sort=rarity&direction={direction}").text
+        names = ["CommonCard", "AmazingCard", "TripleCard", "SirCard", "PromoCard"]
+        return sorted(names, key=html.index)
+
+    assert order("asc") == ["CommonCard", "AmazingCard", "TripleCard", "SirCard", "PromoCard"]
+    assert order("desc") == ["PromoCard", "SirCard", "TripleCard", "AmazingCard", "CommonCard"]
 
 
 def test_all_pages_render(client):
@@ -325,11 +408,11 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     assert 'href="/transactions/charts?metric=duplicates"' in default_page.text
     assert 'href="/transactions/charts?metric=total"' in default_page.text
     assert 'class="viz-filter-pill active">Total</a>' in default_page.text  # total selected by default
-    assert "Cumulative value (Total)" in default_page.text
+    assert "Value (Total)" in default_page.text
 
     total_page = client.get("/transactions/charts?metric=total")
     assert total_page.status_code == 200
-    assert "Cumulative value (Total)" in total_page.text
+    assert "Value (Total)" in total_page.text
     # unique_value=10, total_value=30 for this card -- the chosen metric
     # changes which one shows up as the chart's cumulative total.
     assert "30 kr" in total_page.text
@@ -337,7 +420,7 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     # An unknown metric falls back to the default instead of erroring.
     fallback_page = client.get("/transactions/charts?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
-    assert "Cumulative value (Total)" in fallback_page.text
+    assert "Value (Total)" in fallback_page.text
 
 
 def test_wiki_page_documents_the_main_features(client):
