@@ -121,7 +121,7 @@
          survive, as a caption rather than a second KPI block. #}
       <span class="section-summary">
         <span class="tx-kpi-label">Net invested</span> <span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span>
-        <span class="tx-kpi-label">Paper gain/loss {{ info("Today's price of the unique cards you own, minus what you actually paid. Not realized — nothing has been sold.") }}</span>
+        <span class="tx-kpi-label">Paper gain/loss {{ info("Today's price of everything you own (duplicates included), minus what you actually paid. Not realized — nothing has been sold.") }}</span>
         <span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span>
       </span>
       <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"

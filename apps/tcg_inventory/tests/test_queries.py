@@ -339,33 +339,37 @@ def test_rarity_breakdown_groups_by_rarity(db_session):
     assert rarities["Rare"].qty == 1
 
 
-def test_rarity_breakdown_sorts_by_modern_tier_order(db_session):
+def test_rarity_breakdown_sorts_by_tier_order(db_session):
+    expected = [
+        "Common",
+        "Uncommon",
+        "Rare",
+        "Double Rare",
+        "Ultra Rare",
+        "Amazing Rare",
+        "Holo Rare",
+        "Holo Rare V",
+        "Triple Rare",
+        "Illustration Rare",
+        "Special Illustration Rare",
+        "Secret Rare",
+        "Mystery Rare",  # not a known tier: after every known tier...
+        "No Rarity",  # ...but still before the no-real-rarity tail
+        "Promo",
+    ]
     main = make_csv(
         "My Collection",
-        [
-            {"id": "a", "rarity": "Secret Rare"},
-            {"id": "b", "rarity": "Special Illustration Rare"},
-            {"id": "c", "rarity": "Amazing Rare"},  # not in the known tier list
-            {"id": "d", "rarity": "Uncommon"},
-            {"id": "e", "rarity": "Common"},
-            {"id": "f", "rarity": "Ultra Rare"},
-            {"id": "g", "rarity": "Rare"},
-        ],
+        [{"id": str(i), "rarity": name} for i, name in enumerate(reversed(expected))],
     )
     import_dex_csv_files(db_session, [("main.csv", main)])
 
     names = [b.name for b in queries.by_rarity_breakdown(db_session)]
-    # Known tiers in their canonical low-to-high order; anything unknown
-    # (no single universal ranking across eras) sorts alphabetically after.
-    assert names == [
-        "Common",
-        "Uncommon",
-        "Rare",
-        "Ultra Rare",
-        "Special Illustration Rare",
-        "Secret Rare",
-        "Amazing Rare",
-    ]
+    assert names == expected
+
+
+def test_rarity_rank_puts_missing_rarity_with_the_no_rarity_tail():
+    ranked = sorted(["Promo", None, "Triple Rare", "No Rarity", "Common"], key=queries.rarity_rank)
+    assert ranked == ["Common", "Triple Rare", "No Rarity", None, "Promo"]
 
 
 def test_merge_pokemon_is_reusable_at_the_queries_layer(db_session):
@@ -475,7 +479,7 @@ def test_real_value_history_empty_with_no_snapshots(db_session):
     assert queries.real_value_history(db_session) == []
 
 
-def test_real_value_history_labels_cron_and_manual_when_both_exist_same_day(db_session):
+def test_real_value_history_keeps_one_point_per_day_the_latest_source(db_session):
     import datetime as dt
 
     import snapshots
@@ -492,15 +496,98 @@ def test_real_value_history_labels_cron_and_manual_when_both_exist_same_day(db_s
     card.qty = 4
     db_session.commit()
     snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="manual")
+    card.qty = 3
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1), source="price-cron")
     snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 2), source="cron")
 
-    unique = queries.real_value_history(db_session, metric="unique")
+    total = queries.real_value_history(db_session, metric="total", today=dt.date(2026, 1, 2))
 
-    assert [row["label"] for row in unique] == [
-        "2026-01-01 (cron)",
-        "2026-01-01 (manual)",
-        "2026-01-02",
-    ]
+    assert [row["label"] for row in total] == ["2026-01-01", "2026-01-02"]
+    assert total[0]["cumulative_value"] == 400  # manual is the day's last point, after price-cron
+    assert total[0]["date"] == dt.date(2026, 1, 1)
+
+
+def test_real_value_history_metrics_only_count_owned_copies(db_session):
+    import datetime as dt
+
+    import snapshots
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "qty": 3, "price": "10"}, {"id": "b", "qty": 1, "price": "5"}],
+    )
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    db_session.query(Card).filter(Card.card_id == "b").one().qty = 0  # sold, still in the table
+    db_session.commit()
+    snapshots.record_daily_snapshot(db_session, as_of=dt.date(2026, 1, 1))
+
+    def value(metric):
+        return queries.real_value_history(db_session, metric=metric)[0]["cumulative_value"]
+
+    assert value("unique") == 10
+    assert value("duplicates") == 20
+    assert value("total") == 30
+
+
+def test_real_value_history_ends_on_live_value_and_filters_by_period(db_session):
+    import datetime as dt
+
+    import snapshots
+
+    main = make_csv("My Collection", [{"id": "a", "qty": 1, "price": "100"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    today = dt.date(2026, 6, 30)
+    for day in (dt.date(2025, 1, 1), dt.date(2026, 6, 1), dt.date(2026, 6, 25), today):
+        snapshots.record_daily_snapshot(db_session, as_of=day)
+
+    live = (123.0, 1)
+    all_time = queries.real_value_history(db_session, metric="total", today=today, live=live)
+    assert [row["label"] for row in all_time] == ["2025-01-01", "2026-06-01", "2026-06-25", "2026-06-30"]
+    assert all_time[-1]["cumulative_value"] == 123  # today's snapshot replaced by the live value
+
+    week = queries.real_value_history(db_session, metric="total", period="1w", today=today, live=live)
+    assert [row["label"] for row in week] == ["2026-06-25", "2026-06-30"]
+    assert queries.period_change(week) == {"change": 23, "pct": pytest.approx(23.0)}
+
+    year = queries.real_value_history(db_session, metric="total", period="1y", today=today)
+    assert [row["label"] for row in year] == ["2026-06-01", "2026-06-25", "2026-06-30"]
+
+    # No snapshot today yet: the live value is added as today's point.
+    tomorrow = today + dt.timedelta(days=1)
+    ahead = queries.real_value_history(db_session, metric="total", period="1w", today=tomorrow, live=live)
+    assert ahead[-1]["label"] == "2026-07-01"
+
+    with pytest.raises(ValueError):
+        queries.real_value_history(db_session, period="2w")
+
+
+def test_real_value_history_live_value_never_invents_history(db_session):
+    assert queries.real_value_history(db_session, live=(100.0, 1)) == []
+
+
+def test_period_change_needs_two_points_and_handles_a_zero_start():
+    assert queries.period_change([{"cumulative_value": 5}]) is None
+    assert queries.period_change([{"cumulative_value": 0}, {"cumulative_value": 5}]) == {"change": 5, "pct": None}
+
+
+def test_net_invested_at_dates_accumulates_purchases_minus_sales(db_session):
+    import datetime as dt
+
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a"}])
+    import_dex_csv_files(db_session, [("main.csv", main)])
+    card = db_session.query(Card).one()
+    db_session.add(Transaction(card_id=card.id, type="purchase", date=dt.date(2026, 1, 5), price=100, fees=10))
+    db_session.add(Transaction(card_id=card.id, type="sale", date=dt.date(2026, 2, 1), price=60))
+    db_session.commit()
+    txs = db_session.query(Transaction).all()
+
+    dates = [dt.date(2026, 1, 1), dt.date(2026, 1, 5), dt.date(2026, 3, 1)]
+    assert queries.net_invested_at_dates(txs, dates) == [0, 110, 50]
+    assert queries.net_invested_at_dates(txs, [dt.date(2026, 3, 1)])[-1] == queries.economic_summary(db_session, txs)["net_invested"]
 
 
 def test_cash_flow_by_month_tracks_real_transactions_not_estimates(db_session):

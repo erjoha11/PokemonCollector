@@ -28,11 +28,13 @@ run).
   to know first:
   1. **Market Value** (widest): the duplicate-inclusive total as the hero,
      with Gain / loss (`queries.gain_summary`, kr and %, colored by sign) as
-     a pill beside it. An equation row, "Unique value − Paid = gain", shows
-     that the gain is computed on unique value (not the total), and a bar
-     splits the total into unique vs duplicate value.
+     a pill beside it. Gain is that same total minus Net invested — an
+     equation row, "Total value − Paid = gain", spells it out — and a bar
+     splits the total into unique vs duplicate value. (Transactions' "Paper
+     gain/loss" uses the same total.)
   2. **Cards up / down**: an up-vs-down bar plus the best and worst card
-     (with thumbnail). Only owned cards with a registered transaction count
+     (with thumbnail), each card's value of all copies owned vs what it
+     cost. Only owned cards with a registered transaction count
      (an unregistered card has no known cost); a ripped card counts as up by
      its full value.
   3. **Total Cards**: physical cards, then unique cards and duplicates.
@@ -665,11 +667,29 @@ daily Dropbox/price crons.
 row per card (`qty` + `reference_price` as of that day) right after it
 completes, so `queries.real_value_history` can report what the collection
 was *actually* worth on a given date, not an estimate. It's rendered as the
-**"Market Value" chart** on both Dashboard and Transactions' "View charts"
-section, using the unique/duplicates/total metric filter (defaults to total), with a stat row
-(Net invested / Current value / Gain-loss, `queries.economic_summary` +
-`headline_summary`) built into the chart card itself (`chart_card`'s
-`stats` param in `macros.html`) rather than off in a separate KPI tile.
+**"Market Value" chart** (`market_value_card` in `macros.html`, context from
+`app._market_value_context`) on both Dashboard and Transactions' "View
+charts" section, as a portfolio-style chart:
+
+- **One point per day** on a real time axis — that day's last snapshot
+  (`cron` → `price-cron` → `manual`), with today's point replaced by the
+  live value so the line always ends on the key figures' Current value.
+- **Metric** pills (`?metric=` unique / duplicates / total, default total)
+  and **period** pills (`?period=` 1U / 1M / 3M / 6M / 1Å / Alt, default
+  Alt); both are server-side links that keep every other query param, so a
+  direct load with either param renders the same state.
+- The y-axis is fitted to the period's min/max (not from 0); the period's
+  change in kr and % is shown above the chart (green/red, first to last
+  day shown), and the tooltip gives each day's value and change from the
+  day before.
+- A dashed **Net invested** line (cumulative, `queries.net_invested_at_dates`)
+  can be toggled on for Unique/Total — off by default, since showing it
+  widens the y-axis.
+- The stat row (Net invested / Current value / Gain-loss) follows the
+  metric: Current value is today's unique / duplicate / total value, gain
+  is it minus Net invested. Duplicates shows "–" for Net invested and
+  Gain-loss: purchase cost is recorded per card, not per copy, so there's
+  no honest split between a card's first copy and its extra copies.
 
 Note: "Market Value" is also the name of an existing KPI tile
 (`headline.total_value`, `kpi_module.html`) showing today's snapshot value —
@@ -684,7 +704,8 @@ which applied today's price retroactively to each card's `created_at`
 month) rendered anywhere in the UI — the function itself is still in
 `queries.py` and unit-tested, just unused by any route now.
 
-Up to two points per day from the Dex-sync side: the scheduled cron run
+Snapshots are stored per source (the chart then keeps each day's last one):
+up to two per day from the Dex-sync side: the scheduled cron run
 (`CardSnapshot.source="cron"`) and, separately, the latest off-schedule sync
 that day (`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync`
 hit by hand with `?secret=` instead of the real Vercel cron header).
