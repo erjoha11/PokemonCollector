@@ -262,18 +262,25 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
    fixed, validated categorical hue order -- see dataviz palette) and its
    own hero number, so the eye has one clear entry point per card instead
    of a wall of equal-weight rows.
-   Hue order: 1 Total/blue, 2 Verdi/orange, 3 Mest verdifulle kort/aqua,
-   4 Mest verdifulle collection/yellow, 5 Mest verdifulle serie/magenta.
+   Hue order: 1 Cards up/down/blue, 2 Total Cards/orange (both inside the
+   overview band), 3 Most valuable cards/aqua, 4 Most valuable
+   collection/yellow, 5 Most valuable series/magenta.
    Order is fixed -- never reassigned based on which card has the
    "biggest" number, only on its fixed category. */
+/* Flex, not grid: the overview band takes a whole row, and the cards
+   after it grow to share the next row between them (a grid would leave
+   them squeezed into single ~140px tracks with empty tracks beside them).
+   Narrow viewports wrap them to fewer per row automatically. */
 .kpi-grid {
-  display: grid;
-  /* 140px keeps all 5 cards on one row at common desktop widths (>=1280px);
-     narrower viewports wrap to fewer columns automatically. */
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.85rem;
   margin-bottom: 1.75rem;
 }
+.kpi-grid > .kpi-card { flex: 1 1 260px; min-width: 0; }
+/* The one card with pictures gets a bit more room than the text-only ones. */
+.kpi-grid > .kpi-top-cards { flex-grow: 1.4; }
+.kpi-grid > .kpi-overview { flex-basis: 100%; }
 
 .kpi-card {
   background: var(--surface);
@@ -284,52 +291,182 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   box-shadow: var(--shadow);
 }
 
-/* The overview card (Gain / loss + Total Cards + Market Value) takes hues
-   1-2 for its Total Cards/Market Value sections; the remaining cards pick
-   up at hue 3, so every card keeps the same color it had before the three
-   were merged. */
+/* The overview band (below) takes hues 1-2 for its "Cards up / down" and
+   "Total Cards" sections; the remaining cards pick up at hue 3, so every
+   card keeps the color it had before the headline cards were merged. */
 .kpi-card:nth-child(1 of :not(.kpi-gain)) { --kpi-accent: #1baf7a; }
 .kpi-card:nth-child(2 of :not(.kpi-gain)) { --kpi-accent: #eda100; }
 .kpi-card:nth-child(3 of :not(.kpi-gain)) { --kpi-accent: #e87ba4; }
 
-/* Overview: Gain / loss, Total Cards and Market Value in one card, first
-   and three columns wide. Its top border is colored by the gain's sign;
-   each section keeps its own accent dot. The sections sit side by side,
-   split by a hairline.
-   The nth-child palette above skips it (`of :not(.kpi-gain)`). */
+/* Overview band: full width, first thing on the page. Three sections in
+   reading order of importance -- worth + gain (widest, biggest number),
+   what's driving it, then plain card counts. Top border and the value
+   section's dot follow the gain's sign. The nth-child palette above skips
+   it (`of :not(.kpi-gain)`). */
 .kpi-card.kpi-overview {
-  grid-column: span 3;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 1.25rem;
-  row-gap: 0.85rem;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.15fr) minmax(0, 0.85fr);
+  gap: 1.5rem;
+  padding: 1rem 1.25rem;
 }
-.kpi-overview-section { min-width: 0; }
-.kpi-overview-section + .kpi-overview-section {
-  border-left: 1px solid var(--border);
-  padding-left: 1.25rem;
-}
-.kpi-overview-cards { --kpi-accent: #2a78d6; }
-.kpi-overview-value { --kpi-accent: #eb6834; }
-.kpi-overview .kpi-support { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
 .kpi-card.kpi-gain-up { --kpi-accent: #0ca30c; }
 .kpi-card.kpi-gain-down { --kpi-accent: #d03b3b; }
-.kpi-gain .kpi-gain-value { font-size: 1.9rem; }
-.kpi-gain-up .kpi-gain-value, .kpi-gain-up .kpi-gain-pct { color: #0a7f0a; }
-.kpi-gain-down .kpi-gain-value, .kpi-gain-down .kpi-gain-pct { color: #c02f2f; }
-.kpi-gain-pct { font-size: 1rem; font-weight: 700; }
-/* Where three columns of the KPI row get too narrow for its three sections
-   the overview takes the whole row; on a phone the sections stack and the
-   side hairline becomes a top one. */
-@media (max-width: 1200px) { .kpi-card.kpi-overview { grid-column: 1 / -1; } }
-@media (max-width: 620px) {
-  .kpi-card.kpi-overview { grid-template-columns: minmax(0, 1fr); }
-  .kpi-overview-section + .kpi-overview-section {
-    border-left: 0;
-    padding-left: 0;
-    border-top: 1px solid var(--border);
-    padding-top: 0.85rem;
-  }
+.kpi-ov-section { min-width: 0; }
+.kpi-ov-section + .kpi-ov-section {
+  border-left: 1px solid var(--border);
+  padding-left: 1.5rem;
+}
+.kpi-ov-movers { --kpi-accent: #2a78d6; }
+.kpi-ov-cards { --kpi-accent: #eb6834; }
+
+.kpi-ov-hero {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+.kpi-ov-hero .label { font-size: 0.78rem; color: var(--muted); }
+.kpi-ov-hero-value {
+  font-size: 2.2rem;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: var(--ink);
+}
+.kpi-ov-hero-small { font-size: 1.6rem; }
+
+/* Gain / loss rides next to the value as a tinted pill -- the second thing
+   the eye lands on, colored by sign. */
+.kpi-ov-gain-pill {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.kpi-gain-up .kpi-ov-gain-pill { background: rgba(12, 163, 12, 0.1); color: #0a7f0a; }
+.kpi-gain-down .kpi-ov-gain-pill { background: rgba(208, 59, 59, 0.1); color: #c02f2f; }
+.kpi-ov-gain-pill > span:first-child { font-size: 0.7em; }
+.kpi-gain-pct { font-weight: 600; opacity: 0.85; }
+
+/* "Unique value − Paid = gain": shows where the gain comes from, and why
+   it isn't simply the hero number minus Paid. */
+.kpi-ov-equation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.45rem;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  color: var(--ink-secondary);
+}
+.kpi-ov-equation strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpi-ov-op { color: var(--muted); }
+.kpi-ov-result { font-weight: 700; }
+.kpi-gain-up .kpi-ov-result { color: #0a7f0a; }
+.kpi-gain-down .kpi-ov-result { color: #c02f2f; }
+
+/* Thin two-part bars: unique vs duplicate value, and cards up vs down. */
+.kpi-ov-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-top: 0.75rem;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--border);
+}
+.kpi-ov-bar > span { display: block; height: 100%; }
+.kpi-ov-bar > span[style*="width: 0.0%"] { display: none; }
+.kpi-ov-bar-unique { background: #2a78d6; }
+.kpi-ov-bar-dup { background: #9dc0ec; }
+.kpi-ov-bar-up { background: #0ca30c; }
+.kpi-ov-bar-down { background: #d03b3b; }
+.kpi-ov-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+  margin-top: 0.4rem;
+  font-size: 0.74rem;
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.kpi-ov-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 0.35rem;
+  border-radius: 2px;
+}
+
+.kpi-ov-updown {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+.kpi-ov-updown .kpi-ov-bar { flex: 1; margin-top: 0; }
+.kpi-ov-count { font-size: 0.9rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.kpi-ov-mover {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--border);
+}
+.kpi-ov-thumb {
+  width: 26px;
+  height: 36px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.kpi-ov-thumb-empty { background: var(--page); border: 1px solid var(--border); }
+.kpi-ov-mover-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.kpi-ov-mover-label {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.kpi-ov-mover-name {
+  font-size: 0.82rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kpi-ov-mover-delta { font-size: 0.88rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.kpi-ov-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border);
+}
+.kpi-ov-split > div { display: flex; flex-direction: column; min-width: 0; }
+.kpi-ov-split-value { font-size: 1.05rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.kpi-ov-split-label { font-size: 0.72rem; color: var(--muted); }
+
+/* Tablet: value section gets its own row, the two smaller ones share the
+   next. Phone: everything stacks, side hairlines become top ones. */
+@media (max-width: 900px) {
+  .kpi-card.kpi-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-ov-value { grid-column: 1 / -1; }
+  .kpi-ov-section.kpi-ov-movers { border-left: 0; padding-left: 0; }
+  .kpi-ov-movers, .kpi-ov-cards { padding-top: 1rem; border-top: 1px solid var(--border); }
+}
+@media (max-width: 560px) {
+  .kpi-card.kpi-overview { grid-template-columns: minmax(0, 1fr); gap: 1rem; padding: 0.9rem 1rem; }
+  .kpi-ov-section + .kpi-ov-section { border-left: 0; padding-left: 0; }
+  .kpi-ov-hero-value { font-size: 1.9rem; }
 }
 
 .kpi-card h3 {

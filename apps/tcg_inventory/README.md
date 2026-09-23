@@ -23,17 +23,23 @@ run).
 
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
   series, most valuable cards (scrollable list), by rarity.
-- **Overview KPI card** — first and triple-width in the KPI row on
-  Dashboard, Inventory and Transactions, with three sections side by side
-  (stacked on a phone):
-  - **Gain / loss** (`queries.gain_summary`): today's unique value minus
-    Net invested, in kr and %, colored by sign, plus what was paid, how
-    many cards are up/down, and the best and worst card. Up/down/best/worst
-    only cover owned cards with a registered transaction (an unregistered
-    card has no known cost); a ripped card counts as up by its full value.
-  - **Total Cards**: physical cards, unique cards, duplicates.
-  - **Market Value**: total value, unique value, duplicate value. Net
-    invested isn't repeated here; it's the Gain / loss section's "Paid".
+- **Overview KPI band** — a full-width card at the top of the KPI row on
+  Dashboard, Inventory and Transactions, ordered by what a collector wants
+  to know first:
+  1. **Market Value** (widest): the duplicate-inclusive total as the hero,
+     with Gain / loss (`queries.gain_summary`, kr and %, colored by sign) as
+     a pill beside it. An equation row, "Unique value − Paid = gain", shows
+     that the gain is computed on unique value (not the total), and a bar
+     splits the total into unique vs duplicate value.
+  2. **Cards up / down**: an up-vs-down bar plus the best and worst card
+     (with thumbnail). Only owned cards with a registered transaction count
+     (an unregistered card has no known cost); a ripped card counts as up by
+     its full value.
+  3. **Total Cards**: physical cards, then unique cards and duplicates.
+
+  Sections sit side by side, go 1 + 2 on a tablet and stack on a phone. The
+  remaining KPI cards (Most valuable cards/collection/series) share the row
+  below it and grow to fill it (`.kpi-grid` is flex, not grid).
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
