@@ -1153,15 +1153,19 @@ suggested but not built.
 - Edit order's "Distribute remaining" can split by market value or evenly,
   rounds exactly to the remainder, and skips trade rows.
 
-### Direct database change still to do after deploy
+### Direct database changes (Supabase prod) — done 2026-09-23
 
-The one existing trade (order #13, 2026-09-12) was recorded before `direction`
-existed, so it shows "3 trade cards without In/Out" until set. The user
-confirmed the direction, so after the deploy has added the column:
+#181 added the `direction` column but forgot to bump `db.CURRENT_SCHEMA_VERSION`,
+so `init_db()`'s version gate skipped the migration chain and prod's
+Transactions page queried a column that didn't exist. Fixed right after deploy:
 
-```sql
-update transactions set direction = 'out' where id = 56;       -- Mega Venusaur ex
-update transactions set direction = 'in'  where id in (57, 58); -- Hypno, Slowbro
-```
+- `alter table transactions add column if not exists "direction" varchar;` —
+  exactly what `_add_missing_columns()` would have run.
+- Order #13's trade (confirmed by the user): `direction = 'out'` on tx 56
+  (Mega Venusaur ex), `'in'` on 57 and 58 (Hypno, Slowbro).
+- Follow-up PR bumps `CURRENT_SCHEMA_VERSION` to 6, so every other database
+  (local SQLite) gets the column. On prod the next cold start re-runs the
+  idempotent chain (column already there) and stamps version 6.
 
-(or set it in Edit order for #13).
+Lesson: a new model column needs a `CURRENT_SCHEMA_VERSION` bump, or it never
+reaches an already-migrated database.
