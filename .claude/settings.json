@@ -14,7 +14,10 @@
       "mcp__Vercel__get_project",
       "mcp__Dropbox__fetch",
       "mcp__Dropbox__search",
-      "mcp__Dropbox__list_folder"
+      "mcp__Dropbox__list_folder",
+      "Read(.env)",
+      "Read(**/.env)",
+      "Read(**/.env.local)"
     ]
   }
 }

@@ -236,7 +236,40 @@ run).
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
 table `sets` replaces — kept in place, unused going forward), `releases`
-(see "Release Notes" below).
+(see "Release Notes" below), and `master_cards`/`master_card_ids`
+(masterdata, see below).
+
+### Masterdata (card identity across catalogs)
+
+There is no official per-card ID for Pokemon cards, and every catalog (Dex,
+pokemontcg.io, TCGdex, TCGplayer, Cardmarket, Collectr, ...) uses its own.
+`master_cards` holds one canonical identity per printed card + variant,
+keyed on what's printed on the card: `(language, set_code, number,
+variant)`. `master_card_ids` maps any number of external IDs onto that
+identity, at most one per `source`, each with a `matched_by`
+(`exact_id` / `derived` / `heuristic` / `manual`). A `manual` mapping is
+never overwritten automatically, so that's how a wrong match gets fixed.
+
+- The key is parsed from Dex's `card_id` (`sv2-109` → `int`/`sv2`/`109`,
+  `jpn_sv2a-168` → `ja`/`sv2a`/`168`, `scn_csv9-79` → `zh-hans`/…) and
+  Dex's Variant normalized to a fixed code (`Reverse Holo` →
+  `reverse_holo`, `Poké Ball Holo` → `poke_ball_holo`). An unknown variant
+  gets its slug as code instead of being dropped. Add it to
+  `masterdata.VARIANT_LABELS` once it's confirmed.
+- `Card.master_card_id` links a physical card to its identity. The
+  importer links new cards inline, and `init_db()` backfills any card still
+  unlinked on every start (`_backfill_master_cards`, same pattern as
+  `_backfill_sets`). A `card_id` that can't be parsed stays unlinked.
+- Seeded automatically: `dex` (the Dex ID) for every card, and
+  `pokemontcg` (`derived`, same ID) for international prints. Other sources
+  get added via `masterdata.set_external_id()` as those integrations are
+  built. Price lookups don't read this table yet.
+- `master_card_ids` is deliberately not unique on `(source, external_id)`:
+  pokemontcg.io has one ID per print with variants inside it, so Normal and
+  Reverse Holo of the same print share it.
+- Identity only. Masterdata never touches `qty`, collections or binders. A
+  `master_cards` row with no `Card` pointing at it is valid, which is what a
+  future wishlist or set-completion view would build on.
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -742,6 +775,8 @@ the Dropbox-based ones above and the price-refresh cron).
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
 - `queries.py` — dashboard aggregation queries.
+- `masterdata.py` — canonical card identity + external ID mapping (see
+  "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
   sync (see "Price refresh" above).

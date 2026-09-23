@@ -21,6 +21,21 @@
    picture on whichever one row happens to have one reads as broken/random
    rather than a real feature. Shared by every card-listing table (Dashboard,
    Inventory, Transactions) so a card only ever needs one place to look right. #}
+{# Data attributes that make an element open the card viewer (a click on a
+   card's photo or name shows the card large, with a button out to Dex --
+   see partials/card_viewer.html + static/card-viewer.js). Put it on a
+   <button type="button" class="card-view-trigger">. #}
+{% macro card_view_attrs(card) -%}
+data-card-view data-name="{{ card.name }}" data-dex="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}"
+{%- if card.image_url %} data-img="{{ card.image_url | card_image_large }}" data-img-fallback="{{ card.image_url }}"{% endif %}
+{%- set meta = [] -%}
+{%- if card.set %}{% set _ = meta.append(card.set) %}{% endif -%}
+{%- if card.number %}{% set _ = meta.append('#' ~ card.number) %}{% endif -%}
+{%- if card.variant %}{% set _ = meta.append(card.variant) %}{% endif -%}
+{%- if card.rarity %}{% set _ = meta.append(card.rarity) %}{% endif -%}
+{%- if card.language %}{% set _ = meta.append(card.language) %}{% endif %} data-meta="{{ meta | join(' · ') }}" data-price="{{ card.display_price | kr }}"
+{%- endmacro %}
+
 {% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does

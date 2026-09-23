@@ -59,12 +59,13 @@ FastAPI app with flat imports (`from db import ...`, not a relative package) so 
 - `models.py` — SQLAlchemy models. `duplicates`, `total_value`, `unique_value` are **never stored**, always computed (`Card.duplicates` etc., and the dashboard aggregates in `queries.py`) — a stored, independently-maintained `duplicates` drifting from `qty` was a real bug in the Excel system this replaces.
 - `constants.py` + `importer.py` — encode the business rules migrated from the Excel system (Dex category routing to collection/binder, primary-collection priority for dashboard credit, sync-vs-full-load semantics). These rules are documented in detail in `apps/tcg_inventory/README.md` — **do not change the routing/priority logic without updating both the code and that doc.**
 - `queries.py` — dashboard aggregation queries.
+- `masterdata.py` — `master_cards` (one canonical identity per printed card + variant, keyed `(language, set_code, number, variant)` parsed from Dex's `card_id` + a normalized variant code) and `master_card_ids` (external IDs per source — dex, pokemontcg, later tcgplayer/collectr/...). `Card.master_card_id` links a physical card to it; linked at import and backfilled by `init_db()`. Identity only, never touches qty/collections/binders. See `apps/tcg_inventory/README.md` "Masterdata".
 - `snapshots.py` — writes one `card_snapshots` row per card (qty + `reference_price`) each time the daily cron completes a sync, so `queries.real_value_history` can report actual historical value instead of `collection_value_growth`'s today's-price-applied-retroactively approximation. Rendered as its own "Real value history" chart in Transactions' "View charts" section. See `apps/tcg_inventory/README.md` "Value history".
 - `dropbox_client.py` / `dropbox_setup.py` — read-only Dropbox integration for pulling Dex CSV exports directly, optional.
 - `api/index.py` + `vercel.json` — Vercel entrypoint; `api/index.py` just re-exports `app` from `app.py`, all routes live in the one place. `vercel.json` also schedules the daily Dropbox auto-sync cron (`GET /cron/dropbox-sync`), which only ever does a normal sync (flags missing cards, never deletes).
 - `templates/` + `static/` — Jinja2/HTMX frontend, no build step, no CDN dependency (HTMX is vendored).
 
-Data model: `cards`, `collections`, `card_collections` (many-to-many), `binders`, `transactions`, `set_release_order` (chronological-sort lookup table, ships empty until seeded).
+Data model: `cards`, `collections`, `card_collections` (many-to-many), `binders`, `transactions`, `master_cards`/`master_card_ids` (masterdata), `set_release_order` (chronological-sort lookup table, ships empty until seeded).
 
 Tests use an in-memory or temp-file SQLite database (`tests/conftest.py`'s `db_session`/`client` fixtures) — the real `tcg_inventory.db` is never touched. The `client` fixture monkeypatches `db.engine`/`db.SessionLocal` and reloads `app` so routes bind to the throwaway DB.
 

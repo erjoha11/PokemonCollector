@@ -6,6 +6,7 @@
   <title>{% block title %}TCG Inventory{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/card-viewer.js" defer></script>
   {# Chart.js (204KB) + its renderer are only needed by pages that actually
      render a chart_card (Dashboard, Transactions) -- see macros.html's
      chart_card. Every other route (login, wiki, listings, sales, releases,
@@ -27,5 +28,6 @@
   <main id="main-content">
     {% block content %}{% endblock %}
   </main>
+  {% include "partials/card_viewer.html" %}
 </body>
 </html>

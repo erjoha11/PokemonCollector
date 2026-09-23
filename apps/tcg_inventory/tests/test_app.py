@@ -359,8 +359,23 @@ def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
     assert 'src="https://img.example/charizard.png"' in card
     assert "top-card-item-thumb-empty" in card  # Pikachu has no photo yet
     assert "×2" in card and "Ultra Rare" in card
-    assert "width: 100.0%" in card and "width: 50.0%" in card  # price bar relative to #1
+    assert "top-card-item-bar" not in card  # no price bar (removed on request)
     assert "tsort=name" in card  # sort pills
+    # Photo and name open the card viewer, with the card's Dex page as its button.
+    assert card.count("data-card-view") == 3  # Charizard photo+name, Pikachu name only
+    assert 'data-dex="https://app.dextcg.com/cards/a"' in card
+    assert 'id="card-viewer"' in html and "/static/card-viewer.js" in html
+
+
+def test_card_image_large_derives_each_hosts_big_image():
+    import app as app_module
+
+    large = app_module._card_image_large
+    assert large("https://images.pokemontcg.io/base1/26.png") == "https://images.pokemontcg.io/base1/26_hires.png"
+    assert large("https://images.scrydex.com/pokemon/me2pt5-171/small") == "https://images.scrydex.com/pokemon/me2pt5-171/large"
+    assert large("https://assets.tcgdex.net/ja/S/S12a/173/low.webp") == "https://assets.tcgdex.net/ja/S/S12a/173/high.webp"
+    assert large("https://img.example/x.png") == "https://img.example/x.png"
+    assert large(None) is None
 
 
 def test_image_backfill_route_is_secret_gated_and_reports_progress(client, monkeypatch):
