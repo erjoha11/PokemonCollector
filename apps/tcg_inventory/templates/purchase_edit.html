@@ -59,8 +59,11 @@
         <option value="even">Evenly</option>
       </select>
     </label>
+    <label title="On: the unpriced cards absorb the shipping too (Shipping is then set to 0, since it now lives in their prices). Off: shipping stays a separate line on the order.">
+      <input type="checkbox" id="distribute_include_shipping" checked> Include shipping
+    </label>
     <button type="button" class="secondary" onclick="distributeAgreedTotal()"
-            title="Splits Agreed total − Shipping − prices already set on other cards across the cards in this order that still have no price. Trade rows and rows marked for deletion are skipped.">
+            title="Splits what's left of the Agreed total after the cards already priced across the cards that still have no price. Trade rows and rows marked for deletion are skipped.">
       Distribute remaining across unpriced cards
     </button>
   </div>
@@ -70,9 +73,11 @@
     priced individually (price 0) — useful for a lot where you know a few cards' values and want the rest to absorb
     the remainder. "By market value" gives each card a share proportional to its current price (a card with no price
     gets the average share); "Evenly" gives every card the same amount. Either way the cents add up exactly to the
-    remainder. Shipping isn't part of that remainder, but it isn't lost either: every card also carries a share of
-    the order's shipping, split by price, in its Net paid and in Net invested. This doesn't save until you click
-    "Save changes" below.
+    remainder. With "Include shipping" on, the cards you already priced keep their price and the unpriced ones absorb
+    the rest <em>including shipping</em> — Shipping is set to 0 because it now lives in those cards' prices, so it's
+    never counted twice. With it off, shipping stays a separate line and is split across all the order's cards by
+    price. This doesn't save until you click "Save changes" below.
+    <span id="distribute_note" class="muted"></span>
   </p>
   <p class="muted">
     Moving a row to a different Order ID clears this order's agreed total/shipping for that row —
@@ -97,7 +102,9 @@
 function distributeAgreedTotal() {
   var total = parseFloat(document.getElementById('purchase_total').value);
   if (isNaN(total)) { alert('Enter an Agreed total first.'); return; }
-  var shipping = parseFloat(document.getElementById('purchase_shipping').value) || 0;
+  var shippingEl = document.getElementById('purchase_shipping');
+  var shipping = parseFloat(shippingEl.value) || 0;
+  var includeShipping = document.getElementById('distribute_include_shipping').checked;
   var method = document.getElementById('distribute_method').value;
 
   var pricedSum = 0;
@@ -116,7 +123,7 @@ function distributeAgreedTotal() {
     alert('Every card in this order already has a price -- nothing to distribute into.');
     return;
   }
-  var remainingCents = Math.round((total - shipping - pricedSum) * 100);
+  var remainingCents = Math.round((total - (includeShipping ? 0 : shipping) - pricedSum) * 100);
   if (remainingCents < 0) {
     alert("Agreed total is less than shipping plus the cards already priced -- can't distribute a negative amount.");
     return;
@@ -147,6 +154,15 @@ function distributeAgreedTotal() {
   shares.slice().sort(function (a, b) { return b.frac - a.frac; }).slice(0, leftover)
     .forEach(function (s) { s.cents += 1; });
   shares.forEach(function (s) { unpriced[s.i].value = (s.cents / 100).toFixed(2); });
+  // Shipping now lives in the unpriced cards' prices -- clear the separate
+  // field so Net invested doesn't count it a second time.
+  var note = document.getElementById('distribute_note');
+  if (includeShipping && shipping) {
+    shippingEl.value = 0;
+    note.textContent = 'Shipping (' + shipping.toFixed(2) + ') was folded into the unpriced cards and set to 0.';
+  } else {
+    note.textContent = '';
+  }
 }
 </script>
 {% endblock %}
