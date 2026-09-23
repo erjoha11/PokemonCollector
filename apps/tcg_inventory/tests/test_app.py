@@ -367,6 +367,40 @@ def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
     assert 'id="card-viewer"' in html and "/static/card-viewer.js" in html
 
 
+def test_dashboard_most_valuable_cards_show_gain_when_cost_is_registered(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Charizard", "price": "400", "qty": 2},
+            {"id": "b", "name": "Pikachu", "price": "200"},
+            {"id": "c", "name": "Mew", "price": "100"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.add_all(
+        [
+            Transaction(card_id=ids["a"], type="purchase", date=dt.date(2026, 1, 1), price=500),
+            Transaction(card_id=ids["b"], type="purchase", date=dt.date(2026, 1, 1), price=250),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    html = client.get("/").text
+    card = html[html.index('id="dashboard-top-cards-card"'):]
+    card = card[: card.index('id="dashboard-inventory-card"')]
+    assert "+300 kr" in card  # Charizard: 2 copies x 400 - 500 paid
+    assert "viz-delta-loss" in card and "-50 kr" in card  # Pikachu: 200 - 250
+    assert card.count("top-card-item-gain") == 2  # Mew has no registered cost
+
+
 def test_card_image_large_derives_each_hosts_big_image():
     import app as app_module
 
