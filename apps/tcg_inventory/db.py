@@ -63,7 +63,7 @@ class Base(DeclarativeBase):
 # path *around* the migration chain, not a replacement for it: every
 # function in the chain must stay idempotent and safe to re-run regardless
 # of this gate, per README.md "Database migrations".
-CURRENT_SCHEMA_VERSION = 7  # 7: cards.image_lookup_failed_at
+CURRENT_SCHEMA_VERSION = 8  # 8: master_cards, master_card_ids, cards.master_card_id
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
@@ -292,6 +292,22 @@ def _backfill_sets():
         session.commit()
 
 
+def _backfill_master_cards():
+    """Links every card without a `master_card_id` to its masterdata
+    identity (see masterdata.py). Like `_backfill_sets()`, runs on every
+    `init_db()` call as a safety net for cards the importer didn't link
+    (e.g. predating masterdata); once everything is linked it's a single
+    SELECT returning no rows.
+    """
+    import masterdata
+
+    inspector = inspect(engine)
+    if not inspector.has_table("cards") or not inspector.has_table("master_cards"):
+        return
+    with SessionLocal() as session:
+        masterdata.backfill_master_cards(session)
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
@@ -316,3 +332,4 @@ def init_db():
     # Not part of the version-gated chain above -- see _backfill_sets()'s
     # docstring for why this needs to keep running every call.
     _backfill_sets()
+    _backfill_master_cards()

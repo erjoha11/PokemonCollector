@@ -107,6 +107,12 @@ class Card(Base):
     # display/fallback string, and removing them is a separate, riskier
     # migration (see issue #133).
     set_id: Mapped[int | None] = mapped_column(ForeignKey("sets.id"), nullable=True)
+    # Canonical print identity (language, set, number, variant) this physical
+    # card is an instance of -- see MasterCard and masterdata.py. Nullable
+    # and additive like set_id: linked at import time and by db.py's
+    # _backfill_master_cards(); null only for a card_id masterdata.py can't
+    # parse.
+    master_card_id: Mapped[int | None] = mapped_column(ForeignKey("master_cards.id"), nullable=True, index=True)
 
     binder_id: Mapped[int | None] = mapped_column(ForeignKey("binders.id"), nullable=True)
     classification: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -135,6 +141,7 @@ class Card(Base):
     # Named `linked_set`, not `set` -- `Card.set` is already the plain
     # string column above (Dex's "Set" export column).
     linked_set: Mapped["Set | None"] = relationship(back_populates="cards")
+    master_card: Mapped["MasterCard | None"] = relationship(back_populates="cards")
 
     @property
     def duplicates(self) -> int:
@@ -402,6 +409,75 @@ class Set(Base):
     total_cards: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     cards: Mapped[list["Card"]] = relationship(back_populates="linked_set")
+
+
+class MasterCard(Base):
+    """Masterdata: one canonical identity per printed card + variant,
+    independent of which catalog (Dex, pokemontcg.io, TCGdex, TCGplayer,
+    ...) it came from. Keyed on (language, set_code, number, variant) --
+    what's printed on the card, since no official per-card ID exists. See
+    masterdata.py for how the key is derived and the variant vocabulary.
+
+    Identity only: qty/binder/collections stay on `Card` (the physical
+    card you own). A MasterCard can exist with no `Card` pointing at it,
+    which is what a future wishlist or set-completion view would build on.
+    `name`/`series`/`set_name`/`printed_number` are descriptive copies taken
+    from the first card linked, not part of the key.
+    """
+
+    __tablename__ = "master_cards"
+    __table_args__ = (
+        UniqueConstraint("language", "set_code", "number", "variant", name="uq_master_cards_key"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # "int" (Dex's International catalog), "ja", "zh-hans", ... -- see
+    # masterdata.DEX_LANGUAGE_PREFIXES.
+    language: Mapped[str] = mapped_column(String, nullable=False)
+    set_code: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    number: Mapped[str] = mapped_column(String, nullable=False)
+    # Canonical code, e.g. "reverse_holo" -- see masterdata.VARIANT_LABELS.
+    variant: Mapped[str] = mapped_column(String, nullable=False)
+    variant_label: Mapped[str | None] = mapped_column(String, nullable=True)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
+    series: Mapped[str | None] = mapped_column(String, nullable=True)
+    set_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    printed_number: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    cards: Mapped[list["Card"]] = relationship(back_populates="master_card")
+    external_ids: Mapped[list["MasterCardId"]] = relationship(
+        back_populates="master_card", cascade="all, delete-orphan"
+    )
+
+
+class MasterCardId(Base):
+    """One external catalog's ID for a MasterCard -- at most one per
+    `source` ("dex", "pokemontcg", later "tcgplayer", "collectr", ...).
+    Deliberately *not* unique on (source, external_id): catalogs like
+    pokemontcg.io have one ID per print with variants inside it, so the
+    same ID legitimately maps onto several MasterCards (Normal and Reverse
+    Holo of the same print). `matched_by` records how trustworthy the
+    mapping is; a "manual" row is never overwritten automatically -- see
+    masterdata.set_external_id.
+    """
+
+    __tablename__ = "master_card_ids"
+    __table_args__ = (
+        UniqueConstraint("master_card_id", "source", name="uq_master_card_ids_master_source"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    master_card_id: Mapped[int] = mapped_column(
+        ForeignKey("master_cards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    external_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    # "exact_id" | "derived" | "heuristic" | "manual" -- see masterdata.py.
+    matched_by: Mapped[str] = mapped_column(String, nullable=False)
+    matched_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+
+    master_card: Mapped[MasterCard] = relationship(back_populates="external_ids")
 
 
 class SetReleaseOrder(Base):

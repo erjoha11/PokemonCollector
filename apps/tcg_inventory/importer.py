@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 import card_images
 import constants
+import masterdata
 from db import get_or_create_set
 from models import Binder, Card, Collection, ImportLog
 
@@ -208,6 +209,7 @@ def import_dex_csv_files(
         # this sync, not once per card -- see get_or_create_set()'s docstring
         # (db.py) and issue #134.
         sets_cache: dict[tuple[str, str], "models.Set"] = {}
+        masters_cache: dict = {}
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -240,6 +242,11 @@ def import_dex_csv_files(
                 card.set_id = get_or_create_set(db, card.series, card.set, cache=sets_cache).id
             else:
                 card.set_id = None
+            if card.master_card_id is None and card.master_card is None:
+                # (card_id, variant) never changes for a Card row, so its
+                # master identity only needs linking once -- see
+                # masterdata.py.
+                masterdata.link_card(db, card, cache=masters_cache)
             card.language = (row.get("Locale") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None
