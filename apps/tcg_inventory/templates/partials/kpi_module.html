@@ -3,7 +3,7 @@
   {# Overview: a full-width band answering, in reading order, the three
      questions a collector opens the page with --
        1. what is it worth, and am I up or down?  (value + gain, the hero)
-       2. what's driving it?                      (cards up/down, best/worst)
+       2. what's driving it?                      (cards up/down, best card)
        3. how big is it?                          (card counts, least urgent)
      Gain is the hero itself -- today's duplicate-inclusive total value --
      minus Net invested (queries.gain_summary); the equation row spells that
@@ -42,7 +42,7 @@
     </section>
 
     <section class="kpi-ov-section kpi-ov-movers">
-      <h3>Cards up / down {{ info("Compares each card's value today (all copies you own) with what you paid for it. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
+      <h3>Cards up / down {{ info("Compares each card's value today (all copies you own) with what you paid for it. Best card is the one furthest above what it cost: its value today, and how much that is above what you paid. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
       {% set n_moved = gain.n_up + gain.n_down %}
       {% if n_moved %}
       <div class="kpi-ov-updown">
@@ -54,17 +54,21 @@
         <span class="kpi-ov-count viz-delta-loss">{{ gain.n_down }} ▼</span>
       </div>
       {% endif %}
-      {% for label, entry, cls in [('Best', gain.best, 'viz-delta-gain'), ('Worst', gain.worst, 'viz-delta-loss')] if entry %}
+      {% if gain.best %}
+      {% set best_card, best_gain = gain.best %}
       <div class="kpi-ov-mover">
-        {% if entry[0].image_url %}<img class="kpi-ov-thumb" src="{{ entry[0].image_url }}" alt="" loading="lazy">{% else %}<span class="kpi-ov-thumb kpi-ov-thumb-empty" aria-hidden="true"></span>{% endif %}
+        {% if best_card.image_url %}<img class="kpi-ov-thumb" src="{{ best_card.image_url }}" alt="" loading="lazy">{% else %}<span class="kpi-ov-thumb kpi-ov-thumb-empty" aria-hidden="true"></span>{% endif %}
         <div class="kpi-ov-mover-text">
-          <span class="kpi-ov-mover-label">{{ label }}</span>
-          <span class="kpi-ov-mover-name" title="{{ entry[0].name }}">{{ entry[0].name }}</span>
+          <span class="kpi-ov-mover-label">Best card</span>
+          <span class="kpi-ov-mover-name" title="{{ best_card.name }}">{{ best_card.name }}</span>
         </div>
-        <span class="kpi-ov-mover-delta {{ cls }}">{{ '+' if entry[1] > 0 }}{{ entry[1] | kr }}</span>
+        <div class="kpi-ov-mover-figures">
+          <span class="kpi-ov-mover-value" title="Value today{{ ' (' ~ best_card.qty ~ ' copies)' if best_card.qty > 1 }}">{{ best_card.total_value | kr }}</span>
+          <span class="kpi-ov-mover-delta viz-delta-gain" title="Value minus what you paid">{{ '+' if best_gain > 0 }}{{ best_gain | kr }}</span>
+        </div>
       </div>
-      {% endfor %}
-      {% if not n_moved and not gain.best and not gain.worst %}
+      {% endif %}
+      {% if not n_moved and not gain.best %}
       <p class="kpi-caption muted">Register what you paid for a card to see which cards are up or down.</p>
       {% endif %}
     </section>

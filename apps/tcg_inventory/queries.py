@@ -777,7 +777,6 @@ def gain_summary(cards: list[Card], invested_by_card: dict[int, float], net_inve
         "n_up": sum(1 for _, g in per_card if g > 0),
         "n_down": sum(1 for _, g in per_card if g < 0),
         "best": per_card[0] if per_card and per_card[0][1] > 0 else None,
-        "worst": per_card[-1] if per_card and per_card[-1][1] < 0 else None,
     }
 
 

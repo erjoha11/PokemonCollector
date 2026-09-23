@@ -1,5 +1,7 @@
 import datetime as dt
 
+import pytest
+
 import card_images
 from backfill_images import backfill_missing_images
 from models import Card
@@ -68,6 +70,47 @@ def test_backfill_skips_cards_that_already_have_an_image(db_session, monkeypatch
     assert filled == 0
     card = db_session.query(Card).filter_by(card_id="1").one()
     assert card.image_url == "https://example.com/already-there.png"
+
+
+def test_backfill_tries_the_card_id_lookup_first(db_session, monkeypatch):
+    _make_card(db_session, card_id="ex5-4", name="Dark Celebi", number="4/101")
+    monkeypatch.setattr(
+        "backfill_images.card_images.fetch_image_by_card_id", lambda card_id, name, number: f"https://img/{card_id}.png"
+    )
+    monkeypatch.setattr("backfill_images.card_images.fetch_card_data", lambda *a, **kw: pytest.fail("not needed"))
+
+    assert backfill_missing_images(db_session) == (1, 1)
+    assert db_session.query(Card).one().image_url == "https://img/ex5-4.png"
+
+
+def test_backfill_never_uses_the_english_name_search_for_japanese_cards(db_session, monkeypatch):
+    _make_card(db_session, card_id="jpn_sv2a-168", name="Charmander")
+    monkeypatch.setattr("backfill_images.card_images.fetch_image_by_card_id", lambda *a: None)
+    monkeypatch.setattr("backfill_images.card_images.fetch_card_data", lambda *a, **kw: pytest.fail("English API for a JP card"))
+
+    assert backfill_missing_images(db_session) == (1, 0)
+
+
+def test_backfill_goes_most_valuable_first_and_parks_misses(db_session, monkeypatch):
+    _make_card(db_session, card_id="cheap", name="Cheap", reference_price=1, qty=1)
+    _make_card(db_session, card_id="pricey", name="Pricey", reference_price=500, qty=1)
+    _make_card(db_session, card_id="gone", name="Gone", reference_price=900, qty=0)
+    seen = []
+    monkeypatch.setattr("backfill_images.card_images.fetch_image_by_card_id", lambda card_id, *a: seen.append(card_id))
+    monkeypatch.setattr(
+        "backfill_images.card_images.fetch_card_data",
+        lambda *a, **kw: card_images.CardApiData(image_url=None, tcgplayer_price=None),
+    )
+    today = dt.date(2026, 9, 23)
+
+    backfill_missing_images(db_session, today=today)
+    assert seen == ["pricey", "cheap", "gone"]  # owned cards by price, then not-owned
+    assert {c.image_lookup_failed_at for c in db_session.query(Card)} == {today}
+
+    seen.clear()
+    assert backfill_missing_images(db_session, today=today + dt.timedelta(days=5)) == (0, 0)  # parked
+    backfill_missing_images(db_session, today=today + dt.timedelta(days=31))
+    assert len(seen) == 3  # retried after IMAGE_RETRY_AFTER_DAYS
 
 
 def test_backfill_respects_the_limit_budget(db_session, monkeypatch):

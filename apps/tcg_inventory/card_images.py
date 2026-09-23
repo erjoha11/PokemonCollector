@@ -215,3 +215,121 @@ def fetch_image_url(name: str, set_name: str | None, number: str | None) -> str 
     fetch_card_data directly so it doesn't pay for two API round-trips.
     """
     return fetch_card_data(name, set_name, number).image_url
+
+
+# --------------------------------------------------------------------------
+# Image lookup by Dex's own card_id
+# --------------------------------------------------------------------------
+# fetch_card_data above searches by name + set name + number, which misses
+# most cards: Dex's set names often don't match the API's, and Japanese
+# prints aren't in the Pokemon TCG API at all. Dex's `card_id` is more
+# useful than that module docstring gives it credit for:
+#
+# - International prints use the Pokemon TCG API's own card id scheme
+#   ("ex5-4", "dv1-5", "hgss4-17"), so the card can be fetched directly by
+#   id -- no search.
+# - Japanese prints are "jpn_<set code>-<number>" ("jpn_sv2a-168"), which
+#   TCGdex's Japanese catalog (api.tcgdex.net/v2/ja) has under the same set
+#   code, just capitalized ("SV2a-168").
+#
+# Neither URL is ever built by hand and trusted (the 2026-09-16 hand-rolled
+# assets.tcgdex.net URLs all 404'd, see HANDOFF.md): each lookup fetches the
+# card from the API and only uses the image the API itself returns, after
+# checking the returned card's number (and, for international cards, name)
+# matches Dex's -- a wrong image is worse than none.
+_POKEMONTCG_CARD_URL = "https://api.pokemontcg.io/v2/cards/{card_id}"
+_TCGDEX_JA_CARD_URL = "https://api.tcgdex.net/v2/ja/cards/{card_id}"
+_INTERNATIONAL_ID = re.compile(r"^[a-z0-9.]+-[A-Za-z0-9]+$")
+_JAPANESE_ID = re.compile(r"^jpn_([a-z0-9.]+)-([A-Za-z0-9]+)$")
+
+
+def _get_json(url: str) -> dict | None:
+    """GET with the same one-retry-on-flakiness policy as fetch_card_data.
+    None on 404 (no such card), repeated errors, or a non-JSON body."""
+    for _attempt in range(2):
+        try:
+            response = httpx.get(url, timeout=_TIMEOUT)
+            if response.status_code == 404:
+                return None
+            response.raise_for_status()
+            return response.json()
+        except (httpx.HTTPError, ValueError):
+            continue
+    return None
+
+
+def _same_number(api_number: str | None, dex_number: str | None) -> bool:
+    """"4" vs Dex's "4/101", "001" vs "1" -- compared as the printed number,
+    ignoring leading zeros."""
+    printed = _printed_number(dex_number)
+    api_printed = _printed_number(api_number)
+    if printed is None or api_printed is None:
+        return False
+    return int(printed) == int(api_printed)
+
+
+def _names_overlap(dex_name: str, api_name: str) -> bool:
+    """Loose name check for a by-id hit: Dex and the API word some names
+    differently ("Dark Celebi" vs "Celebi", "Charizard ex" vs "Charizard-EX"),
+    so any shared word of 3+ letters is enough -- the id + number already
+    pin the card down; this only catches a scheme mismatch."""
+    words = lambda s: {w for w in re.findall(r"[a-z]+", (s or "").lower()) if len(w) >= 3}
+    return bool(words(dex_name) & words(api_name))
+
+
+def _tcgdex_set_ids(set_code: str) -> list[str]:
+    """TCGdex capitalizes the letter prefix of a Japanese set code and keeps
+    any trailing letter lowercase ("sv2a" -> "SV2a", "s12a" -> "S12a",
+    "sm12a" -> "SM12a"). A couple of fallbacks in case a code doesn't
+    follow that, most likely first."""
+    match = re.match(r"^([a-z]+)(.*)$", set_code)
+    candidates = []
+    if match:
+        candidates.append(match.group(1).upper() + match.group(2))
+    candidates += [set_code.upper(), set_code]
+    return list(dict.fromkeys(candidates))
+
+
+def _pokemontcg_image(card_id: str, name: str, number: str | None) -> str | None:
+    payload = _get_json(_POKEMONTCG_CARD_URL.format(card_id=card_id))
+    card = (payload or {}).get("data") or {}
+    if not card or card.get("id") != card_id:
+        return None
+    if not _same_number(card.get("number"), number) or not _names_overlap(name, card.get("name")):
+        return None
+    images = card.get("images") or {}
+    return images.get("small") or images.get("large")
+
+
+def _tcgdex_ja_image(set_code: str, local_id: str, number: str | None) -> str | None:
+    printed = _printed_number(number) or _printed_number(local_id)
+    if printed is None:
+        return None
+    ids = [f"{set_id}-{n}" for set_id in _tcgdex_set_ids(set_code) for n in dict.fromkeys([local_id, printed, printed.zfill(3)])]
+    for tcgdex_id in ids:
+        card = _get_json(_TCGDEX_JA_CARD_URL.format(card_id=tcgdex_id))
+        if not card:
+            continue
+        api_set = ((card.get("set") or {}).get("id") or "").lower()
+        if api_set != set_code.lower() or not _same_number(card.get("localId"), printed):
+            return None  # found *a* card, but not this one -- don't keep guessing
+        image = card.get("image")
+        # TCGdex returns the image as a base URL; quality + format are
+        # appended per its asset docs.
+        return f"{image}/low.webp" if image else None
+    return None
+
+
+def fetch_image_by_card_id(card_id: str | None, name: str, number: str | None) -> str | None:
+    """Image URL for a card, looked up by Dex's own `card_id` (see the
+    comment block above). Never raises; None when the id isn't one of the
+    two known schemes, the API has no such card, or the returned card
+    doesn't match."""
+    if not card_id:
+        return None
+    japanese = _JAPANESE_ID.match(card_id)
+    if japanese:
+        return _tcgdex_ja_image(japanese.group(1), japanese.group(2), number)
+    if _INTERNATIONAL_ID.match(card_id):
+        return _pokemontcg_image(card_id, name, number)
+    return None
