@@ -60,12 +60,16 @@
   {% endif %}
 </form>
 
+{# A small action tucked top-right above the table (same spot as
+   Transactions' "+ New Order"), not a sticky bar -- making an ad is a
+   side task here. Only shown once cards are ticked (see sale-list.js). #}
+<div id="sale-list-bar" class="sale-list-bar" hidden>
+  <span class="muted" title="Selection is temporary and clears on refresh."><span id="sale-list-count">0</span> selected</span>
+  <button type="button" id="sale-list-generate" class="secondary">Generate finn.no ad</button>
+  <button type="button" id="sale-list-clear" class="link-button">Clear</button>
+</div>
+
 {% include "partials/inventory_table.html" %}
 
-<div id="sale-list-bar" class="sale-list-bar" hidden>
-  <span><span id="sale-list-count">0</span> card(s) selected — selection is temporary and clears on refresh.</span>
-  <button type="button" id="sale-list-generate">Generate finn.no ad</button>
-  <button type="button" id="sale-list-clear" class="secondary">Clear</button>
-</div>
 <script src="/static/sale-list.js"></script>
 {% endblock %}

@@ -860,18 +860,25 @@ button.secondary {
   color: var(--muted);
 }
 
+/* Inventory's "Generate finn.no ad" -- a small right-aligned action above
+   the table (like "+ New Order" on Transactions), not a sticky bar. */
 .sale-list-bar {
-  position: sticky;
-  bottom: 0;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  gap: 1rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  padding: 0.75rem 1.1rem;
-  margin-top: 1rem;
+  gap: 0.6rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+}
+.sale-list-bar[hidden] { display: none; }
+.sale-list-bar button { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.sale-list-bar .link-button {
+  background: none;
+  border: none;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
 }
 
 .ad-draft { margin-top: 1rem; }
@@ -1228,7 +1235,7 @@ button.secondary {
 .picker-check { width: 1.8rem; text-align: center; }
 .picker-order-link { font-weight: 600; }
 
-/* Same sticky-bottom pattern as /sales' .sale-list-bar, hidden until at
+/* Sticky-bottom action bar, hidden until at
    least one row is checked so it never covers content while reading. */
 .picker-bar {
   position: sticky;

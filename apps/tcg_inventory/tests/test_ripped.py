@@ -106,3 +106,33 @@ def test_order_value_ignores_ripped_rows(client):
     html = client.get("/transactions?open_order=7").text
 
     assert "tx-badge-ripped" in html
+
+
+def test_transactions_picker_leaves_out_ripped_and_traded_cards(client):
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu"},
+            {"id": "b", "name": "Charizard"},
+            {"id": "c", "name": "Mewtwo"},
+            {"id": "d", "name": "Eevee"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    import db as db_module
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+    client.post("/transactions", data={"card_id": ids["b"], "type": "ripped", "date": "2026-09-20", "price": "0", "purchase_id": "22"})
+    client.post("/transactions", data={"card_id": ids["c"], "type": "trade", "date": "2026-09-20", "price": "0", "purchase_id": "20"})
+    client.post("/transactions", data={"card_id": ids["d"], "type": "purchase", "date": "2026-09-20", "price": "5", "purchase_id": "2"})
+
+    picker = client.get("/transactions?pick=unordered").text
+
+    # Only Pikachu has no purchase, ripped or trade row.
+    assert "Without an order (1)" in picker
+
+    browse = client.get("/transactions/purchase/browse-unordered").text
+    assert "Pikachu" in browse
+    assert "Charizard" not in browse and "Mewtwo" not in browse and "Eevee" not in browse

@@ -1240,6 +1240,13 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
 # Value/Remaining and out of Net invested.
 NON_CASH_TYPES = ("trade", "ripped")
 
+# Transaction types that mean "this card has been registered as acquired":
+# the card picker's "Without an order" filter and the cart's "Show cards
+# without an order" leave out any card with one of these. A trade counts
+# whichever way it went -- a card traded in was acquired by the trade, and
+# one traded out needs no order of its own either.
+ACQUIRED_TYPES = ("purchase", "ripped", "trade")
+
 
 def _price_for(tx_type: str, price: float) -> float:
     """A ripped card is free by definition -- whatever price a form sent."""
@@ -1362,6 +1369,7 @@ def _transactions_context(
     known_cards, unknown_cards = _cards_with_known_added_date(db)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
+    acquired_card_ids = {t.card_id for t in txs if t.type in ACQUIRED_TYPES}
 
     # The page's single card-picking table: "Recently Added" (cards with a
     # known added date) and the former separate "Legacy import" table
@@ -1393,7 +1401,7 @@ def _transactions_context(
     # filter of a general one.)
     all_picker_cards = known_cards + unknown_cards
     if pick == "unordered":
-        picker_cards = [c for c in all_picker_cards if c.id not in purchase_prices_by_card]
+        picker_cards = [c for c in all_picker_cards if c.id not in acquired_card_ids]
     elif pick == "recent":
         picker_cards = [c for c in all_picker_cards if c.created_at is not None]
     else:
@@ -1401,7 +1409,7 @@ def _transactions_context(
     picker_cards = _sorted_rows(picker_cards, gsort, gdir, card_keys)
     undated_count = sum(1 for c in picker_cards if c.created_at is None)
     pick_counts = {
-        "unordered": sum(1 for c in all_picker_cards if c.id not in purchase_prices_by_card),
+        "unordered": sum(1 for c in all_picker_cards if c.id not in acquired_card_ids),
         "recent": sum(1 for c in all_picker_cards if c.created_at is not None),
         "all": len(all_picker_cards),
     }
@@ -1573,9 +1581,8 @@ def purchase_cart_browse_unordered(request: Request):
     db = get_db_session()
     try:
         # A ripped card is accounted for too -- it just didn't cost anything.
-        ordered_card_ids = (
-            db.query(Transaction.card_id).filter(Transaction.type.in_(("purchase", "ripped"))).distinct()
-        )
+        # Ripped and traded cards are accounted for too -- see ACQUIRED_TYPES.
+        ordered_card_ids = db.query(Transaction.card_id).filter(Transaction.type.in_(ACQUIRED_TYPES)).distinct()
         base = db.query(Card).filter(~Card.id.in_(ordered_card_ids))
         total_count = base.count()
         results = base.order_by(Card.name).limit(_BROWSE_UNORDERED_LIMIT).all()
