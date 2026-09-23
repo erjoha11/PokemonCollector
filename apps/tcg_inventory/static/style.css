@@ -284,11 +284,26 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   box-shadow: var(--shadow);
 }
 
-.kpi-card:nth-child(1) { --kpi-accent: #2a78d6; }
-.kpi-card:nth-child(2) { --kpi-accent: #eb6834; }
-.kpi-card:nth-child(3) { --kpi-accent: #1baf7a; }
-.kpi-card:nth-child(4) { --kpi-accent: #eda100; }
-.kpi-card:nth-child(5) { --kpi-accent: #e87ba4; }
+.kpi-card:nth-child(1 of :not(.kpi-gain)) { --kpi-accent: #2a78d6; }
+.kpi-card:nth-child(2 of :not(.kpi-gain)) { --kpi-accent: #eb6834; }
+.kpi-card:nth-child(3 of :not(.kpi-gain)) { --kpi-accent: #1baf7a; }
+.kpi-card:nth-child(4 of :not(.kpi-gain)) { --kpi-accent: #eda100; }
+.kpi-card:nth-child(5 of :not(.kpi-gain)) { --kpi-accent: #e87ba4; }
+
+/* Gain / loss: first and twice as wide as the others, colored by sign.
+   The nth-child palette above skips it (`of :not(.kpi-gain)`), so the other
+   cards keep their colors whether or not this card is there. */
+.kpi-card.kpi-gain { grid-column: span 2; }
+.kpi-card.kpi-gain-up { --kpi-accent: #0ca30c; }
+.kpi-card.kpi-gain-down { --kpi-accent: #d03b3b; }
+.kpi-gain .kpi-gain-value { font-size: 1.9rem; }
+.kpi-gain-up .kpi-gain-value, .kpi-gain-up .kpi-gain-pct { color: #0a7f0a; }
+.kpi-gain-down .kpi-gain-value, .kpi-gain-down .kpi-gain-pct { color: #c02f2f; }
+.kpi-gain-pct { font-size: 1rem; font-weight: 700; }
+.kpi-gain .stat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* On a narrow screen (where span 2 = the whole row anyway, or would
+   overflow) give it the full row so its labels aren't cut off. */
+@media (max-width: 480px) { .kpi-card.kpi-gain { grid-column: 1 / -1; } }
 
 .kpi-card h3 {
   display: flex;

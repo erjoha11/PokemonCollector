@@ -617,6 +617,34 @@ def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
     }
 
 
+def gain_summary(cards: list[Card], invested_by_card: dict[int, float], net_invested: float) -> dict:
+    """The collector's headline number: how far today's value is above (or
+    below) what was paid -- same definition as Transactions' "Paper
+    gain/loss" (unique_value - net_invested), plus what's behind it.
+
+    Per-card figures only cover owned cards (qty > 0) that have at least one
+    registered transaction (i.e. appear in `invested_by_card`); a card never
+    registered has no known cost, so it can't be called up or down. A ripped
+    card (cost 0) counts as up by its full value.
+    """
+    unique_value = sum(c.unique_value for c in cards)
+    gain = unique_value - net_invested
+    per_card = [
+        (c, c.unique_value - invested_by_card[c.id]) for c in cards if c.qty > 0 and c.id in invested_by_card
+    ]
+    per_card.sort(key=lambda pair: pair[1], reverse=True)
+    return {
+        "gain": gain,
+        "pct": (gain / net_invested * 100) if net_invested > 0 else None,
+        "unique_value": unique_value,
+        "net_invested": net_invested,
+        "n_up": sum(1 for _, g in per_card if g > 0),
+        "n_down": sum(1 for _, g in per_card if g < 0),
+        "best": per_card[0] if per_card and per_card[0][1] > 0 else None,
+        "worst": per_card[-1] if per_card and per_card[-1][1] < 0 else None,
+    }
+
+
 def trade_prices_at(db: Session, trade_txs: list[Transaction]) -> dict[int, float | None]:
     """Each trade row's card price as of the trade date, keyed by
     transaction id: the latest `card_snapshots` row on or before that date

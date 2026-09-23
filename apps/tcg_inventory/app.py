@@ -357,6 +357,7 @@ def dashboard(
             {
                 "headline": headline,
                 "net_invested": economic["net_invested"],
+                "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
                 "collection_breakdown": collection_breakdown,
                 "collection_rows": collection_rows,
                 "series_breakdown": series_breakdown,
@@ -627,8 +628,9 @@ def inventory(
             # The KPI module lives outside the htmx-swapped #inventory-results
             # target, so only compute it on a full page load, not on every
             # filter keystroke/select change.
-            collection_breakdown = queries.collection_bulk_breakdown(db)
-            series_breakdown = queries.by_series_breakdown(db)
+            all_cards = queries.all_cards_with_collections(db)
+            collection_breakdown = queries.collection_bulk_breakdown(db, all_cards)
+            series_breakdown = queries.by_series_breakdown(db, all_cards)
             # Reuses the invested_by_card/txs already loaded above instead of
             # re-scanning Transaction twice more (net_invested_by_card +
             # economic_summary each used to run their own independent query).
@@ -637,10 +639,12 @@ def inventory(
             for series_bucket in series_breakdown:
                 queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
             top_collection, top_series = _top_collection_and_series(collection_breakdown, series_breakdown)
+            net_invested = queries.economic_summary(db, txs)["net_invested"]
             context.update(
                 {
-                    "headline": queries.headline_summary(db),
-                    "net_invested": queries.economic_summary(db, txs)["net_invested"],
+                    "headline": queries.headline_summary(db, all_cards),
+                    "net_invested": net_invested,
+                    "gain": queries.gain_summary(all_cards, invested_by_card, net_invested),
                     "top_cards": queries.top_valuable_cards(db, limit=50),
                     "top_collection": top_collection,
                     "top_series": top_series,
@@ -1435,6 +1439,7 @@ def _transactions_context(
         "top_collection": top_collection,
         "top_series": top_series,
         "kpi": kpi,
+        "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
         "purchase_groups": purchase_groups,
         # Each purchase row's share of its order's shipping -- shown under
         # the row's price, since it's part of what the card really cost.

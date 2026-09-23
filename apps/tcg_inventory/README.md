@@ -23,6 +23,13 @@ run).
 
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
   series, most valuable cards (scrollable list), by rarity.
+- **Gain / loss KPI card** — first and double-width in the KPI row on
+  Dashboard, Inventory and Transactions (`queries.gain_summary`): today's
+  unique value minus Net invested, in kr and %, colored by sign, plus value
+  today vs. paid, how many cards are up/down, and the best and worst card.
+  Up/down/best/worst only cover owned cards with a registered transaction
+  (an unregistered card has no known cost); a ripped card counts as up by
+  its full value.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
