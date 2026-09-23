@@ -80,11 +80,8 @@ def is_binder_category(category: str) -> bool:
 
 
 # Condition vocabulary for `Card.condition` (see models.py) and generated
-# finn.no ad text (ads.py). Deliberately the same values as
-# apps/finn_ad_scraper/card_identifier.py's CONDITIONS tuple -- apps don't
-# import from each other, so this is a literal copy kept in sync by
-# convention, not by shared code. Keep both lists identical if either
-# changes.
+# finn.no ad text (ads.py). Originally mirrored the removed finn_ad_scraper
+# app's CONDITIONS tuple; this is now the single source of truth.
 CARD_CONDITIONS = (
     "Mint",
     "Near Mint",

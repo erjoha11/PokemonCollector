@@ -379,9 +379,7 @@ without updating both the code and this doc.
    `Set.release_rank` directly instead (e.g. via a script or a future admin
    UI; none exists yet).
 7. **Sales listings (finn.no).** `Card.condition` is real per-card data
-   (nullable, vocabulary in `constants.CARD_CONDITIONS`) — deliberately the
-   same values as `apps/finn_ad_scraper/card_identifier.CONDITIONS`, kept
-   in sync by convention since apps never import from each other. A
+   (nullable, vocabulary in `constants.CARD_CONDITIONS`). A
    generated ad the user marks "Mark as listed" (`/sales`) is recorded as a
    `Listing` row (+ `listing_cards`), not a flag on `Card` — the common case
    is a lot (several cards, one ad), which a per-card boolean/date can't
