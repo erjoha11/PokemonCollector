@@ -401,6 +401,41 @@ def test_dashboard_most_valuable_cards_show_gain_when_cost_is_registered(client)
     assert card.count("top-card-item-gain") == 2  # Mew has no registered cost
 
 
+def test_dashboard_tables_show_net_invested_and_colored_gain(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Charizard", "price": "400", "rarity": "Ultra Rare"},
+            {"id": "b", "name": "Pikachu", "price": "200", "rarity": "Common"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    card_a = db.query(Card).filter(Card.card_id == "a").one()
+    db.add(Transaction(card_id=card_a.id, type="purchase", date=dt.date(2026, 1, 1), price=150))
+    db.commit()
+    db.close()
+
+    html = client.get("/").text
+    rarity = html[html.index('id="dashboard-rarity-card"'):]
+    rarity = rarity[: rarity.index("</table>")]
+    assert "Net invested" in rarity and "Gain/loss" in rarity
+    assert "viz-delta-gain" in rarity and "+250 kr" in rarity  # Ultra Rare: 400 - 150
+    # Common has no registered purchase: no cost known, so no "gain" either.
+    body = rarity[rarity.index("<tbody>"):]
+    common_row = body[body.index("Common"):]
+    common_row = common_row[: common_row.index("</tr>")]
+    assert common_row.count('<td class="num muted">-</td>') == 2
+    for card_id in ("dashboard-inventory-card", "dashboard-series-card", "dashboard-pokemon-cards"):
+        section = html[html.index(f'id="{card_id}"'):]
+        assert "money-gain" in section[: section.index("</table>")]
+
+
 def test_card_image_large_derives_each_hosts_big_image():
     import app as app_module
 

@@ -407,12 +407,16 @@ def dashboard(
         collection_breakdown = queries.collection_bulk_breakdown(db, cards)
         series_breakdown = queries.by_series_breakdown(db, cards)
         invested_by_card = queries.net_invested_by_card(db, txs)
-        queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+        queries.assign_bucket_investment(
+            collection_breakdown["children"] + [collection_breakdown["bulk"], collection_breakdown["parent"]],
+            invested_by_card,
+        )
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
         for series_bucket in series_breakdown:
             queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
         top_cards = queries.top_valuable_cards(db, limit=50)
         rarity_breakdown = queries.by_rarity_breakdown(db, cards)
+        queries.assign_bucket_investment(rarity_breakdown, invested_by_card)
 
         # Bucket rows (collection, series, set, rarity) always keep their
         # default order from queries.py -- clicking a column header only
@@ -429,6 +433,7 @@ def dashboard(
         # re-orders those same 10 buckets -- same pattern as "Topp 10 mest
         # verdifulle kort" above, not the bucket-hierarchy tables.
         all_pokemon = queries.by_pokemon_breakdown(db, cards, alias_map)
+        queries.assign_bucket_investment(all_pokemon, invested_by_card)
         pokemon_top = sorted(all_pokemon, key=lambda b: b.unique_count, reverse=True)[:10]
         pokemon_top = _sorted_rows(pokemon_top, psort, pdir, POKEMON_BUCKET_SORT_KEYS)
 

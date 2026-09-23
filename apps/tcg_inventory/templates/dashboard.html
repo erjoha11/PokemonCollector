@@ -34,8 +34,24 @@
   <td class="num">{{ card.qty }}</td>
   <td class="num">{{ card.unique_value | kr }}</td>
   {% if show_total_value %}<td class="num">{{ card.total_value | kr }}</td>{% endif %}
+  {%- set paid = invested_by_card.get(card.id) if invested_by_card else none %}
+  {{ money_cells(paid or 0, card.unique_value - (paid or 0), paid is not none) }}
 </tr>
 {% endmacro %}
+
+{# Net invested + Gain/loss cells. Gain/loss is green when up, red when
+   down; both show "-" when nothing in the row has a registered purchase
+   (no known cost, so no meaningful gain). #}
+{% macro money_cells(invested, gain, known) -%}
+{%- if known -%}
+<td class="num money-invested">{{ invested | kr }}</td>
+<td class="num money-gain {{ 'viz-delta-gain' if gain > 0 else ('viz-delta-loss' if gain < 0 else 'muted') }}">{{ '+' if gain > 0 }}{{ gain | kr }}</td>
+{%- else -%}
+<td class="num muted">-</td><td class="num muted">-</td>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro bucket_money_cells(bucket) %}{{ money_cells(bucket.net_invested, bucket.gain_loss, bucket.has_investment) }}{% endmacro %}
 
 {% macro bucket_set_series_cells(bucket) %}
 <td>{% if bucket.distinct_sets | length == 1 %}{{ bucket.distinct_sets[0] }}{% elif bucket.distinct_sets | length > 1 %}<span class="muted" title="{{ bucket.distinct_sets | join(', ') }}">Multiple</span>{% else %}-{% endif %}</td>
@@ -110,6 +126,8 @@
           <th class="num">{{ coll_sort('Total', 'qty') }}</th>
           <th class="num">{{ coll_sort('Value', 'value') }}</th>
           <th class="num">{{ coll_sort('Total value', 'total_value') }}</th>
+          <th class="num">Net invested</th>
+          <th class="num">Gain/loss</th>
         </tr>
       </thead>
       <tbody>
@@ -120,6 +138,7 @@
           <td class="num">{{ collection_breakdown.parent.qty }}</td>
           <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
           <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
+          {{ bucket_money_cells(collection_breakdown.parent) }}
         </tr>
         {% for c in collection_rows if c.filterable %}
         {% set row_id = 'coll-' ~ loop.index %}
@@ -130,6 +149,7 @@
           <td class="num">{{ dup_link('collection', c.name, c.qty) }}</td>
           <td class="num">{{ c.unique_value | kr }}</td>
           <td class="num">{{ c.total_value | kr }}</td>
+          {{ bucket_money_cells(c) }}
         </tr>
         {% for card in c.cards %}
         {{ card_leaf_row(card, 'grandchild-row', row_id) }}
@@ -147,6 +167,7 @@
           <td class="num">{{ bulk.qty }}</td>
           <td class="num">{{ bulk.unique_value | kr }}</td>
           <td class="num">{{ bulk.total_value | kr }}</td>
+          {{ bucket_money_cells(bulk) }}
         </tr>
         {% for card in bulk.cards %}
         {{ card_leaf_row(card, 'grandchild-row', 'coll-bulk') }}
@@ -183,8 +204,7 @@
           <td class="num">{{ dup_link('series', s.name, s.qty) }}</td>
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
-          <td class="num">{{ s.net_invested | kr }}</td>
-          <td class="num">{{ s.gain_loss | kr }}</td>
+          {{ bucket_money_cells(s) }}
           <td class="num">-</td>
         </tr>
         {% for set_b in s.child_sets %}
@@ -196,8 +216,7 @@
           <td class="num">{{ dup_link('set', set_b.name, set_b.qty) }}</td>
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
-          <td class="num">{{ set_b.net_invested | kr }}</td>
-          <td class="num">{{ set_b.gain_loss | kr }}</td>
+          {{ bucket_money_cells(set_b) }}
           <td class="num">{% if set_b.total_cards %}<span title="{{ set_b.unique_count }}/{{ set_b.total_cards }} kort">{{ set_b.completion_pct | round | int }}%</span>{% else %}<span class="muted" title="Set's total card count hasn't been synced yet">unknown</span>{% endif %}</td>
         </tr>
         {% for card in set_b.cards %}
@@ -219,6 +238,8 @@
           <th class="num">{{ rarity_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ rarity_sort('Total', 'qty') }}</th>
           <th class="num">{{ rarity_sort('Value', 'value') }}</th>
+          <th class="num">Net invested</th>
+          <th class="num">Gain/loss</th>
         </tr>
       </thead>
       <tbody>
@@ -230,6 +251,7 @@
           <td class="num">{{ r.duplicates }}</td>
           <td class="num">{{ dup_link('rarity', r.name, r.qty) }}</td>
           <td class="num">{{ r.unique_value | kr }}</td>
+          {{ bucket_money_cells(r) }}
         </tr>
         {% for card in r.cards %}
         {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false) }}
@@ -301,6 +323,8 @@
           <th class="num">{{ fav_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ fav_sort('Total', 'qty') }}</th>
           <th class="num">{{ fav_sort('Value', 'value') }}</th>
+          <th class="num">Net invested</th>
+          <th class="num">Gain/loss</th>
         </tr>
       </thead>
       <tbody>
@@ -320,6 +344,7 @@
           <td class="num">{{ p.duplicates }}</td>
           <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>
           <td class="num">{{ p.unique_value | kr }}</td>
+          {{ bucket_money_cells(p) }}
         </tr>
         {% for card in p.cards %}
         {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false, show_set_series=true) }}
@@ -342,6 +367,8 @@
           <th class="num">{{ top10_sort('Duplicates', 'duplicates') }}</th>
           <th class="num">{{ top10_sort('Total', 'qty') }}</th>
           <th class="num">{{ top10_sort('Value', 'value') }}</th>
+          <th class="num">Net invested</th>
+          <th class="num">Gain/loss</th>
         </tr>
       </thead>
       <tbody>
@@ -362,6 +389,7 @@
           <td class="num">{{ p.duplicates }}</td>
           <td class="num">{{ dup_link('q', p.name, p.qty) }}</td>
           <td class="num">{{ p.unique_value | kr }}</td>
+          {{ bucket_money_cells(p) }}
         </tr>
         {% for card in p.cards %}
         {{ card_leaf_row(card, 'child-row', row_id, show_total_value=false, show_set_series=true) }}

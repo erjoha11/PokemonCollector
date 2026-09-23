@@ -1587,3 +1587,9 @@ button.secondary {
   .card-viewer-body { grid-template-columns: 1fr; padding: 1rem; }
   .card-viewer-image, .card-viewer-noimage { max-width: 260px; justify-self: center; }
 }
+
+/* Net invested / Gain/loss cells in the dashboard tables (money_cells in
+   dashboard.html): cost in a quieter ink, gain/loss in the shared
+   green/red delta colors, bold so the result reads first. */
+.money-invested { color: var(--ink-secondary); }
+.money-gain { font-weight: 600; }
