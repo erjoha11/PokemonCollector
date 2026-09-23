@@ -258,7 +258,13 @@ def import_dex_csv_files(
             if needs_image or needs_price:
                 api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
                 if needs_image:
-                    card.image_url = api_data.image_url
+                    # By Dex's own card_id first (see card_images.
+                    # fetch_image_by_card_id); the name search's image only
+                    # for non-Japanese prints -- Japanese ones aren't in
+                    # that API, so its hit could only be the wrong card.
+                    card.image_url = card_images.fetch_image_by_card_id(card.card_id, card.name, card.number) or (
+                        None if (card.card_id or "").startswith("jpn_") else api_data.image_url
+                    )
                     image_lookup_budget -= 1
                 if needs_price:
                     if api_data.tcgplayer_price is not None:

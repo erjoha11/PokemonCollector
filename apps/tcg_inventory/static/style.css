@@ -441,6 +441,9 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.kpi-ov-mover-figures { display: flex; flex-direction: column; align-items: flex-end; }
+.kpi-ov-mover-value { font-size: 0.95rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+.kpi-ov-mover-figures .kpi-ov-mover-delta { font-size: 0.78rem; }
 .kpi-ov-mover-delta { font-size: 0.88rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .kpi-ov-split {
@@ -784,34 +787,66 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   max-height: 24rem;
   overflow-y: auto;
 }
-.top-cards-scroll thead th {
-  position: sticky;
-  top: 0;
-  background: var(--surface);
-  box-shadow: 0 1px 0 var(--border-strong);
-  z-index: 1;
-}
-/* Sits beside Market Value now (see #dashboard-top-cards-card below), so at
-   half the row's width a long card/set name would otherwise force the
-   .breakdown-grid .card's overflow-x:auto into a horizontal scrollbar --
-   fix the table's column widths and ellipsis-truncate instead. */
+/* Sits beside Market Value, so at half the row's width a long card/set
+   name ellipsis-truncates instead of forcing the .breakdown-grid .card's
+   overflow-x:auto into a horizontal scrollbar. */
 #dashboard-top-cards-card {
   overflow-x: hidden;
 }
-.top-cards-scroll table {
-  table-layout: fixed;
-  width: 100%;
+/* Ranked list, not a table: rank, card photo (placeholder when none yet --
+   see backfill_images.py), name + set/number/rarity, a bar for the price
+   relative to #1, price on the right. Top 3 get an accent rank. */
+.top-card-list { list-style: none; margin: 0; padding: 0; }
+.top-card-item {
+  display: grid;
+  grid-template-columns: 1.8rem 2.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.2rem;
+  border-top: 1px solid var(--border);
 }
-.top-cards-scroll td,
-.top-cards-scroll th {
+.top-card-item:first-child { border-top: 0; }
+.top-card-item-rank {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-secondary);
+  background: var(--page);
+  font-variant-numeric: tabular-nums;
+}
+.top-card-item:nth-child(-n+3) .top-card-item-rank { background: var(--accent); color: #fff; }
+.top-card-item-thumb {
+  width: 2.6rem;
+  height: 3.6rem;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+.top-card-item-thumb-empty { background: var(--page); border: 1px dashed var(--border-strong); box-shadow: none; }
+.top-card-item-main { min-width: 0; }
+.top-card-item-name {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.top-cards-scroll th:nth-child(1) { width: 42%; }
-.top-cards-scroll th:nth-child(2) { width: 12%; }
-.top-cards-scroll th:nth-child(3) { width: 31%; }
-.top-cards-scroll th:nth-child(4) { width: 15%; }
+.top-card-item-name .tx-platform-badge { margin-left: 0.4rem; font-size: 0.65rem; padding: 0.05rem 0.4rem; vertical-align: middle; }
+.top-card-item-meta {
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-card-item-bar { height: 4px; margin-top: 0.35rem; border-radius: 2px; background: var(--page); overflow: hidden; }
+.top-card-item-bar span { display: block; height: 100%; border-radius: 2px; background: var(--accent); opacity: 0.55; }
+.top-card-item-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.top-cards-sort { flex-wrap: wrap; margin-top: 0; }
 
 /* Every dashboard row is a pair (Inventory+Topp 10, Serie+Rarity) -- wrap
    each in its own auto-fit pair instead of the top-level grid, so exactly

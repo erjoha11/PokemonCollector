@@ -637,29 +637,34 @@ a manual look, unlike a low-confidence match this still updates the price
 rather than withholding it, since it's still the right card, just possibly
 the wrong print.
 
-### Image backfill (one-off, manual)
+### Card images
 
-`Card.image_url` (used for the Dashboard's "Most valuable cards" #1-spot
-thumbnail, see `templates/partials/kpi_module.html`) is only ever set
-best-effort during a Dex sync (`importer.py`, capped at
-`_MAX_IMAGE_LOOKUPS_PER_IMPORT` lookups per sync), so a card that missed its
-budget slot or had no confident match on a given day can stay `NULL`
-indefinitely — the normal sync never retries it. `backfill_images.py` is a
-standalone script to retry those:
+`Card.image_url` is looked up by Dex's own `card_id`
+(`card_images.fetch_image_by_card_id`), which works for far more cards than
+the old name/set/number search:
 
-```bash
-python backfill_images.py            # up to 200 lookups (default budget)
-python backfill_images.py --limit 50 # smaller/larger pass
-```
+- International prints: Dex's id *is* the Pokemon TCG API's id (`ex5-4`,
+  `dv1-5`, …), so the card is fetched directly by id.
+- Japanese prints (`jpn_<set>-<number>`): TCGdex's Japanese catalog
+  (`api.tcgdex.net/v2/ja`), set code capitalized (`jpn_sv2a-168` →
+  `SV2a-168`). The Pokemon TCG API has no Japanese cards, so its name search
+  is never used for these (it could only return the wrong card).
 
-Same `DATABASE_URL` convention as `seed_set_release_order.py` — run it
-locally against SQLite, or with `DATABASE_URL` set to the Supabase
-connection string to backfill prod. Only ever fills a `NULL` `image_url`
-in from a confident `card_images.fetch_card_data` match; cards with no
-confident match are left `NULL` (never guessed — a wrong image is worse
-than no image, see the 2026-09-16 `assets.tcgdex.net` incident in
-`HANDOFF.md`). It's a manual, explicitly-triggered pass, not part of the
-daily Dropbox/price crons.
+No URL is ever built by hand: an image is only stored when the API returned
+that card and its number (and, for international cards, a word of its name)
+matches Dex's. Anything else stays `NULL`.
+
+Filled in by `backfill_images.py`: most valuable owned cards first; a card
+with no match is stamped `image_lookup_failed_at` and retried after 30 days
+instead of blocking the queue. It runs:
+
+- daily, after prices, inside `/cron/price-refresh` (up to 60 cards, 25 s);
+- on demand via `GET /cron/image-backfill?secret=<CRON_SECRET>[&limit=N]`
+  (time-boxed to ~50 s; call again while `remaining` > 0);
+- by hand: `python backfill_images.py [--limit N]` (same `DATABASE_URL`
+  convention as `seed_set_release_order.py`).
+
+A Dex sync (`importer.py`) also tries the by-id lookup for new cards.
 
 ### Value history
 
@@ -741,7 +746,7 @@ the Dropbox-based ones above and the price-refresh cron).
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
   sync (see "Price refresh" above).
 - `backfill_images.py` — standalone, manually-triggered backfill for cards
-  with a `NULL` `image_url` (see "Image backfill" above).
+  with a `NULL` `image_url` (see "Card images" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
 - `dropbox_setup.py` — one-time CLI to obtain a Dropbox refresh token.
 - `api/index.py`, `vercel.json` — Vercel deployment entrypoint/config.

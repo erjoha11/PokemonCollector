@@ -29,7 +29,7 @@ def test_gain_summary_headline_and_per_card(db_session):
     assert g["pct"] == pytest.approx(120 / 70 * 100)
     assert (g["n_up"], g["n_down"]) == (2, 1)
     assert g["best"] == (up, 60)
-    assert g["worst"] == (down, -15)
+    assert "worst" not in g  # the KPI only shows the best card
 
 
 def test_gain_summary_counts_duplicates_against_what_was_paid(db_session):
@@ -49,7 +49,7 @@ def test_gain_summary_without_anything_paid_has_no_percentage(db_session):
     _card(db_session, "a", 10)
     g = queries.gain_summary(db_session.query(Card).all(), {}, net_invested=0)
     assert g["pct"] is None
-    assert g["best"] is None and g["worst"] is None
+    assert g["best"] is None
 
 
 @pytest.mark.parametrize("path", ["/", "/inventory", "/transactions"])
@@ -85,3 +85,25 @@ def test_market_value_kpi_equation_uses_the_total(client):
     assert "Total value <strong>300 kr</strong>" in html
     assert "Paid <strong>200 kr</strong>" in html
     assert "+100 kr" in html and "+50 %" in html
+
+
+def test_best_card_shows_its_value_and_there_is_no_worst_card(client):
+    main = make_csv(
+        "My Collection",
+        [{"id": "a", "name": "Winner", "price": "100", "qty": 2}, {"id": "b", "name": "Loser", "price": "10"}],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    import db as db_module
+
+    db = db_module.SessionLocal()
+    ids = {c.name: c.id for c in db.query(Card)}
+    db.close()
+    client.post("/transactions", data={"card_id": ids["Winner"], "type": "purchase", "date": "2026-09-20", "price": "50"})
+    client.post("/transactions", data={"card_id": ids["Loser"], "type": "purchase", "date": "2026-09-20", "price": "40"})
+
+    html = client.get("/").text
+    movers = html[html.index("kpi-ov-movers"):html.index("kpi-ov-cards")]
+    assert "Best card" in movers and "Winner" in movers
+    assert "200 kr" in movers  # value: 2 copies x 100
+    assert "+150 kr" in movers  # minus the 50 paid
+    assert "Worst" not in movers and "Loser" not in movers

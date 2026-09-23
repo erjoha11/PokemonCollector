@@ -29,6 +29,7 @@ load_dotenv(APP_DIR / ".env")
 
 import ads
 import auth
+import backfill_images
 import dropbox_client
 import price_refresh
 import queries
@@ -134,7 +135,8 @@ templates.env.globals["pick_url"] = _pick_url
 # local dev) leaves the app open, same as before this was added.
 # /cron/dropbox-sync and /cron/price-refresh have their own separate auth
 # (CRON_SECRET) -- a scheduled job has no browser session to log in with.
-_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh"}
+# /cron/image-backfill too (a manual catch-up pass, same secret).
+_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill"}
 
 
 @app.middleware("http")
@@ -2335,6 +2337,12 @@ def cron_price_refresh(request: Request, secret: str = ""):
         # Snapshot right after refreshing, same reasoning as
         # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
         snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
+        # Then a small pass of missing card images (backfill_images.py),
+        # time-boxed so the whole invocation stays inside the function limit.
+        images = backfill_images.run_backfill(db, limit=IMAGE_BACKFILL_PER_CRON, time_budget_s=IMAGE_BACKFILL_SECONDS)
+        print(
+            f"[cron/price-refresh] images: attempted={images.attempted} filled={images.filled}"
+        )
         print(
             f"[cron/price-refresh] ok: checked={result.cards_checked} "
             f"updated={result.cards_updated} "
@@ -2349,6 +2357,44 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "cards_low_confidence": result.cards_low_confidence,
             "cards_variant_uncertain": result.cards_variant_uncertain,
             "cards_snapshotted": snapshotted,
+            "images_attempted": images.attempted,
+            "images_filled": images.filled,
+        }
+    finally:
+        db.close()
+
+
+# Per daily /cron/price-refresh run: a modest image pass after prices.
+IMAGE_BACKFILL_PER_CRON = 60
+IMAGE_BACKFILL_SECONDS = 25.0
+
+
+@app.get("/cron/image-backfill")
+def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
+    """Manual catch-up pass for missing card images (backfill_images.py) --
+    the daily /cron/price-refresh already does a small one; this lets a
+    person fill in a whole collection in a few calls instead of waiting.
+    Same CRON_SECRET gate as the other /cron routes. Time-boxed, so call it
+    again while `remaining` > 0.
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    authorized = not cron_secret or secret == cron_secret or (
+        request.headers.get("authorization") == f"Bearer {cron_secret}"
+    )
+    if not authorized:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = get_db_session()
+    try:
+        result = backfill_images.run_backfill(db, limit=max(1, min(limit, 300)), time_budget_s=50.0)
+        remaining = db.query(Card).filter(Card.image_url.is_(None), Card.image_lookup_failed_at.is_(None)).count()
+        with_image = db.query(Card).filter(Card.image_url.isnot(None)).count()
+        print(f"[cron/image-backfill] attempted={result.attempted} filled={result.filled} remaining={remaining}")
+        return {
+            "status": "ok",
+            "attempted": result.attempted,
+            "filled": result.filled,
+            "cards_with_image": with_image,
+            "remaining": remaining,
         }
     finally:
         db.close()

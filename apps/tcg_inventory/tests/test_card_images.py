@@ -274,3 +274,80 @@ def test_fetch_card_data_missing_variant_with_several_priced_prints_is_uncertain
 
     assert result.tcgplayer_price == round(5.0 * card_images._USD_TO_NOK, 2)
     assert result.variant_price_uncertain is True
+
+
+# --- fetch_image_by_card_id -------------------------------------------------
+
+
+def _routes(monkeypatch, responses):
+    """Fake httpx.get serving `responses` (url -> payload, or an int status)."""
+    calls = []
+
+    def fake_get(url, timeout=None, **kwargs):
+        calls.append(url)
+        payload = responses.get(url, 404)
+        if isinstance(payload, int):
+            return _FakeResponse({}, status_code=payload)
+        return _FakeResponse(payload)
+
+    monkeypatch.setattr(card_images.httpx, "get", fake_get)
+    return calls
+
+
+def test_international_card_is_fetched_by_its_dex_id(monkeypatch):
+    _routes(monkeypatch, {
+        "https://api.pokemontcg.io/v2/cards/ex5-4": {"data": {
+            "id": "ex5-4", "name": "Celebi", "number": "4",
+            "images": {"small": "https://images.pokemontcg.io/ex5/4.png"},
+        }},
+    })
+    assert card_images.fetch_image_by_card_id("ex5-4", "Dark Celebi", "4/101") == "https://images.pokemontcg.io/ex5/4.png"
+
+
+def test_international_card_with_a_different_number_or_name_is_rejected(monkeypatch):
+    card = {"id": "ex5-4", "name": "Celebi", "number": "5", "images": {"small": "x.png"}}
+    _routes(monkeypatch, {"https://api.pokemontcg.io/v2/cards/ex5-4": {"data": card}})
+    assert card_images.fetch_image_by_card_id("ex5-4", "Dark Celebi", "4/101") is None  # number mismatch
+
+    card.update(number="4", name="Pikachu")
+    assert card_images.fetch_image_by_card_id("ex5-4", "Dark Celebi", "4/101") is None  # name mismatch
+
+
+def test_japanese_card_is_fetched_from_tcgdex_with_its_capitalized_set_code(monkeypatch):
+    calls = _routes(monkeypatch, {
+        "https://api.tcgdex.net/v2/ja/cards/SV2a-168": {
+            "id": "SV2a-168", "localId": "168", "set": {"id": "SV2a"},
+            "image": "https://assets.tcgdex.net/ja/SV/SV2a/168",
+        },
+    })
+    url = card_images.fetch_image_by_card_id("jpn_sv2a-168", "Charmander", "168/165")
+    assert url == "https://assets.tcgdex.net/ja/SV/SV2a/168/low.webp"
+    assert calls == ["https://api.tcgdex.net/v2/ja/cards/SV2a-168"]  # never the English API
+
+
+def test_japanese_card_tries_a_zero_padded_number(monkeypatch):
+    _routes(monkeypatch, {
+        "https://api.tcgdex.net/v2/ja/cards/S12a-007": {
+            "localId": "007", "set": {"id": "S12a"}, "image": "https://assets.tcgdex.net/ja/S/S12a/007",
+        },
+    })
+    assert card_images.fetch_image_by_card_id("jpn_s12a-7", "Keldeo", "7/172").endswith("/007/low.webp")
+
+
+def test_japanese_card_from_another_set_is_rejected_not_retried(monkeypatch):
+    calls = _routes(monkeypatch, {
+        "https://api.tcgdex.net/v2/ja/cards/SV2a-168": {"localId": "168", "set": {"id": "SV3"}, "image": "x"},
+    })
+    assert card_images.fetch_image_by_card_id("jpn_sv2a-168", "Charmander", "168/165") is None
+    assert len(calls) == 1
+
+
+def test_unknown_id_schemes_and_network_errors_give_none(monkeypatch):
+    def raising_get(*a, **kw):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(card_images.httpx, "get", raising_get)
+    assert card_images.fetch_image_by_card_id("ex5-4", "Celebi", "4/101") is None
+    assert card_images.fetch_image_by_card_id("jpn_sv2a-168", "Charmander", "168/165") is None
+    assert card_images.fetch_image_by_card_id("chs_x-1", "Pikachu", "1") is None
+    assert card_images.fetch_image_by_card_id(None, "Pikachu", "1") is None

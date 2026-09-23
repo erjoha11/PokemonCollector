@@ -334,6 +334,49 @@ def test_inventory_rarity_column_sorts_by_tier_not_alphabetically(client):
     assert order("desc") == ["PromoCard", "SirCard", "TripleCard", "AmazingCard", "CommonCard"]
 
 
+def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
+    import db as db_module
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Charizard", "price": "400", "qty": 2, "rarity": "Ultra Rare"},
+            {"id": "b", "name": "Pikachu", "price": "200"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    db.query(Card).filter(Card.card_id == "a").one().image_url = "https://img.example/charizard.png"
+    db.commit()
+    db.close()
+
+    html = client.get("/").text
+    card = html[html.index('id="dashboard-top-cards-card"'):]
+    card = card[: card.index('id="dashboard-inventory-card"')]
+    assert '<ol class="top-cards-scroll top-card-list">' in card
+    assert card.index("Charizard") < card.index("Pikachu")
+    assert 'src="https://img.example/charizard.png"' in card
+    assert "top-card-item-thumb-empty" in card  # Pikachu has no photo yet
+    assert "×2" in card and "Ultra Rare" in card
+    assert "width: 100.0%" in card and "width: 50.0%" in card  # price bar relative to #1
+    assert "tsort=name" in card  # sort pills
+
+
+def test_image_backfill_route_is_secret_gated_and_reports_progress(client, monkeypatch):
+    import card_images
+
+    main = make_csv("My Collection", [{"id": "ex5-4", "name": "Celebi", "number": "4/101"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    monkeypatch.setattr(card_images, "fetch_image_by_card_id", lambda card_id, name, number: "https://img.example/celebi.png")
+
+    monkeypatch.setenv("CRON_SECRET", "s3cret")
+    assert client.get("/cron/image-backfill").status_code == 401
+
+    body = client.get("/cron/image-backfill?secret=s3cret").json()
+    assert body["filled"] == 1 and body["remaining"] == 0 and body["cards_with_image"] == 1
+
+
 def test_all_pages_render(client):
     for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
         response = client.get(path)

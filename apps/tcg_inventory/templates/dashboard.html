@@ -17,7 +17,6 @@
    swaps back just its own card via hx_select+outerHTML instead of the
    plain hx_target+innerHTML pattern -- otherwise a sort click would nest
    the entire page inside the card. #}
-{% macro top_sort(label, field) %}{{ sort_th(label, field, 'tsort', 'tdir', tsort, tdir, hx_target='#dashboard-top-cards-card', hx_select='#dashboard-top-cards-card', hx_swap='outerHTML') }}{% endmacro %}
 {% macro coll_sort(label, field) %}{{ sort_th(label, field, 'csort', 'cdir', csort, cdir, hx_target='#dashboard-inventory-card', hx_select='#dashboard-inventory-card', hx_swap='outerHTML') }}{% endmacro %}
 {% macro series_sort(label, field) %}{{ sort_th(label, field, 'ssort', 'sdir', ssort, sdir, hx_target='#dashboard-series-card', hx_select='#dashboard-series-card', hx_swap='outerHTML') }}{% endmacro %}
 {% macro rarity_sort(label, field) %}{{ sort_th(label, field, 'rsort', 'rdir', rsort, rdir, hx_target='#dashboard-rarity-card', hx_select='#dashboard-rarity-card', hx_swap='outerHTML') }}{% endmacro %}
@@ -54,29 +53,40 @@
   {{ market_value_card('dashboard-market-value-card', dashboard_market_value_heading, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">
-    <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
-    <div class="top-cards-scroll">
-    <table>
-      <thead>
-        <tr>
-          <th>{{ top_sort('Name', 'name') }}</th>
-          <th>{{ top_sort('No.', 'number') }}</th>
-          <th>{{ top_sort('Set', 'set') }}</th>
-          <th class="num">{{ top_sort('Price', 'reference_price') }}</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for card in top_cards %}
-        <tr>
-          <td>{{ dex_link(card) }}</td>
-          <td>{{ card.number or '' }}</td>
-          <td>{{ filter_link('set', card.set) }}</td>
-          <td class="num">{{ card.display_price | kr }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own. The bar shows each price relative to the most valuable card.', align_right=true, below=true) }}</h2>
+    <div class="viz-filter top-cards-sort" aria-label="Sort">
+      {% for label, field in [('Price', 'reference_price'), ('Name', 'name'), ('Set', 'set'), ('No.', 'number')] %}
+      {%- set href = sort_url(request, 'tsort', 'tdir', field, tsort, tdir, '/') -%}
+      <a href="{{ href }}" hx-get="{{ href }}" hx-target="#dashboard-top-cards-card" hx-select="#dashboard-top-cards-card" hx-swap="outerHTML"
+         class="viz-filter-pill{{ ' active' if tsort == field else '' }}">{{ label }}{% if tsort == field %} {{ '▲' if tdir == 'asc' else '▼' }}{% endif %}</a>
+      {% endfor %}
     </div>
+    {% if top_cards %}
+    {% set max_price = top_cards | map(attribute='display_price') | select | max %}
+    <ol class="top-cards-scroll top-card-list">
+      {% for card in top_cards %}
+      <li class="top-card-item">
+        <span class="top-card-item-rank">{{ loop.index }}</span>
+        {% if card.image_url %}<img class="top-card-item-thumb" src="{{ card.image_url }}" alt="" loading="lazy">{% else %}<span class="top-card-item-thumb top-card-item-thumb-empty" aria-hidden="true"></span>{% endif %}
+        <div class="top-card-item-main">
+          <div class="top-card-item-name">{{ dex_link(card) }}{% if card.qty > 1 %}<span class="tx-platform-badge" title="Copies owned">×{{ card.qty }}</span>{% endif %}</div>
+          <div class="top-card-item-meta">
+            {%- set meta = [] -%}
+            {%- if card.set %}{% set _ = meta.append(card.set) %}{% endif -%}
+            {%- if card.number %}{% set _ = meta.append('#' ~ card.number) %}{% endif -%}
+            {%- if card.rarity %}{% set _ = meta.append(card.rarity) %}{% endif -%}
+            {{ meta | join(' · ') }}
+            {%- if card.language %} <span class="tx-platform-badge top-card-lang-badge">{{ card.language }}</span>{% endif -%}
+          </div>
+          <div class="top-card-item-bar" aria-hidden="true"><span style="width: {{ '%.1f' | format((card.display_price or 0) / max_price * 100 if max_price else 0) }}%"></span></div>
+        </div>
+        <span class="top-card-item-price">{{ card.display_price | kr }}</span>
+      </li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted">No data yet.</p>
+    {% endif %}
   </div>
   </div>
 

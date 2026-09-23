@@ -77,7 +77,14 @@ class Card(Base):
     # confident match was found, or the lookup failed/was skipped (e.g.
     # offline) -- never retried automatically, since a card's image never
     # changes once printed.
+    # Since 2026-09-23 also looked up by Dex's own card_id (Pokemon TCG API
+    # by id for international prints, TCGdex's Japanese catalog for "jpn_"
+    # ones) -- see card_images.fetch_image_by_card_id and backfill_images.py.
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    # When backfill_images last tried and found no image, so a card with no
+    # match waits IMAGE_RETRY_AFTER_DAYS before being retried instead of
+    # being re-looked-up (and blocking the queue) on every run.
+    image_lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Live TCGPlayer market price, looked up from the same Pokemon TCG API
