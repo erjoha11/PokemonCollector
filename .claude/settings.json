@@ -3,6 +3,7 @@
     "defaultMode": "bypassPermissions",
     "allow": [
       "Bash(git fetch *)",
+      "Bash(git push origin --delete *)",
       "mcp__Vercel__get_deployment",
       "mcp__Vercel__list_deployments",
       "mcp__Vercel__web_fetch_vercel_url",
