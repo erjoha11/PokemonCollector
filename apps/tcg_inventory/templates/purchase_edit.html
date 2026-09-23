@@ -53,8 +53,14 @@
       <input type="number" step="0.01" name="purchase_shipping" id="purchase_shipping"
              value="{{ purchase_shipping if purchase_shipping is not none else '' }}" class="tx-input-md">
     </label>
+    <label>Split
+      <select id="distribute_method">
+        <option value="value">By market value</option>
+        <option value="even">Evenly</option>
+      </select>
+    </label>
     <button type="button" class="secondary" onclick="distributeAgreedTotal()"
-            title="Splits Agreed total − Shipping − prices already set on other cards evenly across the cards in this order that still have no price.">
+            title="Splits Agreed total − Shipping − prices already set on other cards across the cards in this order that still have no price. Trade rows and rows marked for deletion are skipped.">
       Distribute remaining across unpriced cards
     </button>
   </div>
@@ -62,7 +68,9 @@
     Agreed total defaults to shipping + the cards already priced, but type over it with what you actually paid for the
     order, then use "Distribute remaining across unpriced cards" to spread the difference over the ones you haven't
     priced individually (price 0) — useful for a lot where you know a few cards' values and want the rest to absorb
-    the remainder. This doesn't save until you click "Save changes" below.
+    the remainder. "By market value" gives each card a share proportional to its current price (a card with no price
+    gets the average share); "Evenly" gives every card the same amount. Either way the cents add up exactly to the
+    remainder. This doesn't save until you click "Save changes" below.
   </p>
   <p class="muted">
     Moving a row to a different Order ID clears this order's agreed total/shipping for that row —
@@ -78,34 +86,65 @@
 <script>
 // "Distribute remaining across unpriced cards" -- price 0 means "not priced
 // yet" (same convention as the Legacy import table's Order column), so a
-// card counts as unpriced here if its price field is 0 or blank. Client-side
-// only, same as the New Order cart's "Distribute evenly" button -- fills in
-// the price inputs but doesn't persist anything until Save changes is
-// clicked, so a mis-typed Agreed total costs nothing to undo.
+// card counts as unpriced here if its price field is 0 or blank. Trade rows
+// are skipped (their price is cash that moved with the card, not a cost
+// share -- see Transaction.direction), as are rows ticked for deletion.
+// Client-side only, same as the New Order cart's "Distribute evenly" button
+// -- fills in the price inputs but doesn't persist anything until Save
+// changes is clicked, so a mis-typed Agreed total costs nothing to undo.
 function distributeAgreedTotal() {
   var total = parseFloat(document.getElementById('purchase_total').value);
   if (isNaN(total)) { alert('Enter an Agreed total first.'); return; }
   var shipping = parseFloat(document.getElementById('purchase_shipping').value) || 0;
+  var method = document.getElementById('distribute_method').value;
 
-  var priceInputs = document.querySelectorAll('#purchase-edit-rows input[name="price"]');
   var pricedSum = 0;
   var unpriced = [];
-  priceInputs.forEach(function (el) {
-    var v = parseFloat(el.value);
-    if (v) { pricedSum += v; } else { unpriced.push(el); }
+  document.querySelectorAll('#purchase-edit-rows tr').forEach(function (row) {
+    var priceEl = row.querySelector('input[name="price"]');
+    if (!priceEl) return;
+    var typeEl = row.querySelector('select[name="type"]');
+    var deleteEl = row.querySelector('input[name="delete_tx_id"]');
+    if ((typeEl && typeEl.value === 'trade') || (deleteEl && deleteEl.checked)) return;
+    var v = parseFloat(priceEl.value);
+    if (v) { pricedSum += v; } else { unpriced.push(priceEl); }
   });
 
   if (unpriced.length === 0) {
     alert('Every card in this order already has a price -- nothing to distribute into.');
     return;
   }
-  var remaining = total - shipping - pricedSum;
-  if (remaining < 0) {
+  var remainingCents = Math.round((total - shipping - pricedSum) * 100);
+  if (remainingCents < 0) {
     alert("Agreed total is less than shipping plus the cards already priced -- can't distribute a negative amount.");
     return;
   }
-  var each = Math.round((remaining / unpriced.length) * 100) / 100;
-  unpriced.forEach(function (el) { el.value = each; });
+
+  // Weights: current market price per card, or 1 each for an even split. A
+  // card with no market price gets the average of the known ones; if none
+  // are known at all, fall back to an even split.
+  var weights = unpriced.map(function () { return 1; });
+  if (method === 'value') {
+    var refs = unpriced.map(function (el) { return parseFloat(el.dataset.refPrice) || 0; });
+    var known = refs.filter(function (r) { return r > 0; });
+    if (known.length) {
+      var avg = known.reduce(function (a, b) { return a + b; }, 0) / known.length;
+      weights = refs.map(function (r) { return r > 0 ? r : avg; });
+    }
+  }
+  var weightSum = weights.reduce(function (a, b) { return a + b; }, 0);
+
+  // Largest-remainder rounding: floor every share to whole cents, then hand
+  // the leftover cents to the shares that lost the most -- so the prices
+  // always add up to the remainder exactly and the order shows as settled.
+  var shares = weights.map(function (w, i) {
+    var exact = remainingCents * w / weightSum;
+    return { i: i, cents: Math.floor(exact), frac: exact - Math.floor(exact) };
+  });
+  var leftover = remainingCents - shares.reduce(function (a, s) { return a + s.cents; }, 0);
+  shares.slice().sort(function (a, b) { return b.frac - a.frac; }).slice(0, leftover)
+    .forEach(function (s) { s.cents += 1; });
+  shares.forEach(function (s) { unpriced[s.i].value = (s.cents / 100).toFixed(2); });
 }
 </script>
 {% endblock %}

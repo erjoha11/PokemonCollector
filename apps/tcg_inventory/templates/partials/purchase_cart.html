@@ -1,15 +1,16 @@
 <div class="card mb-15">
   <h2>New Order <span class="muted">(Order ID {{ purchase_id }})</span></h2>
-  <form method="post" action="/transactions/purchase"
+  <form method="post" action="/transactions/purchase"{% if type == 'trade' %} class="cart-is-trade"{% endif %}
         hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
         hx-indicator="#register-order-indicator"
         onsubmit="return confirmRegisterOrder(this)">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
-      <select name="type">
+      <select name="type" onchange="this.form.classList.toggle('cart-is-trade', this.value === 'trade')">
         <option value="purchase" {{ 'selected' if type == 'purchase' }}>Purchase</option>
         <option value="sale" {{ 'selected' if type == 'sale' }}>Sale</option>
+        <option value="trade" {{ 'selected' if type == 'trade' }}>Trade</option>
       </select>
       <input type="date" name="date" value="{{ today }}" required>
       <input type="text" name="platform" placeholder="Platform (optional)">
@@ -32,7 +33,7 @@
 
     <table class="tx-table mb-075">
       <thead>
-        <tr><th>Card</th><th class="num">Price</th><th></th></tr>
+        <tr><th>Card</th><th class="cart-trade-only" title="In = a card you received, Out = a card you gave away.">In / Out</th><th class="num">Price</th><th></th></tr>
       </thead>
       <tbody id="cart-body">
       </tbody>

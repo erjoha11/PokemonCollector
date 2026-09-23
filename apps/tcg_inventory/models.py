@@ -220,6 +220,12 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)  # "purchase" | "sale" | "trade"
+    # Only meaningful when type == "trade": "in" (card received) or "out"
+    # (card given away). NULL on every non-trade row, and on trade rows
+    # recorded before this column existed. On a trade row, `price` is any
+    # cash that moved alongside the card -- paid on an "in" row, received
+    # on an "out" row -- see queries.trade_summary.
+    direction: Mapped[str | None] = mapped_column(String, nullable=True)
     date: Mapped[dt.date] = mapped_column(Date, nullable=False)
     price: Mapped[float] = mapped_column(Float, nullable=False)
     platform: Mapped[str | None] = mapped_column(String, nullable=True)

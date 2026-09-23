@@ -1227,7 +1227,20 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
     return keys
 
 
-def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict], list[Transaction]]:
+def _trade_direction(tx_type: str, values: list[str], i: int) -> str | None:
+    """The `direction` to store for form row `i`: "in"/"out" on a trade row,
+    NULL on anything else (see Transaction.direction). Tolerates a form that
+    didn't send a direction for this row at all -- older clients, or a
+    caller that only ever registers purchases -- by storing NULL.
+    """
+    if tx_type != "trade" or i >= len(values):
+        return None
+    return values[i] if values[i] in ("in", "out") else None
+
+
+def _group_transactions_by_purchase(
+    txs: list[Transaction], trade_prices_then: dict[int, float | None] | None = None
+) -> tuple[list[dict], list[Transaction]]:
     """Split a transaction list into purchase-id groups (cards bought/sold
     together under a shared purchase_id, e.g. a lot) plus the remaining
     ungrouped ones, keyed on purchase_id instead of created_at.
@@ -1296,6 +1309,8 @@ def _group_transactions_by_purchase(txs: list[Transaction]) -> tuple[list[dict],
                 ),
                 "min_date": min(t.date for t in group_txs),
                 "min_id": min(t.id for t in group_txs),
+                # None for an order with no trade rows -- see queries.trade_summary.
+                "trade": queries.trade_summary(group_txs, trade_prices_then),
             }
         )
     purchase_groups.sort(key=lambda g: g["purchase_id"], reverse=True)
@@ -1322,7 +1337,8 @@ def _transactions_context(
         .all()
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
-    purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs)
+    trade_prices_then = queries.trade_prices_at(db, [t for t in txs if t.type == "trade"])
+    purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs, trade_prices_then)
     known_cards, unknown_cards = _cards_with_known_added_date(db)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
@@ -1595,6 +1611,7 @@ def create_purchase(
     purchase_shipping: float | None = Form(None),
     card_id: list[int] = Form(default=[]),
     price: list[float] = Form(default=[]),
+    direction: list[str] = Form(default=[]),
 ):
     db = get_db_session()
     try:
@@ -1607,11 +1624,12 @@ def create_purchase(
                 ),
             )
         tx_date = dt.date.fromisoformat(date)
-        for cid, p in zip(card_id, price):
+        for i, (cid, p) in enumerate(zip(card_id, price)):
             db.add(
                 Transaction(
                     card_id=cid,
                     type=type,
+                    direction=_trade_direction(type, direction, i),
                     date=tx_date,
                     price=p,
                     platform=platform or None,
@@ -1801,6 +1819,7 @@ def update_purchase(
     delete_tx_id: list[int] = Form(default=[]),
     purchase_total: float | None = Form(None),
     purchase_shipping: float | None = Form(None),
+    direction: list[str] = Form(default=[]),
 ):
     """Applies every row edit for this order -- including reassigning a
     row's purchase_id, which is move/merge/split's shared underlying
@@ -1828,6 +1847,7 @@ def update_purchase(
                 continue
             tx.card_id = card_id[i]
             tx.type = type[i]
+            tx.direction = _trade_direction(type[i], direction, i)
             tx.date = dt.date.fromisoformat(date[i])
             tx.price = price[i]
             tx.platform = platform[i] or None
@@ -1943,6 +1963,7 @@ def update_transaction(
     platform: str = Form(""),
     fees: float | None = Form(None),
     purchase_id: int | None = Form(None),
+    direction: str = Form(""),
 ):
     """Quick per-row edit, including reassigning purchase_id for a single
     row (e.g. an ungrouped transaction, or pulling one card out of an order
@@ -1960,6 +1981,7 @@ def update_transaction(
             return HTMLResponse("")
         tx.date = dt.date.fromisoformat(date)
         tx.type = type
+        tx.direction = _trade_direction(type, [direction], 0)
         tx.price = price
         tx.platform = platform or None
         tx.fees = fees

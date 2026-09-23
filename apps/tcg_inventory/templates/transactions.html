@@ -48,6 +48,53 @@
 </div>
 {% endmacro %}
 
+{# Gave vs. got for an order's trade rows, with the trade's gain -- see
+   queries.trade_summary for the math. "Then" is each card's price on the
+   trade date (from card_snapshots), shown only when every card has one. #}
+{% macro trade_side(title, rows, now, then, prices_then) %}
+<div class="trade-side">
+  <h4>{{ title }}</h4>
+  {% if rows %}
+  <ul>
+    {% for tx in rows %}
+    <li>
+      <span>{{ tx.card.name }} <span class="muted">{{ tx.card.set }}{% if tx.card.number %} #{{ tx.card.number }}{% endif %}{% if tx.card.variant %} · {{ tx.card.variant }}{% endif %}</span></span>
+      <span class="num">{{ tx.card.display_price | kr }}{% if prices_then[tx.id] is not none %} <span class="muted" title="Price on the trade date">({{ prices_then[tx.id] | kr }})</span>{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="trade-side-total"><span>Total</span><span class="num">{{ now | kr }}{% if then is not none %} <span class="muted">({{ then | kr }})</span>{% endif %}</span></div>
+  {% else %}
+  <p class="muted">None</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro trade_block(t) %}
+<div class="trade-summary">
+  {{ trade_side('Gave', t.gave, t.value_out_now, t.value_out_then, t.prices_then) }}
+  {{ trade_side('Got', t.got, t.value_in_now, t.value_in_then, t.prices_then) }}
+  <div class="trade-result">
+    {% if t.cash_paid or t.cash_received %}
+    <div class="muted">Cash: received {{ t.cash_received | kr }}, paid {{ t.cash_paid | kr }}</div>
+    {% endif %}
+    <div>
+      <span class="tx-kpi-label">Trade gain {{ info("Value of the cards you got minus the cards you gave, plus any cash received and minus any cash paid. Today uses current prices; the figure in brackets uses each card's price on the trade date, when price history goes back that far.") }}</span>
+      <span class="tx-kpi-value {{ 'viz-delta-gain' if t.gain_now >= 0 else 'viz-delta-loss' }}">{{ t.gain_now | kr }}</span>
+      <span class="muted">today</span>
+      {% if t.gain_then is not none %}
+      <span class="{{ 'viz-delta-gain' if t.gain_then >= 0 else 'viz-delta-loss' }}">{{ t.gain_then | kr }}</span> <span class="muted">at trade date</span>
+      {% else %}
+      <span class="muted">· no price history for the trade date</span>
+      {% endif %}
+    </div>
+    {% if t.unknown %}
+    <p class="tx-diff-flag">{{ t.unknown | length }} trade card{{ 's' if t.unknown | length != 1 }} without In/Out ({{ t.unknown | map(attribute='card.name') | join(', ') }}) — not counted. Set it with “Edit order”.</p>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
 {% include "partials/kpi_module.html" %}
 
 {# ---------------------------------------------------------------------
@@ -150,6 +197,8 @@
                   hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
           {% if group.total_fees %}<span class="muted">Fees {{ group.total_fees | kr }}</span>{% endif %}
         </form>
+
+        {% if group.trade %}{{ trade_block(group.trade) }}{% endif %}
 
         {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
 

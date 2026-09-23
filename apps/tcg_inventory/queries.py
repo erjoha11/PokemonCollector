@@ -617,6 +617,88 @@ def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
     }
 
 
+def trade_prices_at(db: Session, trade_txs: list[Transaction]) -> dict[int, float | None]:
+    """Each trade row's card price as of the trade date, keyed by
+    transaction id: the latest `card_snapshots` row on or before that date
+    (any source). None when the card has no snapshot that old -- e.g. a
+    trade from before snapshots existed -- rather than guessing with
+    today's price, which `trade_summary` already reports separately.
+    """
+    if not trade_txs:
+        return {}
+    card_ids = {t.card_id for t in trade_txs}
+    latest = max(t.date for t in trade_txs)
+    snaps = (
+        db.query(CardSnapshot)
+        .filter(CardSnapshot.card_id.in_(card_ids), CardSnapshot.date <= latest)
+        .order_by(CardSnapshot.date)
+        .all()
+    )
+    by_card: dict[int, list[CardSnapshot]] = {}
+    for s in snaps:
+        by_card.setdefault(s.card_id, []).append(s)
+    result: dict[int, float | None] = {}
+    for t in trade_txs:
+        price = None
+        for s in by_card.get(t.card_id, []):
+            if s.date > t.date:
+                break
+            price = s.reference_price
+        result[t.id] = price
+    return result
+
+
+def trade_summary(txs: list[Transaction], prices_then: dict[int, float | None] | None = None) -> dict | None:
+    """What a trade gave vs. got, and whether it came out ahead.
+
+    Works on an order's rows (only its type == "trade" rows count; None if
+    it has none). `direction` splits them into gave ("out") and got ("in");
+    trade rows recorded before `direction` existed land in `unknown` and are
+    left out of the totals rather than guessed. On a trade row `price` is
+    cash that moved with the card (paid on "in", received on "out"), so
+
+        gain = value of cards got - value of cards gave + cash received - cash paid
+
+    `*_now` uses each card's current `display_price`. `*_then` uses
+    `prices_then` (see `trade_prices_at`) and is None unless every card on
+    both sides has a price for the trade date. Trade cash stays out of
+    `economic_summary` / Net invested, same as before `direction` existed.
+    """
+    trades = [t for t in txs if t.type == "trade"]
+    if not trades:
+        return None
+    prices_then = prices_then or {}
+
+    def side(rows):
+        now = sum(t.card.display_price or 0.0 for t in rows)
+        then_vals = [prices_then.get(t.id) for t in rows]
+        then = sum(then_vals) if all(v is not None for v in then_vals) else None
+        return now, then
+
+    gave = [t for t in trades if t.direction == "out"]
+    got = [t for t in trades if t.direction == "in"]
+    unknown = [t for t in trades if t.direction not in ("in", "out")]
+    out_now, out_then = side(gave)
+    in_now, in_then = side(got)
+    cash_paid = sum(t.price or 0.0 for t in got)
+    cash_received = sum(t.price or 0.0 for t in gave)
+    cash_net = cash_received - cash_paid
+    return {
+        "gave": gave,
+        "got": got,
+        "unknown": unknown,
+        "value_out_now": out_now,
+        "value_in_now": in_now,
+        "cash_paid": cash_paid,
+        "cash_received": cash_received,
+        "gain_now": in_now - out_now + cash_net,
+        "value_out_then": out_then,
+        "value_in_then": in_then,
+        "gain_then": (in_then - out_then + cash_net) if out_then is not None and in_then is not None else None,
+        "prices_then": {t.id: prices_then.get(t.id) for t in trades},
+    }
+
+
 def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> dict[int, float]:
     """Return actual net investment per card using economic-summary rules.
 

@@ -1138,3 +1138,30 @@ Left as-is: `cards.id=164` Mega Venusaur ex (Mega Brave 3/63), qty 0, flagged
 There is no UI for flagged cards: they don't appear in Inventory, and the dashboard
 doesn't exclude them. A per-card review page (delete / keep as qty 0 / ignore) was
 suggested but not built.
+
+## Trade In/Out + trade gain; smarter "Distribute" — 2026-09-23 session
+
+### Code (branch `claude/practical-archimedes-xg1ubx`)
+
+- New nullable column `transactions.direction` ("in"/"out", trade rows only).
+  `init_db()`'s additive column pass creates it on Supabase at the next
+  deploy — no manual migration.
+- Gave/Got block and trade gain on trade orders (`queries.trade_summary`,
+  `queries.trade_prices_at`); In/Out selectors in the New Order cart (which now
+  offers Trade as a type), Edit order and the row quick-edit. See README
+  "Trades".
+- Edit order's "Distribute remaining" can split by market value or evenly,
+  rounds exactly to the remainder, and skips trade rows.
+
+### Direct database change still to do after deploy
+
+The one existing trade (order #13, 2026-09-12) was recorded before `direction`
+existed, so it shows "3 trade cards without In/Out" until set. The user
+confirmed the direction, so after the deploy has added the column:
+
+```sql
+update transactions set direction = 'out' where id = 56;       -- Mega Venusaur ex
+update transactions set direction = 'in'  where id in (57, 58); -- Hypno, Slowbro
+```
+
+(or set it in Edit order for #13).
