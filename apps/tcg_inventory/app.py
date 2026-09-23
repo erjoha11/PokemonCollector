@@ -582,6 +582,7 @@ def inventory(
         # reused for both instead (see #163).
         txs = db.query(Transaction).all()
         invested_by_card = queries.net_invested_by_card(db, txs)
+        ripped_card_ids = {t.card_id for t in txs if t.type == "ripped"}
         if sort in INVENTORY_VALUE_SORTS:
             def value_sort_key(card):
                 invested = invested_by_card.get(card.id)
@@ -614,6 +615,7 @@ def inventory(
             "sort": sort,
             "direction": direction,
             "invested_by_card": invested_by_card,
+            "ripped_card_ids": ripped_card_ids,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,
@@ -1227,6 +1229,19 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
     return keys
 
 
+# Transaction types that record how a card was acquired without any money
+# changing hands through the row's price being a cost: trade (cards swapped;
+# price is side cash, see Transaction.direction) and ripped (pulled from a
+# pack yourself, always price 0). Both stay out of an order's registered
+# Value/Remaining and out of Net invested.
+NON_CASH_TYPES = ("trade", "ripped")
+
+
+def _price_for(tx_type: str, price: float) -> float:
+    """A ripped card is free by definition -- whatever price a form sent."""
+    return 0.0 if tx_type == "ripped" else price
+
+
 def _trade_direction(tx_type: str, values: list[str], i: int) -> str | None:
     """The `direction` to store for form row `i`: "in"/"out" on a trade row,
     NULL on anything else (see Transaction.direction). Tolerates a form that
@@ -1267,7 +1282,8 @@ def _group_transactions_by_purchase(
         # built up piecemeal via direct DB edits (see HANDOFF.md's 2026-09-14
         # entry, order #11). A trade row's price must never contribute to
         # the registered total or its diff against the agreed total.
-        priced_txs = [t for t in group_txs if t.type != "trade"]
+        # Ripped rows are the same: always 0, never part of what was paid.
+        priced_txs = [t for t in group_txs if t.type not in NON_CASH_TYPES]
         total_price = sum(t.price for t in priced_txs)
         # Every row in a group carries its own copy of the same value (same
         # redundant-per-row pattern as date/platform) -- take whichever one
@@ -1506,7 +1522,7 @@ def purchase_cart_start(request: Request, type: str = "purchase"):
             request,
             "partials/purchase_cart.html",
             {
-                "type": type if type in ("purchase", "sale") else "purchase",
+                "type": type if type in ("purchase", "sale", "trade", "ripped") else "purchase",
                 "purchase_id": _next_purchase_id(db),
                 "today": dt.date.today().isoformat(),
             },
@@ -1551,7 +1567,10 @@ def purchase_cart_browse_unordered(request: Request):
     """
     db = get_db_session()
     try:
-        ordered_card_ids = db.query(Transaction.card_id).filter(Transaction.type == "purchase").distinct()
+        # A ripped card is accounted for too -- it just didn't cost anything.
+        ordered_card_ids = (
+            db.query(Transaction.card_id).filter(Transaction.type.in_(("purchase", "ripped"))).distinct()
+        )
         base = db.query(Card).filter(~Card.id.in_(ordered_card_ids))
         total_count = base.count()
         results = base.order_by(Card.name).limit(_BROWSE_UNORDERED_LIMIT).all()
@@ -1634,7 +1653,7 @@ def create_purchase(
                     type=type,
                     direction=_trade_direction(type, direction, i),
                     date=tx_date,
-                    price=p,
+                    price=_price_for(type, p),
                     platform=platform or None,
                     purchase_id=purchase_id,
                     purchase_total=purchase_total,
@@ -1852,7 +1871,7 @@ def update_purchase(
             tx.type = type[i]
             tx.direction = _trade_direction(type[i], direction, i)
             tx.date = dt.date.fromisoformat(date[i])
-            tx.price = price[i]
+            tx.price = _price_for(type[i], price[i])
             tx.platform = platform[i] or None
             tx.note = note[i] or None
             target_purchase_id = new_purchase_id[i]
@@ -1913,14 +1932,14 @@ def create_transaction(
 
         if existing is not None:
             existing.date = dt.date.fromisoformat(date)
-            existing.price = price
+            existing.price = _price_for(type, price)
             existing.purchase_id = purchase_id
         else:
             tx = Transaction(
                 card_id=card.id,
                 type=type,
                 date=dt.date.fromisoformat(date),
-                price=price,
+                price=_price_for(type, price),
                 platform=platform or None,
                 fees=fees,
                 purchase_id=purchase_id,
@@ -1985,7 +2004,7 @@ def update_transaction(
         tx.date = dt.date.fromisoformat(date)
         tx.type = type
         tx.direction = _trade_direction(type, [direction], 0)
-        tx.price = price
+        tx.price = _price_for(type, price)
         tx.platform = platform or None
         tx.fees = fees
         tx.purchase_id = purchase_id

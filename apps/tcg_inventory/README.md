@@ -68,6 +68,17 @@ run).
   totals rather than guessed. Trades, including their cash, stay out of
   Value, Net invested and paper gain/loss, same as before.
 
+  **Ripped.** A card you pulled from a pack yourself is recorded as a
+  `ripped` transaction: pick "Ripped (pulled myself)" as the New Order
+  cart's type (the Price column disappears), or set a row's Type to Ripped
+  in Edit order / quick-edit. A ripped row is always price 0 (the server
+  forces it) and, like a trade, never counts toward an order's Value or
+  Remaining, Net invested, or a card's Net paid — the pack cost isn't
+  tracked. It does count as the card being accounted for, so ripped cards
+  don't show up under "Show cards without an order", and Inventory marks
+  them with a green "Ripped" badge. Edit order's Distribute skips ripped
+  rows.
+
   Net invested and paper gain/loss render as a caption on the Order history
   header, not as a second KPI block. The page deliberately does **not**
   show a "Current value" figure: it was `headline.unique_value`, which the

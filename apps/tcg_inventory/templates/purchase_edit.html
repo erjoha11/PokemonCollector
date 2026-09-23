@@ -114,7 +114,7 @@ function distributeAgreedTotal() {
     if (!priceEl) return;
     var typeEl = row.querySelector('select[name="type"]');
     var deleteEl = row.querySelector('input[name="delete_tx_id"]');
-    if ((typeEl && typeEl.value === 'trade') || (deleteEl && deleteEl.checked)) return;
+    if ((typeEl && (typeEl.value === 'trade' || typeEl.value === 'ripped')) || (deleteEl && deleteEl.checked)) return;
     var v = parseFloat(priceEl.value);
     if (v) { pricedSum += v; } else { unpriced.push(priceEl); }
   });

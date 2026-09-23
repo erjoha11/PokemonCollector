@@ -35,7 +35,7 @@
       {% for card in cards %}
       <tr{{ ' class="card-row-unowned"' | safe if card.qty == 0 }}>
         <td><input type="checkbox" class="sale-select" data-card-id="{{ card.id }}"></td>
-        <td>{{ dex_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}</td>
+        <td>{{ dex_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}</td>
         <td>{{ card.number or '' }}</td>
         <td>{{ card.series or '' }}</td>
         <td>{{ card.set or '' }}</td>
