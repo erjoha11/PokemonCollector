@@ -23,13 +23,17 @@ run).
 
 - **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
   series, most valuable cards (scrollable list), by rarity.
-- **Gain / loss KPI card** — first and double-width in the KPI row on
-  Dashboard, Inventory and Transactions (`queries.gain_summary`): today's
-  unique value minus Net invested, in kr and %, colored by sign, plus value
-  today vs. paid, how many cards are up/down, and the best and worst card.
-  Up/down/best/worst only cover owned cards with a registered transaction
-  (an unregistered card has no known cost); a ripped card counts as up by
-  its full value.
+- **Overview KPI card** — first and triple-width in the KPI row on
+  Dashboard, Inventory and Transactions, with three sections side by side
+  (stacked on a phone):
+  - **Gain / loss** (`queries.gain_summary`): today's unique value minus
+    Net invested, in kr and %, colored by sign, plus what was paid, how
+    many cards are up/down, and the best and worst card. Up/down/best/worst
+    only cover owned cards with a registered transaction (an unregistered
+    card has no known cost); a ripped card counts as up by its full value.
+  - **Total Cards**: physical cards, unique cards, duplicates.
+  - **Market Value**: total value, unique value, duplicate value. Net
+    invested isn't repeated here; it's the Gain / loss section's "Paid".
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
@@ -138,7 +142,10 @@ run).
   by reassigning Order ID — all edits in a group commit atomically, and
   moving a row out of an order clears that row's agreed total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). Agreed total defaults to shipping + the
+  total/shipping afterward). Save keeps you on the edit page with a
+  "Saved ✓" note and a "← Back to Transactions" link (unless every row
+  was moved out, which lands on Transactions); a failed save shows an
+  error instead of silently doing nothing. Agreed total defaults to shipping + the
   cards already priced (price 0 = not priced yet) when nothing's been
   saved yet, but a saved value is a real number the user typed and is
   never silently recalculated back to the sum. A "Distribute remaining
@@ -653,7 +660,7 @@ row per card (`qty` + `reference_price` as of that day) right after it
 completes, so `queries.real_value_history` can report what the collection
 was *actually* worth on a given date, not an estimate. It's rendered as the
 **"Market Value" chart** on both Dashboard and Transactions' "View charts"
-section, using the unique/duplicates/total metric filter, with a stat row
+section, using the unique/duplicates/total metric filter (defaults to total), with a stat row
 (Net invested / Current value / Gain-loss, `queries.economic_summary` +
 `headline_summary`) built into the chart card itself (`chart_card`'s
 `stats` param in `macros.html`) rather than off in a separate KPI tile.
