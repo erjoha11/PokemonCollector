@@ -53,7 +53,7 @@
   {{ market_value_card('dashboard-market-value-card', dashboard_market_value_heading, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">
-    <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own.', align_right=true, below=true) }}</h2>
+    <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own. Below the price: gain, the value of the copies you own minus what you paid for them (only when a purchase is registered).', align_right=true, below=true) }}</h2>
     <div class="viz-filter top-cards-sort" aria-label="Sort">
       {% for label, field in [('Price', 'reference_price'), ('Name', 'name'), ('Set', 'set'), ('No.', 'number')] %}
       {%- set href = sort_url(request, 'tsort', 'tdir', field, tsort, tdir, '/') -%}
@@ -78,7 +78,17 @@
             {%- if card.language %} <span class="tx-platform-badge top-card-lang-badge">{{ card.language }}</span>{% endif -%}
           </div>
         </div>
-        <span class="top-card-item-price">{{ card.display_price | kr }}</span>
+        <div class="top-card-item-figures">
+          <span class="top-card-item-price">{{ card.display_price | kr }}</span>
+          {#- Gain = today's value of every copy owned minus what was paid for
+              them, the same per-card figure as "Best card" in the KPI tile
+              (queries.gain_summary). Only shown when a cost is registered. #}
+          {%- set paid = invested_by_card.get(card.id) if invested_by_card else none %}
+          {%- if paid is not none and card.qty > 0 %}
+          {%- set card_gain = card.total_value - paid %}
+          <span class="top-card-item-gain {{ 'viz-delta-gain' if card_gain > 0 else ('viz-delta-loss' if card_gain < 0 else 'muted') }}" title="Value of the {{ card.qty }} cop{{ 'y' if card.qty == 1 else 'ies' }} you own minus what you paid ({{ paid | kr }})">{{ '+' if card_gain > 0 }}{{ card_gain | kr }}</span>
+          {%- endif %}
+        </div>
       </li>
       {% endfor %}
     </ol>
