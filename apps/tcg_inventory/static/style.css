@@ -942,6 +942,14 @@ input:focus, select:focus, textarea:focus {
 }
 .warnings li { margin: 0.15rem 0; }
 
+.saved-note {
+  background: #ecf8ee;
+  border: 1px solid #a8dcb1;
+  border-radius: var(--radius);
+  padding: 0.6rem 1rem;
+  color: #1d5e2a;
+}
+
 .result-box {
   background: var(--surface);
   border: 1px solid var(--border);

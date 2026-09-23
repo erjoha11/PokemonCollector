@@ -148,7 +148,10 @@ run).
   by reassigning Order ID — all edits in a group commit atomically, and
   moving a row out of an order clears that row's agreed total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). Agreed total defaults to shipping + the
+  total/shipping afterward). Save keeps you on the edit page with a
+  "Saved ✓" note and a "← Back to Transactions" link (unless every row
+  was moved out, which lands on Transactions); a failed save shows an
+  error instead of silently doing nothing. Agreed total defaults to shipping + the
   cards already priced (price 0 = not priced yet) when nothing's been
   saved yet, but a saved value is a real number the user typed and is
   never silently recalculated back to the sum. A "Distribute remaining
@@ -663,7 +666,7 @@ row per card (`qty` + `reference_price` as of that day) right after it
 completes, so `queries.real_value_history` can report what the collection
 was *actually* worth on a given date, not an estimate. It's rendered as the
 **"Market Value" chart** on both Dashboard and Transactions' "View charts"
-section, using the unique/duplicates/total metric filter, with a stat row
+section, using the unique/duplicates/total metric filter (defaults to total), with a stat row
 (Net invested / Current value / Gain-loss, `queries.economic_summary` +
 `headline_summary`) built into the chart card itself (`chart_card`'s
 `stats` param in `macros.html`) rather than off in a separate KPI tile.
