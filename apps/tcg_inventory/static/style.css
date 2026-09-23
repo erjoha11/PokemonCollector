@@ -1169,6 +1169,34 @@ button.secondary {
   margin-top: 0.8rem;
 }
 
+/* Trade orders: Gave | Got side by side, gain underneath. */
+.trade-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.6rem 1.5rem;
+  margin: 0.4rem 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.trade-side h4 { margin: 0 0 0.4rem; }
+.trade-side ul { list-style: none; margin: 0; padding: 0; }
+.trade-side li,
+.trade-side-total {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+}
+.trade-side .num { white-space: nowrap; }
+.trade-side-total { border-top: 1px solid var(--border); margin-top: 0.3rem; font-weight: 600; }
+.trade-result { grid-column: 1 / -1; }
+.trade-result .tx-diff-flag { color: #d03b3b; margin: 0.4rem 0 0; }
+
+/* New Order cart: the In/Out column only appears when the order's type is Trade. */
+.cart-trade-only { display: none; }
+.cart-is-trade .cart-trade-only { display: table-cell; }
+
 /* --------------------------------------------------------------------
    Transactions: the merged card picker
    -------------------------------------------------------------------- */

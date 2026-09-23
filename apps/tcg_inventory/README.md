@@ -51,6 +51,23 @@ run).
   comes from a shared CSS grid on the header row and every `<summary>`
   (`.orders-row` in `style.css`) — keep those two in sync.
 
+  **Trades.** A trade row (`type == "trade"`) carries a `direction`:
+  `in` (a card you got) or `out` (a card you gave). It's set per card in
+  the New Order cart when the order's type is Trade (an In/Out column
+  appears), in Edit order, or in a row's quick-edit. On a trade row
+  `price` is any cash that moved with the card — paid on `in`, received
+  on `out` — and 0 when none did. An order with trade rows shows a
+  **Gave / Got** block above its cards, with each side's value and the
+  trade's gain (`queries.trade_summary`):
+  `value got − value gave + cash received − cash paid`. "Today" uses each
+  card's current `display_price`; the bracketed figure uses its price on
+  the trade date (latest `card_snapshots` row on or before it,
+  `queries.trade_prices_at`) and only appears when every card on both
+  sides has one. Trade rows with no direction (recorded before the
+  column existed) are listed as needing In/Out and left out of the
+  totals rather than guessed. Trades, including their cash, stay out of
+  Value, Net invested and paper gain/loss, same as before.
+
   Net invested and paper gain/loss render as a caption on the Order history
   header, not as a second KPI block. The page deliberately does **not**
   show a "Current value" figure: it was `headline.unique_value`, which the
@@ -109,9 +126,14 @@ run).
   never silently recalculated back to the sum. A "Distribute remaining
   across unpriced cards" button (client-side, same pattern as the New
   Order cart's "Distribute evenly") fills `Agreed total − Shipping −
-  Σ(already-priced cards)` evenly into the still-unpriced rows — useful
+  Σ(already-priced cards)` into the still-unpriced rows — useful
   for a lot where a few cards' values are known and the rest should
-  absorb the remainder; rejects if every card is already priced or the
+  absorb the remainder. A "Split" choice picks **By market value** (each
+  card's share is proportional to its current `display_price`; a card
+  with no price gets the average share) or **Evenly**. Shares use
+  largest-remainder rounding, so they always add up to the remainder to
+  the øre and the order lands on ✓. Trade rows and rows ticked for
+  deletion are skipped. It rejects if every card is already priced or the
   result would be negative. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards

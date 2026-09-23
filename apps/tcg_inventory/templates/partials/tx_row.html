@@ -17,9 +17,9 @@
       {{ meta | join(' · ') }}
     </div>
   </td>
-  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}</span></td>
+  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span></td>
   <td class="num tx-price{{ ' muted' if tx.type == 'trade' else '' }}"
-      {%- if tx.type == 'trade' %} title="Trade price is not counted toward Net invested, Paper gain/loss, or any other KPI — trades aren't cash spend."{% endif %}>
+      {%- if tx.type == 'trade' %} title="On a trade, price is cash that moved with the card (paid on In, received on Out). It counts in the trade's gain but not toward Net invested, Paper gain/loss, or any other KPI."{% endif %}>
     {{ tx.price | kr }}
     {% if tx.fees %}<div class="tx-card-meta">+ {{ tx.fees | kr }} fee</div>{% endif %}
   </td>
@@ -39,6 +39,11 @@
         <option value="purchase" {% if tx.type == 'purchase' %}selected{% endif %}>Purchase</option>
         <option value="sale" {% if tx.type == 'sale' %}selected{% endif %}>Sale</option>
         <option value="trade" {% if tx.type == 'trade' %}selected{% endif %}>Trade</option>
+      </select>
+      <select name="direction" title="Trade only: In = a card you received, Out = a card you gave away.">
+        <option value="" {% if not tx.direction %}selected{% endif %}>—</option>
+        <option value="in" {% if tx.direction == 'in' %}selected{% endif %}>In</option>
+        <option value="out" {% if tx.direction == 'out' %}selected{% endif %}>Out</option>
       </select>
       <input type="number" step="0.01" name="price" value="{{ tx.price }}" placeholder="Price" required style="width: 110px;">
       <input type="number" step="0.01" name="fees" value="{{ tx.fees if tx.fees is not none else '' }}" placeholder="Fees" style="width: 100px;">
