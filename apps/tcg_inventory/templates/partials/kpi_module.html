@@ -1,49 +1,44 @@
 {% from "partials/macros.html" import info %}
 <div class="kpi-grid">
-  {% if gain is defined and gain %}
-  {# The collector's headline number, first and wider than the rest: how
-     far today's value is above what was paid (queries.gain_summary). #}
-  <div class="kpi-card kpi-gain {{ 'kpi-gain-up' if gain.gain >= 0 else 'kpi-gain-down' }}">
-    <h3>Gain / loss {{ info("Today's value of the unique cards you own, minus everything you've paid (Net invested, shipping included). Not realized — nothing has been sold. Up/down counts only cover cards with a registered transaction, since an unregistered card has no known cost.") }}</h3>
-    <div class="kpi-hero">
-      <span class="value kpi-gain-value">{{ '+' if gain.gain > 0 }}{{ gain.gain | kr }}</span>
-      {% if gain.pct is not none %}<span class="kpi-gain-pct">{{ '+' if gain.pct > 0 }}{{ '%.0f' | format(gain.pct) }} %</span>{% endif %}
+  {# Gain / loss, Total Cards and Market Value share one wide card: the
+     collector's headline number (how far today's value is above what was
+     paid, queries.gain_summary) first, with the card count and value it's
+     built from beside it. Each section keeps its own accent dot. #}
+  <div class="kpi-card kpi-overview kpi-gain {{ 'kpi-gain-up' if gain.gain >= 0 else 'kpi-gain-down' }}">
+    <div class="kpi-overview-section kpi-overview-gain">
+      <h3>Gain / loss {{ info("Today's value of the unique cards you own (Market Value's Unique value), minus everything you've paid (Net invested, shipping included). Not realized — nothing has been sold. Up/down counts only cover cards with a registered transaction, since an unregistered card has no known cost.") }}</h3>
+      <div class="kpi-hero">
+        <span class="value kpi-gain-value">{{ '+' if gain.gain > 0 }}{{ gain.gain | kr }}</span>
+        {% if gain.pct is not none %}<span class="kpi-gain-pct">{{ '+' if gain.pct > 0 }}{{ '%.0f' | format(gain.pct) }} %</span>{% endif %}
+      </div>
+      <div class="kpi-support">
+        <div class="stat-row"><span class="stat-label">Paid</span><span class="stat-value">{{ gain.net_invested | kr }}</span></div>
+        <div class="stat-row"><span class="stat-label">Cards up / down</span><span class="stat-value"><span class="viz-delta-gain">{{ gain.n_up }}</span> / <span class="viz-delta-loss">{{ gain.n_down }}</span></span></div>
+        {% if gain.best %}<div class="stat-row"><span class="stat-label" title="{{ gain.best[0].name }}">Best: {{ gain.best[0].name }}</span><span class="stat-value viz-delta-gain">+{{ gain.best[1] | kr }}</span></div>{% endif %}
+        {% if gain.worst %}<div class="stat-row"><span class="stat-label" title="{{ gain.worst[0].name }}">Worst: {{ gain.worst[0].name }}</span><span class="stat-value viz-delta-loss">{{ gain.worst[1] | kr }}</span></div>{% endif %}
+      </div>
     </div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Value today</span><span class="stat-value">{{ gain.unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Paid</span><span class="stat-value">{{ gain.net_invested | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Cards up / down</span><span class="stat-value"><span class="viz-delta-gain">{{ gain.n_up }}</span> / <span class="viz-delta-loss">{{ gain.n_down }}</span></span></div>
-      {% if gain.best %}<div class="stat-row"><span class="stat-label" title="{{ gain.best[0].name }}">Best: {{ gain.best[0].name }}</span><span class="stat-value viz-delta-gain">+{{ gain.best[1] | kr }}</span></div>{% endif %}
-      {% if gain.worst %}<div class="stat-row"><span class="stat-label" title="{{ gain.worst[0].name }}">Worst: {{ gain.worst[0].name }}</span><span class="stat-value viz-delta-loss">{{ gain.worst[1] | kr }}</span></div>{% endif %}
-    </div>
-  </div>
-  {% endif %}
 
-  <div class="kpi-card">
-    <h3>Total Cards {{ info('Total Cards = everything you own, duplicates included. Unique Cards = each card counted once, no matter how many copies you have.') }}</h3>
-    <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">physical cards</span></div>
-    <div class="kpi-support">
-      <div class="stat-row"><span class="stat-label">Unique Cards</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ headline.duplicates }}</span></div>
+    <div class="kpi-overview-section kpi-overview-cards">
+      <h3>Total Cards {{ info('Total Cards = everything you own, duplicates included. Unique Cards = each card counted once, no matter how many copies you have.') }}</h3>
+      <div class="kpi-hero"><span class="value">{{ headline.qty_physical }}</span><span class="label">physical cards</span></div>
+      <div class="kpi-support">
+        <div class="stat-row full-row"><span class="stat-label">Unique Cards</span><span class="stat-value">{{ headline.qty_unique }}</span></div>
+        <div class="stat-row full-row"><span class="stat-label">Duplicates</span><span class="stat-value">{{ headline.duplicates }}</span></div>
+      </div>
     </div>
-  </div>
 
-  <div class="kpi-card">
-    <h3>Market Value</h3>
-    <!-- Value = value of unique cards only; Total value = unique + duplicates
-         (same convention as the Inventory/Series/Rarity tables' Value/Total
-         value columns -- see CARD_LEAF_SORT_KEYS in app.py). -->
-    <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span><span class="label">total value</span></div>
-    <div class="kpi-support">
-      {% if request.url.path == '/inventory' %}
-      {# Dashboard and Transactions show Net invested as part of the Market
-         Value chart's own stat bar instead (see chart_card's `stats` param
-         in macros.html) -- Inventory has no such chart, so it keeps its own
-         copy here. #}
-      <div class="stat-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ (net_invested if net_invested is defined else (kpi.net_invested if kpi is defined else 0)) | kr }}</span></div>
-      {% endif %}
-      <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
-      <div class="stat-row"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
+    <div class="kpi-overview-section kpi-overview-value">
+      <h3>Market Value</h3>
+      <!-- Value = value of unique cards only; Total value = unique + duplicates
+           (same convention as the Inventory/Series/Rarity tables' Value/Total
+           value columns -- see CARD_LEAF_SORT_KEYS in app.py). Net invested
+           isn't repeated here: it's the Gain / loss section's "Paid". -->
+      <div class="kpi-hero"><span class="value">{{ headline.total_value | kr }}</span><span class="label">total value</span></div>
+      <div class="kpi-support">
+        <div class="stat-row full-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ headline.unique_value | kr }}</span></div>
+        <div class="stat-row full-row"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ headline.duplicate_value | kr }}</span></div>
+      </div>
     </div>
   </div>
 
