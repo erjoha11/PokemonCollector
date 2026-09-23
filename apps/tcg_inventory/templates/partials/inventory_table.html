@@ -16,10 +16,10 @@
         <th>Collections</th>
         <th class="num">{{ sort_link('reference_price', 'Price') }}</th>
         <th class="num">{{ sort_link('net_invested', 'Net paid') }}</th>
+        <th class="num">{{ sort_link('total_value', 'Total value') }}</th>
         <th class="num">{{ sort_link('gain_loss', 'Gain') }}</th>
         <th class="num">{{ sort_link('qty', 'Total') }}</th>
         <th class="num">Duplicates</th>
-        <th class="num">{{ sort_link('total_value', 'Total value') }}</th>
         <th>Variant</th>
         <th>{{ sort_link('language', 'Language') }}</th>
         <th>{{ sort_link('rarity', 'Rarity') }}</th>
@@ -43,10 +43,10 @@
         <td class="num">{{ card.display_price | kr }}</td>
         {% set net_paid = invested_by_card.get(card.id) %}
         <td class="num">{{ net_paid | kr if net_paid is not none else '-' }}</td>
+        <td class="num">{{ card.total_value | kr }}</td>
         <td class="num">{{ (card.unique_value - net_paid) | kr if net_paid is not none else '-' }}</td>
         <td class="num">{{ card.qty }}</td>
         <td class="num">{{ card.duplicates }}</td>
-        <td class="num">{{ card.total_value | kr }}</td>
         <td>{{ card.variant or '' }}</td>
         <td>{{ card.language or '' }}</td>
         <td>{{ card.rarity or '' }}</td>

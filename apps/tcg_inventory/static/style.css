@@ -246,13 +246,13 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
    names, comma-joined collection lists, notes) -- let these wrap instead of
    forcing the table wider; short/numeric columns keep nowrap so they stay
    compact. */
-.inventory-table td:nth-child(3),  /* Series */
-.inventory-table td:nth-child(4),  /* Set */
-.inventory-table td:nth-child(5),  /* Collections */
-.inventory-table td:nth-child(12), /* Illustrator */
-.inventory-table td:nth-child(14), /* Klassifisering */
-.inventory-table td:nth-child(15), /* Lokasjon */
-.inventory-table td:nth-child(16) /* Notater */ {
+.inventory-table td:nth-child(4),  /* Series */
+.inventory-table td:nth-child(5),  /* Set */
+.inventory-table td:nth-child(6),  /* Collections */
+.inventory-table td:nth-child(16), /* Illustrator */
+.inventory-table td:nth-child(18), /* Classification */
+.inventory-table td:nth-child(19), /* Location */
+.inventory-table td:nth-child(20) /* Notes */ {
   white-space: normal;
   word-break: break-word;
   max-width: 130px;
