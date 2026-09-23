@@ -147,3 +147,37 @@ def test_init_db_backfills_existing_cards(monkeypatch):
     assert linked["bad"] is None
     assert session.query(MasterCard).count() == 2
     session.close()
+
+
+def test_backfill_is_a_constant_number_of_statements(db_session):
+    """init_db() runs this on every serverless cold start against a remote
+    database, so it must not do per-card round trips (the first version
+    did, and timed out on Vercel with ~860 cards)."""
+    from sqlalchemy import event
+
+    db_session.add_all(
+        [Card(card_id=f"sv{i % 7}-{i}", variant="Normal" if i % 2 else "Reverse Holo", name=f"C{i}", qty=1)
+         for i in range(600)]
+    )
+    db_session.commit()
+
+    statements = []
+    engine = db_session.get_bind()
+    listener = lambda *args: statements.append(args[2])
+    event.listen(engine, "before_cursor_execute", listener)
+    try:
+        linked = masterdata.backfill_master_cards(db_session)
+    finally:
+        event.remove(engine, "before_cursor_execute", listener)
+
+    assert linked == 600
+    assert db_session.query(Card).filter(Card.master_card_id.is_(None)).count() == 0
+    assert db_session.query(MasterCard).count() == 600
+    assert db_session.query(MasterCardId).count() == 1200  # dex + pokemontcg each
+    # SQLite has no batched INSERT ... RETURNING for every row the way
+    # Postgres does, so allow for per-row inserts there -- the point is no
+    # per-card SELECT/UPDATE round trips on top.
+    selects_and_updates = [s for s in statements if not s.lstrip().upper().startswith("INSERT")]
+    assert len(selects_and_updates) <= 6, selects_and_updates[:10]
+
+    assert masterdata.backfill_master_cards(db_session) == 0  # idempotent

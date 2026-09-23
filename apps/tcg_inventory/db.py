@@ -304,8 +304,14 @@ def _backfill_master_cards():
     inspector = inspect(engine)
     if not inspector.has_table("cards") or not inspector.has_table("master_cards"):
         return
-    with SessionLocal() as session:
-        masterdata.backfill_master_cards(session)
+    # A safety net must never take the app down with it: log and carry on
+    # (the next start retries) rather than fail the request -- e.g. two cold
+    # starts racing to insert the same new master row.
+    try:
+        with SessionLocal() as session:
+            masterdata.backfill_master_cards(session)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[init_db] master card backfill skipped: {exc!r}")
 
 
 def init_db():
