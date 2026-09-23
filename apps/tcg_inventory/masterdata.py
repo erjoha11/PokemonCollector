@@ -30,7 +30,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from sqlalchemy.orm import Session
+from sqlalchemy import case, update
+from sqlalchemy.orm import Session, selectinload
 
 from models import Card, MasterCard, MasterCardId
 
@@ -193,13 +194,61 @@ def link_card(session: Session, card: Card, cache: dict | None = None) -> Master
 
 
 def backfill_master_cards(session: Session) -> int:
-    """Link every card that has no master identity yet. Idempotent; returns
-    how many cards were linked.
+    """Link every card that has no master identity yet, in bulk. Idempotent;
+    returns how many cards were linked.
+
+    Runs from init_db() on every serverless cold start, against a database
+    in another region, so it must stay a handful of round trips no matter
+    how many cards there are: one SELECT for unlinked cards, one for the
+    existing master rows (with their IDs), a batched INSERT for new master
+    rows and their IDs, and chunked single-statement UPDATEs for the cards.
+    (The first version linked card by card -- several round trips each --
+    and ran past Vercel's 300s limit on the full collection.)
     """
-    cache: dict[MasterKey, MasterCard] = {}
-    linked = 0
-    for card in session.query(Card).filter(Card.master_card_id.is_(None)).all():
-        if link_card(session, card, cache) is not None:
-            linked += 1
+    cards = session.query(Card).filter(Card.master_card_id.is_(None)).all()
+    keyed = [(card, master_key_for(card)) for card in cards]
+    keyed = [(card, key) for card, key in keyed if key is not None]
+    if not keyed:
+        return 0
+
+    masters = {
+        MasterKey(m.language, m.set_code, m.number, m.variant): m
+        for m in session.query(MasterCard).options(selectinload(MasterCard.external_ids)).all()
+    }
+    card_to_key = {}
+    for card, key in keyed:
+        master = masters.get(key)
+        if master is None:
+            master = MasterCard(
+                language=key.language,
+                set_code=key.set_code,
+                number=key.number,
+                variant=key.variant,
+                variant_label=VARIANT_LABELS.get(key.variant, card.variant),
+                name=card.name,
+                series=card.series,
+                set_name=card.set,
+                printed_number=card.number,
+                created_at=dt.datetime.utcnow(),
+            )
+            session.add(master)
+            masters[key] = master
+        set_external_id(session, master, SOURCE_DEX, card.card_id, MATCHED_EXACT)
+        if key.language == "int":
+            set_external_id(session, master, SOURCE_POKEMONTCG, card.card_id, MATCHED_DERIVED)
+        card_to_key[card.id] = key
+    session.flush()  # batched INSERTs; assigns the new master ids
+
+    # The cards themselves aren't touched through the ORM (that would be one
+    # UPDATE per card); link them with one UPDATE ... CASE per chunk instead.
+    pairs = [(card_id, masters[key].id) for card_id, key in card_to_key.items()]
+    for start in range(0, len(pairs), 500):
+        chunk = dict(pairs[start : start + 500])
+        session.execute(
+            update(Card)
+            .where(Card.id.in_(chunk.keys()))
+            .values(master_card_id=case(chunk, value=Card.id))
+            .execution_options(synchronize_session=False)
+        )
     session.commit()
-    return linked
+    return len(pairs)
