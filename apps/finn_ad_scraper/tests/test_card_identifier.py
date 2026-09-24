@@ -1,70 +1,96 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import patch
 
-from finn_ad_scraper.card_identifier import identify_cards
+import anthropic
+import httpx2
+import pytest
+
+from finn_ad_scraper import card_identifier
+from finn_ad_scraper.card_identifier import CARD_SCHEMA, CardIdentificationError, identify_cards
+
+CHARIZARD = {
+    "name": "Charizard", "set_name": "Base Set", "set_code": "base1", "printed_number": "4/102",
+    "language": "int", "variant": "holo", "condition": "Lightly Played", "graded": None,
+    "quantity": 1, "photos": [1], "confidence": "high", "notes": "Light edge wear",
+}
+MEW = {
+    "name": "Mew ex", "set_name": "Pokémon Card 151", "set_code": "SV2a", "printed_number": "205/165",
+    "language": "ja", "variant": "holo", "condition": "Near Mint", "graded": "PSA 10",
+    "quantity": 1, "photos": [2], "confidence": "medium", "notes": "",
+}
 
 
-class FakeMessages:
-    def __init__(self, response_text):
-        self.response_text = response_text
-        self.calls = []
-
-    def create(self, **kwargs):
-        self.calls.append(kwargs)
-        return SimpleNamespace(content=[SimpleNamespace(text=self.response_text)])
+def response(cards=None, stop_reason="end_turn", stop_details=None):
+    text = json.dumps({"cards": cards or []})
+    return SimpleNamespace(
+        stop_reason=stop_reason, stop_details=stop_details,
+        content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)],
+    )
 
 
 class FakeClient:
-    def __init__(self, response_text):
-        self.messages = FakeMessages(response_text)
+    def __init__(self, *responses):
+        self.responses = list(responses)
+        self.calls = []
+        self.beta = SimpleNamespace(messages=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.calls.append(kwargs)
+        result = self.responses.pop(0)
+        if isinstance(result, Exception):
+            raise result
+        return result
 
 
-SAMPLE_RESPONSE = json.dumps(
-    [
-        {
-            "name": "Charizard",
-            "set_name": "Base Set",
-            "card_number": "4/102",
-            "is_holo": True,
-            "condition": "Lightly Played",
-            "quantity": 1,
-            "confidence": "high",
-            "notes": "Slight whitening on edges",
-        }
-    ]
-)
+def test_request_shape_and_parsed_cards():
+    client = FakeClient(response([CHARIZARD, MEW]))
+    cards = identify_cards(["https://img/1.jpg", "https://img/2.jpg"], ad_context="Selger Charizard", client=client)
+
+    call = client.calls[0]
+    assert call["model"] == "claude-opus-5"
+    assert call["output_config"] == {"format": {"type": "json_schema", "schema": CARD_SCHEMA}}
+    assert call["fallbacks"] == "default" and call["betas"] == ["server-side-fallback-2026-07-01"]
+    content = call["messages"][0]["content"]
+    assert content[0] == {"type": "text", "text": "Photo 1:"}
+    assert content[1] == {"type": "image", "source": {"type": "url", "url": "https://img/1.jpg"}}
+    assert "Selger Charizard" in content[-1]["text"]
+
+    charizard, mew = cards
+    assert (charizard.number, charizard.dex_id) == ("4", "base1-4")
+    assert charizard.master_key == ("int", "base1", "4", "holo")
+    assert (mew.set_code, mew.number, mew.dex_id, mew.graded) == ("sv2a", "205", "jpn_sv2a-205", "PSA 10")
 
 
-@patch("finn_ad_scraper.card_identifier._download_image_as_base64", return_value=("image/jpeg", "ZmFrZQ=="))
-def test_identify_cards_parses_response(mock_download):
-    client = FakeClient(SAMPLE_RESPONSE)
-    cards = identify_cards(
-        ["https://images.finncdn.no/dynamic/1600w/sample1.jpg"],
-        ad_context="Selger Charizard holo",
-        client=client,
+def test_no_photos_means_no_request():
+    client = FakeClient()
+    assert identify_cards([], client=client) == []
+    assert client.calls == []
+
+
+def test_refusal_raises():
+    client = FakeClient(response(stop_reason="refusal", stop_details=SimpleNamespace(category="other")))
+    with pytest.raises(CardIdentificationError, match="declined"):
+        identify_cards(["https://img/1.jpg"], client=client)
+
+
+def test_many_photos_are_batched_and_duplicates_merged(monkeypatch):
+    monkeypatch.setattr(card_identifier, "MAX_PHOTOS_PER_REQUEST", 2)
+    later = dict(CHARIZARD, photos=[3])
+    client = FakeClient(response([CHARIZARD]), response([later]))
+    cards = identify_cards(["a", "b", "c"], client=client)
+    assert len(client.calls) == 2
+    assert client.calls[1]["messages"][0]["content"][0]["text"] == "Photo 3:"  # numbering continues
+    assert len(cards) == 1 and cards[0].quantity == 2 and cards[0].photos == [1, 3]
+
+
+def test_unreachable_image_url_retries_inline(monkeypatch):
+    monkeypatch.setattr(card_identifier, "_image_source", lambda url, inline: {"inline": inline})
+    error = anthropic.BadRequestError(
+        "Could not fetch image from URL",
+        response=httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages")),
+        body=None,
     )
-
+    client = FakeClient(error, response([CHARIZARD]))
+    cards = identify_cards(["https://img/1.jpg"], client=client)
     assert len(cards) == 1
-    card = cards[0]
-    assert card.name == "Charizard"
-    assert card.set_name == "Base Set"
-    assert card.is_holo is True
-    assert card.condition == "Lightly Played"
-    assert client.messages.calls[0]["model"]
-
-
-@patch("finn_ad_scraper.card_identifier._download_image_as_base64", return_value=("image/jpeg", "ZmFrZQ=="))
-def test_identify_cards_dedupes_across_batches(mock_download):
-    client = FakeClient(SAMPLE_RESPONSE)
-    urls = [f"https://images.finncdn.no/dynamic/1600w/img{i}.jpg" for i in range(7)]
-    cards = identify_cards(urls, client=client)
-
-    # 7 images at MAX_IMAGES_PER_REQUEST=5 -> 2 batches, each "sees" the same
-    # Charizard -> should be deduped into a single entry with combined quantity.
-    assert len(cards) == 1
-    assert cards[0].quantity == 2
-
-
-def test_identify_cards_returns_empty_for_no_images():
-    assert identify_cards([]) == []
+    assert client.calls[1]["messages"][0]["content"][1]["source"] == {"inline": True}
