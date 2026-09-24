@@ -33,7 +33,7 @@
 
   <select name="language" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
     <option value="">All languages</option>
-    {% for l in all_languages %}<option value="{{ l }}" {{ 'selected' if l == language }}>{{ l }}</option>{% endfor %}
+    {% for l in all_languages %}<option value="{{ l }}" {{ 'selected' if l == language }}>{{ l | lang }}</option>{% endfor %}
   </select>
 
   <label class="unowned-toggle">

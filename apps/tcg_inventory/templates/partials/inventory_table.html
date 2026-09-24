@@ -48,7 +48,7 @@
         <td class="num">{{ card.qty }}</td>
         <td class="num">{{ card.duplicates }}</td>
         <td>{{ card.variant or '' }}</td>
-        <td>{{ card.language or '' }}</td>
+        <td>{{ card.language | lang }}</td>
         <td>{{ card.rarity or '' }}</td>
         <td>{{ card.illustrator or '' }}</td>
         <td>{{ card.binder.name if card.binder else '' }}</td>

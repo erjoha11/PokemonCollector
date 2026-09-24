@@ -40,8 +40,13 @@ run).
   3. **Total Cards**: physical cards, then unique cards and duplicates.
 
   Sections sit side by side, go 1 + 2 on a tablet and stack on a phone. The
-  remaining KPI cards (Most valuable cards/collection/series) share the row
-  below it and grow to fill it (`.kpi-grid` is flex, not grid).
+  remaining KPI cards (Price movers, Most valuable collection/series) share
+  the row below it and grow to fill it (`.kpi-grid` is flex, not grid).
+  **Price movers** (`queries.price_movers`) lists the owned cards whose price
+  rose and fell the most in kr per copy, comparing the daily snapshot from
+  30 days ago (or the earliest one, while history is shorter) with today's
+  price. The collection/series cards share one stat grid: Unique value |
+  Unique Cards, Duplicate value | Total Duplicates, then Net invested and Gain.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent

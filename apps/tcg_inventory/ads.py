@@ -13,6 +13,7 @@ other is this app's own interface.
 """
 from __future__ import annotations
 
+import constants
 from dataclasses import dataclass, field
 
 MAX_TITLE_LENGTH = 70
@@ -57,8 +58,11 @@ def _card_label(item: SaleItem) -> str:
     extras = []
     if item.variant:
         extras.append(item.variant)
-    if item.language and item.language.upper() != "ENG":
-        extras.append(item.language)
+    # English is the default a buyer assumes; only other print languages
+    # are worth calling out (as JP, KR, ... -- see constants.language_code).
+    code = constants.language_code(item.language)
+    if code and code != "EN":
+        extras.append(code)
     if extras:
         label += f" ({', '.join(extras)})"
     return label

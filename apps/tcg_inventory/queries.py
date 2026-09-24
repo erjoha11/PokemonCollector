@@ -596,6 +596,58 @@ def _snapshot_state(db: Session, date: dt.date) -> dict[int, tuple[int, float]]:
     return {r.card_id: (r.qty, r.reference_price or 0.0) for r in rows}  # later source wins
 
 
+@dataclass
+class PriceMove:
+    card: Card
+    old_price: float
+    new_price: float
+
+    @property
+    def change(self) -> float:
+        return self.new_price - self.old_price
+
+    @property
+    def pct(self) -> float:
+        return self.change / self.old_price * 100
+
+
+def price_movers(
+    db: Session, cards: list[Card], days: int = 30, limit: int = 3, today: dt.date | None = None
+) -> dict | None:
+    """The owned cards whose price rose and fell the most (in kr, per copy)
+    since `days` ago, comparing that day's snapshot price with today's live
+    `display_price`. Uses the latest snapshot day on or before the start of
+    the period, or the earliest one there is when history is shorter; None
+    when there is no earlier snapshot day at all.
+
+    Ranked by kr, not %, so a 5 kr card doubling doesn't crowd out a real
+    move. Only cards owned now (qty > 0) with a price on both days count.
+    """
+    today = today or dt.date.today()
+    start = today - dt.timedelta(days=days)
+    since = (
+        db.query(func.max(CardSnapshot.date)).filter(CardSnapshot.date <= start).scalar()
+        or db.query(func.min(CardSnapshot.date)).filter(CardSnapshot.date < today).scalar()
+    )
+    if since is None:
+        return None
+    before = _snapshot_state(db, since)
+    moves = []
+    for card in cards:
+        old = before.get(card.id, (0, 0.0))[1]
+        new = card.display_price or 0.0
+        if card.qty > 0 and old > 0 and new > 0 and new != old:
+            moves.append(PriceMove(card, old, new))
+    return {
+        "since": since,
+        "days": (today - since).days,
+        "up": sorted((m for m in moves if m.change > 0), key=lambda m: -m.change)[:limit],
+        "down": sorted((m for m in moves if m.change < 0), key=lambda m: m.change)[:limit],
+        "n_up": sum(1 for m in moves if m.change > 0),
+        "n_down": sum(1 for m in moves if m.change < 0),
+    }
+
+
 def value_change_breakdown(
     db: Session, metric: str, history: list[dict], live_cards: list[Card] | None = None
 ) -> dict | None:

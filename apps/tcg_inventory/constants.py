@@ -94,3 +94,46 @@ CARD_CONDITIONS = (
     "Damaged",
     "Unknown",
 )
+
+
+# Short display codes for a card's print language (Card.language, from Dex's
+# "Locale" column). Dex writes full names ("International", "Japanese",
+# "Simplified Chinese") or three-letter codes ("ENG", "JPN"); everywhere the
+# app shows a language it uses these short region-style codes instead.
+# "International" is Dex's English-language catalog, hence EN. A value not
+# listed here is shown as-is.
+LANGUAGE_CODES = {
+    "international": "EN",
+    "english": "EN",
+    "eng": "EN",
+    "en": "EN",
+    "japanese": "JP",
+    "jpn": "JP",
+    "ja": "JP",
+    "korean": "KR",
+    "kor": "KR",
+    "ko": "KR",
+    "simplified chinese": "CN",
+    "chinese (simplified)": "CN",
+    "chs": "CN",
+    "traditional chinese": "TW",
+    "chinese (traditional)": "TW",
+    "cht": "TW",
+    "german": "DE",
+    "french": "FR",
+    "italian": "IT",
+    "spanish": "ES",
+    "portuguese": "PT",
+    "dutch": "NL",
+    "polish": "PL",
+    "russian": "RU",
+    "thai": "TH",
+    "indonesian": "ID",
+}
+
+
+def language_code(language: str | None) -> str:
+    """"International" -> "EN", "Japanese" -> "JP", ...; "" for no language."""
+    if not language or not language.strip():
+        return ""
+    return LANGUAGE_CODES.get(language.strip().lower(), language.strip())

@@ -91,7 +91,7 @@
             {%- if card.number %}{% set _ = meta.append('#' ~ card.number) %}{% endif -%}
             {%- if card.rarity %}{% set _ = meta.append(card.rarity) %}{% endif -%}
             {{ meta | join(' · ') }}
-            {%- if card.language %} <span class="tx-platform-badge top-card-lang-badge">{{ card.language }}</span>{% endif -%}
+            {%- if card.language %} <span class="tx-platform-badge top-card-lang-badge">{{ card.language | lang }}</span>{% endif -%}
           </div>
         </div>
         <div class="top-card-item-figures">
