@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ card.name }} – TCG Inventory{% endblock %}
+{% block chart_scripts %}
+<script src="/static/chart.umd.js"></script>
+<script src="/static/tcg-charts.js"></script>
+{% endblock %}
+{% from "partials/macros.html" import info, chart_card, card_view_attrs, dex_url %}
+{% block content %}
+<p class="muted breadcrumb"><a href="/inventory">Inventory</a>{% if card.set %} · <a href="/inventory?set={{ card.set | urlencode }}">{{ card.set }}</a>{% endif %}</p>
+<h1>{{ card.name }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</h1>
+
+<div class="card-detail">
+  <div class="card-detail-image">
+    {% if card.image_url %}
+    <button type="button" class="card-view-trigger" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }} large"><img src="{{ card.image_url | card_image_large }}" onerror="this.onerror=null;this.src='{{ card.image_url }}'" alt="{{ card.name }}"></button>
+    {% else %}
+    <div class="card-detail-noimage muted">No picture of this card yet.</div>
+    {% endif %}
+    <a class="card-detail-dex" href="{{ dex_url(card) }}" target="_blank" rel="noopener noreferrer">Open in Dex ↗</a>
+  </div>
+
+  <div class="card-detail-facts">
+    <div class="card-detail-kpis">
+      <div><span class="tx-kpi-label">Price</span><span class="tx-kpi-value">{{ card.display_price | kr }}</span></div>
+      <div><span class="tx-kpi-label">Owned</span><span class="tx-kpi-value">{{ card.qty }}{% if card.duplicates %} <span class="muted">({{ card.duplicates }} dup.)</span>{% endif %}</span></div>
+      <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ card.total_value | kr }}</span></div>
+      <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ invested | kr if invested is not none else '–' }}</span></div>
+      <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. "–" when no purchase is registered for this card.') }}</span>
+        <span class="tx-kpi-value{{ ' viz-delta-gain' if gain is not none and gain > 0 else (' viz-delta-loss' if gain is not none and gain < 0 else '') }}">{% if gain is not none %}{{ '+' if gain > 0 }}{{ gain | kr }}{% else %}–{% endif %}</span></div>
+    </div>
+
+    <dl class="card-detail-list">
+      <dt>Collections</dt>
+      <dd>{% for c in card.collections | sort(attribute='name') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% else %}<span class="muted">None (Bulk)</span>{% endfor %}</dd>
+      <dt>Binder</dt><dd>{{ card.binder.name if card.binder else '–' }}</dd>
+      <dt>Series / set</dt><dd>{{ card.series or '–' }} · {{ card.set or '–' }}{% if card.linked_set and card.linked_set.total_cards %} <span class="muted">({{ card.linked_set.total_cards }} cards)</span>{% endif %}</dd>
+      <dt>Variant</dt><dd>{{ card.variant or '–' }}</dd>
+      <dt>Language</dt><dd>{{ card.language | lang if card.language else '–' }}</dd>
+      <dt>Rarity</dt><dd>{{ card.rarity or '–' }}</dd>
+      <dt>Illustrator</dt><dd>{{ card.illustrator or '–' }}</dd>
+      {% if card.condition %}<dt>Condition</dt><dd>{{ card.condition }}</dd>{% endif %}
+      {% if card.classification %}<dt>Classification</dt><dd>{{ card.classification }}</dd>{% endif %}
+      {% if card.location %}<dt>Location</dt><dd>{{ card.location }}</dd>{% endif %}
+      {% if card.notes %}<dt>Notes</dt><dd>{{ card.notes }}</dd>{% endif %}
+      <dt>Prices</dt>
+      <dd>TCGPlayer {{ card.tcgplayer_price | kr if card.tcgplayer_price is not none else '–' }}{% if card.tcgplayer_price_updated_at %} <span class="muted">({{ card.tcgplayer_price_updated_at.strftime('%d.%m.%Y') }})</span>{% endif %} · Dex {{ card.reference_price | kr if card.reference_price is not none else '–' }}</dd>
+      <dt>Dex card ID</dt><dd><code>{{ card.card_id }}</code></dd>
+      {% if card.flagged_missing_since %}<dt>Missing from Dex</dt><dd>since {{ card.flagged_missing_since.strftime('%d.%m.%Y') }}</dd>{% endif %}
+    </dl>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Transactions {{ info('Every purchase, sale, trade and ripped entry registered for this card. Shipping is this card\'s share of its order\'s shipping.') }}</h2>
+  {% if transactions %}
+  <table>
+    <thead><tr><th>Date</th><th>Type</th><th class="num">Price</th><th class="num">Fees + shipping</th><th>Platform</th><th>Order</th><th>Note</th></tr></thead>
+    <tbody>
+      {% for tx in transactions %}
+      <tr>
+        <td>{{ tx.date.strftime('%d.%m.%Y') }}</td>
+        <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-ripped' if tx.type == 'ripped' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span></td>
+        <td class="num">{{ tx.price | kr }}</td>
+        {% set extra = (tx.fees or 0) + (shipping_by_tx.get(tx.id) or 0) %}
+        <td class="num">{{ ('%.2f kr' | format(extra)) if extra else '–' }}</td>
+        <td>{{ tx.platform or '' }}</td>
+        <td>{% if tx.purchase_id %}<a href="/transactions/purchase/{{ tx.purchase_id }}/edit">Order #{{ tx.purchase_id }}</a>{% endif %}</td>
+        <td>{{ tx.note or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No transactions registered for this card. <a href="/transactions">Register a purchase</a> to see its gain.</p>
+  {% endif %}
+</div>
+
+{% set chart_heading %}Price history {{ info('This card\'s price per day from the daily snapshots (the price the card had that day, one copy). Starts when snapshots started; there is no earlier history.') }}{% endset %}
+{% set chart_data = price_history | map(attribute='price') | list %}
+{% call chart_card('card-price-history', chart_heading, 'line', price_history | map(attribute='label') | list, [{"label": "Price", "data": chart_data, "color": "#2a78d6"}]) %}
+  <details>
+    <summary>View as table</summary>
+    <table style="margin-top: 0.6rem;">
+      <thead><tr><th>Date</th><th class="num">Price</th><th class="num">Owned</th></tr></thead>
+      <tbody>
+        {% for row in price_history | reverse %}
+        <tr><td>{{ row.date.strftime('%d.%m.%Y') }}</td><td class="num">{{ row.price | kr }}</td><td class="num">{{ row.qty }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+{% endcall %}
+{% endblock %}

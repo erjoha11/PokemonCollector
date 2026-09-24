@@ -1,11 +1,11 @@
-{% from "partials/macros.html" import info, card_view_attrs %}
+{% from "partials/macros.html" import info, card_view_attrs, card_link %}
 
 {# One row in "Price movers": arrow, card (opens the card viewer), then
    the change in kr and %. #}
 {% macro mover_row(m, direction) %}
 <li class="mover-row">
   <span class="mover-arrow {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" aria-hidden="true">{{ '▲' if direction == 'up' else '▼' }}</span>
-  <span class="mover-name"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(m.card) }} title="{{ m.card.name }}">{{ m.card.name }}</button>{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
+  <span class="mover-name"><a href="/cards/{{ m.card.id }}" class="card-view-name" title="{{ m.card.name }}">{{ m.card.name }}</a>{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
   <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
   {#- % only when the move is big enough in kr to mean something (queries.PRICE_MOVE_PCT_MIN_KR) #}
   {% if m.show_pct %}<span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>{% else %}<span class="mover-pct muted" title="Change under 10 kr -- % left out">·</span>{% endif %}
@@ -28,6 +28,9 @@
   <div class="stat-row full-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ bucket.net_invested | kr if bucket.has_investment else '-' }}</span></div>
   {%- set gain = bucket.gain_loss %}
   <div class="stat-row full-row"><span class="stat-label">Gain</span>{% if bucket.has_investment %}<span class="stat-value {{ 'viz-delta-gain' if gain > 0 else ('viz-delta-loss' if gain < 0 else '') }}">{{ '+' if gain > 0 }}{{ gain | kr }}</span>{% else %}<span class="stat-value muted">-</span>{% endif %}</div>
+  {%- if bucket.has_investment and bucket.no_cost_count %}
+  <div class="stat-row full-row stat-note muted">incl. {{ bucket.no_cost_value | kr }} from {{ bucket.no_cost_count }} card{{ 's' if bucket.no_cost_count != 1 }} with no purchase price</div>
+  {%- endif %}
 </div>
 {% endmacro %}
 <div class="kpi-grid">
@@ -89,7 +92,7 @@
         </div>
         <span class="kpi-ov-count viz-delta-loss">{{ gain.n_down }} ▼</span>
       </div>
-      <div class="kpi-caption muted">Today's value vs. purchase price · {{ gain.n_with_cost }} cards with a known cost</div>
+      <div class="kpi-caption muted">Today's value vs. purchase price · {{ gain.n_with_cost }} card{{ 's' if gain.n_with_cost != 1 }} with a known cost</div>
       {% endif %}
       {% if gain.best %}
       {% set best_card, best_gain = gain.best %}
@@ -97,7 +100,7 @@
         {% if best_card.image_url %}<button type="button" class="card-view-trigger" {{ card_view_attrs(best_card) }} aria-label="Show {{ best_card.name }}"><img class="kpi-ov-thumb" src="{{ best_card.image_url }}" alt="" loading="lazy"></button>{% else %}<span class="kpi-ov-thumb kpi-ov-thumb-empty" aria-hidden="true"></span>{% endif %}
         <div class="kpi-ov-mover-text">
           <span class="kpi-ov-mover-label">Best card</span>
-          <button type="button" class="card-view-trigger card-view-name kpi-ov-mover-name" title="{{ best_card.name }}" {{ card_view_attrs(best_card) }}>{{ best_card.name }}</button>
+          <a href="/cards/{{ best_card.id }}" class="card-view-name kpi-ov-mover-name" title="{{ best_card.name }}">{{ best_card.name }}</a>
         </div>
         <div class="kpi-ov-mover-figures">
           <span class="kpi-ov-mover-value" title="Value today{{ ' (' ~ best_card.qty ~ ' copies)' if best_card.qty > 1 }}">{{ best_card.total_value | kr }}</span>

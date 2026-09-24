@@ -1,4 +1,4 @@
-{% from "partials/macros.html" import dex_link %}
+{% from "partials/macros.html" import card_link %}
 
 {% macro tx_row(tx, shipping=None) %}
 <tr id="tx-row-{{ tx.id }}">
@@ -7,7 +7,7 @@
     <span class="tx-id" title="Transaction ID">#{{ tx.id }}</span>
   </td>
   <td>
-    {{ dex_link(tx.card) }}
+    {{ card_link(tx.card) }}
     <div class="tx-card-meta">
       {%- set meta = [] -%}
       {%- if tx.card.variant %}{% set _ = meta.append(tx.card.variant) %}{% endif -%}

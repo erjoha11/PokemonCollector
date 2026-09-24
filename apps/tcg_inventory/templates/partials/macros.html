@@ -26,7 +26,7 @@
    see partials/card_viewer.html + static/card-viewer.js). Put it on a
    <button type="button" class="card-view-trigger">. #}
 {% macro card_view_attrs(card) -%}
-data-card-view data-name="{{ card.name }}" data-dex="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}"
+data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-detail="/cards/{{ card.id }}"
 {%- if card.image_url %} data-img="{{ card.image_url | card_image_large }}" data-img-fallback="{{ card.image_url }}"{% endif %}
 {%- set meta = [] -%}
 {%- if card.set %}{% set _ = meta.append(card.set) %}{% endif -%}
@@ -36,7 +36,12 @@ data-card-view data-name="{{ card.name }}" data-dex="https://app.dextcg.com/card
 {%- if card.language %}{% set _ = meta.append(card.language | lang) %}{% endif %} data-meta="{{ meta | join(' · ') }}" data-price="{{ card.display_price | kr }}"
 {%- endmacro %}
 
-{% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}
+{# A card's name everywhere in the app links to its own detail page
+   (/cards/{id}); Dex is one link on that page. `new_tab` for places where
+   leaving would lose unsaved state (e.g. the purchase card picker). #}
+{% macro card_link(card, new_tab=false, css_class='') %}<a href="/cards/{{ card.id }}"{% if css_class %} class="{{ css_class }}"{% endif %}{% if new_tab %} target="_blank" rel="noopener"{% endif %}>{{ card.name }}</a>{% endmacro %}
+
+{% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does
    this mean" note on a KPI tile or section heading. `align_right` flips the
