@@ -172,11 +172,20 @@
       snapshots has accumulated.</li>
     <li><strong>Most valuable cards</strong> — your most expensive individual cards by price,
       scroll for more. Click a card's photo or name to see it large, with a button to open it in Dex.</li>
-    <li><strong>Inventory</strong> — Collections (named groupings) and Bulk (cards with no
-      collection) side by side, with a total row at the top.</li>
+    <li><strong>Inventory</strong> — one row per collection, Bulk (cards with no collection)
+      and a <em>Total</em> row. A collection row counts <em>every</em> card tagged with that
+      collection — the same cards the collection filter on <a href="/inventory">Inventory</a>
+      shows. A card in two collections is therefore counted in both rows, and marked
+      "shared with N" when you expand a row. That's why the collection rows can add up to
+      more than the <em>Collections</em> row (every tagged card once) and the <em>Total</em>
+      row (everything you own, each card once — the same as Total Cards at the top).</li>
     <li><strong>Series</strong> — breakdown per series (e.g. Scarlet &amp; Violet), sorted by
       release order. Click a series row to see the sets in that series, and a set to see the
-      cards in it.</li>
+      cards in it. <strong>Completion</strong> = distinct card numbers you own / cards in the
+      set (a reverse holo or a second language of the same number counts once). A series row
+      sums its sets with a known size and says how many of its sets that covers
+      ("· 3/5 sets"). "unknown" means the set's size isn't known: set sizes come from
+      api.pokemontcg.io, synced monthly, which has no Japanese/Korean sets.</li>
     <li><strong>Rarity</strong> — breakdown per rarity tier: Common → Uncommon → Rare → Double Rare →
       Ultra Rare → Amazing Rare → Holo Rare → Holo Rare V → Triple Rare → Illustration Rare →
       Special Illustration Rare (then gold/secret tiers and any other rarity name), with
@@ -187,6 +196,24 @@
     Every row can be expanded ("▶") to see the individual cards behind the number — useful for
     seeing exactly which prints make up a collection, a set, or a rarity group.
   </p>
+  <h3 id="gain">Gain / loss and the other figures at the top</h3>
+  <ul>
+    <li><strong>Gain / loss</strong> has one definition everywhere in the app:
+      <em>total value (duplicates included) − net invested</em> (everything paid, shipping
+      included, minus sales). The Market Value hero, every table's Gain/loss column and the
+      Most valuable collection/series cards all use it. The chart's key figures only show
+      Gain / loss on the <em>Total</em> metric.</li>
+    <li><strong>No purchase price</strong> — cards you own with no registered purchase have no
+      known cost, so their whole value counts as gain. The line under the gain equation says
+      how many cards that is and how much of the gain it makes up.</li>
+    <li><strong>Above / below cost</strong> — each card's value today vs. what you paid for it,
+      since purchase. Only cards with a registered cost count.</li>
+    <li><strong>Price movers</strong> — price today vs. the daily snapshot from the start of the
+      period (up to 30 days back): a different baseline from Above / below cost, so the up/down
+      counts differ. The % is left out for changes under 10 kr.</li>
+    <li><strong>Market Value chart</strong> — the change shown is from the first to the last day
+      in the chart ("since first snapshot DATE" on All), not since you bought the cards.</li>
+  </ul>
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">

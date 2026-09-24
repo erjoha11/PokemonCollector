@@ -22,9 +22,13 @@
 {% macro rarity_sort(label, field) %}{{ sort_th(label, field, 'rsort', 'rdir', rsort, rdir, hx_target='#dashboard-rarity-card', hx_select='#dashboard-rarity-card', hx_swap='outerHTML') }}{% endmacro %}
 {% macro fav_sort(label, field) %}{{ sort_th(label, field, 'fsort', 'fdir', fsort, fdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {% macro top10_sort(label, field) %}{{ sort_th(label, field, 'psort', 'pdir', psort, pdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
-{% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false) %}
+{# `in_collection`: the collection row this card is listed under, if any --
+   a card also tagged with other collections gets a "shared with N" badge
+   naming them, since it's counted in each of those rows too. #}
+{% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false, in_collection=none) %}
 <tr class="{{ css_class }}{{ ' card-row-unowned' if card.qty == 0 else '' }}" data-group="{{ group_id }}" hidden>
-  <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}</td>
+  <td>{{ dex_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}
+  {%- if in_collection %}{% set others = card.collections | map(attribute='name') | reject('equalto', in_collection) | sort | list %}{% if others %} <span class="tx-platform-badge shared-badge" title="Also in: {{ others | join(', ') }}">shared with {{ others | length }}</span>{% endif %}{% endif %}</td>
   {% if show_set_series %}
   <td>{% if card.set %}{{ filter_link('set', card.set) }}{% else %}-{% endif %}</td>
   <td>{% if card.series %}{{ filter_link('series', card.series) }}{% else %}-{% endif %}</td>
@@ -35,7 +39,7 @@
   <td class="num">{{ card.unique_value | kr }}</td>
   {% if show_total_value %}<td class="num">{{ card.total_value | kr }}</td>{% endif %}
   {%- set paid = invested_by_card.get(card.id) if invested_by_card else none %}
-  {{ money_cells(paid or 0, card.unique_value - (paid or 0), paid is not none) }}
+  {{ money_cells(paid or 0, card.total_value - (paid or 0), paid is not none) }}
 </tr>
 {% endmacro %}
 
@@ -116,7 +120,7 @@
 
   <div class="card-pair">
   <div class="card" id="dashboard-inventory-card">
-    <h2>Inventory {{ info('Unique = number of distinct cards. Duplicates = extra copies beyond the first. Total = unique + duplicates. Value = price of unique cards. Total value = duplicates included. Bulk is cards with no collection.', below=true) }}</h2>
+    <h2>Inventory {{ info('Unique = number of distinct cards. Duplicates = extra copies beyond the first. Total = unique + duplicates. Value = price of unique cards. Total value = duplicates included. Gain/loss = total value minus net invested. Each collection row counts every card tagged with it, so a card in several collections is counted in each of them (marked \'shared\' when expanded) and the rows can add up to more than the Total. Collections and Total count every card once. Bulk is cards with no collection.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -131,14 +135,15 @@
         </tr>
       </thead>
       <tbody>
+        {% set tagged = collection_breakdown.collections %}
         <tr class="parent-row">
-          <td>Collections</td>
-          <td class="num">{{ collection_breakdown.parent.unique_count }}</td>
-          <td class="num">{{ collection_breakdown.parent.duplicates }}</td>
-          <td class="num">{{ collection_breakdown.parent.qty }}</td>
-          <td class="num">{{ collection_breakdown.parent.unique_value | kr }}</td>
-          <td class="num">{{ collection_breakdown.parent.total_value | kr }}</td>
-          {{ bucket_money_cells(collection_breakdown.parent) }}
+          <td>Collections {{ info('Every card with at least one collection tag, each counted once.') }}</td>
+          <td class="num">{{ tagged.unique_count }}</td>
+          <td class="num">{{ tagged.duplicates }}</td>
+          <td class="num">{{ tagged.qty }}</td>
+          <td class="num">{{ tagged.unique_value | kr }}</td>
+          <td class="num">{{ tagged.total_value | kr }}</td>
+          {{ bucket_money_cells(tagged) }}
         </tr>
         {% for c in collection_rows if c.filterable %}
         {% set row_id = 'coll-' ~ loop.index %}
@@ -152,7 +157,7 @@
           {{ bucket_money_cells(c) }}
         </tr>
         {% for card in c.cards %}
-        {{ card_leaf_row(card, 'grandchild-row', row_id) }}
+        {{ card_leaf_row(card, 'grandchild-row', row_id, in_collection=c.name) }}
         {% endfor %}
         {% endfor %}
         {# Bulk (cards with no collection) is the complement of "Collections",
@@ -172,6 +177,16 @@
         {% for card in bulk.cards %}
         {{ card_leaf_row(card, 'grandchild-row', 'coll-bulk') }}
         {% endfor %}
+        {% set total = collection_breakdown.total %}
+        <tr class="parent-row total-row">
+          <td>Total {{ info('Everything you own, each card counted once: Collections + Bulk. Matches the Total Cards and Market Value figures at the top. The collection rows above can add up to more, because a card in several collections is counted in each.') }}</td>
+          <td class="num">{{ total.unique_count }}</td>
+          <td class="num">{{ total.duplicates }}</td>
+          <td class="num">{{ total.qty }}</td>
+          <td class="num">{{ total.unique_value | kr }}</td>
+          <td class="num">{{ total.total_value | kr }}</td>
+          {{ bucket_money_cells(total) }}
+        </tr>
       </tbody>
     </table>
   </div>
@@ -191,7 +206,7 @@
           <th class="num">{{ series_sort('Total value', 'total_value') }}</th>
           <th class="num">Net invested</th>
           <th class="num">Gain/loss</th>
-          <th class="num">Completion {{ info('Share of the set you own (unique cards / total cards in the set). Only shown per set, not per series. "unknown" means the set\'s total card count hasn\'t been synced yet.', align_right=true) }}</th>
+          <th class="num">Completion {{ info('Share of the set you own: distinct card numbers owned / total cards in the set (a reverse holo or a second language of the same number doesn\'t count twice). A series shows the same across its sets with a known size, and how many of its sets that covers. "unknown" means the set\'s size isn\'t known -- Japanese/Korean sets aren\'t in the card-set API it\'s synced from.', align_right=true) }}</th>
         </tr>
       </thead>
       <tbody>
@@ -205,7 +220,8 @@
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
           {{ bucket_money_cells(s) }}
-          <td class="num">-</td>
+          {% set sc = s.series_completion %}
+          <td class="num">{% if sc %}<span title="{{ sc.owned }}/{{ sc.total }} cards across {{ sc.sets_known }} of {{ sc.sets }} set{{ 's' if sc.sets != 1 }} with a known size">{{ sc.pct | round | int }}%{% if sc.sets_known < sc.sets %} <span class="muted">· {{ sc.sets_known }}/{{ sc.sets }} sets</span>{% endif %}</span>{% else %}<span class="muted" title="None of this series' sets has a known size yet">unknown</span>{% endif %}</td>
         </tr>
         {% for set_b in s.child_sets %}
         {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
@@ -217,7 +233,7 @@
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
           {{ bucket_money_cells(set_b) }}
-          <td class="num">{% if set_b.total_cards %}<span title="{{ set_b.unique_count }}/{{ set_b.total_cards }} kort">{{ set_b.completion_pct | round | int }}%</span>{% else %}<span class="muted" title="Set's total card count hasn't been synced yet">unknown</span>{% endif %}</td>
+          <td class="num">{% if set_b.total_cards %}<span title="{{ set_b.owned_numbers }}/{{ set_b.total_cards }} cards">{{ set_b.completion_pct | round | int }}%</span>{% else %}<span class="muted" title="Set size unknown -- not synced yet, or a Japanese/Korean set the card-set API doesn't cover">unknown</span>{% endif %}</td>
         </tr>
         {% for card in set_b.cards %}
         {{ card_leaf_row(card, 'grandchild-row', set_row_id) }}

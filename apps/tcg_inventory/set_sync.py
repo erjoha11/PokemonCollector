@@ -30,7 +30,12 @@ clear the confidence bar. Unmatched sets keep whatever `release_rank`/
 that is, beyond this script's own printed summary.
 
 Usage:
-    python set_sync.py
+    python set_sync.py                    # total_cards + fill missing release_rank
+    python set_sync.py --overwrite-ranks  # also replace existing ranks (see sync_set_metadata)
+
+Also runs monthly from Vercel Cron (`/cron/set-sync` in app.py) -- the one
+place it can reach api.pokemontcg.io from, and how `total_cards` (Dashboard
+completion) gets filled in on prod without anyone running this by hand.
 
 Uses the same DATABASE_URL as the app (see db.py) -- run it locally against
 SQLite, or with DATABASE_URL set to the Supabase connection string to
@@ -139,14 +144,19 @@ def _match(set_rows: list[Set], api_sets: list[dict]) -> dict[int, dict]:
     return matches
 
 
-def sync_set_metadata(db, api_sets: list[dict] | None = None) -> SetSyncResult:
+def sync_set_metadata(db, api_sets: list[dict] | None = None, overwrite_ranks: bool = False) -> SetSyncResult:
     """Match every existing `Set` row against api.pokemontcg.io and write
-    `release_rank`/`total_cards` for whatever matches -- overwrites any
-    prior value on a matched row (this API's release date is now the
-    source of truth, see module docstring), leaves an unmatched row's
-    existing value(s) completely untouched. `api_sets` is only for tests
-    (fixture data) -- production callers should leave it None and let this
-    fetch live.
+    `release_rank`/`total_cards` for whatever matches, leaving an unmatched
+    row's existing value(s) completely untouched. `api_sets` is only for
+    tests (fixture data) -- production callers should leave it None and let
+    this fetch live.
+
+    `total_cards` is always (over)written on a match. `release_rank` is only
+    filled in where it's still null unless `overwrite_ranks`: the API's ranks
+    (1..N over every set it knows) are a different scale from ranks already
+    in the database, and JP/KR sets never match -- so overwriting just the
+    matched rows would interleave two scales and scramble release order.
+    First found on prod 24.09.2026 (98 of 109 sets already ranked 1..100).
     """
     result = SetSyncResult()
     if api_sets is None:
@@ -166,7 +176,8 @@ def sync_set_metadata(db, api_sets: list[dict] | None = None) -> SetSyncResult:
         if api_set is None:
             result.unmatched.append(f"{row.series} / {row.name}")
             continue
-        row.release_rank = ranks.get(api_set["id"])
+        if overwrite_ranks or row.release_rank is None:
+            row.release_rank = ranks.get(api_set["id"])
         row.total_cards = api_set.get("total") if api_set.get("total") is not None else api_set.get("printedTotal")
         result.matched.append(f"{row.series} / {row.name}")
 
@@ -175,10 +186,12 @@ def sync_set_metadata(db, api_sets: list[dict] | None = None) -> SetSyncResult:
 
 
 def main() -> None:
+    import sys
+
     init_db()
     db = SessionLocal()
     try:
-        result = sync_set_metadata(db)
+        result = sync_set_metadata(db, overwrite_ranks="--overwrite-ranks" in sys.argv)
         if not result.api_call_succeeded:
             print("set_sync: api.pokemontcg.io/v2/sets call failed (network/HTTP error) -- nothing changed, rerun later.")
             return

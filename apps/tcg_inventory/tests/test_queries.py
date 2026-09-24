@@ -24,21 +24,24 @@ def _seed(db_session):
     )
 
 
-def test_collection_bulk_parent_equals_sum_of_children_plus_bulk_is_separate(db_session):
+def test_collection_membership_counts_every_tag_and_dedupes_totals(db_session):
     _seed(db_session)
-    breakdown = queries.collection_bulk_breakdown(db_session)
+    breakdown = queries.collection_membership_breakdown(db_session)
+    rows = {c.name: c for c in breakdown["children"]}
 
-    child_qty = sum(c.qty for c in breakdown["children"])
-    child_value = sum(c.total_value for c in breakdown["children"])
-    assert breakdown["parent"].qty == child_qty
-    assert breakdown["parent"].total_value == child_value
+    # Pikachu (a) is tagged Vintage, Charizard (b) Tomokazu Komiya.
+    assert rows["Vintage Collection"].qty == 2
+    assert rows["Tomokazu Komiya Collection"].qty == 1
 
-    # Bulbasaur belongs to no collection -> counted only in Bulk, not in parent.
+    # Collections/Total count each card once (overlap: test_phase1_aggregates).
+    assert breakdown["collections"].qty == 3  # Pikachu (2) + Charizard (1)
+    # Bulbasaur belongs to no collection -> Bulk only, not Collections.
     assert breakdown["bulk"].qty == 5
-    assert breakdown["parent"].qty == 3  # Pikachu (2) + Charizard (1)
+    assert breakdown["total"].qty == 8
+    assert breakdown["total"].unique_count == 3
 
 
-def test_collection_bulk_display_order_pins_vintage_second_and_illustrators_last(db_session):
+def test_collection_display_order_pins_vintage_second_and_illustrators_last(db_session):
     main = make_csv("My Collection", [{"id": "a"}, {"id": "b"}, {"id": "c"}, {"id": "d"}])
     generic = make_csv("Collection", [{"id": "a"}])
     vintage = make_csv("Vintage Collection", [{"id": "b"}])
@@ -55,7 +58,7 @@ def test_collection_bulk_display_order_pins_vintage_second_and_illustrators_last
         ],
     )
 
-    breakdown = queries.collection_bulk_breakdown(db_session)
+    breakdown = queries.collection_membership_breakdown(db_session)
     names = [c.name for c in breakdown["children"]]
     assert names == [
         "Collection",
@@ -272,8 +275,8 @@ def test_series_breakdown_falls_back_for_cards_with_no_linked_set_or_no_rank(db_
 
 def test_set_bucket_completion_pct_computed_from_total_cards_and_partial_ownership(db_session):
     """#142: a set-level bucket with a known `total_cards` and partial
-    ownership computes `unique_count / total_cards * 100` -- never stored,
-    computed live from the already qty>0-gated `unique_count`.
+    ownership computes `owned_numbers / total_cards * 100` -- never stored,
+    computed live, qty>0-gated.
     """
     main = make_csv(
         "My Collection",
@@ -295,10 +298,11 @@ def test_set_bucket_completion_pct_computed_from_total_cards_and_partial_ownersh
     assert base_set.unique_count == 2
     assert base_set.completion_pct == pytest.approx(2 / 102 * 100)
 
-    # The parent series-level bucket is not a set-level metric -- #142 says
-    # leave it None/blank rather than aggregating or guessing.
+    # The series bucket has no size of its own; its row aggregates over the
+    # sets with a known size instead (`series_completion`).
     assert original.total_cards is None
     assert original.completion_pct is None
+    assert original.series_completion["pct"] == pytest.approx(2 / 102 * 100)
 
 
 def test_set_bucket_with_unknown_total_cards_reports_none_not_0_or_100_pct(db_session):
