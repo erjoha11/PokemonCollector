@@ -59,8 +59,26 @@ run).
   hides the % for moves under `queries.PRICE_MOVE_PCT_MIN_KR` (10 kr).
   The collection/series cards share one stat grid: Unique value |
   Unique Cards, Duplicate value | Total Duplicates, then Net invested and Gain.
+- **Card page** (`/cards/{id}`) — one card: image, collections, binder,
+  variant, language, prices, gain, every transaction (with order links) and
+  its price history (`queries.card_price_history`, one point per snapshot
+  day). Every card name in the app links here (`card_link` in
+  `partials/macros.html`); Dex is a link on this page, and the photo viewer
+  has a "Card details" button. Replaced name → Dex links (24.09.2026).
+- **Collections** (`/collections`, `/collections/{id}`) — the membership
+  table as an index, and a per-collection gallery grouped by set with value,
+  duplicates, "shared" badges and completion (`queries.collection_detail`:
+  per set, distinct numbers / `total_cards`; the collection total covers only
+  known-size sets). `assign_bucket_investment` also fills
+  `no_cost_count`/`no_cost_value` so every bucket-level Gain can say how much
+  of it is cards with no purchase price.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
-  table. A qty == 0 card (traded/sold away, but still present in the latest
+  table, paginated 100 per page (`page`, `page_size=0` = all; sliced after
+  sorting, so value sorts stay correct; sort links drop `page`). Collection
+  filter has "Bulk / no collection" (`collection=__none__`), and a
+  "Duplicates only" checkbox (`dup=1`). Column chooser
+  (`static/inventory-columns.js`, localStorage); Classification/Location/
+  Notes are omitted server-side when empty in the current result. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
   from the export entirely) is hidden by default and shown dimmed with a
   small "0 owned" badge when the "Show cards I no longer own" toggle is

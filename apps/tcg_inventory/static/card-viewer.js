@@ -1,7 +1,7 @@
-// Card viewer: a click on any [data-card-view] element (a card's photo or
-// name -- see card_view_attrs in templates/partials/macros.html) shows the
-// card large in the shared <dialog id="card-viewer">, with a button out to
-// its Dex page. Delegated from document so it also works for rows htmx
+// Card viewer: a click on any [data-card-view] element (a card's photo --
+// names link to /cards/{id} instead; see card_view_attrs in templates/partials/macros.html) shows the
+// card large in the shared <dialog id="card-viewer">, with links to its
+// detail page and to Dex. Delegated from document so it also works for rows htmx
 // swaps in later (e.g. re-sorting Most valuable cards).
 (function () {
   function viewer() { return document.getElementById("card-viewer"); }
@@ -33,6 +33,11 @@
     dlg.querySelector(".card-viewer-meta").textContent = d.meta || "";
     dlg.querySelector(".card-viewer-price").textContent = d.price && d.price !== "-" ? d.price : "";
     dlg.querySelector(".card-viewer-dex").href = d.dex || "#";
+    var detail = dlg.querySelector(".card-viewer-detail");
+    if (detail) {
+      detail.href = d.detail || "#";
+      detail.hidden = !d.detail;
+    }
     if (typeof dlg.showModal === "function") dlg.showModal();
     else dlg.setAttribute("open", "");
   }

@@ -16,7 +16,7 @@
    structurally rather than by wording an alert better: the target is always
    a real, listed choice -- an existing order, or a new one. #}
 {% from "partials/macros.html" import sort_th with context %}
-{% from "partials/macros.html" import dex_link %}
+{% from "partials/macros.html" import card_link %}
 {% from "partials/macros.html" import info %}
 
 <section class="cards-section" id="card-picker">
@@ -69,7 +69,7 @@
               {%- if card.created_at %}{{ card.created_at.date().isoformat() }}
               {%- else %}<span title="Imported before the app tracked an added date.">no date</span>{% endif -%}
             </td>
-            <td>{{ dex_link(card) }}</td>
+            <td>{{ card_link(card, new_tab=true) }}</td>
             <td>{{ card.variant or '' }}</td>
             <td>{{ card.series or '' }}</td>
             <td>{{ card.set or '' }}</td>

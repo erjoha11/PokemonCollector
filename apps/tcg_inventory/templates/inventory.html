@@ -23,6 +23,7 @@
 
   <select name="collection" hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
     <option value="">All collections</option>
+    <option value="{{ no_collection_filter }}" {{ 'selected' if collection == no_collection_filter }}>Bulk / no collection</option>
     {% for c in all_collections %}<option value="{{ c }}" {{ 'selected' if c == collection }}>{{ c }}</option>{% endfor %}
   </select>
 
@@ -37,6 +38,12 @@
   </select>
 
   <label class="unowned-toggle">
+    <input type="checkbox" name="dup" value="1" {{ 'checked' if dup }}
+           hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    Duplicates only
+  </label>
+
+  <label class="unowned-toggle">
     <input type="checkbox" name="unowned" value="1" {{ 'checked' if unowned }}
            hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
     Show cards I no longer own
@@ -44,14 +51,7 @@
 
   <input type="hidden" name="sort" value="{{ sort }}">
   <input type="hidden" name="direction" value="{{ direction }}">
-  <input type="hidden" name="dup" value="{{ '1' if dup else '' }}">
   <input type="hidden" name="rarity" value="{{ rarity }}">
-  {% if dup %}
-  <span class="muted">
-    Showing only cards with duplicates.
-    <a href="/inventory?series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&rarity={{ rarity | urlencode }}&language={{ language | urlencode }}&unowned={{ '1' if unowned else '' }}">Clear filter</a>
-  </span>
-  {% endif %}
   {% if rarity %}
   <span class="muted">
     Filtered by rarity: {{ rarity }}
@@ -72,4 +72,5 @@
 {% include "partials/inventory_table.html" %}
 
 <script src="/static/sale-list.js"></script>
+<script src="/static/inventory-columns.js"></script>
 {% endblock %}

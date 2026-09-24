@@ -685,6 +685,7 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .kpi-support .stat-row.full-row {
   grid-column: 1 / -1;
 }
+.kpi-support .stat-note, .collection-kpis .stat-note { font-size: 0.72rem; justify-content: flex-end; }
 .kpi-support .stat-label {
   color: var(--ink-secondary);
   overflow: hidden;
@@ -1590,17 +1591,19 @@ button.secondary {
 .card-viewer-price { margin: 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .card-viewer-price:empty { display: none; }
 .card-viewer-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-.card-viewer-dex {
+.card-viewer-detail, .card-viewer-dex {
   display: inline-block;
-  background: var(--accent);
-  color: #fff;
   border-radius: var(--radius-sm);
   padding: 0.55rem 1.1rem;
   font-size: 0.9rem;
   font-weight: 600;
   text-decoration: none;
 }
-.card-viewer-dex:hover { filter: brightness(0.92); }
+/* Details is the primary action; Dex is the way out of the app. */
+.card-viewer-detail { background: var(--accent); color: #fff; }
+.card-viewer-detail[hidden] { display: none; }
+.card-viewer-dex { border: 1px solid var(--border-strong); color: var(--ink); background: var(--surface); }
+.card-viewer-detail:hover, .card-viewer-dex:hover { filter: brightness(0.92); }
 @media (max-width: 560px) {
   .card-viewer-body { grid-template-columns: 1fr; padding: 1rem; }
   .card-viewer-image, .card-viewer-noimage { max-width: 260px; justify-self: center; }
@@ -1639,3 +1642,93 @@ button.secondary {
 .mover-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
 .mover-change { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mover-pct { text-align: right; font-size: 0.72rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* ---- Card detail page (/cards/{id}) ---- */
+.breadcrumb { margin: 0 0 0.25rem; font-size: 0.85rem; }
+.card-detail {
+  display: grid;
+  grid-template-columns: minmax(180px, 280px) 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.card-detail-image { display: flex; flex-direction: column; gap: 0.6rem; }
+.card-detail-image img { width: 100%; border-radius: 12px; box-shadow: var(--shadow); }
+.card-detail-image .card-view-trigger { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.card-detail-noimage {
+  aspect-ratio: 63 / 88;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+}
+.card-detail-dex { font-size: 0.9rem; }
+.card-detail-kpis, .collection-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.75rem;
+  margin-bottom: 1rem;
+}
+.card-detail-kpis > div, .collection-kpis > div { display: flex; flex-direction: column; }
+.card-detail-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+  font-size: 0.92rem;
+}
+.card-detail-list dt { color: var(--muted); }
+.card-detail-list dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+  .card-detail { grid-template-columns: 1fr; }
+  .card-detail-image { max-width: 260px; }
+}
+
+/* ---- Collection gallery (/collections/{id}) ---- */
+.collection-toolbar { font-size: 0.9rem; margin: 0.5rem 0 1.25rem; }
+.collection-set { margin-bottom: 1.75rem; }
+.collection-set h2 { font-size: 1.1rem; margin-bottom: 0.6rem; }
+.collection-set-meta { font-size: 0.85rem; font-weight: 400; margin-left: 0.4rem; }
+.card-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 1rem;
+}
+.gallery-card { display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; }
+.gallery-card-image { padding: 0; border: 0; background: none; cursor: zoom-in; }
+.gallery-card-image img { width: 100%; aspect-ratio: 63 / 88; object-fit: contain; border-radius: 8px; }
+.gallery-card-noimage {
+  aspect-ratio: 63 / 88;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  cursor: default;
+}
+.gallery-card-name { font-weight: 600; font-size: 0.88rem; overflow-wrap: anywhere; }
+.gallery-card-meta { font-size: 0.78rem; }
+.gallery-card-figures { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+/* ---- Inventory pagination + column chooser ---- */
+.inventory-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 0.5rem; }
+.inventory-toolbar p { margin: 0; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem; font-size: 0.88rem; }
+.pagination a, .pagination span.current { padding: 0.15rem 0.5rem; border-radius: var(--radius-sm); }
+.pagination span.current { background: var(--accent-wash-strong); font-weight: 600; }
+.column-chooser { position: relative; font-size: 0.88rem; }
+.column-chooser summary { cursor: pointer; }
+.column-chooser-menu {
+  position: absolute;
+  z-index: 20;
+  margin-top: 0.3rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  gap: 0.25rem 1rem;
+}
+.column-chooser-menu label { white-space: nowrap; }
+.inventory-table .col-hidden { display: none; }

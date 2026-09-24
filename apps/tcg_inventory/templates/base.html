@@ -18,6 +18,7 @@
     <strong>TCG Inventory</strong>
     <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
     <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' }}">Inventory</a>
+    <a href="/collections" class="{{ 'active' if request.url.path.startswith('/collections') }}">Collections</a>
     <a href="/transactions" class="{{ 'active' if request.url.path == '/transactions' }}">Transactions</a>
     <a href="/sales" class="{{ 'active' if request.url.path == '/sales' }}">Sell on finn.no</a>
     <a href="/listings" class="{{ 'active' if request.url.path == '/listings' }}">Listings</a>

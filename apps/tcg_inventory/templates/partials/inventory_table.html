@@ -1,66 +1,106 @@
 {% from "partials/macros.html" import sort_th with context %}
-{% from "partials/macros.html" import dex_link %}
+{% from "partials/macros.html" import card_link %}
 {% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
+{% macro page_link(label, url, current=false) %}{% if current %}<span class="current" aria-current="page">{{ label }}</span>{% else %}<a href="{{ url }}" hx-get="{{ url }}" hx-target="#inventory-results" hx-push-url="true">{{ label }}</a>{% endif %}{% endmacro %}
+
+{# Optional columns: key -> header. Every one of them can be hidden with the
+   column chooser (static/inventory-columns.js, remembered per browser);
+   Classification/Location/Notes are also left out entirely when no card in
+   the current result has a value (`empty_columns`, see app.inventory). #}
+{% set optional_cols = [
+  ('number', 'No.'), ('series', 'Series'), ('set', 'Set'), ('collections', 'Collections'),
+  ('price', 'Price'), ('net_paid', 'Net paid'), ('total_value', 'Total value'), ('gain', 'Gain'),
+  ('qty', 'Total'), ('duplicates', 'Duplicates'), ('variant', 'Variant'), ('language', 'Language'),
+  ('rarity', 'Rarity'), ('illustrator', 'Illustrator'), ('binder', 'Binder'),
+  ('classification', 'Classification'), ('location', 'Location'), ('notes', 'Notes'), ('card_id', 'Card ID'),
+] | rejectattr('0', 'in', empty_columns) | list %}
+{% set shown_keys = optional_cols | map(attribute='0') | list %}
 
 <div id="inventory-results">
-  <p class="muted">{{ total }} card{{ '' if total == 1 else 's' }}</p>
+  <div class="inventory-toolbar">
+    <p class="muted">{{ total }} card{{ '' if total == 1 else 's' }}{% if page_size and page_count > 1 %} · showing {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total] | min }}{% endif %}</p>
+    {% if page_count > 1 %}
+    <div class="pagination" role="navigation" aria-label="Pages">
+      {% if page > 1 %}{{ page_link('‹ Prev', page_links | selectattr('0', 'equalto', page - 1) | map(attribute='1') | first) }}{% endif %}
+      {% for n, url in page_links %}{% if n is none %}<span class="muted">…</span>{% else %}{{ page_link(n, url, n == page) }}{% endif %}{% endfor %}
+      {% if page < page_count %}{{ page_link('Next ›', page_links | selectattr('0', 'equalto', page + 1) | map(attribute='1') | first) }}{% endif %}
+      {{ page_link('Show all', show_all_url) }}
+    </div>
+    {% elif not page_size and total > default_page_size %}
+    <div class="pagination" role="navigation" aria-label="Pages">{{ page_link('Show ' ~ default_page_size ~ ' per page', paged_url) }}</div>
+    {% endif %}
+    <details class="column-chooser">
+      <summary>Columns</summary>
+      <div class="column-chooser-menu" id="inventory-column-chooser">
+        {% for key, label in optional_cols %}
+        <label><input type="checkbox" data-col-toggle="{{ key }}" checked> {{ label }}</label>
+        {% endfor %}
+      </div>
+    </details>
+  </div>
   <div class="inventory-table-wrap">
   <table class="inventory-table">
     <thead>
       <tr>
         <th></th>
         <th>{{ sort_link('name', 'Name') }}</th>
-        <th>{{ sort_link('number', 'No.') }}</th>
-        <th>{{ sort_link('series', 'Series') }}</th>
-        <th>{{ sort_link('release', 'Set') }}</th>
-        <th>Collections</th>
-        <th class="num">{{ sort_link('reference_price', 'Price') }}</th>
-        <th class="num">{{ sort_link('net_invested', 'Net paid') }}</th>
-        <th class="num">{{ sort_link('total_value', 'Total value') }}</th>
-        <th class="num">{{ sort_link('gain_loss', 'Gain') }}</th>
-        <th class="num">{{ sort_link('qty', 'Total') }}</th>
-        <th class="num">Duplicates</th>
-        <th>Variant</th>
-        <th>{{ sort_link('language', 'Language') }}</th>
-        <th>{{ sort_link('rarity', 'Rarity') }}</th>
-        <th>{{ sort_link('illustrator', 'Illustrator') }}</th>
-        <th>Binder</th>
-        <th>Classification</th>
-        <th>Location</th>
-        <th>Notes</th>
-        <th>Card ID</th>
+        <th data-col="number">{{ sort_link('number', 'No.') }}</th>
+        <th data-col="series">{{ sort_link('series', 'Series') }}</th>
+        <th data-col="set">{{ sort_link('release', 'Set') }}</th>
+        <th data-col="collections">Collections</th>
+        <th data-col="price" class="num">{{ sort_link('reference_price', 'Price') }}</th>
+        <th data-col="net_paid" class="num">{{ sort_link('net_invested', 'Net paid') }}</th>
+        <th data-col="total_value" class="num">{{ sort_link('total_value', 'Total value') }}</th>
+        <th data-col="gain" class="num">{{ sort_link('gain_loss', 'Gain') }}</th>
+        <th data-col="qty" class="num">{{ sort_link('qty', 'Total') }}</th>
+        <th data-col="duplicates" class="num">Duplicates</th>
+        <th data-col="variant">Variant</th>
+        <th data-col="language">{{ sort_link('language', 'Language') }}</th>
+        <th data-col="rarity">{{ sort_link('rarity', 'Rarity') }}</th>
+        <th data-col="illustrator">{{ sort_link('illustrator', 'Illustrator') }}</th>
+        <th data-col="binder">Binder</th>
+        {% if 'classification' in shown_keys %}<th data-col="classification">Classification</th>{% endif %}
+        {% if 'location' in shown_keys %}<th data-col="location">Location</th>{% endif %}
+        {% if 'notes' in shown_keys %}<th data-col="notes">Notes</th>{% endif %}
+        <th data-col="card_id">Card ID</th>
       </tr>
     </thead>
     <tbody>
       {% for card in cards %}
       <tr{{ ' class="card-row-unowned"' | safe if card.qty == 0 }}>
         <td><input type="checkbox" class="sale-select" data-card-id="{{ card.id }}"></td>
-        <td>{{ dex_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}</td>
-        <td>{{ card.number or '' }}</td>
-        <td>{{ card.series or '' }}</td>
-        <td>{{ card.set or '' }}</td>
-        <td>{{ card.collections | map(attribute='name') | join(', ') }}</td>
-        <td class="num">{{ card.display_price | kr }}</td>
+        <td>{{ card_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}</td>
+        <td data-col="number">{{ card.number or '' }}</td>
+        <td data-col="series">{{ card.series or '' }}</td>
+        <td data-col="set">{{ card.set or '' }}</td>
+        <td data-col="collections">{% for c in card.collections | sort(attribute='name') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td data-col="price" class="num">{{ card.display_price | kr }}</td>
         {% set net_paid = invested_by_card.get(card.id) %}
-        <td class="num">{{ net_paid | kr if net_paid is not none else '-' }}</td>
-        <td class="num">{{ card.total_value | kr }}</td>
-        <td class="num">{{ (card.unique_value - net_paid) | kr if net_paid is not none else '-' }}</td>
-        <td class="num">{{ card.qty }}</td>
-        <td class="num">{{ card.duplicates }}</td>
-        <td>{{ card.variant or '' }}</td>
-        <td>{{ card.language | lang }}</td>
-        <td>{{ card.rarity or '' }}</td>
-        <td>{{ card.illustrator or '' }}</td>
-        <td>{{ card.binder.name if card.binder else '' }}</td>
-        <td>{{ card.classification or '' }}</td>
-        <td>{{ card.location or '' }}</td>
-        <td>{{ card.notes or '' }}</td>
-        <td>{{ card.card_id }}</td>
+        <td data-col="net_paid" class="num">{{ net_paid | kr if net_paid is not none else '-' }}</td>
+        <td data-col="total_value" class="num">{{ card.total_value | kr }}</td>
+        {#- Gain = total value - net paid, the app-wide definition (queries.gain_summary) #}
+        <td data-col="gain" class="num">{{ (card.total_value - net_paid) | kr if net_paid is not none else '-' }}</td>
+        <td data-col="qty" class="num">{{ card.qty }}</td>
+        <td data-col="duplicates" class="num">{{ card.duplicates }}</td>
+        <td data-col="variant">{{ card.variant or '' }}</td>
+        <td data-col="language">{{ card.language | lang }}</td>
+        <td data-col="rarity">{{ card.rarity or '' }}</td>
+        <td data-col="illustrator">{{ card.illustrator or '' }}</td>
+        <td data-col="binder">{{ card.binder.name if card.binder else '' }}</td>
+        {% if 'classification' in shown_keys %}<td data-col="classification">{{ card.classification or '' }}</td>{% endif %}
+        {% if 'location' in shown_keys %}<td data-col="location">{{ card.location or '' }}</td>{% endif %}
+        {% if 'notes' in shown_keys %}<td data-col="notes">{{ card.notes or '' }}</td>{% endif %}
+        <td data-col="card_id">{{ card.card_id }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="21" class="muted">No cards match the filter.</td></tr>
+      <tr><td colspan="{{ shown_keys | length + 2 }}" class="muted">No cards match the filter.</td></tr>
       {% endfor %}
     </tbody>
   </table>
   </div>
+  {% if page_count > 1 %}
+  <div class="pagination" role="navigation" aria-label="Pages (bottom)">
+    {% for n, url in page_links %}{% if n is none %}<span class="muted">…</span>{% else %}{{ page_link(n, url, n == page) }}{% endif %}{% endfor %}
+  </div>
+  {% endif %}
 </div>

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ collection.name }} – TCG Inventory{% endblock %}
+{% from "partials/macros.html" import info, card_view_attrs %}
+{% block content %}
+<p class="muted breadcrumb"><a href="/collections">Collections</a></p>
+<h1>{{ collection.name }}</h1>
+
+{% set b = bucket %}
+<div class="card collection-kpis">
+  <div><span class="tx-kpi-label">Unique cards</span><span class="tx-kpi-value">{{ b.unique_count }}</span></div>
+  <div><span class="tx-kpi-label">Duplicates</span><span class="tx-kpi-value">{{ b.duplicates }}</span></div>
+  <div><span class="tx-kpi-label">Value</span><span class="tx-kpi-value">{{ b.unique_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ b.total_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. Cards with no registered purchase count their full value as gain; the line below says how much.') }}</span>
+    {% if b.has_investment %}<span class="tx-kpi-value {{ 'viz-delta-gain' if b.gain_loss > 0 else ('viz-delta-loss' if b.gain_loss < 0 else '') }}">{{ '+' if b.gain_loss > 0 }}{{ b.gain_loss | kr }}</span>
+    {% if b.no_cost_count %}<span class="muted stat-note">incl. {{ b.no_cost_value | kr }} from {{ b.no_cost_count }} card{{ 's' if b.no_cost_count != 1 }} with no purchase price</span>{% endif %}
+    {% else %}<span class="tx-kpi-value muted">–</span>{% endif %}</div>
+  <div><span class="tx-kpi-label">Completion {{ info('A collection has no size of its own, so completion is per set: distinct card numbers from the set in this collection / cards in the set. The total covers only sets with a known size (Japanese/Korean sets are unknown).') }}</span>
+    <span class="tx-kpi-value">{% if completion %}{{ completion.pct | round | int }}%{% if completion.sets_known < completion.sets %} <span class="muted">· {{ completion.sets_known }}/{{ completion.sets }} sets</span>{% endif %}{% else %}<span class="muted">unknown</span>{% endif %}</span></div>
+  {% if shared_count %}<div><span class="tx-kpi-label">Shared</span><span class="tx-kpi-value">{{ shared_count }} <span class="muted">card{{ 's' if shared_count != 1 }} also in other collections</span></span></div>{% endif %}
+</div>
+
+<p class="collection-toolbar">
+  <a href="/inventory?collection={{ collection.name | urlencode }}">Open as table in Inventory</a> ·
+  {% if owned_only %}<a href="?owned=0">Also show cards no longer owned</a>{% else %}<a href="?owned=1">Only cards I own</a>{% endif %}
+</p>
+
+{% for set_b in b.child_sets %}
+{% set shown = set_b.cards | selectattr('qty', 'gt', 0) | list if owned_only else set_b.cards %}
+{% if shown %}
+<section class="collection-set">
+  <h2>{{ set_b.name }}
+    <span class="muted collection-set-meta">{{ set_b.unique_count }} unique · {{ set_b.total_value | kr }}
+    {%- if set_b.completion_pct is not none %} · <span title="{{ set_b.owned_numbers }}/{{ set_b.total_cards }} cards">{{ set_b.completion_pct | round | int }}% complete</span>{% endif %}</span></h2>
+  <div class="card-gallery">
+    {% for card in shown %}
+    <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">
+      {% if card.image_url %}<button type="button" class="card-view-trigger gallery-card-image" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }}"><img src="{{ card.image_url }}" alt="" loading="lazy"></button>{% else %}<div class="gallery-card-image gallery-card-noimage muted">No picture</div>{% endif %}
+      <a class="gallery-card-name" href="/cards/{{ card.id }}">{{ card.name }}</a>
+      <div class="gallery-card-meta muted">{% if card.number %}#{{ card.number }}{% endif %}{% if card.variant and card.variant != 'Normal' %} · {{ card.variant }}{% endif %}{% if card.language %} · {{ card.language | lang }}{% endif %}</div>
+      <div class="gallery-card-figures">
+        <span>{{ card.display_price | kr }}</span>
+        {% if card.qty > 1 %}<span class="tx-platform-badge" title="{{ card.duplicates }} duplicate{{ 's' if card.duplicates != 1 }}">×{{ card.qty }}</span>{% elif card.qty == 0 %}<span class="tx-platform-badge unowned-badge">0 owned</span>{% endif %}
+        {% set others = card.collections | map(attribute='name') | reject('equalto', collection.name) | list %}
+        {% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | sort | join(', ') }}">shared</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+{% endblock %}

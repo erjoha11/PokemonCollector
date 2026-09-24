@@ -364,9 +364,10 @@ def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
     assert "×2" in card and "Ultra Rare" in card
     assert "top-card-item-bar" not in card  # no price bar (removed on request)
     assert "tsort=name" in card  # sort pills
-    # Photo and name open the card viewer, with the card's Dex page as its button.
-    assert card.count("data-card-view") == 3  # Charizard photo+name, Pikachu name only
-    assert 'data-dex="https://app.dextcg.com/cards/a"' in card
+    # The photo opens the card viewer (details + Dex links); names link to /cards/{id}.
+    assert card.count("data-card-view") == 1  # Charizard's photo; Pikachu has none
+    assert 'data-detail="/cards/' in card
+    assert card.count('href="/cards/') == 2
     assert 'id="card-viewer"' in html and "/static/card-viewer.js" in html
 
 
@@ -1697,21 +1698,23 @@ def test_import_then_dashboard_reflects_the_sync(client):
     assert "Pikachu" in inventory.text
 
 
-def test_inventory_card_name_links_to_dex(client):
+def test_card_names_link_to_the_card_page_and_it_links_on_to_dex(client):
+    import db as db_module
+    from models import Card
+
     main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    card_pk = db.query(Card).one().id
+    db.close()
 
-    inventory = client.get("/inventory")
-    assert '<a href="https://app.dextcg.com/cards/ex5-4"' in inventory.text
-    assert "target=\"_blank\"" in inventory.text
+    for path in ("/inventory", "/"):
+        html = client.get(path).text
+        assert f'<a href="/cards/{card_pk}">Dark Celebi</a>' in html
+        assert 'href="https://app.dextcg.com/cards/ex5-4" target="_blank"' not in html
 
-
-def test_dashboard_top_cards_link_to_dex(client):
-    main = make_csv("My Collection", [{"id": "ex5-4", "name": "Dark Celebi", "price": "780"}])
-    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
-
-    dashboard = client.get("/")
-    assert '<a href="https://app.dextcg.com/cards/ex5-4"' in dashboard.text
+    detail = client.get(f"/cards/{card_pk}").text
+    assert 'href="https://app.dextcg.com/cards/ex5-4" target="_blank"' in detail
 
 
 def test_inventory_default_sort_is_release_order_with_numeric_tiebreak(client):

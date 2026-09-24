@@ -1216,3 +1216,30 @@ user test (Phase 2 = card detail/collection pages, Phase 3 = cleanup).
   month. Until then completion stays "unknown".
 - JP/KR sets never match the API, so SV151 JP/KR etc. stay "unknown"; a
   manual `total_cards` path would be needed for those.
+
+## Phase 2: card page, collection pages, Inventory — 2026-09-24 session
+
+Same branch. No schema change, no migration.
+
+- `/cards/{id}` (card detail) and `/collections`, `/collections/{id}`
+  (gallery). Every card name now links to `/cards/{id}` instead of Dex
+  (`dex_link` macro replaced by `card_link` + `dex_url`); picture clicks
+  still open the viewer, which gained a "Card details" button.
+- Inventory: Bulk filter, Duplicates-only checkbox, 100/page pagination with
+  Show all, column chooser, empty Classification/Location/Notes omitted.
+- Fixed a Phase 1 leftover: Inventory's Gain *cell* still showed
+  unique value − net paid (only its sort had been changed).
+- Bucket Gain (Dashboard tables, highlight cards, collection page) now says
+  how much of it is cards with no purchase price.
+
+Direct database change: one more `releases` row (Phase 2), 2026-09-24.
+
+Decisions worth knowing:
+- Pagination is server-side over an already-sorted full list, not
+  virtualization: simplest thing that keeps value sorts correct and works
+  with htmx swaps; sale selection lives in sessionStorage so it survives
+  paging.
+- Collection "completion" is per set (a collection is a tag, not a
+  checklist). If a collection should have its own target list (e.g.
+  "all 151 original Pokémon" for Vintage), that needs a model for it —
+  not built.

@@ -74,6 +74,11 @@ class Bucket:
     # the template must render an explicit "unknown" state for that case,
     # never a bare 0%/100%.
     total_cards: int | None = None
+    # Set by assign_bucket_investment(): owned cards in the bucket with no
+    # registered transaction, and their total value (all of it counts as
+    # gain_loss, since their cost is unknown).
+    no_cost_count: int = 0
+    no_cost_value: float = 0.0
 
     def add(self, card: Card) -> None:
         self.qty += card.qty
@@ -624,6 +629,72 @@ def real_value_history(
     ]
 
 
+def card_price_history(db: Session, card_id: int) -> list[dict]:
+    """One card's price and qty per snapshot day, oldest first -- the card
+    detail page's price history. Same one-point-per-day rule as
+    `real_value_history`: when a day has several sources, the latest in
+    `_SNAPSHOT_SOURCE_ORDER` wins (the day's close).
+    """
+    rows = db.query(CardSnapshot).filter(CardSnapshot.card_id == card_id).all()
+    rows.sort(key=lambda r: (r.date, _SNAPSHOT_SOURCE_ORDER.get(r.source, len(_SNAPSHOT_SOURCE_ORDER))))
+    by_date: dict[dt.date, CardSnapshot] = {}
+    for r in rows:
+        by_date[r.date] = r  # later source wins
+    return [
+        {"date": d, "label": d.strftime("%Y-%m-%d"), "price": r.reference_price, "qty": r.qty}
+        for d, r in sorted(by_date.items())
+    ]
+
+
+def collection_detail(db: Session, collection_id: int) -> dict | None:
+    """Everything `/collections/{id}` shows: the collection's own bucket
+    (every card with its tag, owned or not -- the template dims qty 0),
+    its cards grouped per set with each set's completion within the
+    collection, and which of its cards are also in other collections.
+    None when no such collection exists.
+
+    A collection has no size of its own (it's a tag, not a checklist), so
+    completion is per set: distinct numbers from that set carried by this
+    collection / the set's `total_cards`. `completion` sums that over the
+    sets with a known size, same shape as `Bucket.series_completion`.
+    """
+    from models import Collection
+
+    collection = (
+        db.query(Collection)
+        .options(selectinload(Collection.cards).selectinload(Card.collections), selectinload(Collection.cards).selectinload(Card.linked_set))
+        .filter(Collection.id == collection_id)
+        .one_or_none()
+    )
+    if collection is None:
+        return None
+
+    bucket = Bucket(name=collection.name)
+    sets: dict[str, Bucket] = {}
+    ranks: dict[str, int] = {}
+    for card in collection.cards:
+        bucket.add(card)
+        key = card.set or "(no set)"
+        set_bucket = sets.setdefault(key, Bucket(name=key))
+        set_bucket.add(card)
+        if card.linked_set is not None:
+            if card.linked_set.total_cards is not None and set_bucket.total_cards is None:
+                set_bucket.total_cards = card.linked_set.total_cards
+            if card.linked_set.release_rank is not None:
+                ranks[key] = min(ranks.get(key, card.linked_set.release_rank), card.linked_set.release_rank)
+    bucket.cards.sort(key=_card_sort_key)
+    for set_bucket in sets.values():
+        set_bucket.cards.sort(key=lambda c: (c.number_int if c.number_int is not None else _UNKNOWN_RELEASE_RANK, c.name))
+    bucket.child_sets = sorted(sets.values(), key=lambda b: (ranks.get(b.name, _UNKNOWN_RELEASE_RANK), b.name))
+
+    return {
+        "collection": collection,
+        "bucket": bucket,
+        "completion": bucket.series_completion,
+        "shared_count": sum(1 for c in bucket.cards if len(c.collections) > 1),
+    }
+
+
 # Per metric: how many copies of a card with `qty` count toward it -- the
 # per-card counterpart of the SQL expressions in real_value_history.
 _METRIC_COPIES = {
@@ -1046,10 +1117,19 @@ def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> d
 
 
 def assign_bucket_investment(buckets, invested_by_card: dict[int, float]) -> None:
-    """Attach transaction totals to buckets without changing value rules."""
+    """Attach transaction totals to buckets without changing value rules.
+
+    Also how much of each bucket's value is owned cards with no registered
+    transaction (`no_cost_count`/`no_cost_value`) -- that value is all
+    "gain" in `Bucket.gain_loss`, same as in `gain_summary`, so the UI can
+    say so next to it.
+    """
     for bucket in buckets:
         bucket.net_invested = sum(invested_by_card.get(card.id, 0.0) for card in bucket.cards)
         bucket.has_investment = any(card.id in invested_by_card for card in bucket.cards)
+        no_cost = [c for c in bucket.cards if c.qty > 0 and c.id not in invested_by_card]
+        bucket.no_cost_count = len(no_cost)
+        bucket.no_cost_value = sum(c.total_value for c in no_cost)
 
 
 @dataclass
