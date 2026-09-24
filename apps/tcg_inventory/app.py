@@ -484,6 +484,7 @@ def dashboard(
                 "collection_rows": collection_rows,
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
+                "price_movers": queries.price_movers(db, cards),
                 "invested_by_card": invested_by_card,
                 "rarity_breakdown": rarity_breakdown,
                 "pokemon_top": pokemon_top,

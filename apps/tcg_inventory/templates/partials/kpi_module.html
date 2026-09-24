@@ -1,5 +1,16 @@
 {% from "partials/macros.html" import info, card_view_attrs %}
 
+{# One row in "Price movers": arrow, card (opens the card viewer), then
+   the change in kr and %. #}
+{% macro mover_row(m, direction) %}
+<li class="mover-row">
+  <span class="mover-arrow {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" aria-hidden="true">{{ '▲' if direction == 'up' else '▼' }}</span>
+  <span class="mover-name"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(m.card) }} title="{{ m.card.name }}">{{ m.card.name }}</button>{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
+  <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
+  <span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>
+</li>
+{% endmacro %}
+
 {# The stat grid under "Most valuable collection" and "Most valuable series":
    the same six figures in the same places in both cards. Each value sits
    next to its count (Unique value | Unique Cards, Duplicate value | Total
@@ -103,47 +114,19 @@
   </div>
 
   {% if request.url.path == '/' %}
-  <div class="kpi-card kpi-top-cards">
-    <h3>Most valuable cards {{ info('The three individual cards with the highest price in the whole collection — not adjusted for how many copies you own.') }}</h3>
-    {% if top_cards %}
-    <div class="top-card-ranking">
-      {% set first_card = top_cards[0] %}
-      <div class="top-card-rank top-card-rank-first{{ '' if first_card.image_url else ' top-card-rank-noimg' }}">
-        <span class="top-card-place">1.</span>
-        {% if first_card.image_url %}<button type="button" class="card-view-trigger" {{ card_view_attrs(first_card) }} aria-label="Show {{ first_card.name }}"><img class="top-card-image" src="{{ first_card.image_url }}" alt="{{ first_card.name }}" loading="lazy"></button>{% endif %}
-        <div class="top-card-details">
-          <div class="top-card-name" title="{{ first_card.name }}"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(first_card) }}>{{ first_card.name }}</button>{% if first_card.number %} <span class="top-card-number">#{{ first_card.number }}</span>{% endif %}</div>
-          {% if first_card.rarity or first_card.language %}
-          <div class="top-card-meta">
-            {%- if first_card.rarity %}{{ first_card.rarity }}{% endif -%}
-            {%- if first_card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ first_card.language | lang }}</span>{% endif -%}
-          </div>
-          {% endif %}
-        </div>
-        <span class="top-card-price">{{ first_card.display_price | kr }}</span>
-      </div>
-      {% if top_cards|length > 1 %}
-      <div class="top-card-runners-up">
-        {% for card in top_cards[1:3] %}
-        <div class="top-card-rank top-card-rank-noimg">
-          <span class="top-card-place">{{ loop.index + 1 }}.</span>
-          <div class="top-card-details">
-            <div class="top-card-name" title="{{ card.name }}"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(card) }}>{{ card.name }}</button>{% if card.number %} <span class="top-card-number">#{{ card.number }}</span>{% endif %}</div>
-            {% if card.rarity or card.language %}
-            <div class="top-card-meta">
-              {%- if card.rarity %}{{ card.rarity }}{% endif -%}
-              {%- if card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ card.language | lang }}</span>{% endif -%}
-            </div>
-            {% endif %}
-          </div>
-          <span class="top-card-price">{{ card.display_price | kr }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-    </div>
+  <div class="kpi-card kpi-top-cards kpi-movers">
+    {% set pm = price_movers %}
+    <h3>Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go.') }}</h3>
+    {% if pm and (pm.up or pm.down) %}
+    <div class="kpi-caption muted">Since {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down</div>
+    <ul class="mover-list">
+      {% for m in pm.up %}{{ mover_row(m, 'up') }}{% endfor %}
+      {% for m in pm.down %}{{ mover_row(m, 'down') }}{% endfor %}
+    </ul>
+    {% elif pm %}
+    <div class="kpi-caption muted">No price changes since {{ pm.since.strftime('%d.%m.%Y') }}.</div>
     {% else %}
-    <div class="kpi-caption muted">No data</div>
+    <div class="kpi-caption muted">Needs at least one earlier daily snapshot.</div>
     {% endif %}
   </div>
   {% endif %}

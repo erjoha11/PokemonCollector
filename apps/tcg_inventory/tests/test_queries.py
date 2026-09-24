@@ -837,3 +837,52 @@ def test_sets_missing_release_rank_includes_sets_with_no_cards(db_session):
     assert missing == [
         queries.SetMissingReleaseRank(series="Empty Series", name="Empty Set", card_count=0)
     ]
+
+
+def test_price_movers_ranks_by_kr_since_the_period_start(db_session):
+    import datetime as dt
+
+    import queries
+    from models import Card, CardSnapshot
+
+    today = dt.date(2026, 9, 24)
+    cards = [
+        Card(card_id="a", name="Charizard", qty=1, reference_price=500),
+        Card(card_id="b", name="Mew", qty=1, reference_price=90),
+        Card(card_id="c", name="Pikachu", qty=1, reference_price=4),  # +100 %, but only +2 kr
+        Card(card_id="d", name="Umbreon", qty=1, reference_price=300),
+        Card(card_id="e", name="Sold", qty=0, reference_price=999),  # not owned: ignored
+    ]
+    db_session.add_all(cards)
+    db_session.flush()
+    old = {"a": 400, "b": 100, "c": 2, "d": 300, "e": 1}
+    for card in cards:
+        # an older day (ignored: a later one still precedes the period start) and the start day
+        db_session.add(CardSnapshot(card_id=card.id, date=dt.date(2026, 8, 1), source="cron", qty=1, reference_price=1))
+        db_session.add(CardSnapshot(card_id=card.id, date=dt.date(2026, 8, 20), source="cron", qty=1, reference_price=old[card.card_id]))
+    db_session.commit()
+
+    result = queries.price_movers(db_session, cards, days=30, today=today)
+    assert result["since"] == dt.date(2026, 8, 20) and result["days"] == 35
+    assert [(m.card.name, m.change) for m in result["up"]] == [("Charizard", 100), ("Pikachu", 2)]
+    assert [(m.card.name, m.change) for m in result["down"]] == [("Mew", -10)]
+    assert round(result["up"][0].pct) == 25
+    assert (result["n_up"], result["n_down"]) == (2, 1)
+
+
+def test_price_movers_uses_earliest_day_when_history_is_short_and_none_without_history(db_session):
+    import datetime as dt
+
+    import queries
+    from models import Card, CardSnapshot
+
+    card = Card(card_id="a", name="Charizard", qty=1, reference_price=500)
+    db_session.add(card)
+    db_session.commit()
+    today = dt.date(2026, 9, 24)
+    assert queries.price_movers(db_session, [card], today=today) is None
+
+    db_session.add(CardSnapshot(card_id=card.id, date=dt.date(2026, 9, 20), source="cron", qty=1, reference_price=450))
+    db_session.commit()
+    result = queries.price_movers(db_session, [card], today=today)
+    assert result["days"] == 4 and result["up"][0].change == 50
