@@ -1,21 +1,21 @@
 {% from "partials/macros.html" import info, card_view_attrs %}
 
 {# The stat grid under "Most valuable collection" and "Most valuable series":
-   the same six figures in the same places in both cards. Two columns,
-   filled row by row -- left: Unique value, Duplicate value, Unique Cards;
-   right: Total Duplicates, then Net invested and Gain under it (cost, then
-   what it turned into). Gain is the same figure as the dashboard tables'
-   Gain/loss (Bucket.gain_loss), green/red; "-" for both money figures when
-   nothing in the bucket has a registered purchase. #}
+   the same six figures in the same places in both cards. Each value sits
+   next to its count (Unique value | Unique Cards, Duplicate value | Total
+   Duplicates); Net invested and Gain follow as full-width rows, Gain under
+   Net invested (cost, then what it turned into). Gain is the dashboard
+   tables' Gain/loss (Bucket.gain_loss), green/red; "-" for both money
+   figures when nothing in the bucket has a registered purchase. #}
 {% macro highlight_stats(bucket) %}
 <div class="kpi-support">
   <div class="stat-row"><span class="stat-label">Unique value</span><span class="stat-value">{{ bucket.unique_value | kr }}</span></div>
-  <div class="stat-row"><span class="stat-label">Total Duplicates</span><span class="stat-value">{{ bucket.duplicates }}</span></div>
-  <div class="stat-row duplicate-value"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ (bucket.total_value - bucket.unique_value) | kr }}</span></div>
-  <div class="stat-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ bucket.net_invested | kr if bucket.has_investment else '-' }}</span></div>
   <div class="stat-row"><span class="stat-label">Unique Cards</span><span class="stat-value">{{ bucket.unique_count }}</span></div>
+  <div class="stat-row duplicate-value"><span class="stat-label">Duplicate value</span><span class="stat-value">{{ (bucket.total_value - bucket.unique_value) | kr }}</span></div>
+  <div class="stat-row"><span class="stat-label">Total Duplicates</span><span class="stat-value">{{ bucket.duplicates }}</span></div>
+  <div class="stat-row full-row"><span class="stat-label">Net invested</span><span class="stat-value">{{ bucket.net_invested | kr if bucket.has_investment else '-' }}</span></div>
   {%- set gain = bucket.gain_loss %}
-  <div class="stat-row"><span class="stat-label">Gain</span>{% if bucket.has_investment %}<span class="stat-value {{ 'viz-delta-gain' if gain > 0 else ('viz-delta-loss' if gain < 0 else '') }}">{{ '+' if gain > 0 }}{{ gain | kr }}</span>{% else %}<span class="stat-value muted">-</span>{% endif %}</div>
+  <div class="stat-row full-row"><span class="stat-label">Gain</span>{% if bucket.has_investment %}<span class="stat-value {{ 'viz-delta-gain' if gain > 0 else ('viz-delta-loss' if gain < 0 else '') }}">{{ '+' if gain > 0 }}{{ gain | kr }}</span>{% else %}<span class="stat-value muted">-</span>{% endif %}</div>
 </div>
 {% endmacro %}
 <div class="kpi-grid">
