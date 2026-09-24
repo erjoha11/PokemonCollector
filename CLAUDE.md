@@ -45,10 +45,10 @@ cd apps/tcg_inventory && python app.py    # serves http://localhost:8000, SQLite
 
 ### finn_ad_scraper
 
-Two-step pipeline, both steps independently testable against fixtures/fake clients:
+`analyze_ad(url)` (`pipeline.py`) runs two steps, each testable on its own against fixtures/fake clients:
 
-1. `fetch_finn_ad(url)` (`finn_ad.py`) — plain HTTP GET first (finn.no embeds a JSON-LD `Product` block that needs no JS); falls back to headless Chromium via Playwright only if that fails.
-2. `identify_cards(images, ad_context)` (`card_identifier.py`) — sends ad photos to Claude vision, returns each card's name/set/number/holo/condition.
+1. `fetch_finn_ad(url)` (`finn_ad.py`) — plain HTTP GET first (finn.no embeds a JSON-LD `Product` block that needs no JS); falls back to headless Chromium via Playwright only if that response has no structured data. `parse_ad` reads JSON-LD, then Open Graph/meta tags.
+2. `identify_cards(images, ad_context)` (`card_identifier.py`) — one Claude vision request per ad (photos by URL, structured outputs against `CARD_SCHEMA`, server-side refusal fallback). Each card comes back in tcg_inventory's masterdata vocabulary (language, set code, number, variant) plus its Dex card ID; those rules live in `card_ids.py` as a copy of `tcg_inventory/masterdata.py`'s, so keep the two in sync.
 
 ### tcg_inventory
 

@@ -684,6 +684,11 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   white-space: nowrap;
   color: var(--ink);
 }
+/* Gain in the highlight cards' stat grid keeps the shared green/red --
+   the plain .viz-delta-* classes lose to the rule above on specificity. */
+.kpi-support .stat-value.viz-delta-gain { color: #0ca30c; }
+.kpi-support .stat-value.viz-delta-loss { color: #d03b3b; }
+.kpi-support .stat-value.muted { color: var(--muted); }
 
 /* Highlight cards (most/least valuable X) show a name as a caption under
    the hero price instead of a label:value row -- it's an identity, not a
