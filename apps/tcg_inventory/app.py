@@ -34,6 +34,7 @@ import dropbox_client
 import price_refresh
 import queries
 import snapshots
+import constants
 from constants import CARD_CONDITIONS
 from db import SessionLocal, init_db
 from importer import import_dex_csv_files
@@ -91,6 +92,7 @@ def _format_kr(v: float | None) -> str:
 
 
 templates.env.filters["kr"] = _format_kr
+templates.env.filters["lang"] = constants.language_code
 
 
 def _card_image_large(url: str | None) -> str | None:

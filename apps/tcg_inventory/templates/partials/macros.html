@@ -33,7 +33,7 @@ data-card-view data-name="{{ card.name }}" data-dex="https://app.dextcg.com/card
 {%- if card.number %}{% set _ = meta.append('#' ~ card.number) %}{% endif -%}
 {%- if card.variant %}{% set _ = meta.append(card.variant) %}{% endif -%}
 {%- if card.rarity %}{% set _ = meta.append(card.rarity) %}{% endif -%}
-{%- if card.language %}{% set _ = meta.append(card.language) %}{% endif %} data-meta="{{ meta | join(' · ') }}" data-price="{{ card.display_price | kr }}"
+{%- if card.language %}{% set _ = meta.append(card.language | lang) %}{% endif %} data-meta="{{ meta | join(' · ') }}" data-price="{{ card.display_price | kr }}"
 {%- endmacro %}
 
 {% macro dex_link(card) %}<a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>{% endmacro %}

@@ -73,3 +73,25 @@ def test_qty_greater_than_one_is_reflected_in_description():
     draft = ads.build_listing([_item(qty=3, price=10.0)])
     assert "3 stk" in draft.description
     assert draft.suggested_price == 30.0
+
+
+def test_card_label_shows_short_language_codes_and_skips_english():
+    from ads import SaleItem, _card_label
+
+    def label(language):
+        return _card_label(SaleItem(card_id=1, name="Mew", set="151", number="151", variant=None,
+                                    language=language, condition=None, qty=1, price=None))
+
+    assert label("International") == "Mew 151 #151"
+    assert label("ENG") == "Mew 151 #151"
+    assert label("Japanese") == "Mew 151 #151 (JP)"
+    assert label("Simplified Chinese") == "Mew 151 #151 (CN)"
+
+
+def test_language_code():
+    import constants
+
+    assert constants.language_code("International") == "EN"
+    assert constants.language_code("Korean") == "KR"
+    assert constants.language_code("Klingon") == "Klingon"
+    assert constants.language_code(None) == ""

@@ -116,7 +116,7 @@
           {% if first_card.rarity or first_card.language %}
           <div class="top-card-meta">
             {%- if first_card.rarity %}{{ first_card.rarity }}{% endif -%}
-            {%- if first_card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ first_card.language }}</span>{% endif -%}
+            {%- if first_card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ first_card.language | lang }}</span>{% endif -%}
           </div>
           {% endif %}
         </div>
@@ -132,7 +132,7 @@
             {% if card.rarity or card.language %}
             <div class="top-card-meta">
               {%- if card.rarity %}{{ card.rarity }}{% endif -%}
-              {%- if card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ card.language }}</span>{% endif -%}
+              {%- if card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ card.language | lang }}</span>{% endif -%}
             </div>
             {% endif %}
           </div>
