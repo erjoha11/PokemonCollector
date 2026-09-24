@@ -7,7 +7,8 @@
   <span class="mover-arrow {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" aria-hidden="true">{{ '▲' if direction == 'up' else '▼' }}</span>
   <span class="mover-name"><button type="button" class="card-view-trigger card-view-name" {{ card_view_attrs(m.card) }} title="{{ m.card.name }}">{{ m.card.name }}</button>{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
   <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
-  <span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>
+  {#- % only when the move is big enough in kr to mean something (queries.PRICE_MOVE_PCT_MIN_KR) #}
+  {% if m.show_pct %}<span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>{% else %}<span class="mover-pct muted" title="Change under 10 kr -- % left out">·</span>{% endif %}
 </li>
 {% endmacro %}
 
@@ -42,7 +43,7 @@
   <div class="kpi-card kpi-overview kpi-gain {{ 'kpi-gain-up' if up else 'kpi-gain-down' }}">
 
     <section class="kpi-ov-section kpi-ov-value">
-      <h3>Market Value {{ info("Total value of everything you own, duplicates included. Gain / loss is that total minus everything you've paid (Net invested, shipping included) — not realized, nothing has been sold.") }}</h3>
+      <h3>Market Value {{ info("Total value of everything you own, duplicates included. Gain / loss is that total minus everything you've paid (Net invested, shipping included) — not realized, nothing has been sold. It's the same Gain/loss every table shows. Cards with no registered purchase price count their full value as gain; the line below the equation says how much of the gain that is.") }}</h3>
       <div class="kpi-ov-hero">
         <span class="kpi-ov-hero-value">{{ headline.total_value | kr }}</span>
         <span class="kpi-ov-gain-pill" title="Gain / loss">
@@ -58,6 +59,11 @@
         <span class="kpi-ov-op">=</span>
         <span class="kpi-ov-result">{{ '+' if gain.gain > 0 }}{{ gain.gain | kr }}</span>
       </div>
+      {% if gain.no_cost_count %}
+      <div class="kpi-ov-nocost muted" title="Owned cards with no registered purchase: their whole value counts toward the gain above, since what they cost isn't known.">
+        No purchase price: <strong>{{ gain.no_cost_count }} card{{ 's' if gain.no_cost_count != 1 }}</strong> · <strong>{{ gain.no_cost_value | kr }}</strong> of the gain
+      </div>
+      {% endif %}
       {% if headline.total_value > 0 %}
       {% set unique_share = (headline.unique_value / headline.total_value * 100) %}
       <div class="kpi-ov-bar" role="img" aria-label="Unique value {{ headline.unique_value | kr }}, duplicate value {{ headline.duplicate_value | kr }}">
@@ -72,7 +78,7 @@
     </section>
 
     <section class="kpi-ov-section kpi-ov-movers">
-      <h3>Cards up / down {{ info("Compares each card's value today (all copies you own) with what you paid for it. Best card is the one furthest above what it cost: its value today, and how much that is above what you paid. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
+      <h3>Above / below cost {{ info("Compares each card's value today (all copies you own) with what you paid for it — since purchase, not over a period (for recent price changes, see Price movers). Best card is the one furthest above what it cost: its value today, and how much that is above what you paid. Only cards with a registered transaction count — an unregistered card has no known cost. A ripped card counts as up by its full value.") }}</h3>
       {% set n_moved = gain.n_up + gain.n_down %}
       {% if n_moved %}
       <div class="kpi-ov-updown">
@@ -83,6 +89,7 @@
         </div>
         <span class="kpi-ov-count viz-delta-loss">{{ gain.n_down }} ▼</span>
       </div>
+      <div class="kpi-caption muted">Today's value vs. purchase price · {{ gain.n_with_cost }} cards with a known cost</div>
       {% endif %}
       {% if gain.best %}
       {% set best_card, best_gain = gain.best %}
@@ -116,9 +123,9 @@
   {% if request.url.path == '/' %}
   <div class="kpi-card kpi-top-cards kpi-movers">
     {% set pm = price_movers %}
-    <h3>Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go.') }}</h3>
+    <h3>Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go. Unlike Above / below cost, the baseline is that snapshot, not what you paid. % is left out for changes under 10 kr.') }}</h3>
     {% if pm and (pm.up or pm.down) %}
-    <div class="kpi-caption muted">Since {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down</div>
+    <div class="kpi-caption muted">Last {{ pm.days }} d · price today vs. snapshot {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down</div>
     <ul class="mover-list">
       {% for m in pm.up %}{{ mover_row(m, 'up') }}{% endfor %}
       {% for m in pm.down %}{{ mover_row(m, 'down') }}{% endfor %}
@@ -132,7 +139,7 @@
   {% endif %}
 
   <div class="kpi-card">
-    <h3>Most valuable collection {{ info("Ranked by the value of unique cards in the collection (duplicates don't add extra). Bulk doesn't count as a collection here.") }}</h3>
+    <h3>Most valuable collection {{ info("Ranked by the value of unique cards in the collection (duplicates don't add extra). Counts every card tagged with the collection, including cards also in other collections. Bulk doesn't count as a collection here.") }}</h3>
     {% if top_collection %}
     <div class="kpi-hero kpi-highlight-hero">
       <div><span class="value">{{ top_collection.unique_value | kr }}</span><div class="kpi-caption" title="{{ top_collection.name }}">{{ top_collection.name }}</div></div>

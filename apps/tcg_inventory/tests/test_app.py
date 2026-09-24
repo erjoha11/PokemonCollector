@@ -252,8 +252,11 @@ def test_market_value_key_figures_follow_the_selected_metric(client, path):
         bar = html[html.index('class="chart-kpi-bar"'):]
         return bar[: bar.index("</div>\n  </div>")]
 
+    # Gain / loss has one definition (total value - net invested), so it's
+    # only shown on Total -- Unique shows "–" rather than a second "gain".
     unique = stats("unique")
-    assert "250 kr" in unique and "100 kr" in unique and "-150 kr" in unique
+    assert "250 kr" in unique and "100 kr" in unique and "-150 kr" not in unique
+    assert unique.count(">–</span>") == 1
 
     total = stats("total")
     assert "250 kr" in total and "300 kr" in total and "50 kr" in total

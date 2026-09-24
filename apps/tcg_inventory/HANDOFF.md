@@ -1169,3 +1169,50 @@ Transactions page queried a column that didn't exist. Fixed right after deploy:
 
 Lesson: a new model column needs a `CURRENT_SCHEMA_VERSION` bump, or it never
 reaches an already-migrated database.
+
+# Handoff notes — 2026-09-24 session (Phase 1: trust in the numbers)
+
+Branch `claude/ecstatic-hawking-dmy7rx`. Phase 1 of a 3-phase list from a
+user test (Phase 2 = card detail/collection pages, Phase 3 = cleanup).
+
+## Code (in git)
+
+- Dashboard collection rows count real membership
+  (`queries.collection_membership_breakdown`) + deduplicated Collections and
+  Total rows; "shared with N" badge in drilldown. Primary-collection credit
+  no longer drives dashboard rows (README rule 3 updated); `priority_rank`
+  logic itself untouched.
+- One gain definition: total value − net invested (`Bucket.gain_loss`,
+  Inventory per-card Gain, chart stats only on Total).
+- "No purchase price" line under the gain; "Above / below cost" rename;
+  Price movers baseline caption and <10 kr % hidden; chart label "since
+  first snapshot DATE".
+- Completion: `owned_numbers` (distinct numbers, not rows) and
+  `series_completion`; the series column was hardcoded "-".
+- `/cron/set-sync` monthly (vercel.json) + `set_sync` no longer overwrites
+  existing `release_rank` by default.
+
+## Direct database changes (not in git)
+
+- One `releases` row inserted for Phase 1 (date 2026-09-24).
+
+## State found on prod, 24.09.2026 (read-only queries)
+
+- 858 unique / 1 092 physical cards; 582/793 tagged, 276/299 Bulk.
+- Membership: Vintage 151, Collection 76, SV151 JP/KR 274; 20 multi-tagged
+  cards explain all of the old dashboard gap (142/67/272).
+- 134 owned cards with no transaction, worth 360 kr in total — the gain
+  (+2 682 kr) is inflated by that much, not more.
+- `sets.total_cards` null on all 109 sets: `set_sync.py` had never run on
+  prod, so the 19.09 "real completion %" release never showed a number.
+  98/109 sets already have `release_rank` 1..100 (another scale than the
+  API's) — why set-sync now keeps existing ranks.
+
+## Open items
+
+- **Set sync has not run on prod yet.** This container can't reach
+  api.pokemontcg.io (egress policy). After deploy, trigger
+  `GET /cron/set-sync?secret=<CRON_SECRET>` once, or wait for the 1st of the
+  month. Until then completion stays "unknown".
+- JP/KR sets never match the API, so SV151 JP/KR etc. stay "unknown"; a
+  manual `total_cards` path would be needed for those.

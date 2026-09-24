@@ -21,8 +21,13 @@ run).
 
 ## Pages
 
-- **Dashboard** (`/`) — headline totals, Collection/Bulk breakdown, by
-  series, most valuable cards (scrollable list), by rarity.
+- **Dashboard** (`/`) — headline totals, collection breakdown
+  (`queries.collection_membership_breakdown`: one row per collection with
+  every card carrying its tag, Bulk, a deduplicated Collections row and a
+  deduplicated Total row — collection rows can sum to more than Total, a
+  multi-tagged card is marked "shared with N" in drilldown), by series
+  (with completion, see below), most valuable cards (scrollable list), by
+  rarity.
 - **Overview KPI band** — a full-width card at the top of the KPI row on
   Dashboard, Inventory and Transactions, ordered by what a collector wants
   to know first:
@@ -31,8 +36,13 @@ run).
      a pill beside it. Gain is that same total minus Net invested — an
      equation row, "Total value − Paid = gain", spells it out — and a bar
      splits the total into unique vs duplicate value. (Transactions' "Paper
-     gain/loss" uses the same total.)
-  2. **Cards up / down**: an up-vs-down bar plus the best and worst card
+     gain/loss" uses the same total.) **This is the one gain definition app-wide**
+     — every table's Gain/loss (`Bucket.gain_loss`) and Inventory's per-card
+     Gain are total value − net invested too. A "No purchase price" line under
+     the equation shows how many owned cards have no registered transaction and
+     their value (`gain_summary`'s `no_cost_count`/`no_cost_value`), since that
+     value lands in the gain in full.
+  2. **Above / below cost** (formerly "Cards up / down"): an up-vs-down bar plus the best and worst card
      (with thumbnail), each card's value of all copies owned vs what it
      cost. Only owned cards with a registered transaction count
      (an unregistered card has no known cost); a ripped card counts as up by
@@ -45,7 +55,9 @@ run).
   **Price movers** (`queries.price_movers`) lists the owned cards whose price
   rose and fell the most in kr per copy, comparing the daily snapshot from
   30 days ago (or the earliest one, while history is shorter) with today's
-  price. The collection/series cards share one stat grid: Unique value |
+  price. It says so in its caption ("price today vs. snapshot DATE"), and
+  hides the % for moves under `queries.PRICE_MOVE_PCT_MIN_KR` (10 kr).
+  The collection/series cards share one stat grid: Unique value |
   Unique Cards, Duplicate value | Total Duplicates, then Net invested and Gain.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table. A qty == 0 card (traded/sold away, but still present in the latest
@@ -298,17 +310,20 @@ without updating both the code and this doc.
    "151 Fullarts" are always fully ignored.
 2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored.
 3. **Primary collection.** When a card belongs to more than one collection,
-   only one gets "credit" in dashboard summaries (so a card is never
-   double-counted). Priority, highest first:
+   `Card.primary_collection` picks one by priority, highest first:
    1. Illustrator collections (Tomokazu Komiya, Shinji Kanda, Yuka Morii,
       Saya Tsuruta)
    2. Vintage Collection
    3. Collection (generic Dex folder)
    4. Scarlet & Violet: 151 JP/KR
 
-   Any other/unknown collection name defaults to the lowest priority. This
-   ranking **only affects the dashboard's "which collection gets credit"
-   calculation** — `card_collections` itself always keeps every real tag.
+   Any other/unknown collection name defaults to the lowest priority.
+   `card_collections` itself always keeps every real tag. **Since Phase 1
+   (24.09.2026) the dashboard no longer uses this for its collection rows**:
+   crediting a multi-tagged card to one collection made it vanish from the
+   others (Vintage showed 142 of its 151 cards), so each row now counts real
+   membership and a separate deduplicated Total row does the "never
+   double-counted" job instead. The ranking itself is unchanged.
 4. **Binder tags.** "Illustrator Binder", "Vintage Binder", "151 Binder",
    and "Tradebinder" route to `binder_id` instead of becoming a collection.
 5. **Sync semantics.**
@@ -362,6 +377,17 @@ without updating both the code and this doc.
    still have no `release_rank`, grouped with each one's own card count, so
    that gap stays visible instead of only showing up as a sort artifact.
    Safe to re-run any time; only ever touches rows it actually matches.
+   **Since 24.09.2026** it also runs monthly as Vercel Cron
+   (`/cron/set-sync`, CRON_SECRET-gated) — until then it had never been run
+   against prod, so every set's `total_cards` was null and Dashboard
+   completion showed "unknown" everywhere. It now always writes
+   `total_cards` but only fills `release_rank` where it's null
+   (`--overwrite-ranks` for the old behaviour): prod's existing ranks are a
+   different scale from the API's, and overwriting only the matched sets
+   would interleave the two against the unmatched JP/KR sets. Completion
+   (`Bucket.completion_pct`) counts distinct card numbers owned
+   (`owned_numbers`), not rows, so variants/languages of one number count
+   once; a series row aggregates its known-size sets (`series_completion`).
    Every release-order UI surface in the app — the Inventory table's
    default "release order" sort, the Dashboard's series breakdown,
    Inventory's collapsed KPI module, and the Transactions KPI module (all
@@ -737,10 +763,14 @@ charts" section, as a portfolio-style chart:
   can be toggled on for Unique/Total — off by default, since showing it
   widens the y-axis.
 - The stat row (Net invested / Current value / Gain-loss) follows the
-  metric: Current value is today's unique / duplicate / total value, gain
-  is it minus Net invested. Duplicates shows "–" for Net invested and
-  Gain-loss: purchase cost is recorded per card, not per copy, so there's
-  no honest split between a card's first copy and its extra copies.
+  metric: Current value is today's unique / duplicate / total value.
+  Gain-loss is only shown on Total (total value − Net invested, the one
+  app-wide definition). Duplicates shows "–" for Net invested too:
+  purchase cost is recorded per card, not per copy, so there's no honest
+  split between a card's first copy and its extra copies.
+- The change beside the value is first-to-last point of the chart, labelled
+  "since first snapshot DATE" on All (it used to say "all time", which read
+  as "since purchase").
 
 Note: "Market Value" is also the name of an existing KPI tile
 (`headline.total_value`, `kpi_module.html`) showing today's snapshot value —

@@ -11,6 +11,7 @@
   ],
   "crons": [
     { "path": "/cron/dropbox-sync", "schedule": "0 5 * * *" },
-    { "path": "/cron/price-refresh", "schedule": "0 6 * * *" }
+    { "path": "/cron/price-refresh", "schedule": "0 6 * * *" },
+    { "path": "/cron/set-sync", "schedule": "0 4 1 * *" }
   ]
 }

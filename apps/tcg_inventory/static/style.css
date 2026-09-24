@@ -368,6 +368,9 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .kpi-ov-result { font-weight: 700; }
 .kpi-gain-up .kpi-ov-result { color: #0a7f0a; }
 .kpi-gain-down .kpi-ov-result { color: #c02f2f; }
+/* Share of the gain that is just the full value of cards with no known cost. */
+.kpi-ov-nocost { margin-top: 0.3rem; font-size: 0.74rem; }
+.kpi-ov-nocost strong { font-variant-numeric: tabular-nums; }
 
 /* Thin two-part bars: unique vs duplicate value, and cards up vs down. */
 .kpi-ov-bar {
@@ -645,6 +648,16 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .card-row-unowned {
   opacity: 0.55;
 }
+/* "shared with N" on a card listed under a collection it shares with others. */
+.shared-badge {
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.65rem;
+  vertical-align: middle;
+  cursor: help;
+}
+/* The deduplicated Total row closes the Inventory table. */
+.total-row td { border-top: 2px solid var(--border-strong); }
 .unowned-badge {
   margin-left: 0.35rem;
   padding: 0.1rem 0.45rem;

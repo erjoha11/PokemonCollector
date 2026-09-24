@@ -92,21 +92,55 @@ class Bucket:
         return self.qty - self.duplicates
 
     @property
+    def owned_numbers(self) -> int:
+        """Distinct card numbers owned (qty > 0) in this bucket -- what
+        completion counts. Not `unique_count`: that counts every Card row,
+        so a reverse holo, a second language or a second variant of the same
+        number would each count as one more card of the set and push
+        completion past what's actually filled (a JP+KR 151 set had 274
+        rows over 175 numbers).
+        """
+        return len({card.number for card in self.cards if card.qty > 0 and card.number})
+
+    @property
     def completion_pct(self) -> float | None:
-        """Percent of the set actually owned (`unique_count / total_cards`),
+        """Percent of the set actually owned (`owned_numbers / total_cards`),
         or None when `total_cards` isn't known yet -- see `total_cards`'
         docstring above for why that happens and why the template must not
-        collapse it to 0%/100%. `unique_count` is already qty>0-gated, so
-        this is unaffected by #132 (a separate bug about `Card.unique_value`
-        not being qty-gated).
+        collapse it to 0%/100%.
         """
         if not self.total_cards:
             return None
-        return self.unique_count / self.total_cards * 100
+        return self.owned_numbers / self.total_cards * 100
+
+    @property
+    def series_completion(self) -> dict | None:
+        """A series row's completion, aggregated over its child sets whose
+        size is known: owned numbers / total cards across just those sets,
+        plus how many of the series' sets that covers -- so a series with
+        one synced set of five says so instead of passing that one set off
+        as the whole series. None when no child set has a known size.
+        """
+        known = [b for b in self.child_sets if b.total_cards]
+        if not known:
+            return None
+        owned = sum(b.owned_numbers for b in known)
+        total = sum(b.total_cards for b in known)
+        return {
+            "pct": owned / total * 100,
+            "owned": owned,
+            "total": total,
+            "sets_known": len(known),
+            "sets": len(self.child_sets),
+        }
 
     @property
     def gain_loss(self) -> float:
-        return self.unique_value - self.net_invested
+        """Total value (duplicates included) minus net invested -- the one
+        gain definition used everywhere in the app, the same as the Market
+        Value hero's (`gain_summary`). Net invested pays for every copy
+        bought, so it's measured against every copy owned."""
+        return self.total_value - self.net_invested
 
     @property
     def distinct_sets(self) -> list[str]:
@@ -150,40 +184,51 @@ def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
     }
 
 
-def collection_bulk_breakdown(db: Session, cards: list[Card] | None = None) -> dict:
-    """Nested Collection (parent) / named collections (children) / Bulk.
+def collection_membership_breakdown(db: Session, cards: list[Card] | None = None) -> dict:
+    """Dashboard Inventory table: one row per collection with *every* card
+    carrying that collection's tag (real membership, the same set Inventory's
+    collection filter shows), Bulk (no tag at all), and two deduplicated
+    rows that count each card exactly once:
 
-    Children are keyed by each card's primary_collection, so the parent
-    (sum of all children) always matches exactly by construction -- this
-    was the hard-won bug fix from the Excel version.
+    - "collections": every card with at least one tag
+    - "total": every card, Bulk included -- the whole collection
+
+    A card with several tags is in several rows, so the per-collection rows
+    can add up to more than "collections"/"total" -- by design. The
+    primary-collection credit (`Card.primary_collection`, lowest
+    `priority_rank`) is no longer used to pick a single row for a card here:
+    it made a multi-tagged card vanish from every collection but one.
     """
     cards = all_cards_with_collections(db) if cards is None else cards
 
     children: dict[str, Bucket] = {}
     bulk = Bucket(name="Bulk", filterable=False)
-    parent = Bucket(name="Collection")
+    # Each card is visited once, so these two count it once whatever its tags.
+    collections = Bucket(name="Collections")
+    total = Bucket(name="Total", filterable=False)
 
     for card in cards:
-        primary = card.primary_collection
-        if primary is None:
+        total.add(card)
+        if not card.collections:
             bulk.add(card)
             continue
-        bucket = children.setdefault(primary.name, Bucket(name=primary.name))
-        bucket.add(card)
-        parent.add(card)
+        collections.add(card)
+        for collection in card.collections:
+            children.setdefault(collection.name, Bucket(name=collection.name)).add(card)
 
     for bucket in list(children.values()) + [bulk]:
         bucket.cards.sort(key=_card_sort_key)
 
     return {
-        "parent": parent,
+        "collections": collections,
         "children": _ordered_children(children.values()),
         "bulk": bulk,
+        "total": total,
     }
 
 
 def _ordered_children(buckets) -> list[Bucket]:
-    """Dashboard display order for the Collection/Bulk breakdown -- distinct
+    """Dashboard display order for the collection breakdown -- distinct
     from `constants.priority_rank_for` (which only decides primary_collection
     tie-breaks and must stay untouched by display preferences).
 
@@ -596,6 +641,11 @@ def _snapshot_state(db: Session, date: dt.date) -> dict[int, tuple[int, float]]:
     return {r.card_id: (r.qty, r.reference_price or 0.0) for r in rows}  # later source wins
 
 
+# Below this absolute change (kr, per copy) a price move's % is hidden: a
+# 3 kr card going to 6 kr is "+100 %" but not news.
+PRICE_MOVE_PCT_MIN_KR = 10.0
+
+
 @dataclass
 class PriceMove:
     card: Card
@@ -609,6 +659,10 @@ class PriceMove:
     @property
     def pct(self) -> float:
         return self.change / self.old_price * 100
+
+    @property
+    def show_pct(self) -> bool:
+        return abs(self.change) >= PRICE_MOVE_PCT_MIN_KR
 
 
 def price_movers(
@@ -810,20 +864,26 @@ def gain_summary(cards: list[Card], invested_by_card: dict[int, float], net_inve
     owned (duplicates included -- total_value, the same figure the Market
     Value hero shows) is above (or below) what was paid, plus what's behind
     it. Net invested pays for every copy bought, so it's measured against
-    every copy owned, not just one per card.
+    every copy owned, not just one per card. Same definition as every
+    table's Gain/loss (`Bucket.gain_loss`).
+
+    Owned cards with no registered transaction have no known cost, so their
+    whole value lands in `gain` -- reported separately as `no_cost_count`/
+    `no_cost_value` so the headline can say how much of the gain that is,
+    rather than let it pass as profit.
 
     Per-card figures only cover owned cards (qty > 0) that have at least one
-    registered transaction (i.e. appear in `invested_by_card`); a card never
-    registered has no known cost, so it can't be called up or down. Each is
+    registered transaction (i.e. appear in `invested_by_card`). Each is
     that card's total_value (all copies) minus what it cost. A ripped card
-    (cost 0) counts as up by its full value.
+    (cost 0) counts as up by its full value. `n_with_cost` is how many cards
+    that comparison covers.
     """
     unique_value = sum(c.unique_value for c in cards)
     total_value = sum(c.total_value for c in cards)
     gain = total_value - net_invested
-    per_card = [
-        (c, c.total_value - invested_by_card[c.id]) for c in cards if c.qty > 0 and c.id in invested_by_card
-    ]
+    owned = [c for c in cards if c.qty > 0]
+    no_cost = [c for c in owned if c.id not in invested_by_card]
+    per_card = [(c, c.total_value - invested_by_card[c.id]) for c in owned if c.id in invested_by_card]
     per_card.sort(key=lambda pair: pair[1], reverse=True)
     return {
         "gain": gain,
@@ -833,6 +893,9 @@ def gain_summary(cards: list[Card], invested_by_card: dict[int, float], net_inve
         "net_invested": net_invested,
         "n_up": sum(1 for _, g in per_card if g > 0),
         "n_down": sum(1 for _, g in per_card if g < 0),
+        "n_with_cost": len(per_card),
+        "no_cost_count": len(no_cost),
+        "no_cost_value": sum(c.total_value for c in no_cost),
         "best": per_card[0] if per_card and per_card[0][1] > 0 else None,
     }
 

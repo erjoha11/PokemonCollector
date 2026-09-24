@@ -155,7 +155,9 @@ data-card-view data-name="{{ card.name }}" data-dex="https://app.dextcg.com/card
       <span aria-hidden="true">{{ '▲' if up else '▼' }}</span>
       {{ '+' if change.change > 0 }}{{ change.change | kr }}{% if change.pct is not none %} ({{ '+' if change.pct > 0 }}{{ '%.1f' | format(change.pct) }} %){% endif %}
     </span>
-    <span class="muted mv-change-period">{{ 'all time' if period == 'all' else 'last ' ~ period_label }}</span>
+    {#- Measured from the first snapshot shown, not from when the cards were
+        bought -- for gain against what was paid, see Market Value / Gain. #}
+    <span class="muted mv-change-period" title="Change from the first to the last day shown in the chart, not since purchase">{{ 'since first snapshot' if period == 'all' else 'last ' ~ period_label ~ ', since' }} {{ history[0].date.strftime('%d.%m.%Y') }}</span>
     {% else %}
     <span class="muted mv-change-period">Only one day of history in this period</span>
     {% endif %}
