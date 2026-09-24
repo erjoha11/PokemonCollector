@@ -46,6 +46,11 @@ class Bucket:
     unique_value: float = 0.0
     total_value: float = 0.0
     net_invested: float = 0.0
+    # True once assign_bucket_investment() finds at least one card in this
+    # bucket with a registered transaction. Without one there is no known
+    # cost, so the dashboard shows "-" for Net invested/Gain/loss rather than
+    # a "gain" equal to the bucket's whole value.
+    has_investment: bool = False
     # False only for the synthetic "Bulk" bucket (cards with no collection at
     # all) -- there's no real collection to filter Inventory by, so its qty
     # cell is plain text instead of a link. Every other bucket is filterable.
@@ -929,6 +934,7 @@ def assign_bucket_investment(buckets, invested_by_card: dict[int, float]) -> Non
     """Attach transaction totals to buckets without changing value rules."""
     for bucket in buckets:
         bucket.net_invested = sum(invested_by_card.get(card.id, 0.0) for card in bucket.cards)
+        bucket.has_investment = any(card.id in invested_by_card for card in bucket.cards)
 
 
 @dataclass
