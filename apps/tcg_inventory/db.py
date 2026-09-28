@@ -38,6 +38,25 @@ if not DATABASE_URL:
             "Vercel + Supabase'), then redeploy."
         ) from exc
 
+
+def _pin_postgres_driver(url: str) -> str:
+    """Name the psycopg2 driver explicitly in a bare Postgres URL.
+
+    requirements.txt installs psycopg2-binary, but which driver a bare
+    `postgresql://` URL picks is SQLAlchemy's default, and 2.1 switched that
+    default to psycopg (v3) -- a fresh Vercel build then crashed on import
+    with "No module named 'psycopg'". `postgres://` (Supabase/Heroku style)
+    isn't accepted by SQLAlchemy at all. A URL that already names a driver
+    (`postgresql+...://`) is left alone.
+    """
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
+
+
+DATABASE_URL = _pin_postgres_driver(DATABASE_URL)
+
 _engine_kwargs = {"pool_pre_ping": True}
 if DATABASE_URL.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {"check_same_thread": False}

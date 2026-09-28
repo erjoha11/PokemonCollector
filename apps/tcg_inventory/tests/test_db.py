@@ -214,3 +214,18 @@ def test_backfill_sets_skips_cards_with_no_series_or_set(monkeypatch):
     card = session.query(models.Card).filter_by(card_id="1").one()
     assert card.set_id is None
     session.close()
+
+
+def test_pin_postgres_driver_names_psycopg2_for_bare_postgres_urls():
+    pin = db_module._pin_postgres_driver
+    assert pin("postgresql://u:p@host:6543/postgres") == "postgresql+psycopg2://u:p@host:6543/postgres"
+    assert pin("postgres://u:p@host/db") == "postgresql+psycopg2://u:p@host/db"
+    assert pin("postgresql+psycopg://u@host/db") == "postgresql+psycopg://u@host/db"
+    assert pin("sqlite:///x.db") == "sqlite:///x.db"
+
+
+def test_pinned_postgres_url_resolves_to_psycopg2_dialect():
+    from sqlalchemy.engine import make_url
+
+    url = make_url(db_module._pin_postgres_driver("postgresql://u:p@host/db"))
+    assert url.get_dialect().driver == "psycopg2"
