@@ -339,3 +339,44 @@ still Open, out of scope for this pass:
    `.htmx-indicator`/`.tx-search-spinner` rule in style.css (opacity-fade,
    htmx's standard convention, `includeIndicatorStyles` already on by
    default).
+
+## 2026-09-30 — Multi-source pricing (epic #213, mainly #210/#212)
+
+**Reviewed:** templates only (nothing rendered), during `architect`'s intake
+of the multi-source pricing design. Findings feed #210 (labels, badge,
+per-source table) and #212 (flags).
+
+1. **Price movers must exclude source switches.** Cards whose price source
+   changed within the period drop out of Price movers, with the caption
+   gaining "· N source changes left out". Value-history and per-card price
+   charts keep those points but mark them with a tooltip
+   ("Source: Dex → Cardmarket") so charts still reconcile with the KPIs.
+2. **Price labels are already wrong/inconsistent (fix in #210):**
+   `inventory.html:5` and `card_picker.html:24` call the price "Dex's"
+   (false since TCGplayer became preferred). Standalone card prices are
+   "Price" in `inventory_table.html:51`, `card_detail.html:24`,
+   `dashboard.html:78` but "Market price" in `card_picker.html:55`,
+   `listing_entry.html:34` — use "Market price" everywhere a price stands
+   alone, keep "Price" for transaction prices. Rename the `reference_price`
+   sort key to `market_price`. Spell "TCGplayer" (not "TCGPlayer",
+   `card_detail.html:46`).
+3. **Clear-filter trap:** the hand-built "Clear filter" URL at
+   `inventory.html:58` enumerates every filter param; a new "Price needs a
+   look" filter must be added there or clearing another filter silently
+   drops it.
+4. **Where source/age/flags show:** card detail gets a line under the price
+   ("TCGplayer via Dex · 2 d ago") plus flag chips, and a per-source table
+   (Source, native price, NOK, Fetched, "Used" marker) inside a `<details>`
+   open by default only when flagged, replacing the one-line Prices entry
+   (lines 45-46). Inventory rows, Most valuable, Price movers, listing
+   market price and the sale prefill get only a "!" marker (with `title` +
+   `aria-label`) when flagged; the sale prefill also gets a note since a
+   wrong price there costs real money. Nothing on Transactions; no source
+   column in Inventory.
+5. **Flag styling:** one amber/muted style for all flags, red only for "no
+   price". "Price needs a look" checkbox next to "Duplicates only"
+   (`inventory.html:40-50`); dashboard gets one line "N prices need a
+   look →" only when N > 0, not a KPI card.
+6. **"Variant uncertain" isn't persisted** — it only lives in the refresh
+   result (`card_images.py:49`), so it must be stored before the UI can
+   show it (#210).
