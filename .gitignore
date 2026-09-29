@@ -8,3 +8,6 @@ __pycache__/
 .claude/settings.local.json
 apps/tcg_inventory/.env.local
 apps/tcg_inventory/.vercel/
+
+# Claude Code worktrees (other sessions)
+.claude/worktrees/
