@@ -1185,3 +1185,24 @@ order goes back to auto). This deliberately reverses the route's old
 documented "blank clears" semantics for those two fields. Side effect worth
 knowing: the form can no longer NULL shipping or platform — enter 0 for
 shipping, and clear platforms per row via Edit order.
+
+# Handoff notes — 2026-09-29 session (issue #205, Order ID renumber)
+
+## Direct database changes (Supabase prod) — not in git, only here
+
+Renumbered `transactions.purchase_id` so Order IDs follow the order the
+purchases actually happened in. One `UPDATE ... SET purchase_id = CASE ...`
+in a single transaction; row counts per order verified identical before/after.
+`purchase_id` is a plain grouping label (no FK, no sequence), so nothing else
+needed updating. Old `/transactions/purchase/{id}/edit` bookmarks now point at
+different orders.
+
+Mapping (old → new): 22→1 (Ripped), 18→2 (Tise, first buy), 1→3, 2→4, 3→5,
+4→6, 5→7, 6→8, 7→9, 8→10, 9→11, 10→12, 11→13, 12→14, 26→15 (last Collect63
+order, placed after all other Collect63 orders at user's request rather than
+the originally asked #13), 20→16 (Stein trade), 13→17, 14→18, 15→19, 16→20,
+17→21, 19→22, 21→23, 23→24, 24→25, 25→26.
+
+Note: the `DATABASE_URL` in `apps/tcg_inventory/.env` failed auth
+("password authentication failed") this session; the change was made via the
+Supabase connector instead. The local `.env` still needs the current password.
