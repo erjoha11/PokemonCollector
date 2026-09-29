@@ -32,6 +32,7 @@ import auth
 import backfill_images
 import dropbox_client
 import price_refresh
+import set_sync
 import queries
 import snapshots
 import constants
@@ -133,6 +134,9 @@ def _sort_url(
     params = dict(request.query_params)
     params[sort_param] = field
     params[dir_param] = next_dir
+    # A new order starts from the first page (Inventory's pager) -- page N
+    # of a different ordering is a meaningless slice.
+    params.pop("page", None)
     return path + "?" + urlencode(params)
 
 
@@ -157,8 +161,8 @@ templates.env.globals["pick_url"] = _pick_url
 # local dev) leaves the app open, same as before this was added.
 # /cron/dropbox-sync and /cron/price-refresh have their own separate auth
 # (CRON_SECRET) -- a scheduled job has no browser session to log in with.
-# /cron/image-backfill too (a manual catch-up pass, same secret).
-_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill"}
+# /cron/image-backfill (a manual catch-up pass) and /cron/set-sync too, same secret.
+_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync"}
 
 
 @app.middleware("http")
@@ -306,17 +310,18 @@ def _market_value_stats(headline: dict, economic: dict, metric: str) -> list[dic
     """The Net invested / Current value / Gain-loss row shown inside the
     Market Value chart itself (see `chart_card`'s `stats` param in
     macros.html). Follows the chart's own metric toggle: Current value is
-    today's value for that metric, Gain / loss is it minus Net invested
-    (Total's matches the Market Value KPI card's gain). Duplicates has no
+    today's value for that metric; Gain / loss only on Total (the one app-wide
+    gain definition, matching the Market Value KPI card). Duplicates has no
     Net invested of its own (see _METRIC_HEADLINE_KEYS), so both are None,
     rendered as "–".
     """
     current = headline[_METRIC_HEADLINE_KEYS[metric][0]]
-    if metric == "duplicates":
-        invested = gain_loss = None
-    else:
-        invested = economic["net_invested"]
-        gain_loss = current - invested
+    invested = None if metric == "duplicates" else economic["net_invested"]
+    # Gain / loss has one definition app-wide -- total value (duplicates
+    # included) minus Net invested, see queries.gain_summary -- so it's only
+    # shown on the Total metric; Unique value minus Net invested would be a
+    # second, smaller "gain" that pays for every copy but counts only one.
+    gain_loss = current - invested if metric == "total" else None
     return [
         {"label": "Net invested", "value": invested},
         {"label": "Current value", "value": current},
@@ -406,11 +411,12 @@ def dashboard(
         txs = db.query(Transaction).all()
 
         headline = queries.headline_summary(db, cards)
-        collection_breakdown = queries.collection_bulk_breakdown(db, cards)
+        collection_breakdown = queries.collection_membership_breakdown(db, cards)
         series_breakdown = queries.by_series_breakdown(db, cards)
         invested_by_card = queries.net_invested_by_card(db, txs)
         queries.assign_bucket_investment(
-            collection_breakdown["children"] + [collection_breakdown["bulk"], collection_breakdown["parent"]],
+            collection_breakdown["children"]
+            + [collection_breakdown["bulk"], collection_breakdown["collections"], collection_breakdown["total"]],
             invested_by_card,
         )
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
@@ -601,11 +607,36 @@ def _top_collection_and_series(collection_breakdown: dict, series_breakdown: lis
     """The KPI row's highlights -- the single most valuable named
     collection/series (Bulk isn't a collection, so excluded). The collection
     highlight ranks by unique_value (not total_value) so duplicates can't
-    inflate which collection looks "most valuable".
+    inflate which collection looks "most valuable". Collections are ranked
+    on real membership (every card with the tag, see
+    `queries.collection_membership_breakdown`), not primary-collection credit.
     """
     top_collection = max(collection_breakdown["children"], key=lambda b: b.unique_value, default=None)
     top_series = max(series_breakdown, key=lambda b: b.total_value, default=None)
     return top_collection, top_series
+
+
+# Inventory's collection filter value for "cards with no collection" (the
+# Dashboard's Bulk row) -- not a name a real Dex collection can have.
+NO_COLLECTION_FILTER = "__none__"
+# Rows per Inventory page; `page_size=0` shows every row on one page.
+INVENTORY_PAGE_SIZE = 100
+# Optional Inventory columns only shown when at least one card in the
+# current result has a value (see inventory_table.html's column chooser for
+# the rest, which the viewer can hide themselves).
+INVENTORY_SPARSE_COLUMNS = ("classification", "location", "notes")
+
+
+def _inventory_page_links(request: Request, page: int, page_count: int) -> list[tuple[int | None, str | None]]:
+    """(page number, url) for the Inventory pager: first, last, and two
+    either side of the current page; (None, None) marks a gap ("…")."""
+    wanted = sorted({1, page_count, *range(page - 2, page + 3)} & set(range(1, page_count + 1)))
+    links: list[tuple[int | None, str | None]] = []
+    for i, n in enumerate(wanted):
+        if i and n - wanted[i - 1] > 1:
+            links.append((None, None))
+        links.append((n, _query_url(request, "/inventory", page=n)))
+    return links
 
 
 def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language, unowned):
@@ -624,7 +655,9 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, d
         query = query.filter(Card.set == set_)
     if binder:
         query = query.join(Card.binder).filter(Binder.name == binder)
-    if collection:
+    if collection == NO_COLLECTION_FILTER:
+        query = query.filter(~Card.collections.any())
+    elif collection:
         query = query.filter(Card.collections.any(Collection.name == collection))
     if dup:
         query = query.filter(Card.qty > 1)  # duplicates = max(qty - 1, 0)
@@ -664,6 +697,8 @@ def inventory(
     unowned: str = "",
     sort: str = "release",
     direction: str = "asc",
+    page: int = 1,
+    page_size: int = INVENTORY_PAGE_SIZE,
 ):
     db = get_db_session()
     try:
@@ -711,10 +746,20 @@ def inventory(
                 if invested is None:
                     return float("-inf")
                 if sort == "gain_loss":
-                    return card.unique_value - invested
+                    return card.total_value - invested
                 return invested
 
             cards.sort(key=value_sort_key, reverse=direction == "desc")
+
+        # Paginated after sorting (value sorts are done in Python above), so
+        # a page is always a slice of the full, correctly ordered result.
+        # Loading all rows is cheap at this size; rendering 850+ was not.
+        total = len(cards)
+        page_size = max(page_size, 0)
+        page_count = max(1, -(-total // page_size)) if page_size else 1
+        page = min(max(page, 1), page_count)
+        page_cards = cards[(page - 1) * page_size : page * page_size] if page_size else cards
+        empty_columns = [col for col in INVENTORY_SPARSE_COLUMNS if not any(getattr(card, col) for card in cards)]
 
         all_series = _distinct_values(db, Card.series)
         all_sets = _distinct_values(db, Card.set)
@@ -723,8 +768,17 @@ def inventory(
         all_languages = _distinct_values(db, Card.language)
 
         context = {
-            "cards": cards,
-            "total": len(cards),
+            "cards": page_cards,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "page_count": page_count,
+            "default_page_size": INVENTORY_PAGE_SIZE,
+            "empty_columns": empty_columns,
+            "page_links": _inventory_page_links(request, page, page_count),
+            "show_all_url": _query_url(request, "/inventory", page=1, page_size=0),
+            "paged_url": _query_url(request, "/inventory", page=1, page_size=INVENTORY_PAGE_SIZE),
+            "no_collection_filter": NO_COLLECTION_FILTER,
             "q": q,
             "series": series,
             "set": set,
@@ -750,7 +804,7 @@ def inventory(
             # target, so only compute it on a full page load, not on every
             # filter keystroke/select change.
             all_cards = queries.all_cards_with_collections(db)
-            collection_breakdown = queries.collection_bulk_breakdown(db, all_cards)
+            collection_breakdown = queries.collection_membership_breakdown(db, all_cards)
             series_breakdown = queries.by_series_breakdown(db, all_cards)
             # Reuses the invested_by_card/txs already loaded above instead of
             # re-scanning Transaction twice more (net_invested_by_card +
@@ -773,6 +827,93 @@ def inventory(
             )
         template = "partials/inventory_table.html" if is_htmx else "inventory.html"
         return templates.TemplateResponse(request, template, context)
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Card detail and collection pages -- the app's own view of a card /
+# collection. Card names across the app link to /cards/{id}; Dex is one
+# link on that page, not where a name click goes.
+# --------------------------------------------------------------------------
+@app.get("/cards/{card_pk}")
+def card_detail(request: Request, card_pk: int):
+    db = get_db_session()
+    try:
+        card = (
+            db.query(Card)
+            .options(
+                selectinload(Card.collections),
+                selectinload(Card.binder),
+                selectinload(Card.linked_set),
+                selectinload(Card.transactions),
+            )
+            .filter(Card.id == card_pk)
+            .one_or_none()
+        )
+        if card is None:
+            raise HTTPException(status_code=404, detail="Card not found")
+        txs = sorted(card.transactions, key=lambda t: (t.date, t.id))
+        # Net invested by the app-wide rules (shipping shares included), so
+        # this page's Gain matches Inventory's and the Dashboard's.
+        order_ids = {t.purchase_id for t in txs if t.purchase_id is not None}
+        order_txs = (
+            db.query(Transaction).filter(Transaction.purchase_id.in_(order_ids)).all() if order_ids else []
+        )
+        all_txs = {t.id: t for t in order_txs + txs}.values()
+        invested = queries.net_invested_by_card(db, list(all_txs)).get(card.id)
+        shipping = queries.shipping_shares(list(all_txs))
+        history = queries.card_price_history(db, card.id)
+        return templates.TemplateResponse(
+            request,
+            "card_detail.html",
+            {
+                "card": card,
+                "transactions": txs,
+                "shipping_by_tx": shipping,
+                "invested": invested,
+                "gain": (card.total_value - invested) if invested is not None else None,
+                "price_history": history,
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/collections")
+def collections_index(request: Request):
+    """Every collection with its real-membership numbers -- the same rows as
+    the Dashboard's Inventory table, as an entry point to each gallery."""
+    db = get_db_session()
+    try:
+        cards = queries.all_cards_with_collections(db)
+        breakdown = queries.collection_membership_breakdown(db, cards)
+        ids = {c.name: c.id for c in db.query(Collection).all()}
+        return templates.TemplateResponse(
+            request,
+            "collections.html",
+            {"breakdown": breakdown, "collection_ids": ids, "no_collection_filter": NO_COLLECTION_FILTER},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/collections/{collection_id}")
+def collection_page(request: Request, collection_id: int, owned: str = "1"):
+    """Gallery of one collection's cards with value, completion per set and
+    duplicates. `owned=0` also shows tagged cards no longer owned (qty 0)."""
+    db = get_db_session()
+    try:
+        detail = queries.collection_detail(db, collection_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        invested_by_card = queries.net_invested_by_card(db)
+        queries.assign_bucket_investment([detail["bucket"]], invested_by_card)
+        return templates.TemplateResponse(
+            request,
+            "collection.html",
+            {**detail, "invested_by_card": invested_by_card, "owned_only": owned != "0"},
+        )
     finally:
         db.close()
 
@@ -1548,7 +1689,7 @@ def _transactions_context(
     economic = queries.economic_summary(db)
     cards = queries.all_cards_with_collections(db)
     headline = queries.headline_summary(db, cards)
-    collection_breakdown = queries.collection_bulk_breakdown(db, cards)
+    collection_breakdown = queries.collection_membership_breakdown(db, cards)
     series_breakdown = queries.by_series_breakdown(db, cards)
     invested_by_card = queries.net_invested_by_card(db)
     queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
@@ -2442,6 +2583,38 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
             "filled": result.filled,
             "cards_with_image": with_image,
             "remaining": remaining,
+        }
+    finally:
+        db.close()
+
+
+@app.get("/cron/set-sync")
+def cron_set_sync(request: Request, secret: str = ""):
+    """Monthly set metadata sync (set_sync.py): `total_cards` for Dashboard
+    completion, plus a `release_rank` for any set still missing one --
+    existing ranks are never overwritten from here (see
+    `set_sync.sync_set_metadata`). A route rather than only the script
+    because Vercel is where api.pokemontcg.io is reachable from, and
+    without it `total_cards` stayed empty on prod (0 of 109 sets, found
+    24.09.2026). Same CRON_SECRET gate as the other /cron routes.
+    """
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    authorized = not cron_secret or secret == cron_secret or (
+        request.headers.get("authorization") == f"Bearer {cron_secret}"
+    )
+    if not authorized:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    db = get_db_session()
+    try:
+        result = set_sync.sync_set_metadata(db)
+        print(
+            f"[cron/set-sync] api_ok={result.api_call_succeeded} "
+            f"matched={len(result.matched)} unmatched={len(result.unmatched)}"
+        )
+        return {
+            "status": "ok" if result.api_call_succeeded else "api_call_failed",
+            "matched": len(result.matched),
+            "unmatched": sorted(result.unmatched),
         }
     finally:
         db.close()

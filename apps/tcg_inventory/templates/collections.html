@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Collections – TCG Inventory{% endblock %}
+{% from "partials/macros.html" import info %}
+{% block content %}
+<h1>Collections {{ info('Each collection counts every card tagged with it, so a card in two collections is in both. Total counts every card once.') }}</h1>
+<div class="card">
+  <table>
+    <thead><tr><th>Collection</th><th class="num">Unique</th><th class="num">Duplicates</th><th class="num">Total</th><th class="num">Value</th><th class="num">Total value</th></tr></thead>
+    <tbody>
+      {% for c in breakdown.children %}
+      <tr>
+        <td><a href="/collections/{{ collection_ids[c.name] }}">{{ c.name }}</a></td>
+        <td class="num">{{ c.unique_count }}</td><td class="num">{{ c.duplicates }}</td><td class="num">{{ c.qty }}</td>
+        <td class="num">{{ c.unique_value | kr }}</td><td class="num">{{ c.total_value | kr }}</td>
+      </tr>
+      {% endfor %}
+      {% set bulk = breakdown.bulk %}
+      <tr>
+        <td><a href="/inventory?collection={{ no_collection_filter }}">Bulk</a> <span class="muted">(no collection)</span></td>
+        <td class="num">{{ bulk.unique_count }}</td><td class="num">{{ bulk.duplicates }}</td><td class="num">{{ bulk.qty }}</td>
+        <td class="num">{{ bulk.unique_value | kr }}</td><td class="num">{{ bulk.total_value | kr }}</td>
+      </tr>
+      {% set total = breakdown.total %}
+      <tr class="parent-row total-row">
+        <td>Total</td>
+        <td class="num">{{ total.unique_count }}</td><td class="num">{{ total.duplicates }}</td><td class="num">{{ total.qty }}</td>
+        <td class="num">{{ total.unique_value | kr }}</td><td class="num">{{ total.total_value | kr }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

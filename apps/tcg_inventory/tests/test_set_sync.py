@@ -100,12 +100,32 @@ def test_sync_resolves_ambiguous_name_via_matching_series(db_session):
     assert result.matched == ["Other Series / Base Set"]
 
 
-def test_sync_overwrites_a_previously_hand_entered_rank_on_a_confident_match(db_session):
-    db_session.add(Set(series="Original", name="Base Set", release_rank=1, total_cards=None))
+def test_sync_keeps_an_existing_rank_by_default_but_fills_total_cards(db_session):
+    """Existing ranks are on a different scale than the API's -- overwriting
+    only the matched ones would scramble release order against unmatched
+    (JP/KR) sets, so by default a rank is only filled in where missing."""
+    db_session.add(Set(series="Original", name="Base Set", release_rank=40, total_cards=None))
+    db_session.add(Set(series="Neo", name="Neo Revelation", release_rank=None, total_cards=None))
+    db_session.commit()
+
+    api_sets = [
+        _api_set("base1", "Base Set", "Base", "1999/01/09", total=102),
+        _api_set("neo3", "Neo Revelation", "Neo", "2001/09/21", total=66),
+    ]
+    set_sync.sync_set_metadata(db_session, api_sets=api_sets)
+
+    base = db_session.query(Set).filter_by(name="Base Set").one()
+    neo = db_session.query(Set).filter_by(name="Neo Revelation").one()
+    assert (base.release_rank, base.total_cards) == (40, 102)
+    assert (neo.release_rank, neo.total_cards) == (2, 66)
+
+
+def test_sync_overwrites_a_previously_hand_entered_rank_when_asked(db_session):
+    db_session.add(Set(series="Original", name="Base Set", release_rank=40, total_cards=None))
     db_session.commit()
 
     api_sets = [_api_set("base1", "Base Set", "Base", "1999/01/09", total=102)]
-    set_sync.sync_set_metadata(db_session, api_sets=api_sets)
+    set_sync.sync_set_metadata(db_session, api_sets=api_sets, overwrite_ranks=True)
 
     refreshed = db_session.query(Set).filter_by(name="Base Set").one()
     assert refreshed.release_rank == 1  # only one set in this fixture -> rank 1

@@ -1,6 +1,7 @@
 {# One shared card viewer for every page (included from base.html). Any
    element with card_view_attrs(card) (partials/macros.html) opens it on
-   click and fills it in -- see static/card-viewer.js. #}
+   click and fills it in -- see static/card-viewer.js. Card names link
+   straight to /cards/{id}; the viewer is for a quick look at the photo. #}
 <dialog id="card-viewer" class="card-viewer" aria-labelledby="card-viewer-name">
   <div class="card-viewer-body">
     <img class="card-viewer-image" alt="">
@@ -10,7 +11,8 @@
       <p class="card-viewer-meta muted"></p>
       <p class="card-viewer-price"></p>
       <div class="card-viewer-actions">
-        <a class="card-viewer-dex button-link" target="_blank" rel="noopener noreferrer">Open in Dex</a>
+        <a class="card-viewer-detail">Card details</a>
+        <a class="card-viewer-dex" target="_blank" rel="noopener noreferrer">Open in Dex</a>
         <button type="button" class="secondary card-viewer-close">Close</button>
       </div>
     </div>
