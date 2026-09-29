@@ -1413,7 +1413,7 @@ def _group_transactions_by_purchase(
         # cash changes hands -- see models.py Transaction.type) if it was
         # built up piecemeal via direct DB edits (see HANDOFF.md's 2026-09-14
         # entry, order #11). A trade row's price must never contribute to
-        # the registered total or its diff against the agreed total.
+        # the registered total or its diff against the order's Total.
         # Ripped rows are the same: always 0, never part of what was paid.
         priced_txs = [t for t in group_txs if t.type not in NON_CASH_TYPES]
         total_price = sum(t.price for t in priced_txs)
@@ -1446,6 +1446,11 @@ def _group_transactions_by_purchase(
                 "total_fees": sum(t.fees or 0 for t in priced_txs),
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
+                # What Order history's Total column shows when no total has
+                # been typed/saved (issue #202): Value + Shipping, rendered as
+                # "auto". Display-only -- never stored, and it doesn't make
+                # `diff` non-None, so Remaining stays "—" for such an order.
+                "auto_total": total_price + (purchase_shipping or 0),
                 "platform": group_platform,
                 "summary_platform": summary_platform,
                 # What's left unaccounted for once both the card prices and
@@ -1811,21 +1816,34 @@ def set_purchase_total(
     purchase_shipping: float | None = Form(None),
     platform: str | None = Form(None),
 ):
-    """Sets (or clears) the declared total, shipping cost, and platform for
-    every row already sharing this purchase_id — the "agreed"/shipping half
-    of the registered/shipping/agreed/diff line in History, editable after
-    the fact for purchases built up piecemeal (e.g. via direct
-    reconciliation) rather than through the cart form. Platform is a
-    bulk-overwrite of the whole order, same semantics as total/shipping — a
-    blank submission clears it (sets NULL) on every row, matching per-row
-    edit behavior; a mixed order that should keep one card on a different
-    platform still needs the per-row edit form.
+    """Sets the order's Total, shipping cost, and platform on every row
+    already sharing this purchase_id -- Order history's per-order
+    total/shipping/platform form, editable after the fact for orders built
+    up piecemeal (e.g. via direct reconciliation) rather than through the
+    cart form.
+
+    Blank-field semantics (issue #202, closing HANDOFF.md's 2026-09-20 open
+    item):
+
+    - **Total**: blank clears it (NULL), which puts the order back on the
+      automatic Value + Shipping display with Remaining "—". A typed value
+      is stored on every row and drives Remaining/Distribute as before.
+    - **Shipping** and **Platform**: blank means "leave as is" -- the rows
+      keep whatever they already have. Before, a blank field NULLed them on
+      every row, so e.g. a mixed-platform order (whose platform field
+      prefills blank on purpose, see _group_transactions_by_purchase) lost
+      every row's platform just by saving a Total. To actually zero
+      shipping, enter 0; to clear/split platforms, use Edit order's
+      per-row fields. A non-blank platform still overwrites every row.
     """
     db = get_db_session()
     try:
-        db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(
-            {"purchase_total": purchase_total, "purchase_shipping": purchase_shipping, "platform": platform or None}
-        )
+        values: dict = {"purchase_total": purchase_total}
+        if purchase_shipping is not None:
+            values["purchase_shipping"] = purchase_shipping
+        if platform and platform.strip():
+            values["platform"] = platform.strip()
+        db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(values)
         db.commit()
         return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
     finally:
@@ -1853,7 +1871,7 @@ def purchase_edit_form(request: Request, purchase_id: int, saved: bool = False):
             return RedirectResponse("/transactions", status_code=303)
         purchase_total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None)
-        # No agreed total saved yet -- default the field to shipping + the
+        # No Total saved yet -- default the field to shipping + the
         # cards already priced (price == 0 means "not priced yet", the same
         # convention the Legacy import table's Order column uses), so the
         # user starts from a real number rather than blank/zero. Once a

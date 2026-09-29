@@ -3,7 +3,7 @@
   <form method="post" action="/transactions/purchase" class="{{ 'cart-is-trade' if type == 'trade' }}{{ ' cart-is-ripped' if type == 'ripped' }}"
         hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
         hx-indicator="#register-order-indicator"
-        onsubmit="return confirmRegisterOrder(this)">
+        onsubmit="return confirmRegisterOrder(this)" oninput="updateCartAutoTotal(this)">
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
@@ -15,10 +15,14 @@
       </select>
       <input type="date" name="date" value="{{ today }}" required>
       <input type="text" name="platform" placeholder="Platform (optional)">
-      <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total (optional)"
-             title="The full amount you paid for the order — used to show the diff against the sum of what you've actually recorded cards for.">
+      {# Left blank, Total shows the live card prices + Shipping sum as its
+         placeholder (marked "auto", see updateCartAutoTotal) -- a
+         placeholder is never submitted, so only a Total you actually type
+         is saved. Clearing the field goes back to the auto sum. #}
+      <input type="number" step="0.01" name="purchase_total" placeholder="Total (optional)"
+             title="The full amount you paid for the order. Leave blank to use the automatic sum of card prices + shipping (not saved); type a value to override it and track the difference as Remaining.">
       <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping (optional)"
-             title="Shipping cost for the whole order — subtracted along with the card total when the diff against the agreed total is calculated.">
+             title="Shipping cost for the whole order — subtracted along with the card total when the diff against the Total is calculated.">
     </div>
 
     <div class="autocomplete tx-search mt-1 mb-1">

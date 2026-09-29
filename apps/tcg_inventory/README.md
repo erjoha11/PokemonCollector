@@ -63,14 +63,35 @@ run).
   **Order history** is the page's primary content, directly under the KPI
   cards: one row per order with the numbers that describe the deal — Order
   #, Date, Qty, Value (sum of recorded per-card prices, trades excluded),
-  Shipping, Agreed total, Remaining, Platform. Remaining is a real column
-  rather than a badge that only appears when nonzero, so "settled" (✓) and
-  "no agreed total set yet" (—) are distinguishable at a glance instead of
-  both rendering as nothing. Expanding a row reveals that order's cards,
-  its agreed-total/shipping/platform form and an "+ Add cards to this
-  order" button. Each order stays a `<details id="order-N">`: that's
+  Shipping, Total, Remaining, Platform. **Total** is the amount paid for
+  the whole order (`purchase_total`, stored on every row of the order).
+  When none has been typed/saved, the column shows the automatic
+  `Value + Shipping` (`auto_total` from `_group_transactions_by_purchase`),
+  muted and tagged "auto" — display-only, never stored — and Remaining
+  shows "—" for it: an automatic total is by definition fully accounted
+  for, so ✓ would claim a reconciliation nobody did. A typed Total
+  overrides it, is saved, stays put (never recalculated), and drives
+  Remaining: ✓ when card prices + shipping add up to it, otherwise the
+  flagged difference. Net invested and gain never used the Total, so
+  they're unaffected either way. Remaining is a real column rather than a
+  badge that only appears when nonzero, so "settled" (✓) and "no Total
+  typed yet" (—) are distinguishable at a glance instead of both
+  rendering as nothing. Expanding a row reveals that order's cards, its
+  total/shipping/platform form (Total left empty when nothing's saved,
+  with the auto figure as its placeholder, so "Set total/shipping" never
+  persists the auto sum by accident) and an "+ Add cards to this order"
+  button. In that form a blank Total clears it (back to auto), but a blank
+  Shipping or Platform means "leave as is" — only a typed value overwrites
+  every row of the order (enter 0 to zero shipping; per-card platforms are
+  set in Edit order). So a mixed-platform order, whose Platform field
+  prefills blank and reads "Mixed — blank keeps per-card", keeps each
+  card's platform when you save a Total. The New Order cart works the same way: its Total field's
+  placeholder shows the live Σ(card prices) + Shipping as "auto" while
+  it's blank (trade/ripped prices aren't cash, so only shipping counts
+  there); only a value you actually type is submitted, and clearing the
+  field goes back to auto. Each order stays a `<details id="order-N">`: that's
   load-bearing, since `?open_order=N` deep-links by rendering `open` on it
-  and the agreed-total form swaps that same element
+  and the total/shipping form swaps that same element
   (`hx-select`/`hx-target="#order-N"` + `outerHTML`). Column alignment
   comes from a shared CSS grid on the header row and every `<summary>`
   (`.orders-row` in `style.css`) — keep those two in sync.
@@ -153,17 +174,20 @@ run).
   this order, defaulted to today/purchase/0 and editable in place, not
   deferred until Save), or moving/merging/splitting rows between orders
   by reassigning Order ID — all edits in a group commit atomically, and
-  moving a row out of an order clears that row's agreed total/shipping
+  moving a row out of an order clears that row's Total/shipping
   rather than guessing how to split it (set the destination order's
   total/shipping afterward). Save keeps you on the edit page with a
   "Saved ✓" note and a "← Back to Transactions" link (unless every row
   was moved out, which lands on Transactions); a failed save shows an
-  error instead of silently doing nothing. Agreed total defaults to shipping + the
+  error instead of silently doing nothing. Total defaults to shipping + the
   cards already priced (price 0 = not priced yet) when nothing's been
   saved yet, but a saved value is a real number the user typed and is
-  never silently recalculated back to the sum. A "Distribute remaining
+  never silently recalculated back to the sum. (Save changes submits
+  whatever's in that field, so saving the edit page with the default
+  untouched does persist it as the order's Total — unlike Order history's
+  and the cart's blank-means-auto field.) A "Distribute remaining
   across unpriced cards" button (client-side, same pattern as the New
-  Order cart's "Distribute evenly") fills `Agreed total − Shipping −
+  Order cart's "Distribute evenly") fills `Total − Shipping −
   Σ(already-priced cards)` into the still-unpriced rows — useful
   for a lot where a few cards' values are known and the rest should
   absorb the remainder. A "Split" choice picks **By market value** (each
@@ -174,7 +198,7 @@ run).
   deletion are skipped. It rejects if every card is already priced or the
   result would be negative. **Include shipping** (on by default) folds
   the order's shipping into that remainder too, i.e. it distributes
-  `Agreed total − Σ(already-priced cards)`: in a lot, the cards you priced
+  `Total − Σ(already-priced cards)`: in a lot, the cards you priced
   keep their price and the unpriced ones absorb the rest *including*
   shipping. It then sets Shipping to 0 in the form, since shipping now
   lives in those cards' prices and would otherwise be counted twice in Net
