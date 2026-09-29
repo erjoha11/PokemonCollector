@@ -8,7 +8,7 @@ from conftest import make_csv, seed_import
 
 # --- Transactions "Order history" helpers ---------------------------------
 # An order renders as <details id="order-N"> with a grid <summary> whose
-# cells are the Qty/Value/Shipping/Agreed-total/Remaining columns. Anchor on
+# cells are the Qty/Value/Shipping/Total/Remaining columns. Anchor on
 # that id rather than on the text "Order #N": the card picker's "Adding to"
 # <select> also lists every order by that label, so a plain text split lands
 # in the wrong part of the page.
@@ -16,7 +16,7 @@ from conftest import make_csv, seed_import
 
 def order_section(text: str, purchase_id: int) -> str:
     """Everything rendered for one order -- its summary row plus the
-    expanded body (agreed-total form, its cards, add-cards button)."""
+    expanded body (total/shipping form, its cards, add-cards button)."""
     start = text.index(f'id="order-{purchase_id}"')
     end = text.find('<details class="order-item"', start + 1)
     if end == -1:
@@ -52,6 +52,11 @@ def summary_cell(text: str, purchase_id: int, column: str) -> str:
                 break
             depth -= 1
             i += len("</span>")
+            continue
+        if after[i] == "<":
+            # Any other inline tag inside the cell (e.g. the Total column's
+            # <small class="auto-marker">) -- drop the tag, keep its text.
+            i = after.index(">", i) + 1
             continue
         out.append(after[i])
         i += 1
@@ -928,11 +933,14 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
         data={"card_id": card_id, "type": "purchase", "date": "2026-01-01", "price": "10", "purchase_id": "6"},
     )
 
-    # No declared total yet -- Total and Remaining both render as an em
-    # dash, distinct from a settled order's ✓.
+    # No declared total yet -- Total shows the automatic Value + Shipping
+    # (issue #202), tagged "auto", and Remaining an em dash, distinct from
+    # a settled order's ✓.
     text = client.get("/transactions").text
-    assert summary_cell(text, 6, "total") == "—"
+    assert summary_cell(text, 6, "total") == "10 kr auto"
+    assert "oc-total-auto" in order_summary(text, 6)
     assert summary_cell(text, 6, "remaining") == "—"
+    assert "oc-settled" not in order_summary(text, 6)
     assert "tx-diff-flag" not in order_summary(text, 6)
 
     response = client.post(
@@ -954,8 +962,145 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     # newly-declared Total shows in its own column.
     text = client.get("/transactions").text
     assert summary_cell(text, 6, "total") == "10 kr"
+    assert "oc-total-auto" not in order_summary(text, 6)
     assert "tx-diff-flag" not in order_summary(text, 6)
     assert "oc-settled" in order_summary(text, 6)
+
+
+def test_order_history_header_says_total_not_agreed_total(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.add(Transaction(card_id=card_id, type="purchase", date=dt.date(2026, 1, 1), price=10, purchase_id=3))
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    head = text.split('class="orders-row orders-head"', 1)[1].split("</div>", 1)[0]
+    assert '<span class="oc-total num">Total</span>' in head
+    assert "Agreed total" not in text
+
+
+def test_unsaved_order_total_shows_value_plus_shipping_as_auto_and_nothing_is_stored(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.add_all(
+        [
+            Transaction(card_id=ids["a"], type="purchase", date=dt.date(2026, 1, 1), price=100, purchase_id=7,
+                        purchase_shipping=25),
+            Transaction(card_id=ids["b"], type="purchase", date=dt.date(2026, 1, 1), price=1000, purchase_id=7,
+                        purchase_shipping=25),
+        ]
+    )
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    summary = order_summary(text, 7)
+    # Value (1 100) + Shipping (25), marked automatic with a text tag (not
+    # colour alone) and a tooltip; Remaining stays a dash, never ✓.
+    assert summary_cell(text, 7, "total") == "1 125 kr auto"
+    assert "oc-total-auto" in summary
+    assert "Automatic: Value + Shipping" in summary
+    assert summary_cell(text, 7, "remaining") == "—"
+    assert "oc-settled" not in summary
+    assert "tx-diff-flag" not in summary
+
+    # The order body's Total input stays empty (the auto sum is only its
+    # placeholder), so "Set total/shipping" can't persist it by accident.
+    body = order_section(text, 7).split("</summary>", 1)[1]
+    total_input = body.split('name="purchase_total"', 1)[1].split(">", 1)[0]
+    assert 'value=""' in total_input
+    assert 'placeholder="Total (auto 1 125 kr)"' in total_input
+
+    db = db_module.SessionLocal()
+    assert all(t.purchase_total is None for t in db.query(Transaction).filter(Transaction.purchase_id == 7))
+    db.close()
+
+
+def test_saved_total_still_drives_remaining_diff_not_the_auto_figure(client):
+    import datetime as dt
+
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    card_id = db.query(Card).filter(Card.card_id == "a").one().id
+    db.add(Transaction(card_id=card_id, type="purchase", date=dt.date(2026, 1, 1), price=100, purchase_id=8,
+                       purchase_total=150, purchase_shipping=20))
+    db.commit()
+    db.close()
+
+    text = client.get("/transactions").text
+    assert summary_cell(text, 8, "total") == "150 kr"
+    assert "oc-total-auto" not in order_summary(text, 8)
+    assert summary_cell(text, 8, "remaining") == "30 kr"
+    assert "tx-diff-flag" in order_summary(text, 8)
+    total_input = order_section(text, 8).split('name="purchase_total"', 1)[1].split(">", 1)[0]
+    assert 'value="150' in total_input
+
+
+@pytest.mark.parametrize("total_field", [None, ""])
+def test_purchase_cart_without_a_typed_total_leaves_purchase_total_null(client, total_field):
+    """The cart's auto Total is only a placeholder (issue #202): a blank
+    field -- whether omitted or submitted as "" like a browser does -- must
+    register as NULL, not as the auto sum."""
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    data = {
+        "type": "purchase",
+        "date": "2026-01-01",
+        "purchase_id": "5",
+        "purchase_shipping": "10",
+        "card_id": [str(ids["a"]), str(ids["b"])],
+        "price": ["20", "30"],
+    }
+    if total_field is not None:
+        data["purchase_total"] = total_field
+    response = client.post("/transactions/purchase", data=data, follow_redirects=True)
+    assert response.status_code == 200
+
+    db = db_module.SessionLocal()
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 5).all()
+    assert len(txs) == 2
+    assert all(t.purchase_total is None for t in txs)
+    assert all(t.purchase_shipping == 10 for t in txs)
+    db.close()
+
+    text = client.get("/transactions").text
+    assert summary_cell(text, 5, "total") == "60 kr auto"
+    assert summary_cell(text, 5, "remaining") == "—"
+
+
+def test_purchase_cart_total_field_is_blank_with_auto_wiring(client):
+    text = client.get("/transactions/purchase/start").text
+    total_input = text.split('name="purchase_total"', 1)[1].split(">", 1)[0]
+    assert "value=" not in total_input
+    assert 'placeholder="Total (optional)"' in total_input
+    assert 'oninput="updateCartAutoTotal(this)"' in text
+    assert "Agreed" not in text
 
 
 def test_platform_can_be_bulk_set_on_an_existing_purchase(client):
@@ -996,7 +1141,10 @@ def test_platform_can_be_bulk_set_on_an_existing_purchase(client):
     assert 'placeholder="Platform"' in platform_input  # uniform, so no "Mixed" warning
 
 
-def test_platform_bulk_edit_blank_submission_clears_it(client):
+def test_order_total_form_blank_platform_and_shipping_keep_saved_values(client):
+    """Issue #202 / HANDOFF 2026-09-20: a blank Platform or Shipping field in
+    Order history's total form leaves the rows alone instead of NULLing
+    them on every row -- only Total's blank means "clear" (back to auto)."""
     import db as db_module
     from models import Card, Transaction
 
@@ -1018,13 +1166,65 @@ def test_platform_bulk_edit_blank_submission_clears_it(client):
             "purchase_id": "8",
         },
     )
+    client.post("/transactions/purchase/8/total", data={"purchase_total": "50", "purchase_shipping": "5"})
 
-    response = client.post("/transactions/purchase/8/total", data={}, follow_redirects=True)
+    # Browser-style submission: every field present, platform/shipping blank.
+    response = client.post(
+        "/transactions/purchase/8/total",
+        data={"purchase_total": "60", "purchase_shipping": "", "platform": ""},
+        follow_redirects=True,
+    )
     assert response.status_code == 200
 
     db = db_module.SessionLocal()
     tx = db.query(Transaction).filter(Transaction.purchase_id == 8).one()
-    assert tx.platform is None
+    assert tx.purchase_total == 60
+    assert tx.purchase_shipping == 5
+    assert tx.platform == "TCGplayer"
+    db.close()
+
+    # A blank Total clears it (back to the automatic Value + Shipping), still
+    # without touching shipping/platform; an explicit 0 zeroes shipping.
+    client.post("/transactions/purchase/8/total", data={"purchase_total": "", "purchase_shipping": "0", "platform": ""})
+    db = db_module.SessionLocal()
+    tx = db.query(Transaction).filter(Transaction.purchase_id == 8).one()
+    assert tx.purchase_total is None
+    assert tx.purchase_shipping == 0
+    assert tx.platform == "TCGplayer"
+    db.close()
+
+
+def test_order_total_form_blank_platform_keeps_a_mixed_orders_per_card_platforms(client):
+    import db as db_module
+    from models import Card, Transaction
+
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Charizard"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    db = db_module.SessionLocal()
+    ids = {c.card_id: c.id for c in db.query(Card).all()}
+    db.close()
+
+    for key, platform in (("a", "Cardmarket"), ("b", "TCGplayer")):
+        client.post(
+            "/transactions",
+            data={"card_id": ids[key], "type": "purchase", "date": "2026-01-01", "price": "10",
+                  "platform": platform, "purchase_id": "10"},
+        )
+
+    client.post("/transactions/purchase/10/total", data={"purchase_total": "25", "purchase_shipping": "", "platform": ""})
+
+    db = db_module.SessionLocal()
+    by_card = {t.card_id: t for t in db.query(Transaction).filter(Transaction.purchase_id == 10)}
+    assert by_card[ids["a"]].platform == "Cardmarket"
+    assert by_card[ids["b"]].platform == "TCGplayer"
+    assert all(t.purchase_total == 25 for t in by_card.values())
+    db.close()
+
+    # A typed platform still bulk-overwrites every row.
+    client.post("/transactions/purchase/10/total", data={"purchase_total": "25", "platform": "Finn"})
+    db = db_module.SessionLocal()
+    assert {t.platform for t in db.query(Transaction).filter(Transaction.purchase_id == 10)} == {"Finn"}
     db.close()
 
 
@@ -1071,8 +1271,8 @@ def test_platform_bulk_edit_field_is_blank_when_group_rows_disagree(client):
     # Still blank, so saving can't silently adopt one row's platform...
     assert 'value=""' in platform_input
     # ...but the field now says so, instead of looking innocently empty
-    # while a "Cardmarket" badge shows in the summary above it. Submitting
-    # this form overwrites platform on every row of the order.
+    # while a "Cardmarket" badge shows in the summary above it. Left blank,
+    # saving keeps each row's own platform (issue #202).
     assert "Mixed" in platform_input
 
 

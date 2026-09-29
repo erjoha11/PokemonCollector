@@ -1037,7 +1037,7 @@ button.secondary {
 .tx-input-sm { width: 6rem; }      /* Price */
 .tx-input-md { width: 8rem; }      /* Platform, Shipping */
 .tx-input-date { width: 9.5rem; }  /* Date */
-.tx-input-lg { width: 10rem; }     /* Agreed/Order total, Note */
+.tx-input-lg { width: 10rem; }     /* Order Total, Note */
 .tx-input-xl { width: 12.5rem; }   /* Remaining amount to distribute */
 .tx-search { max-width: 26.25rem; }    /* Card search boxes */
 .tx-search-sm { max-width: 20rem; }    /* "Change card" relink search */
@@ -1330,7 +1330,7 @@ button.secondary {
    The order list reads as a table (aligned Qty/Value/Shipping/Total/
    Remaining columns) but is NOT one: each order has to stay a <details>,
    because ?open_order=N deep-links by putting `open` on it and the
-   agreed-total form swaps that same element via hx-target="#order-N"
+   total/shipping form swaps that same element via hx-target="#order-N"
    + outerHTML. So alignment comes from one shared grid template applied
    to both the header row and every <summary>. Keep those two in sync --
    they line up only because they share `grid-template-columns`. */
@@ -1369,7 +1369,7 @@ button.secondary {
     minmax(3rem, 0.5fr)     /* Qty       */
     minmax(6rem, 1fr)       /* Value     */
     minmax(6rem, 1fr)       /* Shipping  */
-    minmax(7rem, 1fr)       /* Agreed    */
+    minmax(7rem, 1fr)       /* Total     */
     minmax(6.5rem, 1fr)     /* Remaining */
     minmax(6rem, 1fr);      /* Platform  */
   align-items: center;
@@ -1415,6 +1415,19 @@ button.secondary {
 .orders-row .oc-order { font-weight: 700; color: var(--ink); }
 .orders-row .oc-remaining .tx-diff-flag { color: #d03b3b; font-weight: 600; }
 .oc-settled { color: #2f9e5f; font-weight: 700; }
+/* An order's automatic Total (Value + Shipping, nothing typed yet -- issue
+   #202): muted, plus a small text "auto" tag so it isn't signalled by
+   colour alone. */
+.oc-total-auto .auto-marker {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  margin-left: 0.15rem;
+}
 /* Overrides .tx-platform-badge's `margin-left: auto`, which suited the old
    flex summary but would shove the badge out of its grid cell here. */
 .orders-row .oc-platform .tx-platform-badge { margin-left: 0; }

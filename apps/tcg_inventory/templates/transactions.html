@@ -100,17 +100,17 @@
 {# ---------------------------------------------------------------------
    Order history -- the page's primary content, first thing under the KPI
    cards. One row per order with the numbers that describe the deal;
-   expanding a row reveals that order's cards and its agreed-total form.
+   expanding a row reveals that order's cards and its total/shipping form.
 
    Each order stays a <details id="order-N">, which is load-bearing rather
    than stylistic: ?open_order=N deep-links by rendering `open` on it, and
-   the agreed-total form swaps itself with hx-select/hx-target="#order-N"
+   the total/shipping form swaps itself with hx-select/hx-target="#order-N"
    + outerHTML -- the <details> element *is* the swap target. Column
    alignment comes from a CSS grid on the <summary>, not from a <table>.
    --------------------------------------------------------------------- #}
 <section class="orders-section">
   <div class="section-head">
-    <h2>Order history {{ info("Each order groups the cards bought or sold together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Agreed total is the amount for the whole order. Remaining is the difference — usually cards you haven't priced individually yet.") }}</h2>
+    <h2>Order history {{ info("Each order groups the cards bought or sold together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Total is the amount for the whole order. Until you type a Total it shows Value + Shipping, marked auto, and Remaining shows —. Once a Total is saved, Remaining is the difference — usually cards you haven't priced individually yet.") }}</h2>
     <div class="section-actions">
       {# What's left of the old standalone .tx-kpi-bar. Its "Current value"
          was `headline.unique_value`, which the Market Value card above
@@ -140,7 +140,7 @@
       <span class="oc-qty num">Qty</span>
       <span class="oc-value num">Value</span>
       <span class="oc-shipping num">Shipping</span>
-      <span class="oc-total num">Agreed total</span>
+      <span class="oc-total num">Total</span>
       <span class="oc-remaining num">Remaining</span>
       <span class="oc-platform">Platform</span>
     </div>
@@ -153,7 +153,14 @@
         <span class="oc-qty num">{{ group.transactions | length }}</span>
         <span class="oc-value num">{{ group.total_price | kr }}</span>
         <span class="oc-shipping num">{% if group.purchase_shipping %}{{ group.purchase_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
-        <span class="oc-total num">{% if group.purchase_total is not none %}{{ group.purchase_total | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        {# No typed Total yet: show Value + Shipping, visibly marked as
+           automatic (muted + an "auto" text marker, not colour alone). It's
+           display-only -- Remaining below stays "—" for it (issue #202). #}
+        <span class="oc-total num">
+          {%- if group.purchase_total is not none -%}{{ group.purchase_total | kr }}
+          {%- else -%}<span class="muted oc-total-auto" title="Automatic: Value + Shipping. Type a Total in the order to override it.">{{ group.auto_total | kr }} <small class="auto-marker">auto</small></span>
+          {%- endif -%}
+        </span>
         {# A real column, not a badge that only appears when nonzero: with
            the old conditional badge, "settled" and "no total set yet" both
            rendered as nothing, so you couldn't scan for orders that still
@@ -161,7 +168,7 @@
         <span class="oc-remaining num">
           {%- if group.purchase_total is none -%}<span class="muted">—</span>
           {%- elif group.diff | round(2) != 0 -%}<span class="tx-diff-flag">{{ group.diff | kr }}</span>
-          {%- else -%}<span class="oc-settled" title="Recorded card prices and shipping add up to the agreed total.">✓</span>
+          {%- else -%}<span class="oc-settled" title="Recorded card prices and shipping add up to the Total.">✓</span>
           {%- endif -%}
         </span>
         <span class="oc-platform">
@@ -176,21 +183,27 @@
               hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
               hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML"
               hx-indicator="#order-total-indicator-{{ group.purchase_id }}">
-          <input type="number" step="0.01" name="purchase_total" placeholder="Agreed total"
-                 value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg">
+          {# Stays empty when nothing is saved -- the auto sum is only a
+             placeholder, so "Set total/shipping" never persists it unless
+             the user actually types it. #}
+          <input type="number" step="0.01" name="purchase_total"
+                 placeholder="{{ 'Total' if group.purchase_total is not none else 'Total (auto ' ~ (group.auto_total | kr) ~ ')' }}"
+                 value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg"
+                 title="The full amount paid for the whole order. Leave blank to use the automatic Value + Shipping (Remaining then shows —).">
           <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
-                 value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md">
-          {# This form overwrites all three fields on every row of the order.
-             A group whose rows disagree on platform prefills blank on purpose
-             (see _group_transactions_by_purchase) -- so submitting would
-             silently wipe platform everywhere while the summary badge above
-             still shows one. Say that in the field rather than looking
-             innocently empty. #}
+                 value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md"
+                 title="Shipping for the whole order. Leaving it blank keeps what's saved; enter 0 to clear it.">
+          {# Blank Shipping/Platform leave the rows as they are (issue #202,
+             see set_purchase_total) -- only a typed value overwrites every
+             row. A group whose rows disagree on platform prefills blank on
+             purpose (see _group_transactions_by_purchase), so saving a
+             Total no longer wipes those per-card platforms; the field says
+             so rather than looking innocently empty. #}
           <input type="text" name="platform"
-                 placeholder="{{ 'Mixed — saving overwrites all rows' if group.platform is none and group.summary_platform else 'Platform' }}"
+                 placeholder="{{ 'Mixed — blank keeps per-card' if group.platform is none and group.summary_platform else 'Platform' }}"
                  value="{{ group.platform if group.platform is not none else '' }}"
                  class="{{ 'tx-input-lg' if group.platform is none and group.summary_platform else 'tx-input-md' }}"
-                 {% if group.platform is none and group.summary_platform %}title="This order's rows don't all share one platform, so this starts blank. Saving sets whatever's here on every row — use Edit order for per-card platforms."{% endif %}>
+                 title="{{ 'This order\'s rows don\'t all share one platform, so this starts blank. Left blank, each card keeps its own platform; typing one sets it on every row — use Edit order for per-card platforms.' if group.platform is none and group.summary_platform else 'Platform for the whole order. Leaving it blank keeps what\'s saved; typing one sets it on every row.' }}">
           <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
           <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
           <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
@@ -256,6 +269,38 @@ function syncCartType(form) {
       el.value = '';
     }
   });
+  updateCartAutoTotal(form);
+}
+
+// Same formatting as the server's `kr` filter (app.py _format_kr).
+function formatKr(v) {
+  return Math.round(v).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' kr';
+}
+
+// New Order cart's Total (issue #202): while the field is blank, its
+// placeholder shows the live Σ(card prices) + Shipping, marked "auto".
+// Deliberately a placeholder, not a value -- a placeholder is never
+// submitted, so an untouched Total registers as NULL (Order history then
+// shows the auto figure and Remaining "—"), and only a Total the user
+// actually typed is saved. Typing stops the auto figure from mattering;
+// clearing the field brings it back. Trade/ripped card prices aren't cash
+// for the order (NON_CASH_TYPES in app.py), so only shipping counts there.
+function updateCartAutoTotal(form) {
+  if (!form) return;
+  var totalInput = form.querySelector('input[name="purchase_total"]');
+  if (!totalInput) return;
+  var type = form.querySelector('select[name="type"]').value;
+  var sum = 0;
+  if (type !== 'trade' && type !== 'ripped') {
+    form.querySelectorAll('#cart-body input[name="price"]').forEach(function (el) {
+      var v = parseFloat(el.value);
+      if (!isNaN(v)) sum += v;
+    });
+  }
+  var shipping = parseFloat((form.querySelector('input[name="purchase_shipping"]') || {}).value);
+  if (!isNaN(shipping)) sum += shipping;
+  var hasInputs = form.querySelectorAll('#cart-body tr').length > 0 || !isNaN(shipping);
+  totalInput.placeholder = hasInputs ? 'Total (auto ' + formatKr(sum) + ')' : 'Total (optional)';
 }
 document.body.addEventListener('htmx:afterSwap', function (e) {
   if (e.detail.target && e.detail.target.id === 'cart-body') {
@@ -366,6 +411,7 @@ function distributeRemaining() {
   var each = Math.round((sum / empties.length) * 100) / 100;
   empties.forEach(function (el) { el.value = each; });
   sumInput.value = '';
+  updateCartAutoTotal(sumInput.form);
 }
 
 // --- Card picker (partials/card_picker.html) ---------------------------

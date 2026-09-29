@@ -58,7 +58,10 @@ adding).
   rows" and the summary badge gets a `*` marker, so it no longer looks
   innocently empty. The underlying write semantics are unchanged (blank
   clears, per the route's docstring); changing that is an architect/user
-  call, not a UI fix. **Still open.**
+  call, not a UI fix. **Addressed 2026-09-29 (#202):** blank Shipping/
+  Platform now leave the rows untouched (only Total's blank clears, back
+  to the automatic sum); the placeholder reads "Mixed — blank keeps
+  per-card".
 - **Three value displays, two identical, one contradicting.** The KPI card's
   "Market Value" (unique + duplicates), `.tx-kpi-bar`'s "Current value"
   (unique only) and the charts' `market_value_stats` trio all answered

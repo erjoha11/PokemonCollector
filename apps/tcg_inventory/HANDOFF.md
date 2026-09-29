@@ -1169,3 +1169,19 @@ Transactions page queried a column that didn't exist. Fixed right after deploy:
 
 Lesson: a new model column needs a `CURRENT_SCHEMA_VERSION` bump, or it never
 reaches an already-migrated database.
+
+## Issue #202 (Total auto-sum) — 2026-09-29 session
+
+All in git (branch `claude/issue-202-total-auto-sum`); no database changes.
+"Agreed total" is renamed "Total"; an order with no saved Total shows
+`Value + Shipping` marked "auto" (display-only, never stored) with
+Remaining "—"; the New Order cart's Total placeholder tracks the live sum.
+
+**Closes the 2026-09-20 open item** about `POST
+/transactions/purchase/{id}/total` clobbering platform/shipping: blank
+Shipping and Platform now leave every row as it is (only a typed value
+overwrites the order), while a blank Total still clears it (that's how an
+order goes back to auto). This deliberately reverses the route's old
+documented "blank clears" semantics for those two fields. Side effect worth
+knowing: the form can no longer NULL shipping or platform — enter 0 for
+shipping, and clear platforms per row via Edit order.

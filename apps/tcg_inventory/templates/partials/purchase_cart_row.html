@@ -14,5 +14,5 @@
   </td>
   <td class="num cart-price-col"><input type="number" step="0.01" name="price" placeholder="Price" required class="tx-input-sm"
                          title="For a trade: any cash that moved with this card (paid on In, received on Out) — 0 if none."></td>
-  <td><button type="button" class="secondary" onclick="this.closest('tr').remove()">Remove</button></td>
+  <td><button type="button" class="secondary" onclick="var f = this.closest('form'); this.closest('tr').remove(); updateCartAutoTotal(f)">Remove</button></td>
 </tr>
