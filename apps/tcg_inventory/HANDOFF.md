@@ -1280,3 +1280,52 @@ the originally asked #13), 20→16 (Stein trade), 13→17, 14→18, 15→19, 16�
 Note: the `DATABASE_URL` in `apps/tcg_inventory/.env` failed auth
 ("password authentication failed") this session; the change was made via the
 Supabase connector instead. The local `.env` still needs the current password.
+
+# Handoff notes — 2026-09-30 session (issue #209, pricing Phase 1)
+
+## Code (in git, PR for #209)
+
+- `fx_rates.py` (new): Norges Bank daily USD/NOK (+ EUR/NOK, unused yet)
+  replaces `card_images._USD_TO_NOK = 10.5`. Fetched once per run, cached
+  in-process; fallback order live → last-known (same process) → old 10.5
+  constant. `/cron/price-refresh` now reports `usd_to_nok`/`fx_source`/`fx_as_of`.
+- Snapshot flow unchanged: the "cron order" item originally in #209 was
+  dropped from scope. `/cron/price-refresh` still writes its own
+  `"price-cron"` snapshot right after refreshing (later snapshot of the day
+  wins in `queries._snapshot_state`). `vercel.json` unchanged.
+- `python price_refresh.py --reprice-all [--limit N] [--dry-run]`: forced
+  re-price of every card that already has a `tcgplayer_price`.
+
+## Past snapshots are NOT rewritten
+
+Every `card_snapshots` row written before this ships keeps TCGplayer-derived
+values converted at 10.5 (~10% too high vs. the real ~9.58). Deliberately
+left as-is (history is not rewritten); expect a one-off step down in the
+Market Value chart as cards get re-priced.
+
+## Direct database change — PENDING user confirmation, NOT applied
+
+Existing `cards.tcgplayer_price` values (~209 cards) are ~10% inflated until
+re-fetched. Plan: after the PR is deployed, run
+`cd apps/tcg_inventory && DATABASE_URL=<prod> python price_refresh.py --reprice-all`
+(`--dry-run` first). Needs the current Supabase password in `.env` (the one
+there is stale, see the 2026-09-29 entry). Sanity check before/after:
+
+```sql
+SELECT count(*) AS n,
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY tcgplayer_price / reference_price) AS median_ratio
+FROM cards
+WHERE tcgplayer_price IS NOT NULL AND reference_price IS NOT NULL AND reference_price > 0;
+```
+
+2026-09-29: n=208, median 1.131. Expected to move toward ~1.03 afterwards.
+Update this entry when it has been applied.
+
+## Open item noticed, not built
+
+`price_refresh.refresh_stale_prices` sorts never-priced cards
+(`tcgplayer_price_updated_at IS NULL`) first and never stamps a failed
+lookup, so if 100+ cards can never be priced (no/low-confidence match,
+Japanese prints) they take the whole daily budget every day and already-
+priced cards never get refreshed by the cron. Not verified against prod.
+`--reprice-all` works around this for the one-off correction.

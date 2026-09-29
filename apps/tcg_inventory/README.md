@@ -719,6 +719,33 @@ cards oldest-priced (and never-priced) first per run — see
 `/cron/dropbox-sync` (see that section above for setup) and writing its own
 `card_snapshots` row (`source="price-cron"`) right after refreshing.
 
+**Currency.** TCGplayer prices come back in USD and are stored in NOK,
+converted at **Norges Bank's daily USD/NOK spot rate** (`fx_rates.py`,
+`EXR/B.USD+EUR.NOK.SP`, no API key). The rate is fetched once per run and
+cached in-process; if Norges Bank can't be reached, the last rate fetched
+in that process is reused, and only if there is none the old fixed 10.5 is
+used as a last resort, so an FX outage never blocks pricing. The cron
+response reports `usd_to_nok`, `fx_source` (`live` / `last-known` /
+`fallback`) and `fx_as_of`. EUR/NOK comes in the same request and is exposed
+(`fx_rates.eur_to_nok()`) for a later EUR source, unused so far. Only the
+NOK result is stored, so a price is only as fresh as its
+`tcgplayer_price_updated_at` -- prices stored before this (issue #209) were
+converted at the fixed 10.5, ~10% too high, until re-fetched.
+
+**Forcing a full re-price** (ignores staleness and the 100-per-run budget;
+only cards that already have a `tcgplayer_price`; a failed lookup keeps the
+old price and date so the cron retries it; stored values are never
+rescaled):
+
+```bash
+cd apps/tcg_inventory
+python price_refresh.py --reprice-all --dry-run   # count + the FX rate it would use
+python price_refresh.py --reprice-all             # [--limit N]
+```
+
+Same `DATABASE_URL` convention as `seed_set_release_order.py`. Without
+`--reprice-all` it runs one normal stale-price pass (`--limit` = budget).
+
 The underlying `pokemontcg.io` lookup (`card_images.fetch_card_data`, also
 used for card images) does fuzzy name matching, so its top result isn't
 guaranteed to be the exact card searched for. A returned card's name and
@@ -838,7 +865,12 @@ writes its own independent slot the same way (`source="price-cron"` when
 scheduled, `"manual"` when triggered by hand — note this can collide with a
 same-day manual Dex sync's slot; a real day with both shows only the later
 one's total under the shared "manual" label), so a day can have up to three
-points if both cron jobs and a manual sync all land on it. There is no
+points if both cron jobs and a manual sync all land on it.
+
+Snapshots are never rewritten after the fact: days snapshotted before the
+Norges Bank rate replaced the fixed 10.5 USD/NOK (issue #209) keep their
+~10% too high TCGplayer-derived values, so the chart can show a one-off
+drop as cards get re-priced. See `HANDOFF.md`. There is no
 manual CSV-upload page in the app (removed — the only sync entry points are
 the Dropbox-based ones above and the price-refresh cron).
 
@@ -856,7 +888,9 @@ the Dropbox-based ones above and the price-refresh cron).
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
-  sync (see "Price refresh" above).
+  sync (see "Price refresh" above). Also the `--reprice-all` CLI.
+- `fx_rates.py` — Norges Bank daily USD/EUR→NOK rates, cached per process
+  with last-known/constant fallback (see "Price refresh" above).
 - `backfill_images.py` — standalone, manually-triggered backfill for cards
   with a `NULL` `image_url` (see "Card images" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).

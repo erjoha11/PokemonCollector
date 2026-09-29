@@ -2536,10 +2536,14 @@ def cron_price_refresh(request: Request, secret: str = ""):
             f"updated={result.cards_updated} "
             f"low_confidence={len(result.cards_low_confidence)} "
             f"variant_uncertain={len(result.cards_variant_uncertain)} "
+            f"usd_to_nok={result.usd_to_nok} fx_source={result.fx_source} "
             f"snapshotted={snapshotted}"
         )
         return {
             "status": "ok",
+            "usd_to_nok": result.usd_to_nok,
+            "fx_source": result.fx_source,
+            "fx_as_of": result.fx_as_of.isoformat() if result.fx_as_of else None,
             "cards_checked": result.cards_checked,
             "cards_updated": result.cards_updated,
             "cards_low_confidence": result.cards_low_confidence,

@@ -38,6 +38,8 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
         assert card.tcgplayer_price == 9.99
         snap = db.query(CardSnapshot).one()
         assert snap.source == "price-cron"
+    assert body["usd_to_nok"] == 10.0  # conftest's fixed rate
+    assert body["fx_source"] == "live"
 
 
 def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):

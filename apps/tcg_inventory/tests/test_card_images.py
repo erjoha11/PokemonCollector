@@ -1,6 +1,7 @@
 import httpx
 
 import card_images
+from conftest import TEST_USD_TO_NOK
 
 
 class _FakeResponse:
@@ -98,9 +99,10 @@ def test_fetch_card_data_returns_image_and_price_from_one_call(monkeypatch):
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
 
     assert result.image_url == "https://example.com/a.png"
-    # The API returns USD; this app displays everything in NOK (see
-    # _USD_TO_NOK), so the raw 12.5 must come back converted, not verbatim.
-    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    # The API returns USD; this app displays everything in NOK (converted at
+    # fx_rates' USD/NOK rate, fixed to TEST_USD_TO_NOK by conftest), so the
+    # raw 12.5 must come back converted, not verbatim.
+    assert result.tcgplayer_price == round(12.5 * TEST_USD_TO_NOK, 2)
     assert result.low_confidence_match is False
 
 
@@ -203,7 +205,7 @@ def test_fetch_card_data_single_priced_variant_is_never_uncertain(monkeypatch):
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Some Unrelated Variant Text")
 
-    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(12.5 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is False
 
 
@@ -216,7 +218,7 @@ def test_fetch_card_data_matches_reverse_holo_variant_among_several(monkeypatch)
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Reverse Holo")
 
-    assert result.tcgplayer_price == round(20.0 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(20.0 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is False
 
 
@@ -229,7 +231,7 @@ def test_fetch_card_data_matches_normal_variant_among_several(monkeypatch):
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Normal")
 
-    assert result.tcgplayer_price == round(5.0 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(5.0 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is False
 
 
@@ -242,7 +244,7 @@ def test_fetch_card_data_matches_1st_edition_variant_among_several(monkeypatch):
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "1st Edition Holo")
 
-    assert result.tcgplayer_price == round(50.0 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(50.0 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is False
 
 
@@ -259,7 +261,7 @@ def test_fetch_card_data_ambiguous_variant_among_several_falls_back_but_flags_un
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Holo")
 
-    assert result.tcgplayer_price == round(12.5 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(12.5 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is True
 
 
@@ -272,7 +274,7 @@ def test_fetch_card_data_missing_variant_with_several_priced_prints_is_uncertain
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
 
-    assert result.tcgplayer_price == round(5.0 * card_images._USD_TO_NOK, 2)
+    assert result.tcgplayer_price == round(5.0 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is True
 
 
