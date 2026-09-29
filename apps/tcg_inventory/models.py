@@ -186,15 +186,10 @@ class Card(Base):
 
 class CardSnapshot(Base):
     """One row per (card, date, source): that card's qty and reference_price
-    as of that date. Written by `snapshots.record_daily_snapshot`. The
-    scheduled "cron" slot is written by the daily chain Dex sync
-    (`/cron/dropbox-sync`, 05:00) -> price refresh (`/cron/price-refresh`,
-    06:00), the refresh overwriting the sync's row in place so the day's
-    cron point has both today's qty and today's prices (issue #209; before
-    that the refresh wrote a separate "price-cron" slot, still present on
-    old rows). The manual Dropbox-sync route and off-schedule `?secret=`
-    hits of either cron route write source="manual" -- see app.py. Two
-    sources per date, not per-call
+    as of that date. Written by `snapshots.record_daily_snapshot`, called
+    from the `/cron/dropbox-sync` cron job right after a successful sync
+    (source="cron") and from the manual CSV-upload/Dropbox-sync routes
+    (source="manual") -- see app.py. Two sources per date, not per-call
     timestamps, is deliberate: it caps each day at exactly the scheduled
     cron point plus one "latest manual sync of the day" point, instead of
     growing unbounded every time someone re-triggers a sync (see

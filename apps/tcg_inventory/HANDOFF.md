@@ -1289,10 +1289,10 @@ Supabase connector instead. The local `.env` still needs the current password.
   replaces `card_images._USD_TO_NOK = 10.5`. Fetched once per run, cached
   in-process; fallback order live → last-known (same process) → old 10.5
   constant. `/cron/price-refresh` now reports `usd_to_nok`/`fx_source`/`fx_as_of`.
-- Cron order is now Dex sync (05:00) → price refresh (06:00) → snapshot: the
-  scheduled price refresh writes `source="cron"` (overwriting the row the
-  sync wrote an hour earlier) instead of its own `"price-cron"` slot. One
-  cron point + one manual point per day again. `vercel.json` unchanged.
+- Snapshot flow unchanged: the "cron order" item originally in #209 was
+  dropped from scope. `/cron/price-refresh` still writes its own
+  `"price-cron"` snapshot right after refreshing (later snapshot of the day
+  wins in `queries._snapshot_state`). `vercel.json` unchanged.
 - `python price_refresh.py --reprice-all [--limit N] [--dry-run]`: forced
   re-price of every card that already has a `tcgplayer_price`.
 
@@ -1301,7 +1301,7 @@ Supabase connector instead. The local `.env` still needs the current password.
 Every `card_snapshots` row written before this ships keeps TCGplayer-derived
 values converted at 10.5 (~10% too high vs. the real ~9.58). Deliberately
 left as-is (history is not rewritten); expect a one-off step down in the
-Market Value chart as cards get re-priced. Old `"price-cron"` rows also stay.
+Market Value chart as cards get re-priced.
 
 ## Direct database change — PENDING user confirmation, NOT applied
 

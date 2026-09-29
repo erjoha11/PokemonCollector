@@ -2467,9 +2467,6 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # Snapshot after the sync, not before -- a cron run should always
         # record today's post-sync qty/price, never yesterday's leftover
         # state (see snapshots.record_daily_snapshot / README "Value history").
-        # On a scheduled run this "cron" row is provisional: /cron/price-refresh
-        # (06:00) overwrites the same slot after refreshing prices, so the
-        # day's final cron point is sync -> refresh -> snapshot (issue #209).
         snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
@@ -2510,32 +2507,23 @@ def cron_price_refresh(request: Request, secret: str = ""):
     becomes optional). Same CRON_SECRET-gated pattern as
     /cron/dropbox-sync -- see that route's docstring for the
     scheduled-vs-manual distinction, which also decides the CardSnapshot
-    source recorded here ("cron" vs "manual").
-
-    Daily order (issue #209): Dex sync (05:00) -> price refresh (06:00) ->
-    snapshot. The scheduled run here writes the day's one scheduled
-    snapshot slot, `source="cron"` -- the *same* slot /cron/dropbox-sync
-    wrote an hour earlier, overwritten in place (record_daily_snapshot is an
-    upsert per (day, source)) now that prices are fresh. So the day's cron
-    point reflects today's sync *and* today's prices, and there's still
-    only one cron point + one manual point per day (models.CardSnapshot).
-    The sync's own earlier write is kept as a fallback: if this route fails
-    or never runs, the day still has a (sync-only) cron point. Rows written
-    as "price-cron" before #209 stay as they are; queries still reads them.
+    source recorded here ("price-cron" vs "manual", both distinct from the
+    Dex sync's own "cron"/"manual" sources -- see queries.real_value_history,
+    which already labels charts by source when more than one exists for a
+    given day).
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
     authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
     if not authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    snapshot_source = "cron" if is_scheduled_invocation else "manual"
+    snapshot_source = "price-cron" if is_scheduled_invocation else "manual"
 
     db = get_db_session()
     try:
         result = price_refresh.refresh_stale_prices(db)
-        # Snapshot right after refreshing: this is the last step of the
-        # daily sync -> refresh -> snapshot chain (see docstring), so the
-        # day's cron point carries today's refreshed prices.
+        # Snapshot right after refreshing, same reasoning as
+        # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
         snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
         # Then a small pass of missing card images (backfill_images.py),
         # time-boxed so the whole invocation stays inside the function limit.

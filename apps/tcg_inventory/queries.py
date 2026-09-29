@@ -550,11 +550,8 @@ VALUE_HISTORY_PERIODS: dict[str, tuple[str, int | None]] = {
 }
 
 # Within one date, which snapshot source counts as that day's closing value:
-# the scheduled cron point, then a manual sync (the latest user-triggered
-# state of the day). "price-cron" only exists on rows written before issue
-# #209, when the 06:00 price refresh had its own slot after the 05:00 sync's
-# "cron" one; since #209 the price refresh overwrites that "cron" slot
-# instead (see app.cron_price_refresh), so new data only has cron/manual.
+# the price refresh (06:00 UTC) runs after the Dropbox sync (05:00 UTC), and
+# a manual sync is the latest user-triggered state of the day.
 _SNAPSHOT_SOURCE_ORDER = {"cron": 0, "price-cron": 1, "manual": 2}
 
 

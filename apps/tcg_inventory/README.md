@@ -716,10 +716,8 @@ the Dropbox sync — edit `vercel.json` to change it), so pricing keeps moving
 on its own schedule regardless of Dex sync frequency. It walks up to 100
 cards oldest-priced (and never-priced) first per run — see
 `price_refresh.py` — using the same `CRON_SECRET` auth pattern as
-`/cron/dropbox-sync` (see that section above for setup), then writes the
-day's scheduled `card_snapshots` point (`source="cron"`) right after
-refreshing -- see "Value history" for how that fits with the sync's own
-snapshot.
+`/cron/dropbox-sync` (see that section above for setup) and writing its own
+`card_snapshots` row (`source="price-cron"`) right after refreshing.
 
 **Currency.** TCGplayer prices come back in USD and are stored in NOK,
 converted at **Norges Bank's daily USD/NOK spot rate** (`fx_rates.py`,
@@ -812,7 +810,7 @@ was *actually* worth on a given date, not an estimate. It's rendered as the
 charts" section, as a portfolio-style chart:
 
 - **One point per day** on a real time axis — that day's last snapshot
-  (`cron` → `manual`; `price-cron` on pre-#209 days sits between them), with today's point replaced by the
+  (`cron` → `price-cron` → `manual`), with today's point replaced by the
   live value so the line always ends on the key figures' Current value.
 - **Metric** pills (`?metric=` unique / duplicates / total, default total)
   and **period** pills (`?period=` 1U / 1M / 3M / 6M / 1Å / Alt, default
@@ -856,26 +854,18 @@ which applied today's price retroactively to each card's `created_at`
 month) rendered anywhere in the UI — the function itself is still in
 `queries.py` and unit-tested, just unused by any route now.
 
-Snapshots are stored per source (the chart then keeps each day's last one),
-at most two per day:
-
-- **`source="cron"`** — the scheduled point. The daily order is **Dex sync
-  (`/cron/dropbox-sync`, 05:00) → price refresh (`/cron/price-refresh`,
-  06:00) → snapshot**: the sync writes the `cron` row right after syncing,
-  and the price refresh then overwrites that same row in place after
-  refreshing prices (snapshots are upserted per day + source). So the
-  day's point has today's quantities *and* today's prices, and if the
-  price refresh fails the sync's row is still there as a fallback. (Before
-  issue #209 the refresh wrote its own `price-cron` slot instead, and the
-  sync's `cron` point carried the previous day's prices; those old rows are
-  left as they are and still read.)
-- **`source="manual"`** — the latest off-schedule run that day: a manual
-  Dropbox sync, or either cron route hit by hand with `?secret=` instead of
-  the real Vercel cron header. A manual price refresh and a manual sync on
-  the same day share this slot — the later one wins.
-
-Re-running either one the same day overwrites its slot rather than adding
-another point.
+Snapshots are stored per source (the chart then keeps each day's last one):
+up to two per day from the Dex-sync side: the scheduled cron run
+(`CardSnapshot.source="cron"`) and, separately, the latest off-schedule sync
+that day (`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync`
+hit by hand with `?secret=` instead of the real Vercel cron header).
+Re-running either one again the same day overwrites that same slot rather
+than adding a third point. `/cron/price-refresh` (see "Price refresh" above)
+writes its own independent slot the same way (`source="price-cron"` when
+scheduled, `"manual"` when triggered by hand — note this can collide with a
+same-day manual Dex sync's slot; a real day with both shows only the later
+one's total under the shared "manual" label), so a day can have up to three
+points if both cron jobs and a manual sync all land on it.
 
 Snapshots are never rewritten after the fact: days snapshotted before the
 Norges Bank rate replaced the fixed 10.5 USD/NOK (issue #209) keep their
@@ -898,7 +888,7 @@ the Dropbox-based ones above and the price-refresh cron).
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
-  sync (see "Price refresh" above) Also the `--reprice-all` CLI.
+  sync (see "Price refresh" above). Also the `--reprice-all` CLI.
 - `fx_rates.py` — Norges Bank daily USD/EUR→NOK rates, cached per process
   with last-known/constant fallback (see "Price refresh" above).
 - `backfill_images.py` — standalone, manually-triggered backfill for cards
