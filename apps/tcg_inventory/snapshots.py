@@ -1,9 +1,12 @@
 """Daily per-card value snapshots -- see CardSnapshot in models.py.
 
-Written by app.py's /cron/dropbox-sync route (source="cron") right after
-the scheduled sync, and by the manual CSV-upload/Dropbox-sync routes
-(source="manual") right after a user-triggered one -- see README's
-"Automatic daily sync". This is what makes queries.real_value_history
+Written by app.py's scheduled cron chain (source="cron"): /cron/dropbox-sync
+right after the 05:00 sync, then /cron/price-refresh overwrites that same
+row at 06:00 after refreshing prices, so the day's cron point is
+sync -> refresh -> snapshot (issue #209). The manual Dropbox-sync route and
+off-schedule `?secret=` hits of either cron route write source="manual" --
+see README's "Automatic daily sync" / "Value history". This is what makes
+queries.real_value_history
 possible: a real, non-approximated "what was the collection worth on date
 X", with up to two points per day: the scheduled run and the latest manual
 one.

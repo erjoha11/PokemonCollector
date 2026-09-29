@@ -15,15 +15,19 @@ from dataclasses import dataclass
 
 import httpx
 
+import fx_rates
+
 _API_URL = "https://api.pokemontcg.io/v2/cards"
 _TIMEOUT = 5.0
 
 # The Pokemon TCG API's tcgplayer prices are always USD; every other price in
 # this app (Dex's own exported "Price" column, and every `| kr` template
-# display) is NOK. A fixed approximate rate, not a live lookup -- one more
-# external, flaky dependency isn't worth it for a number that's already a
-# best-effort estimate. Revisit if USD/NOK drifts far from this over time.
-_USD_TO_NOK = 10.5
+# display) is NOK. Converted at Norges Bank's daily USD/NOK rate via
+# fx_rates.py (fetched once per run and cached, with a last-known-rate and
+# then a fixed-constant fallback so a failed lookup never blocks pricing).
+# Until issue #209 this was a fixed `_USD_TO_NOK = 10.5`, ~10% above the real
+# rate -- prices stored before that fix stay inflated until re-priced (see
+# price_refresh.py's --reprice-all and HANDOFF.md).
 
 
 @dataclass
@@ -108,9 +112,10 @@ def _best_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) ->
       can surface it rather than trust a guess silently -- different prints
       of the same card can have very different market prices.
 
-    Converted to NOK here (see _USD_TO_NOK) since every other price in this
-    app -- Dex's own column included -- is NOK; returning raw USD would
-    silently understate these cards' value by ~10x wherever it's displayed.
+    Converted to NOK here at the current Norges Bank USD/NOK rate (see
+    fx_rates.get_rates) since every other price in this app -- Dex's own
+    column included -- is NOK; returning raw USD would silently understate
+    these cards' value by ~10x wherever it's displayed.
     """
     if not tcgplayer:
         return None, False
@@ -119,8 +124,10 @@ def _best_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) ->
     if not price_keys:
         return None, False
 
+    usd_to_nok = fx_rates.usd_to_nok()
+
     def _price_in_nok(key: str) -> float:
-        return round(prices[key]["market"] * _USD_TO_NOK, 2)
+        return round(prices[key]["market"] * usd_to_nok, 2)
 
     if len(price_keys) == 1:
         return _price_in_nok(price_keys[0]), False

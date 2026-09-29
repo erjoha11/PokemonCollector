@@ -18,6 +18,11 @@ import models  # noqa: E402,F401  (registers tables on Base.metadata)
 import db as db_module  # noqa: E402
 import auth as auth_module  # noqa: E402
 import card_images  # noqa: E402
+import fx_rates  # noqa: E402
+
+# The USD/NOK rate every test converts at (see fixed_fx_rates below).
+TEST_USD_TO_NOK = 10.0
+TEST_EUR_TO_NOK = 11.0
 
 
 @pytest.fixture(autouse=True)
@@ -53,6 +58,29 @@ def no_card_image_network_calls(monkeypatch):
         raise httpx.ConnectError("network disabled in tests")
 
     monkeypatch.setattr(card_images.httpx, "get", no_network)
+
+
+@pytest.fixture(autouse=True)
+def fixed_fx_rates():
+    """card_images converts TCGplayer's USD prices at Norges Bank's live rate
+    (fx_rates.get_rates). Seed that cache with a fixed rate so the suite
+    stays offline and prices are deterministic. fx_rates.httpx.get is the
+    same httpx.get that no_card_image_network_calls / test_card_images'
+    fakes patch, so without this the FX lookup would hit those fakes.
+    test_fx_rates.py calls fx_rates.reset_cache() to test the real lookup
+    against its own fakes.
+    """
+    fx_rates.reset_cache()
+    fx_rates.set_rates(
+        fx_rates.FxRates(
+            rates={"USD": TEST_USD_TO_NOK, "EUR": TEST_EUR_TO_NOK},
+            as_of=None,
+            source="live",
+        ),
+        ttl=10**9,
+    )
+    yield
+    fx_rates.reset_cache()
 
 
 @pytest.fixture()

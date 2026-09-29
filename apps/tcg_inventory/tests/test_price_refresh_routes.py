@@ -37,7 +37,36 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
         card = db.query(Card).filter(Card.card_id == "a").one()
         assert card.tcgplayer_price == 9.99
         snap = db.query(CardSnapshot).one()
-        assert snap.source == "price-cron"
+        assert snap.source == "cron"  # the day's one scheduled slot (issue #209)
+    assert body["usd_to_nok"] == 10.0  # conftest's fixed rate
+    assert body["fx_source"] == "live"
+
+
+def test_scheduled_price_refresh_overwrites_the_syncs_cron_snapshot(client, monkeypatch):
+    """Daily order is Dex sync (05:00, writes the "cron" slot) -> price
+    refresh (06:00) -> snapshot: the refresh overwrites that same slot with
+    post-refresh prices instead of adding a second scheduled point."""
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+
+    monkeypatch.setenv("CRON_SECRET", "s3cr3t")
+    _add_card(client)
+    with db_module.SessionLocal() as db:
+        db.query(Card).one().tcgplayer_price = 1.0
+        db.commit()
+        snapshots.record_daily_snapshot(db, source="cron")  # what the 05:00 sync writes
+
+    monkeypatch.setattr(
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
+    )
+    response = client.get("/cron/price-refresh", headers={"Authorization": "Bearer s3cr3t"})
+    assert response.status_code == 200
+
+    with db_module.SessionLocal() as db:
+        snaps = db.query(CardSnapshot).all()
+        assert [(s.date, s.source, s.reference_price) for s in snaps] == [(dt.date.today(), "cron", 9.99)]
 
 
 def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):
