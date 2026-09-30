@@ -295,8 +295,9 @@ run).
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
 table `sets` replaces — kept in place, unused going forward), `releases`
-(see "Release Notes" below), and `master_cards`/`master_card_ids`
-(masterdata, see below).
+(see "Release Notes" below), `master_cards`/`master_card_ids`
+(masterdata, see below), and `card_prices`/`fx_rates` (per-source prices
+and stored exchange rates, see "Pricing" below).
 
 ### Masterdata (card identity across catalogs)
 
@@ -706,22 +707,86 @@ collection + Vintage + whatever else you track) — each cron run syncs
 whatever's in there at the time, same as selecting every file on the
 Import page manually.
 
+### Pricing
+
+Every price is stored per source in `card_prices` (one row per card +
+source, latest value only -- no per-source history, see #169), and one
+resolver picks the displayed price (issue #210, `pricing.py`).
+
+**Sources**, in display priority (`pricing.CHAIN`, a module constant --
+TCGplayer-first by the owner's choice, epic #213):
+
+| # | `source` | What | Currency | Written by |
+|---|---|---|---|---|
+| 1 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
+| 2 | `tcgdex_tcgplayer` | TCGdex's TCGplayer block | USD | not yet (Phase 3, #211) |
+| 3 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py`, `importer.py` |
+| 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket block | EUR | not yet (Phase 3, #211) |
+
+A row keeps the native price, currency, the FX rate used, `price_nok`,
+which print it priced (`variant_key`), `fetched_at`, any per-source flags,
+and `lookup_failed_at` (the failed-lookup backoff, see "Price refresh"). A
+Dex sync whose `Price` cell is empty keeps the card's last known Dex price
+(it used to wipe it).
+
+**Resolution** (`pricing.resolve`): the first *fresh* price in chain order
+wins -- fresh means fetched within **14 days** (`FRESH_DAYS`), deliberately
+longer than the 7-day refresh cadence so prices don't expire right before
+their refresh and flap between sources. If no source is fresh, the most
+recently fetched price is kept and flagged `stale`: a price never drops to
+0 or blank once one ever existed. Only a card with no price from any source
+is flagged `no_price`. The winning row's own flags carry over
+(`variant_price_uncertain`: pokemontcg.io had several prints and the Dex
+variant couldn't be matched to one).
+
+**Materialized on `cards`**: the result is written to `cards.market_price`,
+`market_price_source`, `market_price_as_of` and `price_flags`, and every
+consumer reads that (`Card.display_price` in Python; the `market_price`
+column in SQL, so Inventory sorts and pages by it). This is a deliberate,
+documented exception to the "computed, never stored" rule (see
+`models.Card.display_price`): the resolved price is a time-dependent
+decision, not a same-row derivation, and it's fully re-derivable by
+re-running the resolver. It is resolved (`pricing.resolve_cards`, bulk):
+
+- after every write to `card_prices`, in the same transaction (Dex sync,
+  price refresh);
+- in a full DB-only pass at the end of each sync/cron (`/cron/dropbox-sync`,
+  `/cron/price-refresh`, manual Dropbox sync), right before its snapshot --
+  this is how a source going stale is applied to cards nobody re-priced.
+
+**Legacy columns.** `cards.reference_price` and `cards.tcgplayer_price`
+(+ `tcgplayer_price_updated_at`) are kept as mirrors of the `dex` and
+`pokemontcg` rows (`init_db()` never drops columns), but nothing reads them
+for a displayed price. `cards.price_lookup_failed_at` (#216) is deprecated
+and no longer written; its state moved to `card_prices.lookup_failed_at`.
+
+**Migration / backfill.** Schema version 10. On first start after deploy,
+`init_db()` seeds `card_prices` from those legacy columns and resolves
+every card (`pricing.backfill_from_legacy`, run by `_backfill_card_prices`
+like `_backfill_master_cards`: a few set-based `INSERT ... SELECT`s and
+chunked `UPDATE ... CASE`s, never fatal, a single `SELECT` once done). The
+seeded `dex` rows are dated at the last Dex sync (or the day a card went
+missing from Dex); `pokemontcg` rows keep `tcgplayer_price_updated_at` and
+have no native USD value or rate (not recorded before #210).
+
 ### Price refresh (Vercel Cron)
 
-Each card's `tcgplayer_price` (see `models.Card.display_price`) is normally
+Each card's `pokemontcg` price (see "Pricing" above) is normally
 refreshed as a side effect of a Dex sync — but that means pricing only gets
 fresher when a sync happens to run. `vercel.json` schedules a second,
 independent cron job, `GET /cron/price-refresh` (`0 6 * * *`, one hour after
 the Dropbox sync — edit `vercel.json` to change it), so pricing keeps moving
 on its own schedule regardless of Dex sync frequency. It looks up at most
 100 due cards per run (`price_refresh.py`), using the same `CRON_SECRET` auth pattern as
-`/cron/dropbox-sync` (see that section above for setup) and writing its own
-`card_snapshots` row (`source="price-cron"`) right after refreshing.
+`/cron/dropbox-sync` (see that section above for setup), then re-resolves
+every card's market price and writes its own `card_snapshots` row
+(`source="price-cron"`).
 
-**Which cards, in what order** (issue #216). A card is due when its price
-is missing or older than 7 days (`PRICE_STALE_AFTER_DAYS`). A lookup that
-yields no usable price (no match, low-confidence match, no TCGplayer data)
-stamps `cards.price_lookup_failed_at`, and the card is skipped for 14 days
+**Which cards, in what order** (issues #216, #210). A card is due when its
+`pokemontcg` price is missing or older than 7 days
+(`PRICE_STALE_AFTER_DAYS`). A lookup that yields no usable price (no match,
+low-confidence match, no TCGplayer data) stamps that row's
+`card_prices.lookup_failed_at`, and the card is skipped for 14 days
 (`PRICE_RETRY_AFTER_DAYS`) before being tried again; a successful lookup
 clears the stamp. The budget is spent in this order:
 
@@ -736,23 +801,27 @@ own price lookups (`importer.py`, 25 per sync) use the same due/backoff
 rule (`price_refresh.price_lookup_due` / `apply_price_lookup`), in CSV
 order. A pokemontcg.io outage looks the same as "no match", so a flaky day
 can back off cards that would have priced; they simply retry after the
-window.
+window. The 7-day refresh cadence is shorter than the resolver's 14-day
+freshness window on purpose (see "Pricing").
 
 **Currency.** TCGplayer prices come back in USD and are stored in NOK,
 converted at **Norges Bank's daily USD/NOK spot rate** (`fx_rates.py`,
-`EXR/B.USD+EUR.NOK.SP`, no API key). The rate is fetched once per run and
-cached in-process; if Norges Bank can't be reached, the last rate fetched
-in that process is reused, and only if there is none the old fixed 10.5 is
-used as a last resort, so an FX outage never blocks pricing. The cron
-response reports `usd_to_nok`, `fx_source` (`live` / `last-known` /
-`fallback`) and `fx_as_of`. EUR/NOK comes in the same request and is exposed
-(`fx_rates.eur_to_nok()`) for a later EUR source, unused so far. Only the
-NOK result is stored, so a price is only as fresh as its
-`tcgplayer_price_updated_at` -- prices stored before this (issue #209) were
-converted at the fixed 10.5, ~10% too high, until re-fetched.
+`EXR/B.USD+EUR.NOK.SP`, no API key). The rate is fetched once per run,
+cached in-process and stored in the `fx_rates` table (date, currency,
+`rate_nok`), so another invocation within 6 hours reuses it without a
+request. If Norges Bank can't be reached, the last rate fetched in that
+process is reused, else the latest rate in `fx_rates`, and only if there is
+none the old fixed 10.5 is used as a last resort, so an FX outage never
+blocks pricing. The cron response reports `usd_to_nok`, `fx_source`
+(`live` / `last-known` / `stored` / `fallback`) and `fx_as_of`. EUR/NOK comes
+in the same request and is exposed (`fx_rates.eur_to_nok()`) for a later EUR
+source, unused so far. Each `pokemontcg` row records the native USD price
+and the rate it was converted at (`card_prices.price`/`fx_rate`); rows
+seeded from before #210 have only the NOK value. Prices stored before
+issue #209 were converted at the fixed 10.5, ~10% too high, until re-fetched.
 
 **Forcing a full re-price** (ignores staleness and the 100-per-run budget;
-only cards that already have a `tcgplayer_price`; a failed lookup keeps the
+only cards that already have a `pokemontcg` price; a failed lookup keeps the
 old price and date, and is not stamped as failed, so the cron retries it;
 stored values are never rescaled):
 
@@ -821,8 +890,8 @@ A Dex sync (`importer.py`) also tries the by-id lookup for new cards.
 ### Value history
 
 `card_snapshots` records real history going forward — every sync writes one
-row per card (`qty` + `reference_price` as of that day) right after it
-completes, so `queries.real_value_history` can report what the collection
+row per card (`qty`, `reference_price` and `price_source` as of that day)
+right after it completes, so `queries.real_value_history` can report what the collection
 was *actually* worth on a given date, not an estimate. It's rendered as the
 **"Market Value" chart** (`market_value_card` in `macros.html`, context from
 `app._market_value_context`) on both Dashboard and Transactions' "View
@@ -866,6 +935,19 @@ the chart is that same number's history over time, not a different metric.
 This was a deliberate naming choice, accepted despite the two elements
 sharing a label on the same page.
 
+**Column semantics.** Despite its name, `card_snapshots.reference_price`
+holds the card's *resolved market price* that day (`Card.display_price`,
+see "Pricing") — the column predates the resolver and `init_db()` can't
+rename it. `card_snapshots.price_source` (issue #210) records which source
+that price came from; it's `NULL` on rows written before #210 and on cards
+with no price. Price movers (Dashboard) leaves out cards whose source
+differs between the period's start snapshot and today and says so in its
+caption ("· N source changes left out") — a switch from Dex to
+pokemontcg.io isn't a market move. For pre-#210 snapshots the source is
+inferred (TCGplayer via pokemontcg.io if the card has such a price, else
+Dex — the old display rule). The value-history and per-card price charts
+don't leave switches out, so they keep matching the key figures.
+
 Empty until snapshots accumulate (starts from whenever `card_snapshots` was
 added — there's no way to backfill history for dates before it existed).
 There is no longer an approximation chart (the old `collection_value_growth`,
@@ -906,10 +988,13 @@ the Dropbox-based ones above and the price-refresh cron).
 - `masterdata.py` — canonical card identity + external ID mapping (see
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
-- `price_refresh.py` — standalone TCGPlayer price refresh, decoupled from Dex
+- `pricing.py` — per-source prices (`card_prices`) and the resolver that
+  materializes `cards.market_price` (see "Pricing" above).
+- `price_refresh.py` — standalone TCGplayer price refresh, decoupled from Dex
   sync (see "Price refresh" above). Also the `--reprice-all` CLI.
 - `fx_rates.py` — Norges Bank daily USD/EUR→NOK rates, cached per process
-  with last-known/constant fallback (see "Price refresh" above).
+  and stored in `fx_rates`, with last-known/stored/constant fallback (see
+  "Price refresh" above).
 - `backfill_images.py` — standalone, manually-triggered backfill for cards
   with a `NULL` `image_url` (see "Card images" above).
 - `dropbox_client.py` — list/download CSV files from Dropbox (read-only).
@@ -957,8 +1042,9 @@ network access or the app's real `tcg_inventory.db` involved.
     against prod (see `HANDOFF.md`) instead of through this chain, also
     bump `schema_meta`'s stored version accordingly — otherwise this gate
     will skip a migration that should still run.
-  - `_backfill_sets()` (see "Chronological sorting" above) is the one
-    exception to that gate — it runs on every `init_db()` call regardless
+  - `_backfill_sets()` (see "Chronological sorting" above) is one
+    exception to that gate (so are `_backfill_master_cards()` and
+    `_backfill_card_prices()`, both a single cheap `SELECT` once done) — it runs on every `init_db()` call regardless
     of `schema_meta`'s stored version. Since issue #134, `importer.py`
     links `Card.set_id` inline as it syncs, so this is no longer the
     primary mechanism keeping cards linked — it's an ongoing catch-all for

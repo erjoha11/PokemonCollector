@@ -51,6 +51,13 @@ class CardApiData:
     # manual look rather than trusting it silently, since different prints
     # of the same card can have very different market prices.
     variant_price_uncertain: bool = False
+    # The native value behind tcgplayer_price (issue #210): the USD market
+    # price, which `tcgplayer.prices` key it came from, and the USD/NOK rate
+    # it was converted at. Recorded on the card's `pokemontcg` card_prices
+    # row. None whenever tcgplayer_price is None.
+    tcgplayer_price_usd: float | None = None
+    tcgplayer_variant_key: str | None = None
+    usd_to_nok: float | None = None
 
 
 def _printed_number(number: str | None) -> str | None:
@@ -97,12 +104,28 @@ def _match_variant_key(variant: str | None, price_keys: list[str]) -> str | None
     return None
 
 
+@dataclass(frozen=True)
+class _PriceChoice:
+    nok: float
+    usd: float
+    key: str
+    usd_to_nok: float
+    uncertain: bool
+
+
 def _best_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) -> tuple[float | None, bool]:
+    """(price_in_nok, uncertain) -- see _choose_tcgplayer_price."""
+    choice = _choose_tcgplayer_price(tcgplayer, variant)
+    return (choice.nok, choice.uncertain) if choice else (None, False)
+
+
+def _choose_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) -> _PriceChoice | None:
     """`tcgplayer.prices` has one entry per print variant (normal, holofoil,
     reverseHolofoil, 1stEditionHolofoil, ...), each with market/low/mid/high,
-    in USD. Returns (price_in_nok, uncertain):
+    in USD. Returns the chosen print's price (NOK and native USD), its key,
+    the rate used and whether the choice is uncertain:
 
-    - No priced variant at all -> (None, False).
+    - No priced variant at all -> None.
     - Exactly one priced variant -> that one, not uncertain (nothing to
       disambiguate regardless of what Dex's `Variant` says).
     - Multiple priced variants -> try to match Dex's own `Variant` field via
@@ -118,25 +141,26 @@ def _best_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) ->
     these cards' value by ~10x wherever it's displayed.
     """
     if not tcgplayer:
-        return None, False
+        return None
     prices = tcgplayer.get("prices") or {}
     price_keys = [key for key, variant_prices in prices.items() if (variant_prices or {}).get("market") is not None]
     if not price_keys:
-        return None, False
+        return None
 
     usd_to_nok = fx_rates.usd_to_nok()
 
-    def _price_in_nok(key: str) -> float:
-        return round(prices[key]["market"] * usd_to_nok, 2)
+    def _choice(key: str, uncertain: bool) -> _PriceChoice:
+        usd = prices[key]["market"]
+        return _PriceChoice(round(usd * usd_to_nok, 2), usd, key, usd_to_nok, uncertain)
 
     if len(price_keys) == 1:
-        return _price_in_nok(price_keys[0]), False
+        return _choice(price_keys[0], False)
 
     matched_key = _match_variant_key(variant, price_keys)
     if matched_key:
-        return _price_in_nok(matched_key), False
+        return _choice(matched_key, False)
 
-    return _price_in_nok(price_keys[0]), True
+    return _choice(price_keys[0], True)
 
 
 def _is_confident_match(name: str, number: str | None, card: dict) -> bool:
@@ -205,14 +229,15 @@ def fetch_card_data(
 
     card = data[0]
     confident = _is_confident_match(name, number, card)
-    price, variant_uncertain = (
-        _best_tcgplayer_price(card.get("tcgplayer"), variant) if confident else (None, False)
-    )
+    choice = _choose_tcgplayer_price(card.get("tcgplayer"), variant) if confident else None
     return CardApiData(
         image_url=card.get("images", {}).get("small"),
-        tcgplayer_price=price,
+        tcgplayer_price=choice.nok if choice else None,
         low_confidence_match=not confident,
-        variant_price_uncertain=variant_uncertain,
+        variant_price_uncertain=choice.uncertain if choice else False,
+        tcgplayer_price_usd=choice.usd if choice else None,
+        tcgplayer_variant_key=choice.key if choice else None,
+        usd_to_nok=choice.usd_to_nok if choice else None,
     )
 
 

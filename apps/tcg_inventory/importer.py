@@ -19,12 +19,14 @@ import io
 import re
 from dataclasses import dataclass, field
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 import card_images
 import constants
+import fx_rates
 import masterdata
 import price_refresh
+import pricing
 from db import get_or_create_set
 from models import Binder, Card, Collection, ImportLog
 
@@ -202,7 +204,11 @@ def import_dex_csv_files(
         row_ids = {
             (row.get("Id") or "").strip() for row in my_collection_rows if (row.get("Id") or "").strip()
         }
-        existing = db.query(Card).filter(Card.card_id.in_(row_ids)).all() if row_ids else []
+        existing = (
+            db.query(Card).options(selectinload(Card.prices)).filter(Card.card_id.in_(row_ids)).all()
+            if row_ids
+            else []
+        )
         cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
         image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
         price_lookup_budget = _MAX_PRICE_LOOKUPS_PER_IMPORT
@@ -212,6 +218,12 @@ def import_dex_csv_files(
         # (db.py) and issue #134.
         sets_cache: dict[tuple[str, str], "models.Set"] = {}
         masters_cache: dict = {}
+        # Dex's Price cell per card, written to card_prices in bulk after the
+        # loop (pricing.bulk_record_prices) -- one statement per chunk, not
+        # one UPDATE per card per sync (issue #210, and #193's timeout).
+        dex_prices: dict[Card, float] = {}
+        imported_cards: list[Card] = []
+        fx_primed = False
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -228,6 +240,7 @@ def import_dex_csv_files(
                 card = Card(card_id=card_id, variant=variant, created_at=dt.datetime.utcnow())
                 db.add(card)
                 cards_by_key[key] = card
+            imported_cards.append(card)
 
             card.name = (row.get("Name") or "").strip()
             card.number = (row.get("Number") or "").strip() or None
@@ -252,7 +265,14 @@ def import_dex_csv_files(
             card.language = (row.get("Locale") or "").strip() or None
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None
-            card.reference_price = _parse_price(row.get("Price"))
+            # The `dex` source price (issue #210). An empty/unparseable Price
+            # cell keeps the last known one -- it used to overwrite
+            # reference_price with None. reference_price is now a mirror of
+            # the dex card_prices row.
+            dex_price = _parse_price(row.get("Price"))
+            if dex_price is not None:
+                card.reference_price = dex_price
+                dex_prices[card] = dex_price
             card.qty = _parse_qty(row.get("Quantity"))
             notes = _notes_from_row(row)
             if notes:
@@ -262,6 +282,12 @@ def import_dex_csv_files(
             needs_image = card.image_url is None and image_lookup_budget > 0
             needs_price = price_lookup_budget > 0 and price_refresh.price_lookup_due(card, today)
             if needs_image or needs_price:
+                if not fx_primed:
+                    # Resolve the USD/NOK rate once, with the DB, so it's
+                    # stored / reused / falls back to the last stored rate
+                    # (fx_rates.py); fetch_card_data then hits the cache.
+                    fx_rates.get_rates(db.get_bind())
+                    fx_primed = True
                 api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
                 if needs_image:
                     # By Dex's own card_id first (see card_images.
@@ -273,7 +299,7 @@ def import_dex_csv_files(
                     )
                     image_lookup_budget -= 1
                 if needs_price:
-                    # Stamps price_lookup_failed_at on a miss, so a card
+                    # Stamps the pokemontcg row's lookup_failed_at on a miss, so a card
                     # that can't be priced stops taking this budget every
                     # sync (issue #216).
                     if price_refresh.apply_price_lookup(card, api_data, today):
@@ -309,6 +335,10 @@ def import_dex_csv_files(
                 result.cards_flagged_missing += 1
 
         db.flush()
+        pricing.bulk_record_prices(
+            db, pricing.SOURCE_DEX, {card.id: price for card, price in dex_prices.items()}, today
+        )
+        pricing.resolve_cards(db, [card.id for card in imported_cards], today=today)
 
     # --- 2. Everything else: binders and collections, keyed by category. ---
     def _cards_by_key(keys: set[tuple[str, str | None]]) -> dict[tuple[str, str | None], Card]:

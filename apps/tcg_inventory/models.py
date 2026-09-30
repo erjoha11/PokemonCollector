@@ -2,7 +2,9 @@
 
 Computed fields (`duplicates`, `total_value`, `unique_value`) are Python
 properties, never persisted columns -- a stored/derived-value mismatch was a
-real bug in the Excel version this app replaces.
+real bug in the Excel version this app replaces. The one deliberate
+exception is the resolved market price (`Card.market_price` and friends,
+issue #210) -- see the comment next to `Card.display_price` for why.
 """
 from __future__ import annotations
 
@@ -86,23 +88,40 @@ class Card(Base):
     # being re-looked-up (and blocking the queue) on every run.
     image_lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
+    # --- Legacy per-source price columns (deprecated mirrors, issue #210) ---
+    # Per-source prices live in `card_prices` (CardPrice below) since #210;
+    # these columns are kept (init_db() never drops/renames a column) and
+    # still written as mirrors so nothing that reads them breaks, but no
+    # consumer should read them for a displayed price -- read
+    # `market_price`/`display_price` instead.
+    # Mirror of the `dex` card_prices row: Dex's exported Price cell, in NOK.
+    # An empty Price cell no longer wipes it (the last known value is kept).
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # Live TCGPlayer market price, looked up from the same Pokemon TCG API
-    # call as image_url (card_images.fetch_card_data). Unlike image_url this
-    # is refetched periodically (prices move; images never do) -- see
-    # importer.py's staleness check against tcgplayer_price_updated_at. Null
-    # when no confident match was found yet, or the API had no tcgplayer
-    # pricing data for this card. `display_price` below is what every
-    # consumer should read, not this column directly.
+    # Mirror of the `pokemontcg` card_prices row: pokemontcg.io's TCGplayer
+    # market price, converted to NOK (card_images.fetch_card_data), and the
+    # date it was fetched.
     tcgplayer_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     tcgplayer_price_updated_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
-    # When a price lookup last came back with no usable price (no match, a
-    # low-confidence match, or no tcgplayer data), so a card that can't be
-    # priced (e.g. most Japanese prints) waits price_refresh.
-    # PRICE_RETRY_AFTER_DAYS before being retried instead of taking the
-    # daily cron budget every day (issue #216). Cleared on a successful
-    # lookup. Expected to move to per-source state in card_prices (#210).
+    # DEPRECATED, no longer written or read (issue #210). Was the pokemontcg
+    # failed-lookup stamp from #216; that state now lives per source in
+    # CardPrice.lookup_failed_at (seeded from this column once, by
+    # pricing.backfill_from_legacy). Kept only because init_db() can't drop
+    # a column.
     price_lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+
+    # --- Resolved market price (materialized, issue #210) ---
+    # Written only by pricing.resolve_cards(), from this card's card_prices
+    # rows -- never set directly. See display_price below for why this is
+    # stored rather than computed.
+    market_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Which card_prices source won ("dex", "pokemontcg", ...), and the date
+    # that source's price was fetched. Null when the card has no price.
+    market_price_source: Mapped[str | None] = mapped_column(String, nullable=True)
+    market_price_as_of: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # Comma-separated flags (pricing.FLAG_*): "stale", "no_price",
+    # "variant_price_uncertain". Null when resolved with nothing to flag --
+    # and also on a card the resolver has never seen (see display_price).
+    price_flags: Mapped[str | None] = mapped_column(String, nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Real Set entity, replacing the string-matched `set_release_order` join
@@ -149,21 +168,47 @@ class Card(Base):
     # string column above (Dex's "Set" export column).
     linked_set: Mapped["Set | None"] = relationship(back_populates="cards")
     master_card: Mapped["MasterCard | None"] = relationship(back_populates="cards")
+    # Latest price per source (see CardPrice). Lazy by default; bulk paths
+    # (importer.py, price_refresh.py) selectinload it.
+    prices: Mapped[list["CardPrice"]] = relationship(
+        back_populates="card", cascade="all, delete-orphan"
+    )
 
     @property
     def duplicates(self) -> int:
         return max(self.qty - 1, 0)
 
+    # Why market_price is STORED, not computed (issue #210). The "computed,
+    # never stored" rule at the top of this module is about values derivable
+    # purely from other columns of the same row (`duplicates` from `qty`),
+    # which drift the moment they're stored separately. The resolved market
+    # price is different: it's a time-dependent *decision* -- which source
+    # was fresh and reachable on the day it was resolved (pricing.py's chain
+    # and 14-day freshness window) -- more like a snapshot than a derived
+    # column. It also has to be a real column so Inventory can sort and page
+    # by it in SQL. It stays honest because it's never edited by hand: only
+    # pricing.resolve_cards() writes it, on every card_prices write and in a
+    # full DB-only pass at the end of each cron, and re-running that
+    # re-derives it from card_prices at any time.
     @property
     def display_price(self) -> float | None:
-        """The price every consumer (value calculations, sorting, templates)
-        should read: the live TCGPlayer price when we have one, falling back
-        to Dex's own exported Price otherwise. Two independent sources are
-        kept in separate columns rather than one column overwritten in
-        place, so it's always possible to tell which one produced a given
-        value -- see tcgplayer_price's column comment.
+        """The price every Python-side consumer (value calculations,
+        templates) should read: the resolved `market_price`. SQL consumers
+        read the `market_price` column directly.
+
+        Falls back to the pre-#210 rule (TCGplayer, else Dex) only for a
+        card the resolver has never seen -- `price_flags` is null *and* there
+        is no market_price. Every resolved card has either a market_price or
+        the "no_price" flag, and init_db()'s backfill resolves every
+        existing card, so in practice this is only a safety net.
         """
+        if self.market_price is not None or self.price_flags is not None:
+            return self.market_price
         return self.tcgplayer_price if self.tcgplayer_price is not None else self.reference_price
+
+    @property
+    def price_flag_list(self) -> list[str]:
+        return [f for f in (self.price_flags or "").split(",") if f]
 
     @property
     def unique_value(self) -> float:
@@ -220,7 +265,15 @@ class CardSnapshot(Base):
     date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
     source: Mapped[str] = mapped_column(String, nullable=False, default="cron", server_default="cron")
     qty: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Misnamed for history's sake (init_db() can't rename a column): holds
+    # the card's *resolved market price* that day (Card.display_price), not
+    # Dex's reference price.
     reference_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Which card_prices source that price came from (Card.market_price_source)
+    # -- lets queries.price_movers tell a real market move from a source
+    # switch (issue #210). Null on every row written before #210, and on a
+    # card with no price.
+    price_source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @property
     def duplicates(self) -> int:
@@ -233,6 +286,79 @@ class CardSnapshot(Base):
     @property
     def total_value(self) -> float:
         return self.qty * (self.reference_price or 0.0)
+
+
+class CardPrice(Base):
+    """The latest price for one card from one source -- one row per
+    (card_id, source), overwritten in place (issue #210). Deliberately no
+    per-source history: that would be ~4 rows x every card x every day, and
+    `card_snapshots` alone already grows too fast (#169). History of the
+    *chosen* price lives in card_snapshots (reference_price + price_source).
+
+    Sources are pricing.CHAIN's names: "dex" (Dex CSV Price cell, NOK,
+    written by importer.py), "pokemontcg" (pokemontcg.io TCGplayer market
+    price, USD, written by price_refresh.py / importer.py), and Phase 3's
+    "tcgdex_tcgplayer"/"tcgdex_cardmarket" (not written yet).
+
+    A row can exist with no price at all -- only `lookup_failed_at` -- for a
+    source that has been tried and never priced this card; that's the
+    per-source failed-lookup backoff (issue #216's former
+    `cards.price_lookup_failed_at`). Written only through pricing.py, which
+    re-resolves `Card.market_price` after every write.
+    """
+
+    __tablename__ = "card_prices"
+    __table_args__ = (UniqueConstraint("card_id", "source", name="uq_card_prices_card_id_source"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    card_id: Mapped[int] = mapped_column(
+        ForeignKey("cards.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    # In the source's own currency. Null when the native value isn't known
+    # (e.g. rows seeded from the NOK-only legacy tcgplayer_price column).
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    currency: Mapped[str | None] = mapped_column(String, nullable=True)
+    # NOK per 1 unit of `currency` used to produce price_nok (1.0 for NOK;
+    # null when unknown, e.g. seeded legacy rows).
+    fx_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    price_nok: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Which print's price was used when the source has several (e.g.
+    # pokemontcg.io's "holofoil" / "reverseHolofoil").
+    variant_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    # When we last got a price from this source -- what pricing.py's
+    # freshness window is measured against.
+    fetched_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # The source's own "as of" date, when it reports one.
+    source_updated_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # Comma-separated per-source flags, e.g. "variant_price_uncertain".
+    flags: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Last lookup that came back with no usable price; cleared on success.
+    lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+
+    card: Mapped[Card] = relationship(back_populates="prices")
+
+    @property
+    def flag_list(self) -> list[str]:
+        return [f for f in (self.flags or "").split(",") if f]
+
+
+class FxRate(Base):
+    """One day's NOK exchange rate for one currency, from Norges Bank
+    (fx_rates.py, issue #210). Lets a serverless invocation reuse a rate
+    another one already fetched, and a failed Norges Bank call fall back to
+    the last stored rate instead of a hard-coded constant.
+    """
+
+    __tablename__ = "fx_rates"
+    __table_args__ = (UniqueConstraint("date", "currency", name="uq_fx_rates_date_currency"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # Norges Bank's observation date (a business day), not the fetch date.
+    date: Mapped[dt.date] = mapped_column(Date, nullable=False, index=True)
+    currency: Mapped[str] = mapped_column(String, nullable=False)
+    rate_nok: Mapped[float] = mapped_column(Float, nullable=False)
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Transaction(Base):

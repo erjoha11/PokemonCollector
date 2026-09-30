@@ -82,7 +82,10 @@ class Base(DeclarativeBase):
 # path *around* the migration chain, not a replacement for it: every
 # function in the chain must stay idempotent and safe to re-run regardless
 # of this gate, per README.md "Database migrations".
-CURRENT_SCHEMA_VERSION = 9  # 8: master_cards, master_card_ids, cards.master_card_id; 9: cards.price_lookup_failed_at (#216)
+# 8: master_cards, master_card_ids, cards.master_card_id; 9: cards.price_lookup_failed_at (#216);
+# 10: card_prices, fx_rates, cards.market_price/_source/_as_of/price_flags,
+#     card_snapshots.price_source (#210)
+CURRENT_SCHEMA_VERSION = 10
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
@@ -333,6 +336,27 @@ def _backfill_master_cards():
         print(f"[init_db] master card backfill skipped: {exc!r}")
 
 
+def _backfill_card_prices():
+    """Seeds `card_prices` from the pre-#210 price columns and resolves
+    `cards.market_price` for every card the resolver has never seen (see
+    pricing.backfill_from_legacy). Like `_backfill_master_cards()`: runs on
+    every `init_db()` call, is a single cheap SELECT once every card is
+    resolved, is bulk (a few set-based statements, no per-card round
+    trips), and is never fatal -- a failure is logged and retried on the
+    next start, while display_price's legacy fallback keeps prices showing.
+    """
+    import pricing
+
+    # No has_table() check: the version-gated chain above has already created
+    # both tables by the time this runs, and skipping it saves a round trip
+    # per cold start.
+    try:
+        with SessionLocal() as session:
+            pricing.backfill_from_legacy(session)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[init_db] card price backfill skipped: {exc!r}")
+
+
 def init_db():
     import models  # noqa: F401  (registers models on Base.metadata)
 
@@ -358,3 +382,4 @@ def init_db():
     # docstring for why this needs to keep running every call.
     _backfill_sets()
     _backfill_master_cards()
+    _backfill_card_prices()

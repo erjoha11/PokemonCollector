@@ -128,13 +128,13 @@
     {% set pm = price_movers %}
     <h3>Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go. Unlike Above / below cost, the baseline is that snapshot, not what you paid. % is left out for changes under 10 kr.') }}</h3>
     {% if pm and (pm.up or pm.down) %}
-    <div class="kpi-caption muted">Last {{ pm.days }} d · price today vs. snapshot {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down</div>
+    <div class="kpi-caption muted">Last {{ pm.days }} d · price today vs. snapshot {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down{% if pm.n_source_changes %} · <span title="Cards whose price now comes from a different source than in the snapshot -- a source switch, not a market move">{{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out</span>{% endif %}</div>
     <ul class="mover-list">
       {% for m in pm.up %}{{ mover_row(m, 'up') }}{% endfor %}
       {% for m in pm.down %}{{ mover_row(m, 'down') }}{% endfor %}
     </ul>
     {% elif pm %}
-    <div class="kpi-caption muted">No price changes since {{ pm.since.strftime('%d.%m.%Y') }}.</div>
+    <div class="kpi-caption muted">No price changes since {{ pm.since.strftime('%d.%m.%Y') }}.{% if pm.n_source_changes %} {{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out.{% endif %}</div>
     {% else %}
     <div class="kpi-caption muted">Needs at least one earlier daily snapshot.</div>
     {% endif %}

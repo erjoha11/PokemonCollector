@@ -15,19 +15,31 @@ later EUR-priced source (pricing Phase 3); nothing uses it yet.
 Never blocks pricing. `get_rates()` always returns a usable rate for every
 currency in `FALLBACK_RATES`, falling back in this order:
 
-1. "live"       -- fetched from Norges Bank within the last `_CACHE_TTL`.
+1. "live"       -- fetched from Norges Bank within the last `_CACHE_TTL`, by
+                   this process or (when a DB `bind` is passed) by any
+                   invocation that stored it in the `fx_rates` table.
 2. "last-known" -- the fetch failed, but an earlier one in this process
                    succeeded; its rates are reused.
-3. "fallback"   -- nothing has ever succeeded in this process: the old fixed
+3. "stored"     -- the fetch failed and this process has nothing, but the
+                   `fx_rates` table does: the latest stored rate per
+                   currency (issue #210). Only when a `bind` is passed.
+4. "fallback"   -- nothing has ever succeeded anywhere: the old fixed
                    approximations below, last resort only.
 
 Caching is per process (module-level): the first price lookup of a run pays
 for one HTTP request, every later card in that run reuses it. A failed fetch
 is cached too (for `_FAILURE_TTL`), so an unreachable API costs one timeout
 per run, not one per card. On Vercel "per process" means per warm function
-instance, so a cold start with Norges Bank down lands on "fallback";
-`price_refresh` reports which source a run used so that shows up in the cron
-response/logs.
+instance -- which is why rates are also persisted to the `fx_rates` table
+(models.FxRate, one row per observation date + currency): a cold start
+reuses a rate another invocation fetched, and a Norges Bank outage lands on
+the last stored rate instead of the constant. `price_refresh` reports which
+source a run used so that shows up in the cron response/logs.
+
+DB access here always uses its own short connection on `bind` (never the
+caller's session/transaction), so storing a rate commits on its own and a DB
+error can't poison the caller's transaction. Any DB error is swallowed:
+rates degrade to the in-process/constant behaviour, never block pricing.
 """
 from __future__ import annotations
 
@@ -150,13 +162,80 @@ def _fetch_live() -> FxRates | None:
     return None
 
 
-def get_rates(force_refresh: bool = False) -> FxRates:
+def _load_stored(bind, fresh_since: dt.datetime | None = None) -> FxRates | None:
+    """Latest stored rate per currency from the fx_rates table (only rows
+    fetched at/after `fresh_since`, when given). None when there's nothing
+    usable or the table can't be read."""
+    from sqlalchemy import select
+
+    from models import FxRate
+
+    try:
+        rates: dict[str, float] = {}
+        as_of: dt.date | None = None
+        with bind.connect() as conn:
+            for currency in FALLBACK_RATES:
+                query = select(FxRate.rate_nok, FxRate.date).where(FxRate.currency == currency)
+                if fresh_since is not None:
+                    query = query.where(FxRate.fetched_at >= fresh_since)
+                row = conn.execute(query.order_by(FxRate.date.desc(), FxRate.id.desc()).limit(1)).first()
+                if row is not None:
+                    rates[currency] = row.rate_nok
+                    as_of = row.date if as_of is None else max(as_of, row.date)
+    except Exception:  # noqa: BLE001 -- never block pricing on the DB
+        return None
+    if not rates:
+        return None
+    return FxRates(rates={**FALLBACK_RATES, **rates}, as_of=as_of, source="stored")
+
+
+def _store(bind, rates: FxRates) -> None:
+    """Persist a live fetch (one row per currency for its observation date;
+    an existing row for that date is left as-is)."""
+    if rates.as_of is None:
+        return
+    from sqlalchemy import update
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    from models import FxRate
+
+    try:
+        insert_fn = pg_insert if bind.dialect.name == "postgresql" else sqlite_insert
+        now = dt.datetime.utcnow()
+        rows = [
+            {"date": rates.as_of, "currency": currency, "rate_nok": rate, "fetched_at": now}
+            for currency, rate in rates.rates.items()
+        ]
+        with bind.begin() as conn:
+            conn.execute(insert_fn(FxRate).values(rows).on_conflict_do_nothing(index_elements=["date", "currency"]))
+            # Mark the observation as re-confirmed now, so other invocations
+            # treat it as fresh (see get_rates' stored-reuse step).
+            conn.execute(
+                update(FxRate).where(FxRate.date == rates.as_of, FxRate.currency.in_(list(rates.rates))).values(fetched_at=now)
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def get_rates(bind=None, force_refresh: bool = False) -> FxRates:
     """Current NOK rates, cached per process -- see module docstring for the
-    live -> last-known -> fallback order. Never raises."""
+    live -> last-known -> stored -> fallback order. `bind` (a SQLAlchemy
+    engine, e.g. `session.get_bind()`) enables the fx_rates table: reuse of
+    a rate stored within the cache TTL, persisting a live fetch, and the
+    "stored" fallback. Never raises."""
     global _cache, _cache_expires_at, _last_known
     now = time.monotonic()
     if not force_refresh and _cache is not None and now < _cache_expires_at:
         return _cache
+
+    if bind is not None and not force_refresh:
+        recent = _load_stored(bind, fresh_since=dt.datetime.utcnow() - dt.timedelta(seconds=_CACHE_TTL))
+        if recent is not None:
+            rates = FxRates(rates=recent.rates, as_of=recent.as_of, source="live")
+            _last_known = rates
+            _cache, _cache_expires_at = rates, now + _CACHE_TTL
+            return rates
 
     live = _fetch_live()
     if live is not None:
@@ -165,10 +244,15 @@ def get_rates(force_refresh: bool = False) -> FxRates:
         rates = FxRates(rates=merged, as_of=live.as_of, source="live")
         _last_known = rates
         _cache, _cache_expires_at = rates, now + _CACHE_TTL
+        if bind is not None:
+            _store(bind, FxRates(rates=live.rates, as_of=live.as_of, source="live"))
         return rates
 
+    stored = _load_stored(bind) if bind is not None and _last_known is None else None
     if _last_known is not None:
         rates = FxRates(rates=_last_known.rates, as_of=_last_known.as_of, source="last-known")
+    elif stored is not None:
+        rates = stored
     else:
         rates = FxRates(rates=dict(FALLBACK_RATES), as_of=None, source="fallback")
     _cache, _cache_expires_at = rates, now + _FAILURE_TTL

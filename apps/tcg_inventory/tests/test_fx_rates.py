@@ -184,3 +184,75 @@ def test_card_pricing_never_blocks_on_an_fx_outage(monkeypatch):
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
 
     assert result.tcgplayer_price == 105.0  # fallback constant, still priced
+
+
+# --- fx_rates table (issue #210) ---------------------------------------------
+
+
+def test_a_live_fetch_is_stored_in_the_fx_rates_table(db_session, monkeypatch):
+    from models import FxRate
+
+    _counting_get(monkeypatch, [_FakeResponse(SAMPLE)])
+
+    fx_rates.get_rates(db_session.get_bind())
+
+    stored = {(r.date, r.currency): r.rate_nok for r in db_session.query(FxRate)}
+    assert stored == {(dt.date(2026, 9, 29), "USD"): 9.576, (dt.date(2026, 9, 29), "EUR"): 10.8735}
+
+
+def test_an_outage_falls_back_to_the_last_stored_rate_not_the_constant(db_session, monkeypatch):
+    from models import FxRate
+
+    old = dt.datetime.utcnow() - dt.timedelta(days=3)
+    db_session.add_all(
+        [
+            FxRate(date=dt.date(2026, 9, 20), currency="USD", rate_nok=9.1, fetched_at=old),
+            FxRate(date=dt.date(2026, 9, 25), currency="USD", rate_nok=9.4, fetched_at=old),
+        ]
+    )
+    db_session.commit()
+    _counting_get(monkeypatch, [httpx.ConnectError("down")])
+
+    rates = fx_rates.get_rates(db_session.get_bind())
+
+    assert rates.source == "stored"
+    assert rates.to_nok("USD") == 9.4  # the latest stored observation
+    assert rates.to_nok("EUR") == fx_rates.FALLBACK_RATES["EUR"]  # none stored for EUR
+    assert rates.as_of == dt.date(2026, 9, 25)
+
+
+def test_a_rate_stored_by_another_invocation_is_reused_without_a_request(db_session, monkeypatch):
+    from models import FxRate
+
+    db_session.add(FxRate(date=dt.date(2026, 9, 29), currency="USD", rate_nok=9.5, fetched_at=dt.datetime.utcnow()))
+    db_session.commit()
+    calls = _counting_get(monkeypatch, [_FakeResponse(SAMPLE)])
+
+    rates = fx_rates.get_rates(db_session.get_bind())
+
+    assert calls == []
+    assert (rates.source, rates.to_nok("USD")) == ("live", 9.5)
+
+
+def test_an_old_stored_rate_is_refetched_not_reused(db_session, monkeypatch):
+    from models import FxRate
+
+    db_session.add(
+        FxRate(date=dt.date(2026, 9, 1), currency="USD", rate_nok=9.9, fetched_at=dt.datetime.utcnow() - dt.timedelta(days=2))
+    )
+    db_session.commit()
+    calls = _counting_get(monkeypatch, [_FakeResponse(SAMPLE)])
+
+    rates = fx_rates.get_rates(db_session.get_bind())
+
+    assert calls == [fx_rates.NORGES_BANK_URL]
+    assert rates.to_nok("USD") == 9.576
+
+
+def test_a_broken_fx_rates_table_never_blocks_pricing(monkeypatch):
+    from sqlalchemy import create_engine
+
+    engine = create_engine("sqlite:///:memory:")  # no tables at all
+    _counting_get(monkeypatch, [httpx.ConnectError("down")])
+
+    assert fx_rates.get_rates(engine).source == "fallback"
