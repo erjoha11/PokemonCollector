@@ -13,6 +13,24 @@ This first entry backfills everything merged to `main` since 2026-09-14
 attempt to reconstruct the project's earlier history. From here on, each
 new entry should cover only what's merged since the previous one.
 
+## Unreleased
+
+Not a full backfill: other PRs merged since 2026-09-19 aren't listed here
+yet.
+
+### tcg_inventory
+
+**Prod backups (#223)**
+- New `.github/workflows/prod-backup.yml`: a weekly (plus on-demand)
+  `pg_dump` of prod's `public` schema, age-encrypted to a public key and
+  uploaded to a dedicated App-folder Dropbox app. Plaintext never touches
+  disk, logs, or artifacts. It skips cleanly with a warning until its
+  secrets exist.
+- README "Backups and restore": what each Supabase plan provides, one-time
+  setup (age key, Dropbox app, read-only `backup_reader` role, secrets),
+  restore steps, and a documented local restore drill. The drill against a
+  real prod backup is still pending the user's setup.
+
 ## 2026-09-19 — backfill covering 2026-09-14 through 2026-09-19
 
 ### tcg_inventory
