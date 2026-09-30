@@ -12,7 +12,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          # Match Vercel's default Python runtime (3.12): tcg_inventory pins no
+          # version (.python-version / pyproject / vercel.json). Full pin is #227.
+          python-version: "3.12"
           cache: pip
           cache-dependency-path: |
             requirements-dev.txt
