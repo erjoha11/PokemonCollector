@@ -48,13 +48,32 @@ _MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 _MAX_PRICE_LOOKUPS_PER_IMPORT = 25
 _PRICE_STALE_AFTER_DAYS = price_refresh.PRICE_STALE_AFTER_DAYS
 
+# Sync circuit breaker (issue #225). A sync that would newly flag more than
+# this share of the existing cards as "missing from My Collection" is almost
+# certainly a truncated/broken export rather than real sales, so it aborts
+# with no changes. MISSING_ABORT_MIN_CARDS keeps the check from tripping on
+# tiny collections (flagging 1 of 3 cards is 33% but perfectly normal).
+# Flagging is non-destructive, so a manual sync can override it after a
+# genuine large clear-out (allow_mass_missing=True); the cron never does.
+MISSING_ABORT_FRACTION = 0.05
+MISSING_ABORT_MIN_CARDS = 10
+
+
+class ImportAborted(Exception):
+    """Raised before anything is written when a sync fails a safety check
+    (issue #225). The message is user-facing. `overridable` is True only for
+    the mass-missing check -- an empty My Collection can't be overridden."""
+
+    def __init__(self, message: str, overridable: bool = False):
+        super().__init__(message)
+        self.overridable = overridable
+
 
 @dataclass
 class ImportResult:
     cards_created: int = 0
     cards_updated: int = 0
     cards_flagged_missing: int = 0
-    cards_deleted: int = 0
     collections_touched: set[str] = field(default_factory=set)
     binders_touched: set[str] = field(default_factory=set)
     warnings: list[str] = field(default_factory=list)
@@ -158,9 +177,9 @@ def _parse_csv(content: bytes) -> list[dict]:
 def import_dex_csv_files(
     db: Session,
     files: list[tuple[str, bytes]],
-    full_load: bool = False,
     today: dt.date | None = None,
     source: str = "manual",
+    allow_mass_missing: bool = False,
 ) -> ImportResult:
     """Import one or more Dex CSV exports as a single sync.
 
@@ -171,11 +190,18 @@ def import_dex_csv_files(
 
     `source` ("manual" | "dropbox" | "cron") is only used to label the
     ImportLog row this call writes -- see _log_import below.
+
+    Never deletes a card: one missing from My Collection is only flagged
+    (the old `full_load` hard-delete path was removed in issue #225, since
+    deleting a card took its transactions and value history with it).
+    Raises ImportAborted, before writing anything, if the export looks
+    broken -- see _check_circuit_breaker.
     """
     today = today or dt.date.today()
     result = ImportResult()
 
     rows_by_category: dict[str, list[dict]] = {}
+    empty_files: list[str] = []
     for filename, content in files:
         try:
             rows = _parse_csv(content)
@@ -185,6 +211,8 @@ def import_dex_csv_files(
                 f"{len(content)} bytes, first bytes: {content[:20]!r}."
             )
             continue
+        if not rows:
+            empty_files.append(filename)
         for row in rows:
             category = (row.get("Category") or "").strip()
             if not category:
@@ -199,6 +227,8 @@ def import_dex_csv_files(
     # physical card). (Id, Variant) is the real natural key throughout.
     my_collection_rows = rows_by_category.pop(MY_COLLECTION_CATEGORY, [])
     seen_keys: set[tuple[str, str | None]] = set()
+
+    _check_circuit_breaker(db, my_collection_rows, empty_files, allow_mass_missing)
 
     if my_collection_rows:
         row_ids = {
@@ -327,10 +357,7 @@ def import_dex_csv_files(
         # Cards previously known but absent from this My Collection export.
         missing = [c for c in db.query(Card).all() if (c.card_id, c.variant) not in seen_keys]
         for card in missing:
-            if full_load:
-                db.delete(card)
-                result.cards_deleted += 1
-            elif card.flagged_missing_since is None:
+            if card.flagged_missing_since is None:
                 card.flagged_missing_since = today
                 result.cards_flagged_missing += 1
 
@@ -406,6 +433,54 @@ def import_dex_csv_files(
     return result
 
 
+def _check_circuit_breaker(
+    db: Session,
+    my_collection_rows: list[dict],
+    empty_files: list[str],
+    allow_mass_missing: bool,
+) -> None:
+    """Refuse an import that looks like a broken export, before any write
+    (issue #225).
+
+    1. No My Collection rows while some selected file had no data rows at
+       all: that empty/header-only file may well be the My Collection
+       export, so the sync can't be trusted. (A sync with no My Collection
+       file, where every file has data, is a legitimate category-only sync
+       and still runs -- it never flags anything.)
+    2. The sync would newly flag more than MISSING_ABORT_FRACTION of the
+       existing cards (and more than MISSING_ABORT_MIN_CARDS) as missing --
+       looks like a truncated export. Overridable, see allow_mass_missing.
+    """
+    if not my_collection_rows and empty_files:
+        raise ImportAborted(
+            f"Sync aborted, nothing was changed: {', '.join(empty_files)} "
+            f"has no data rows (empty or header-only), and no \"{MY_COLLECTION_CATEGORY}\" "
+            "rows were found. Re-export My Collection from Dex and sync again."
+        )
+    if not my_collection_rows or allow_mass_missing:
+        return
+
+    seen_keys = {
+        ((row.get("Id") or "").strip(), (row.get("Variant") or "").strip() or None)
+        for row in my_collection_rows
+        if (row.get("Id") or "").strip()
+    }
+    existing = db.query(Card.card_id, Card.variant, Card.flagged_missing_since).all()
+    newly_missing = sum(
+        1 for card_id, variant, flagged in existing if flagged is None and (card_id, variant) not in seen_keys
+    )
+    limit = max(len(existing) * MISSING_ABORT_FRACTION, MISSING_ABORT_MIN_CARDS)
+    if newly_missing > limit:
+        raise ImportAborted(
+            f"Sync aborted, nothing was changed: this {MY_COLLECTION_CATEGORY} export would flag "
+            f"{newly_missing} of {len(existing)} cards as missing (limit: "
+            f"{MISSING_ABORT_FRACTION:.0%}). That usually means a truncated or incomplete "
+            "export -- re-export from Dex and sync again. If you really did remove that "
+            "many cards, run the sync again with the override.",
+            overridable=True,
+        )
+
+
 def _log_import(db: Session, result: ImportResult, source: str, filenames: list[str]) -> None:
     db.add(
         ImportLog(
@@ -415,7 +490,9 @@ def _log_import(db: Session, result: ImportResult, source: str, filenames: list[
             cards_created=result.cards_created,
             cards_updated=result.cards_updated,
             cards_flagged_missing=result.cards_flagged_missing,
-            cards_deleted=result.cards_deleted,
+            # No sync deletes cards any more (issue #225); the column stays
+            # (init_db() is additive-only) for the historical rows.
+            cards_deleted=0,
             collections_touched=", ".join(sorted(result.collections_touched)) or None,
             binders_touched=", ".join(sorted(result.binders_touched)) or None,
             warnings_count=len(result.warnings),

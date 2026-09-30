@@ -7,7 +7,9 @@ import card_images
 import importer
 import pricing
 from importer import _parse_number_int, _parse_price, import_dex_csv_files
-from models import Card, Collection, ImportLog
+from sqlalchemy.exc import IntegrityError
+
+from models import Card, CardSnapshot, Collection, ImportLog, Transaction
 
 
 @pytest.mark.parametrize(
@@ -534,10 +536,9 @@ def test_normal_sync_flags_missing_card_instead_of_deleting(db_session):
     import_dex_csv_files(db_session, [("main.csv", v1)])
 
     v2 = make_csv("My Collection", [{"id": "a"}])  # b missing this time
-    result = import_dex_csv_files(db_session, [("main.csv", v2)], full_load=False)
+    result = import_dex_csv_files(db_session, [("main.csv", v2)])
 
     assert result.cards_flagged_missing == 1
-    assert result.cards_deleted == 0
     assert db_session.query(Card).count() == 2
     card_b = db_session.query(Card).filter(Card.card_id == "b").one()
     assert card_b.flagged_missing_since is not None
@@ -566,16 +567,143 @@ def test_card_reappearing_clears_the_missing_flag(db_session):
     assert card_b.flagged_missing_since is None
 
 
-def test_full_load_deletes_missing_cards(db_session):
-    v1 = make_csv("My Collection", [{"id": "a"}, {"id": "b"}])
-    import_dex_csv_files(db_session, [("main.csv", v1)])
+def test_full_load_parameter_is_gone(db_session):
+    # Removed deliberately in #225 -- no caller can ask the importer to
+    # hard-delete cards any more.
+    with pytest.raises(TypeError):
+        import_dex_csv_files(db_session, [], full_load=True)
 
-    v2 = make_csv("My Collection", [{"id": "a"}])
-    result = import_dex_csv_files(db_session, [("main.csv", v2)], full_load=True)
 
-    assert result.cards_deleted == 1
-    assert db_session.query(Card).count() == 1
-    assert db_session.query(Card).filter(Card.card_id == "b").one_or_none() is None
+def _seed_card_with_history(db_session, ids=("a", "b")):
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": i} for i in ids]))])
+    card_b = db_session.query(Card).filter(Card.card_id == "b").one()
+    db_session.add_all(
+        [
+            Transaction(card_id=card_b.id, type="purchase", date=dt.date(2026, 1, 1), price=100.0),
+            Transaction(card_id=card_b.id, type="sale", date=dt.date(2026, 2, 1), price=150.0),
+            CardSnapshot(card_id=card_b.id, date=dt.date(2026, 1, 2), source="cron", qty=1, reference_price=10.0),
+        ]
+    )
+    db_session.commit()
+    return card_b.id
+
+
+def test_card_missing_from_export_keeps_its_transactions_and_snapshots(db_session):
+    # The #225 regression: a missing card used to be deletable (full load),
+    # cascading to its transactions and snapshots. Asserted explicitly --
+    # SQLite doesn't enforce the FK cascade the way prod Postgres does.
+    card_b_id = _seed_card_with_history(db_session)
+
+    result = import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a"}]))])
+
+    assert result.cards_flagged_missing == 1
+    card_b = db_session.get(Card, card_b_id)
+    assert card_b is not None and card_b.flagged_missing_since is not None
+    assert sorted(t.type for t in db_session.query(Transaction).filter(Transaction.card_id == card_b_id)) == [
+        "purchase",
+        "sale",
+    ]
+    assert db_session.query(CardSnapshot).filter(CardSnapshot.card_id == card_b_id).count() == 1
+
+
+def test_orm_refuses_to_delete_a_card_with_transactions(db_session):
+    # No delete cascade on Card.transactions any more: the ORM tries to null
+    # the NOT NULL card_id and the flush fails, instead of silently deleting
+    # the money history along with the card.
+    card_b_id = _seed_card_with_history(db_session)
+
+    db_session.delete(db_session.get(Card, card_b_id))
+    with pytest.raises(IntegrityError):
+        db_session.flush()
+    db_session.rollback()
+
+    assert db_session.get(Card, card_b_id) is not None
+    assert db_session.query(Transaction).filter(Transaction.card_id == card_b_id).count() == 2
+
+
+def _snapshot_state(db_session):
+    return (
+        sorted((c.card_id, c.flagged_missing_since, c.qty) for c in db_session.query(Card)),
+        db_session.query(ImportLog).count(),
+    )
+
+
+def test_header_only_my_collection_aborts_with_no_changes(db_session):
+    _seed_card_with_history(db_session)
+    before = _snapshot_state(db_session)
+
+    header_only = make_csv("My Collection", [])
+    with pytest.raises(importer.ImportAborted) as exc:
+        import_dex_csv_files(db_session, [("My Collection.csv", header_only)])
+
+    assert "no data rows" in str(exc.value)
+    assert not exc.value.overridable
+    db_session.rollback()
+    assert _snapshot_state(db_session) == before
+
+
+def test_empty_file_alongside_other_categories_aborts_when_my_collection_has_no_rows(db_session):
+    _seed_card_with_history(db_session)
+    before = _snapshot_state(db_session)
+
+    with pytest.raises(importer.ImportAborted):
+        import_dex_csv_files(
+            db_session,
+            [("main.csv", b""), ("vintage.csv", make_csv("Vintage Collection", [{"id": "a"}]))],
+        )
+    db_session.rollback()
+    assert _snapshot_state(db_session) == before
+
+
+def test_empty_side_file_is_fine_when_my_collection_has_rows(db_session):
+    main = make_csv("My Collection", [{"id": "a"}])
+    result = import_dex_csv_files(db_session, [("main.csv", main), ("wishlist.csv", make_csv("Wishlist", []))])
+    assert result.cards_created == 1
+
+
+def _collection(n):
+    return make_csv("My Collection", [{"id": f"c{i}"} for i in range(n)])
+
+
+def test_mass_drop_above_threshold_aborts_with_no_changes(db_session):
+    import_dex_csv_files(db_session, [("main.csv", _collection(400))])
+    before = _snapshot_state(db_session)
+
+    # A truncated export: 400 -> 300 would flag 100 cards (25%).
+    with pytest.raises(importer.ImportAborted) as exc:
+        import_dex_csv_files(db_session, [("main.csv", _collection(300))])
+
+    assert "100 of 400" in str(exc.value)
+    assert exc.value.overridable
+    db_session.rollback()
+    assert _snapshot_state(db_session) == before
+
+
+def test_mass_drop_can_be_overridden_and_only_flags(db_session):
+    import_dex_csv_files(db_session, [("main.csv", _collection(400))])
+
+    result = import_dex_csv_files(db_session, [("main.csv", _collection(300))], allow_mass_missing=True)
+
+    assert result.cards_flagged_missing == 100
+    assert db_session.query(Card).count() == 400
+
+
+def test_small_drop_below_threshold_still_flags_normally(db_session):
+    import_dex_csv_files(db_session, [("main.csv", _collection(400))])
+
+    # 20 of 400 = 5%, exactly at the limit (limit is "more than").
+    result = import_dex_csv_files(db_session, [("main.csv", _collection(380))])
+
+    assert result.cards_flagged_missing == 20
+    assert db_session.query(Card).count() == 400
+
+
+def test_already_flagged_cards_dont_count_toward_the_threshold(db_session):
+    import_dex_csv_files(db_session, [("main.csv", _collection(400))])
+    import_dex_csv_files(db_session, [("main.csv", _collection(380))])  # 20 flagged
+    import_dex_csv_files(db_session, [("main.csv", _collection(360))])  # 20 more, still fine
+
+    assert db_session.query(Card).filter(Card.flagged_missing_since.isnot(None)).count() == 40
 
 
 def test_sync_without_my_collection_file_never_flags_or_deletes(db_session):
@@ -587,7 +715,6 @@ def test_sync_without_my_collection_file_never_flags_or_deletes(db_session):
     result = import_dex_csv_files(db_session, [("vintage.csv", vintage)])
 
     assert result.cards_flagged_missing == 0
-    assert result.cards_deleted == 0
     assert db_session.query(Card).count() == 2
 
 

@@ -174,11 +174,13 @@ def test_dex_outranks_pokemontcg_when_both_are_fresh(db_session, monkeypatch):
     assert (card.market_price, card.market_price_source) == (80.0, "dex")
 
 
-def test_full_load_deletes_the_cards_price_rows(db_session):
+def test_card_missing_from_export_keeps_its_price_rows(db_session):
+    # No sync deletes cards any more (#225): a missing card is only flagged,
+    # and its card_prices rows stay (they go stale via the resolver instead).
     import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a"}, {"id": "b"}]))])
-    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a"}]))], full_load=True)
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a"}]))])
 
-    assert {r.card.card_id for r in db_session.query(CardPrice)} == {"a"}
+    assert {r.card.card_id for r in db_session.query(CardPrice)} == {"a", "b"}
 
 
 # --- snapshots -----------------------------------------------------------------

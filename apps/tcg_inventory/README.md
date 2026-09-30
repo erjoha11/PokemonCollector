@@ -373,9 +373,27 @@ without updating both the code and this doc.
    - A normal sync flags cards missing from the new "My Collection" export
      (`flagged_missing_since` set to today, only if not already flagged —
      the date marks when it was *first* noticed missing, not the last sync
-     that still didn't see it) but never deletes them.
-   - "Full load" (only when explicitly requested, e.g. to clean up bad
-     data) actually deletes cards missing from the export.
+     that still didn't see it) but never deletes them. **No sync deletes
+     cards.** The old "Full load" mode (hard-delete cards missing from the
+     export) was removed deliberately in #225: deleting a card cascaded to
+     its purchase/sale/trade transactions and its value-history snapshots,
+     which Dex can't give back, and a truncated export or a Dex variant
+     rename was enough to trigger it. A card that's genuinely gone just
+     stays flagged. (`Card.transactions` also no longer has an ORM delete
+     cascade, so deleting a card with transactions fails loudly instead.)
+   - **Circuit breaker** (`importer._check_circuit_breaker`, runs before
+     anything is written; the whole sync aborts with no changes and a
+     readable error):
+     - No "My Collection" rows while one of the selected files has no data
+       rows (empty or header-only) — that file may be the My Collection
+       export. A sync that simply doesn't include My Collection, with every
+       file containing data, still runs as a category-only sync.
+     - The sync would newly flag more than `MISSING_ABORT_FRACTION` (5%) of
+       all cards as missing, and more than `MISSING_ABORT_MIN_CARDS` (10) —
+       almost always a truncated export. Flagging is non-destructive, so the
+       manual Dropbox sync offers "Sync anyway" after a genuine big
+       clear-out; the daily cron never overrides and instead returns
+       HTTP 409 with `"status": "aborted"` (see "Automatic daily sync").
    - Every sync is expected to include both the main export and the
      Vintage Collection export together — the Dropbox picker lets you
      select multiple files at once for exactly this reason.
@@ -686,8 +704,12 @@ deployed app can sync itself automatically instead of anyone clicking
 `GET /cron/dropbox-sync` once a day (`0 5 * * *`, i.e. 05:00 UTC — edit
 the `crons` entry in `vercel.json` to change it). That route pulls every
 CSV currently in the configured `DROPBOX_FOLDER` and runs a normal sync
-(never full load — an unattended job should never delete cards, only flag
-missing ones).
+(flags missing cards, never deletes — no sync does since #225). If the
+import circuit breaker trips (empty/header-only My Collection, or a mass
+drop above 5%), nothing is written, no snapshot is taken, and the route
+returns HTTP 409 with `{"status": "aborted", "error": ...}` so the Vercel
+cron run shows as failed; fix the export and the next run (or a manual
+sync) picks up normally.
 
 To turn it on:
 
