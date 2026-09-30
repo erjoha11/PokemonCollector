@@ -42,6 +42,19 @@ def no_jwks_network_calls(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_cron_secret_from_dotenv(monkeypatch):
+    """app.py calls load_dotenv(APP_DIR / ".env") at import, and the `client`
+    fixture reloads app, so a developer's real CRON_SECRET would otherwise
+    leak into every test and turn open /cron/* calls into 401s (issue #217).
+    Set to "" rather than deleted: load_dotenv never overrides a key that's
+    already present, even when it's empty, and the /cron routes treat ""
+    as "no secret configured". Tests that exercise the auth gate setenv
+    their own secret.
+    """
+    monkeypatch.setenv("CRON_SECRET", "")
+
+
+@pytest.fixture(autouse=True)
 def no_card_image_network_calls(monkeypatch):
     """Every CSV import calls card_images.fetch_card_data for cards missing
     an image or with a stale price (see importer.py), which otherwise hits
