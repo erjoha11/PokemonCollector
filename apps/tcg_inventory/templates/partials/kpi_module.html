@@ -6,7 +6,7 @@
 <li class="mover-row">
   <span class="mover-arrow {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" aria-hidden="true">{{ '▲' if direction == 'up' else '▼' }}</span>
   <span class="mover-name"><a href="/cards/{{ m.card.id }}" class="card-view-name" title="{{ m.card.name }}">{{ m.card.name }}</a>{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
-  <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
+  <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}{% if m.card.market_price_source %} · Source: {{ m.card.market_price_source | source_label }}{% endif %}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
   {#- % only when the move is big enough in kr to mean something (queries.PRICE_MOVE_PCT_MIN_KR) #}
   {% if m.show_pct %}<span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>{% else %}<span class="mover-pct muted" title="Change under 10 kr -- % left out">·</span>{% endif %}
 </li>

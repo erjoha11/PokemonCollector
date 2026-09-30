@@ -24,7 +24,7 @@
 </div>
 
 <div class="card-pair">
-  {% set market_value_heading %}Market Value {{ info('The collection\'s actual value per day, from the daily snapshots — real historical prices, not an estimate — ending on today\'s value. Empty until at least one day of snapshots has accumulated.') }}{% endset %}
+  {% set market_value_heading %}Market Value {{ info('The collection\'s actual value per day, from the daily snapshots — real historical prices, not an estimate — ending on today\'s value. Empty until at least one day of snapshots has accumulated. A day where some cards\' price switched source says so in its tooltip.') }}{% endset %}
   {{ market_value_card('market-value-card', market_value_heading) }}
 </div>
 </div>

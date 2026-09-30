@@ -1691,6 +1691,35 @@ button.secondary {
 }
 .card-detail-list dt { color: var(--muted); }
 .card-detail-list dd { margin: 0; overflow-wrap: anywhere; }
+/* Market price source line + flag chips, and the per-source table (#210).
+   One amber style for every flag; red only for "No price" (UX_NOTES). */
+.card-price-source { margin: -0.4rem 0 1rem; font-size: 0.9rem; color: var(--ink-secondary); }
+.card-price-source-label { font-weight: 600; }
+.price-flag {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(214, 150, 20, 0.16);
+  color: #8a5a00;
+}
+.price-flag-error { background: rgba(208, 59, 59, 0.13); color: #b02a2a; }
+.price-used {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--accent-wash-strong);
+  color: var(--accent);
+}
+.price-sources { margin-top: 1rem; font-size: 0.92rem; }
+.price-sources summary { cursor: pointer; color: var(--ink-secondary); }
+.price-sources-table { margin-top: 0.5rem; }
+.price-sources-table .price-source-used td:first-child { font-weight: 600; }
 @media (max-width: 640px) {
   .card-detail { grid-template-columns: 1fr; }
   .card-detail-image { max-width: 260px; }

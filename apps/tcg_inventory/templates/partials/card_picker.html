@@ -21,7 +21,7 @@
 
 <section class="cards-section" id="card-picker">
   <div class="section-head">
-    <h2>Cards {{ info("Every card, whether or not it has been registered on an order yet. Market price is Dex's price; Paid is what you actually recorded paying. Select rows and add them to an order with the bar at the bottom.") }}</h2>
+    <h2>Cards {{ info("Every card, whether or not it has been registered on an order yet. Market price is the card's current market price (TCGplayer first); Paid is what you actually recorded paying. Select rows and add them to an order with the bar at the bottom.") }}</h2>
   </div>
 
   <div class="picker-filter" role="group" aria-label="Filter cards">
@@ -52,7 +52,7 @@
             <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
             <th>{{ sort_th('Series', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
             <th>{{ sort_th('Set', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th class="num">{{ sort_th('Market price', 'reference_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th class="num">{{ sort_th('Market price', 'market_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
             <th class="num">{{ sort_th('Paid', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
             <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
             <th>Order</th>

@@ -76,7 +76,9 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
    underlying data shape differs (real history and cash flow have their own
    columns), so that detail table is left to the caller rather than
    parameterized here. #}
-{% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='', stats=none) %}
+{#- `source_notes`: optional, one entry per label -- a list of extra tooltip
+    lines (or none) for that point, e.g. a price-source switch (issue #210). #}
+{% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='', stats=none, source_notes=none) %}
 <div class="card{{ ' ' ~ extra_class if extra_class else '' }}" id="{{ card_id }}">
   <h2>{{ heading | safe }}</h2>
   {% if stats %}
@@ -110,7 +112,9 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
   <div class="viz-chart-wrap">
     <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
   </div>
-  <script type="application/json" id="{{ card_id }}-data">{{ {"type": chart_type, "labels": labels, "datasets": datasets} | tojson }}</script>
+  {% set chart_cfg = {"type": chart_type, "labels": labels, "datasets": datasets} %}
+  {% if source_notes and source_notes | select | list %}{% set _ = chart_cfg.update({"sourceNotes": source_notes}) %}{% endif %}
+  <script type="application/json" id="{{ card_id }}-data">{{ chart_cfg | tojson }}</script>
   <script>initTcgChart("{{ card_id }}");</script>
   {{ caller() if caller is defined }}
   {% else %}
@@ -196,7 +200,9 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
   <div class="viz-chart-wrap">
     <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
   </div>
-  <script type="application/json" id="{{ card_id }}-data">{{ {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "cardCounts": history | map(attribute="card_count") | list, "datasets": datasets} | tojson }}</script>
+  {% set chart_cfg = {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "cardCounts": history | map(attribute="card_count") | list, "datasets": datasets} %}
+  {% if market_value_source_notes and market_value_source_notes | select | list %}{% set _ = chart_cfg.update({"sourceNotes": market_value_source_notes}) %}{% endif %}
+  <script type="application/json" id="{{ card_id }}-data">{{ chart_cfg | tojson }}</script>
   <script>initTcgChart("{{ card_id }}");</script>
   <details>
     <summary>View as table</summary>

@@ -2219,8 +2219,8 @@ def test_inventory_price_sort_keeps_unpriced_cards_last(client):
     def _rows(html: str) -> str:
         return html.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
-    asc = _rows(client.get("/inventory?sort=reference_price&direction=asc").text)
-    desc = _rows(client.get("/inventory?sort=reference_price&direction=desc").text)
+    asc = _rows(client.get("/inventory?sort=market_price&direction=asc").text)
+    desc = _rows(client.get("/inventory?sort=market_price&direction=desc").text)
     assert asc.index("Priced") < asc.index("Unpriced")
     assert desc.index("Priced") < desc.index("Unpriced")
 

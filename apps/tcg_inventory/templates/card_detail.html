@@ -21,13 +21,26 @@
 
   <div class="card-detail-facts">
     <div class="card-detail-kpis">
-      <div><span class="tx-kpi-label">Price</span><span class="tx-kpi-value">{{ card.display_price | kr }}</span></div>
+      <div><span class="tx-kpi-label">Market price</span><span class="tx-kpi-value">{{ card.display_price | kr }}</span></div>
       <div><span class="tx-kpi-label">Owned</span><span class="tx-kpi-value">{{ card.qty }}{% if card.duplicates %} <span class="muted">({{ card.duplicates }} dup.)</span>{% endif %}</span></div>
       <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ card.total_value | kr }}</span></div>
       <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ invested | kr if invested is not none else '–' }}</span></div>
       <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. "–" when no purchase is registered for this card.') }}</span>
         <span class="tx-kpi-value{{ ' viz-delta-gain' if gain is not none and gain > 0 else (' viz-delta-loss' if gain is not none and gain < 0 else '') }}">{% if gain is not none %}{{ '+' if gain > 0 }}{{ gain | kr }}{% else %}–{% endif %}</span></div>
     </div>
+
+    {#- Where the market price comes from (pricing.py, issue #210): the
+        resolver's winning source and how old its price is, plus any flags. #}
+    {% set flags = card.price_flags | price_flags %}
+    <p class="card-price-source">
+      {% if card.market_price_source %}
+      <span class="card-price-source-label">{{ card.market_price_source | source_label }}</span>
+      {% if card.market_price_as_of %}· <span title="Fetched {{ card.market_price_as_of.strftime('%d.%m.%Y') }}">{{ card.market_price_as_of | days_ago }}</span>{% endif %}
+      {% else %}
+      <span class="muted">No price from any source</span>
+      {% endif %}
+      {% for f in flags %}<span class="price-flag{{ ' price-flag-error' if f == 'no_price' else '' }}" title="{{ f | flag_title }}">{{ f | flag_label }}</span>{% endfor %}
+    </p>
 
     <dl class="card-detail-list">
       <dt>Collections</dt>
@@ -42,11 +55,37 @@
       {% if card.classification %}<dt>Classification</dt><dd>{{ card.classification }}</dd>{% endif %}
       {% if card.location %}<dt>Location</dt><dd>{{ card.location }}</dd>{% endif %}
       {% if card.notes %}<dt>Notes</dt><dd>{{ card.notes }}</dd>{% endif %}
-      <dt>Prices</dt>
-      <dd>TCGPlayer {{ card.tcgplayer_price | kr if card.tcgplayer_price is not none else '–' }}{% if card.tcgplayer_price_updated_at %} <span class="muted">({{ card.tcgplayer_price_updated_at.strftime('%d.%m.%Y') }})</span>{% endif %} · Dex {{ card.reference_price | kr if card.reference_price is not none else '–' }}</dd>
       <dt>Dex card ID</dt><dd><code>{{ card.card_id }}</code></dd>
       {% if card.flagged_missing_since %}<dt>Missing from Dex</dt><dd>since {{ card.flagged_missing_since.strftime('%d.%m.%Y') }}</dd>{% endif %}
     </dl>
+
+    {#- Every source's latest price (card_prices), in display-priority order.
+        Open by default only when the price is flagged. #}
+    <details class="price-sources"{{ ' open' if flags }}>
+      <summary>Price sources {{ info('Every source\'s latest price for this card, in priority order. The market price is the first source with a price fetched in the last ' ~ fresh_days ~ ' days; if none is that fresh, the most recent price is used and flagged Stale.') }}</summary>
+      {% if price_rows %}
+      <table class="price-sources-table">
+        <thead><tr><th>Source</th><th class="num">Price</th><th class="num">NOK</th><th>Fetched</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for p in price_rows %}
+          <tr{{ ' class="price-source-used"' | safe if p.source == card.market_price_source }}>
+            <td>{{ p.source | source_label }}</td>
+            <td class="num">{% if p.price is not none and p.currency and p.currency != 'NOK' %}{{ '%.2f' | format(p.price) }} {{ p.currency }}{% else %}–{% endif %}</td>
+            <td class="num">{{ p.price_nok | kr if p.price_nok is not none else '–' }}</td>
+            <td>{% if p.fetched_at %}{{ p.fetched_at.strftime('%d.%m.%Y') }} <span class="muted">({{ p.fetched_at | days_ago }})</span>{% else %}–{% endif %}</td>
+            <td>
+              {%- if p.source == card.market_price_source %}<span class="price-used">Used</span>{% endif %}
+              {%- if p.lookup_failed_at %} <span class="price-flag" title="The last lookup at this source found no usable price; its previous price (if any) is kept">Lookup failed {{ p.lookup_failed_at.strftime('%d.%m.%Y') }}</span>{% endif %}
+              {%- for f in p.flags | price_flags %} <span class="price-flag" title="{{ f | flag_title }}">{{ f | flag_label }}</span>{% endfor %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No source has been asked for this card's price yet.</p>
+      {% endif %}
+    </details>
   </div>
 </div>
 
@@ -75,16 +114,16 @@
   {% endif %}
 </div>
 
-{% set chart_heading %}Price history {{ info('This card\'s price per day from the daily snapshots (the price the card had that day, one copy). Starts when snapshots started; there is no earlier history.') }}{% endset %}
+{% set chart_heading %}Price history {{ info('This card\'s market price per day from the daily snapshots (the price the card had that day, one copy). Starts when snapshots started; there is no earlier history. A point where the price came from a different source than the day before says so in its tooltip.') }}{% endset %}
 {% set chart_data = price_history | map(attribute='price') | list %}
-{% call chart_card('card-price-history', chart_heading, 'line', price_history | map(attribute='label') | list, [{"label": "Price", "data": chart_data, "color": "#2a78d6"}]) %}
+{% call chart_card('card-price-history', chart_heading, 'line', price_history | map(attribute='label') | list, [{"label": "Market price", "data": chart_data, "color": "#2a78d6"}], source_notes=price_history | map(attribute='source_note') | list) %}
   <details>
     <summary>View as table</summary>
     <table style="margin-top: 0.6rem;">
-      <thead><tr><th>Date</th><th class="num">Price</th><th class="num">Owned</th></tr></thead>
+      <thead><tr><th>Date</th><th class="num">Market price</th><th>Source</th><th class="num">Owned</th></tr></thead>
       <tbody>
         {% for row in price_history | reverse %}
-        <tr><td>{{ row.date.strftime('%d.%m.%Y') }}</td><td class="num">{{ row.price | kr }}</td><td class="num">{{ row.qty }}</td></tr>
+        <tr><td>{{ row.date.strftime('%d.%m.%Y') }}</td><td class="num">{{ row.price | kr }}</td><td>{{ row.source | source_label }}{% if row.source_note %} <span class="price-flag" title="{{ row.source_note }}">switched</span>{% endif %}</td><td class="num">{{ row.qty }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

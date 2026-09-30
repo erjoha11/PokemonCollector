@@ -11,6 +11,9 @@
 // are YYYY-MM-DD dates plotted on a real time axis (a linear scale in ms --
 // no date-adapter dependency), the y-axis is fitted to the visible data
 // instead of starting at 0, and the tooltip shows each day's change.
+//
+// Optional `sourceNotes` (either mode): one entry per point, a list of extra
+// tooltip lines (or null) -- used to mark price-source switches (issue #210).
 var DAY_MS = 86400000;
 var CARD_CHANGE_COLOR = "#eb6834"; // the app's series-2 orange
 
@@ -178,16 +181,21 @@ function initTcgChart(cardId) {
               return item.dataset.label + ": " + tcgKr(item.parsed.y);
             },
             afterLabel: function (item) {
-              if (!timeSeries || item.datasetIndex !== 0 || item.dataIndex === 0) return "";
+              // Price-source switch at this point (issue #210): the step is a
+              // change of source, not (only) a market move.
+              var notes = cfg.sourceNotes && item.datasetIndex === 0 ? cfg.sourceNotes[item.dataIndex] : null;
+              if (notes && !Array.isArray(notes)) notes = [notes];
+              notes = notes || [];
+              if (!timeSeries || item.datasetIndex !== 0 || item.dataIndex === 0) return notes;
               var prev = item.dataset.data[item.dataIndex - 1].y;
               var diff = item.parsed.y - prev;
               var pct = prev > 0 ? " (" + (diff > 0 ? "+" : "") + (diff / prev * 100).toFixed(1) + " %)" : "";
               var lines = ["Change: " + tcgSignedKr(diff) + pct];
               if (counts) {
                 var dc = counts[item.dataIndex] - counts[item.dataIndex - 1];
-                lines.push("Cards: " + counts[item.dataIndex] + (dc ? " (" + (dc > 0 ? "+" : "") + dc + ")" : " (no change — price only)"));
+                lines.push("Cards: " + counts[item.dataIndex] + (dc ? " (" + (dc > 0 ? "+" : "") + dc + ")" : (notes.length ? " (no change)" : " (no change — price only)")));
               }
-              return lines;
+              return lines.concat(notes);
             },
           },
         },
