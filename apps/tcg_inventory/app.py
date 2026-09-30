@@ -36,6 +36,7 @@ import pricing
 import set_sync
 import queries
 import snapshots
+import tcgdex_prices
 import constants
 from constants import CARD_CONDITIONS
 from db import SessionLocal, init_db
@@ -2593,6 +2594,11 @@ def cron_price_refresh(request: Request, secret: str = ""):
     db = get_db_session()
     try:
         result = price_refresh.refresh_stale_prices(db)
+        # Then TCGdex (issue #211): both its TCGplayer and Cardmarket prices,
+        # one request per card, time-boxed so the whole invocation stays
+        # inside the function limit. A TCGdex problem must never cost the
+        # day's snapshot, so it's contained here.
+        tcgdex = _run_tcgdex_refresh(db)
         # Snapshot right after refreshing, same reasoning as
         # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
         _resolve_all_prices(db)
@@ -2611,6 +2617,14 @@ def cron_price_refresh(request: Request, secret: str = ""):
             f"usd_to_nok={result.usd_to_nok} fx_source={result.fx_source} "
             f"snapshotted={snapshotted}"
         )
+        if tcgdex is not None:
+            print(
+                f"[cron/price-refresh] tcgdex: checked={tcgdex.cards_checked} priced={tcgdex.cards_priced} "
+                f"ids_matched={tcgdex.ids_matched} unmatched={len(tcgdex.cards_unmatched)} "
+                f"variant_uncertain={len(tcgdex.cards_variant_uncertain)} "
+                f"transient_errors={tcgdex.transient_errors} stopped={tcgdex.stopped} "
+                f"http_calls={tcgdex.http_calls} eur_to_nok={tcgdex.eur_to_nok}"
+            )
         return {
             "status": "ok",
             "usd_to_nok": result.usd_to_nok,
@@ -2623,6 +2637,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "cards_snapshotted": snapshotted,
             "images_attempted": images.attempted,
             "images_filled": images.filled,
+            "tcgdex": _tcgdex_summary(tcgdex),
         }
     finally:
         db.close()
@@ -2631,6 +2646,38 @@ def cron_price_refresh(request: Request, secret: str = ""):
 # Per daily /cron/price-refresh run: a modest image pass after prices.
 IMAGE_BACKFILL_PER_CRON = 60
 IMAGE_BACKFILL_SECONDS = 25.0
+# ...and the TCGdex price pass (issue #211): ~0.75 s per card sequentially,
+# so ~120 of the 125-card budget fits; the rest wait for tomorrow.
+TCGDEX_SECONDS = 90.0
+
+
+def _run_tcgdex_refresh(db: Session):
+    """tcgdex_prices.refresh_tcgdex_prices, contained: an unexpected error is
+    logged and rolled back (whatever it committed so far stays) so the cron
+    still resolves and snapshots. Returns None when it failed."""
+    try:
+        return tcgdex_prices.refresh_tcgdex_prices(db, time_budget_s=TCGDEX_SECONDS)
+    except Exception as exc:  # noqa: BLE001 -- see docstring
+        db.rollback()
+        print(f"[cron/price-refresh] tcgdex failed: {exc.__class__.__name__}: {exc}")
+        return None
+
+
+def _tcgdex_summary(result) -> dict | None:
+    if result is None:
+        return None
+    return {
+        "cards_checked": result.cards_checked,
+        "cards_priced": result.cards_priced,
+        "ids_matched": result.ids_matched,
+        "cards_unmatched": result.cards_unmatched,
+        "cards_variant_uncertain": result.cards_variant_uncertain,
+        "transient_errors": result.transient_errors,
+        "stopped": result.stopped,
+        "http_calls": result.http_calls,
+        "eur_to_nok": result.eur_to_nok,
+        "fx_source": result.fx_source,
+    }
 
 
 @app.get("/cron/image-backfill")

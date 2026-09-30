@@ -71,8 +71,9 @@ _DEX_VARIANT_ALIASES = {
 }
 
 # Sources written automatically when a card is linked. Anything else
-# (tcgplayer, cardmarket, collectr, a verified tcgdex id, ...) is added via
-# set_external_id() as those integrations get built.
+# (tcgplayer, cardmarket, collectr, ...) is added via set_external_id() as
+# those integrations get built -- e.g. "tcgdex", by tcgdex_prices.py, only
+# after a verified match.
 SOURCE_DEX = "dex"
 SOURCE_POKEMONTCG = "pokemontcg"
 
@@ -82,6 +83,13 @@ MATCHED_EXACT = "exact_id"  # the source's own ID, copied verbatim
 MATCHED_DERIVED = "derived"  # computed from another ID by a known rule
 MATCHED_HEURISTIC = "heuristic"  # name/set/number search, could be wrong
 MATCHED_MANUAL = "manual"
+# Looked up by derived set + number in the source's own catalog, then the
+# returned card checked against Dex (tcgdex_prices.verify_card): set,
+# printed number, printed set size and name all agree...
+MATCHED_VERIFIED = "verified"
+# ...or all but the name, where it can't be compared (TCGdex's Japanese
+# cards are named in Japanese, Dex's in English).
+MATCHED_VERIFIED_NUMBER = "verified_number"
 
 _DEX_CARD_ID = re.compile(r"^(?:([a-z]+)_)?([a-z0-9.]+)-([A-Za-z0-9]+)$")
 

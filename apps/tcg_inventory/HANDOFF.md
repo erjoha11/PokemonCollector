@@ -1485,3 +1485,92 @@ No direct production-database changes were made.
 - If a genuine large clear-out ever trips the breaker on the cron, the
   cron keeps failing daily until someone runs one manual sync with
   "Sync anyway".
+
+# Handoff notes — 2026-09-30 session (issue #211, pricing Phase 3: TCGdex source)
+
+## Coverage check (spike, before building; read-only prod SELECTs + TCGdex GETs)
+
+Sample: 32 Japanese cards across all 15 Japanese sets in prod (sv2a 10, m2a/
+sv8a/sv4a/m1l 3 each, 1 each from the rest: SV, S and Mega eras; prod has no
+older Japanese cards), plus 22 international cards (base-era to Mega,
+14 random + 8 that have a pokemontcg price). Sequential requests, 0.4 s apart.
+
+- **ID resolution** (set + printed number, verified): Japanese 31/32 (the
+  miss, `jpn_sv4a-130`, isn't in TCGdex: its SV4a list skips 127-146);
+  international 22/22 once pokemontcg.io set IDs are mapped to TCGdex's
+  (`sv3` → `sv03`, `me5` → `me05`; literal IDs 404). Set level over *all*
+  prod cards: 860 of 866 int+ja cards are in a set TCGdex has (misses:
+  `mcd23` 4, `base6` 1, `pgo` 1; zh-hans' 3 cards not covered).
+- **`pricing.cardmarket`**: present and non-null (positive `trend` or
+  `avg30`) on 31/31 resolved Japanese and 22/22 international cards, all
+  updated 2026-09-29. With the variant rules, 30/31 Japanese and 21/22
+  international priced confidently; 1 each flagged `variant_price_uncertain`
+  (a swapped ball pair; dv1-5 "Holo" where TCGdex lists only a normal print).
+- **`pricing.tcgplayer`**: 22/22 international cards, 0/31 Japanese
+  (always null for `ja`, as expected). 1/22 flagged uncertain (a bare Dex
+  "Holo" on a card with holofoil + reverse-holofoil, the existing policy).
+- **Holo split**: TCGdex's `variants_detailed` gives one entry per print
+  with its own Cardmarket product; `-holo` fields are the reverse/foil copy.
+  Japanese 151 Poké Ball / Master Ball reverses are separate products, but
+  TCGdex had the two **swapped on 3 of 9** sampled SV2a cards (a Poké Ball
+  Slowbro at 59 EUR, Master Ball at 0.85). Hence the inverted-pair rule. Many
+  older cards list prints without per-print pricing; those borrow the
+  card-level block (never for special foils).
+- **Latency**: ~0.55 s per card request.
+- **TCGplayer via TCGdex vs Dex** (en, n=21): median Dex/TCGdex 0.99,
+  p10 0.93, p90 1.08. vs pokemontcg (n=14): median 1.00, p10 1.00, p90 1.04.
+  The same TCGplayer data, as expected.
+- **Dex vs Cardmarket (trend)**, for #212's calibration, EUR/NOK 10.8735
+  (Norges Bank 2026-09-29), confident matches only: Japanese n=28 median
+  1.56, p10 0.94, p90 4.62; international n=21 median 1.75, p10 0.83, p90
+  2.79; all n=49 median 1.61, p10 0.87, p90 3.96. Cheap cards dominate the
+  spread: Cardmarket bottoms out at 0.02 EUR (~0.2 NOK), TCGplayer/Dex
+  around 0.5-1 NOK. Japanese cards with Dex >= 5 NOK: n=5, median 1.27.
+  Field comparison (Japanese median / international median): trend 1.56/1.75,
+  avg30 1.79/1.83, avg7 2.03/1.83, avg 2.29/1.68 -> `trend`, then `avg30`.
+  The sample is small; #212 should re-measure on prod once TCGdex rows exist.
+
+## Code (in git, PR for #211)
+
+- New `tcgdex_prices.py`: verified-ID resolution (TCGdex set list -> set card
+  list -> card, checked on set/number/set size/name), `choose_cardmarket` /
+  `choose_tcgplayer`, `refresh_tcgdex_prices` (budget 125, time box, 0.2 s
+  pause, one retry on 429/5xx/timeouts, a persisting 429 or 3 errors in a
+  row stop the run, transient errors stamp nothing, never clears a price),
+  CLI. Writes `card_prices` sources `tcgdex_cardmarket` (EUR) and
+  `tcgdex_tcgplayer` (USD), and `master_card_ids` source `tcgdex` with new
+  `matched_by` values `verified` / `verified_number` (masterdata.py).
+- `/cron/price-refresh` runs it after the pokemontcg pass, before the
+  resolve + snapshot, time-boxed to 90 s (`app.TCGDEX_SECONDS`), contained
+  in a try/except so it can't cost the snapshot. Response gains `tcgdex`.
+- No schema change (no new columns; `CURRENT_SCHEMA_VERSION` stays 10).
+- README "Pricing" -> new "TCGdex" subsection (field + variant decisions).
+
+## What happens on deploy (no manual DB step)
+
+Nothing at startup. From the next daily `/cron/price-refresh`, ~120 cards a
+day get their first TCGdex lookup, cards with no market price first (the
+45 `no_price` cards). All ~866 covered cards should have been looked up
+once after ~8 days. Until a card's Dex price goes stale, TCGdex only adds
+rows (visible in the card page's "Price sources" table) and doesn't change
+the displayed price: `dex` stays first in the chain. The first cron run adds
+~90 s to the invocation. If the function limit gets tight, move TCGdex to its
+own cron entry (the issue's fallback) or lower `TCGDEX_SECONDS`.
+
+Optional, not done (needs the user's go-ahead, it writes to prod): a manual
+catch-up pass, `DATABASE_URL=<prod> python tcgdex_prices.py --limit 200`,
+would fill the gaps faster than the cron.
+
+No direct production-database changes were made this session (read-only
+SELECTs only).
+
+## Open items, not built
+
+- zh-hans cards (3) aren't looked up; TCGdex's Chinese catalogs weren't
+  evaluated.
+- Japanese IDs are verified without a name check (TCGdex names are
+  Japanese). A Pokédex-number check (TCGdex `dexId`) would need an
+  English-name -> dex-number table; not worth it at 31/31 correct matches.
+- #212: calibrate `sources_disagree` on the TCGplayer family (Dex vs
+  TCGplayer-via-TCGdex agree to median 0.99 here), and Dex vs Cardmarket
+  for Japanese cards separately (numbers above).

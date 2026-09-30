@@ -40,9 +40,10 @@ from sqlalchemy.orm import Session
 from models import Card, CardPrice, ImportLog
 
 # Display priority, TCGplayer-first (owner's choice, epic #213). A module
-# constant, not a user setting (yet). The tcgdex_* sources are Phase 3
-# (#211) and not written by anything yet; listing them here just fixes
-# their place in the chain.
+# constant, not a user setting (yet). The tcgdex_* sources are written by
+# tcgdex_prices.py (#211): TCGplayer via TCGdex backs up Dex for
+# international cards; Cardmarket via TCGdex comes last, but is the only
+# independent source for Japanese cards.
 SOURCE_DEX = "dex"
 SOURCE_TCGDEX_TCGPLAYER = "tcgdex_tcgplayer"
 SOURCE_POKEMONTCG = "pokemontcg"

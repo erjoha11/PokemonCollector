@@ -1,0 +1,79 @@
+{
+ "category": "Pokemon",
+ "id": "dp3-63",
+ "localId": "63",
+ "name": "Sableye",
+ "rarity": "Uncommon",
+ "set": {
+  "cardCount": {
+   "official": 132,
+   "total": 132
+  },
+  "id": "dp3",
+  "logo": "https://assets.tcgdex.net/en/dp/dp3/logo",
+  "name": "Secret Wonders",
+  "symbol": "https://assets.tcgdex.net/univ/dp/dp3/symbol"
+ },
+ "variants": {
+  "firstEdition": false,
+  "holo": false,
+  "normal": true,
+  "reverse": true,
+  "wPromo": false
+ },
+ "variants_detailed": [
+  {
+   "type": "normal",
+   "size": "standard",
+   "variantId": "endfynwn4n10gzq"
+  },
+  {
+   "type": "reverse",
+   "size": "standard",
+   "variantId": "cm4kqul3x1bwlz1f"
+  }
+ ],
+ "dexId": [
+  302
+ ],
+ "updated": "2026-05-18T13:51:50+01:00",
+ "pricing": {
+  "cardmarket": {
+   "updated": "2026-09-29T09:52:40.585Z",
+   "unit": "EUR",
+   "idProduct": 277816,
+   "avg": 0.71,
+   "low": 0.03,
+   "trend": 0.67,
+   "avg1": 0.99,
+   "avg7": 0.84,
+   "avg30": 0.55,
+   "avg-holo": 1.78,
+   "low-holo": 0.1,
+   "trend-holo": 5.01,
+   "avg1-holo": 1.22,
+   "avg7-holo": 6.07,
+   "avg30-holo": 3.97
+  },
+  "tcgplayer": {
+   "unit": "USD",
+   "updated": "2026-09-29T09:52:42.985Z",
+   "normal": {
+    "productId": 88852,
+    "lowPrice": 0.45,
+    "midPrice": 3.28,
+    "highPrice": 48.01,
+    "marketPrice": 3.3,
+    "directLowPrice": null
+   },
+   "reverse-holofoil": {
+    "productId": 88852,
+    "lowPrice": 13.9,
+    "midPrice": 38.29,
+    "highPrice": 449.86,
+    "marketPrice": 15.24,
+    "directLowPrice": null
+   }
+  }
+ }
+}

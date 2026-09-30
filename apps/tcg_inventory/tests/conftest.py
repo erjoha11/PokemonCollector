@@ -19,6 +19,7 @@ import db as db_module  # noqa: E402
 import auth as auth_module  # noqa: E402
 import card_images  # noqa: E402
 import fx_rates  # noqa: E402
+import tcgdex_prices  # noqa: E402
 
 # The USD/NOK rate every test converts at (see fixed_fx_rates below).
 TEST_USD_TO_NOK = 10.0
@@ -71,6 +72,15 @@ def no_card_image_network_calls(monkeypatch):
         raise httpx.ConnectError("network disabled in tests")
 
     monkeypatch.setattr(card_images.httpx, "get", no_network)
+
+
+@pytest.fixture(autouse=True)
+def no_tcgdex_pauses(monkeypatch):
+    """tcgdex_prices pauses between requests and before a retry (politeness
+    towards a free API). The network itself is already off (the httpx.get
+    stub above also covers tcgdex_prices); this just makes the pauses
+    instant so e.g. the /cron/price-refresh tests don't sit in back-offs."""
+    monkeypatch.setattr(tcgdex_prices, "_SLEEP", lambda seconds: None)
 
 
 @pytest.fixture(autouse=True)

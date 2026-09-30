@@ -307,7 +307,8 @@ pokemontcg.io, TCGdex, TCGplayer, Cardmarket, Collectr, ...) uses its own.
 keyed on what's printed on the card: `(language, set_code, number,
 variant)`. `master_card_ids` maps any number of external IDs onto that
 identity, at most one per `source`, each with a `matched_by`
-(`exact_id` / `derived` / `heuristic` / `manual`). A `manual` mapping is
+(`exact_id` / `derived` / `heuristic` / `verified` / `verified_number` /
+`manual`). A `manual` mapping is
 never overwritten automatically, so that's how a wrong match gets fixed.
 
 - The key is parsed from Dex's `card_id` (`sv2-109` → `int`/`sv2`/`109`,
@@ -323,7 +324,12 @@ never overwritten automatically, so that's how a wrong match gets fixed.
 - Seeded automatically: `dex` (the Dex ID) for every card, and
   `pokemontcg` (`derived`, same ID) for international prints. Other sources
   get added via `masterdata.set_external_id()` as those integrations are
-  built. Price lookups don't read this table yet.
+  built.
+- `tcgdex` (issue #211) is written by the TCGdex price refresh, and only
+  after a verified match (see "Pricing" → "TCGdex"): `verified` = set,
+  printed number, printed set size and name agree; `verified_number` =
+  the same without the name, for Japanese cards (TCGdex names them in
+  Japanese). Later TCGdex refreshes look the card up by this ID only.
 - `master_card_ids` is deliberately not unique on `(source, external_id)`:
   pokemontcg.io has one ID per print with variants inside it, so Normal and
   Reverse Holo of the same print share it.
@@ -743,9 +749,15 @@ TCGplayer-first by the owner's choice, epic #213):
 | # | `source` | What | Currency | Written by |
 |---|---|---|---|---|
 | 1 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
-| 2 | `tcgdex_tcgplayer` | TCGdex's TCGplayer block | USD | not yet (Phase 3, #211) |
+| 2 | `tcgdex_tcgplayer` | TCGdex's TCGplayer `marketPrice` | USD | `tcgdex_prices.py` (#211) |
 | 3 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py`, `importer.py` |
-| 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket block | EUR | not yet (Phase 3, #211) |
+| 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket `trend` (else `avg30`) | EUR | `tcgdex_prices.py` (#211) |
+
+Dex is TCGplayer-sourced for Japanese cards too, but it's the only
+TCGplayer source they have (pokemontcg.io has no Japanese cards, and
+TCGdex carries no TCGplayer data for them). Cardmarket via TCGdex, last in
+the chain, is their one independent fallback: it's what a Japanese card
+shows when its Dex price is missing or stale.
 
 A row keeps the native price, currency, the FX rate used, `price_nok`,
 which print it priced (`variant_key`), `fetched_at`, any per-source flags,
@@ -809,6 +821,92 @@ Price movers). Price movers' change `title` names the source. The price sort
 key is `market_price` (Inventory `sort`, Dashboard `tsort`, card picker
 `gsort`); the pre-#210 `reference_price` is still accepted as an alias.
 
+#### TCGdex (issue #211)
+
+`tcgdex_prices.py` asks TCGdex (`api.tcgdex.net/v2/{en|ja}/cards/{id}`,
+free, no key) once per card; that one response carries both TCGdex sources.
+International cards use the `en` catalog, Japanese cards `ja`; zh-hans
+cards aren't covered.
+
+**IDs, verified, never guessed.** A price only ever comes from a TCGdex ID
+that was verified; `card_images`' image lookup may guess-then-check, a
+price lookup may not (see `backfill_images.py`'s tcgdex-guess incident).
+The set is found in TCGdex's own set list (Dex's `sv2a` is TCGdex's `SV2a`,
+pokemontcg.io's `sv3`/`sv3pt5` and Dex's `sv35` are `sv03`/`sv03.5`), the
+card in that set's card list by printed number (exactly one hit, else no
+match), and the fetched card must agree with Dex on set, printed number,
+printed set size (`/165` vs the set's official count) and, for English
+cards, name. Then the ID goes into `master_card_ids` (source `tcgdex`,
+`matched_by` `verified` or `verified_number`, see "Masterdata") and every
+later refresh fetches by it, with no search. A stored `manual` mapping is
+respected.
+
+**Which Cardmarket number is "the price".** `trend` (Cardmarket's own
+smoothed price), falling back to `avg30` when `trend` is missing or 0
+(Cardmarket reports 0 rather than null on thin markets). `avg7`/`avg1` are
+left out because they swing with single sales on cheap cards. Chosen on the
+2026-09-30 sample (see HANDOFF): of `trend`, `avg30`, `avg7` and `avg`,
+`trend` tracked Dex's price closest (median Dex/Cardmarket 1.56 for
+Japanese cards vs 1.79-2.29 for the others). TCGplayer via TCGdex uses
+`marketPrice`, as pokemontcg.io does.
+
+**Which print.** TCGdex lists a card's prints (`variants_detailed`), each
+with its own Cardmarket product, and Cardmarket's `-holo` fields are the
+foil (reverse-holo) copy of a product. Dex's Variant is mapped with the
+same unambiguous-only policy as pokemontcg.io's (`card_images._match_variant_key`):
+
+| Dex Variant | Cardmarket price used |
+|---|---|
+| Normal | the `normal` print, plain fields |
+| Holo | the `holo` print, plain fields (a holo rare's own product) |
+| Reverse Holo | the plain `reverse` print's `-holo` fields; if TCGdex lists no reverse print at all, the card's own `-holo` fields |
+| Poké Ball / Master Ball / other "Ball Holo" | the reverse print with that foil (its own product), `-holo` fields, **unless** the Poké Ball product is priced at or above the Master Ball one |
+| blank | the only priced print, if there is exactly one |
+
+Anything else (no such print, a variant with no rule, an inverted ball
+pair) falls back to the card's first regular print and is flagged
+`variant_price_uncertain`, never silently guessed. The ball rule exists
+because TCGdex had the Poké Ball and Master Ball products swapped on 3 of
+9 Pokémon Card 151 cards sampled (a Poké Ball Slowbro at 59 EUR). Stamped
+and oversized promo prints are ignored. For TCGplayer via TCGdex, the keys
+(`normal`, `reverse-holofoil`, `holofoil`, ...) go through the same
+`_match_variant_key` rules as pokemontcg.io's.
+
+**Conversion.** EUR and USD are converted at Norges Bank's daily rate
+(`fx_rates`, same as pokemontcg's USD); each row keeps the native price,
+currency and the rate used. A price that TCGdex itself last updated more
+than 30 days ago isn't used (so a frozen upstream can't pass as fresh).
+
+**Refresh.** Inside `/cron/price-refresh`, after the pokemontcg pass and
+before the re-resolve + snapshot: up to 125 cards (`MAX_LOOKUPS_PER_RUN`,
+~870 cards on a 7-day cadence), time-boxed to 90 s (`app.TCGDEX_SECONDS`;
+~0.75 s per card), sequential with a 0.2 s pause between requests. Resolving
+a new ID costs one set-list request per set per run on top. Order: cards
+with no market price at all first, then stale TCGdex prices (oldest first),
+then never-tried cards, then retries. A card is due when neither TCGdex
+source has a price from the last 7 days; one where TCGdex had no match or
+no price is stamped `lookup_failed_at` on its `tcgdex_cardmarket` row and
+retried after 14 days.
+
+**Failures never cost a price.** A 429/5xx/timeout is retried once after a
+back-off (honouring `Retry-After`, capped). If it persists, the card is
+skipped without stamping anything and is tried again next run. A persisting
+429 ends the run for the day, and so do 3 errors in a row. A card that's gone,
+unverifiable or unpriced keeps its stored price (pricing's stale rule shows
+it); only `lookup_failed_at` is set. The whole pass is contained, so an
+unexpected error is logged and the cron still resolves and snapshots. The
+cron response has a `tcgdex` summary (checked, priced, `ids_matched`,
+`cards_unmatched` with reasons, `cards_variant_uncertain`, `stopped`,
+`http_calls`).
+
+By hand, same `DATABASE_URL` convention as `price_refresh.py`:
+
+```bash
+cd apps/tcg_inventory
+python tcgdex_prices.py --dry-run      # how many cards are due
+python tcgdex_prices.py [--limit N]    # one refresh pass
+```
+
 ### Price refresh (Vercel Cron)
 
 Each card's `pokemontcg` price (see "Pricing" above) is normally
@@ -854,8 +952,8 @@ process is reused, else the latest rate in `fx_rates`, and only if there is
 none the old fixed 10.5 is used as a last resort, so an FX outage never
 blocks pricing. The cron response reports `usd_to_nok`, `fx_source`
 (`live` / `last-known` / `stored` / `fallback`) and `fx_as_of`. EUR/NOK comes
-in the same request and is exposed (`fx_rates.eur_to_nok()`) for a later EUR
-source, unused so far. Each `pokemontcg` row records the native USD price
+in the same request and is used for Cardmarket via TCGdex (see "TCGdex"
+above). Each `pokemontcg` row records the native USD price
 and the rate it was converted at (`card_prices.price`/`fx_rate`); rows
 seeded from before #210 have only the NOK value. Prices stored before
 issue #209 were converted at the fixed 10.5, ~10% too high, until re-fetched.
@@ -1255,6 +1353,9 @@ file locally following the steps above and add a dated line here.
   materializes `cards.market_price` (see "Pricing" above).
 - `price_refresh.py` — standalone TCGplayer price refresh, decoupled from Dex
   sync (see "Price refresh" above). Also the `--reprice-all` CLI.
+- `tcgdex_prices.py` — TCGdex's TCGplayer + Cardmarket prices with
+  verified `tcgdex` IDs, run inside `/cron/price-refresh` (see "Pricing" →
+  "TCGdex" above). Also a CLI.
 - `fx_rates.py` — Norges Bank daily USD/EUR→NOK rates, cached per process
   and stored in `fx_rates`, with last-known/stored/constant fallback (see
   "Price refresh" above).
