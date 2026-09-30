@@ -1,0 +1,197 @@
+{
+ "category": "Pokemon",
+ "id": "swsh3-150",
+ "localId": "150",
+ "name": "Bunnelby",
+ "rarity": "Common",
+ "set": {
+  "cardCount": {
+   "official": 189,
+   "total": 201
+  },
+  "id": "swsh3",
+  "logo": "https://assets.tcgdex.net/en/swsh/swsh3/logo",
+  "name": "Darkness Ablaze",
+  "symbol": "https://assets.tcgdex.net/univ/swsh/swsh3/symbol"
+ },
+ "variants": {
+  "firstEdition": false,
+  "holo": false,
+  "normal": true,
+  "reverse": true,
+  "wPromo": false
+ },
+ "variants_detailed": [
+  {
+   "type": "normal",
+   "size": "standard",
+   "thirdParty": {
+    "cardmarket": 483629,
+    "tcgplayer": 219362
+   },
+   "variantId": "endfynwn4n10gzq",
+   "pricing": {
+    "cardmarket": {
+     "updated": "2026-09-29T09:52:36.492Z",
+     "unit": "EUR",
+     "idProduct": 483629,
+     "avg": 0.1,
+     "low": 0.02,
+     "trend": 0.07,
+     "avg1": 0.04,
+     "avg7": 0.21,
+     "avg30": 0.09,
+     "avg-holo": 0.3,
+     "low-holo": 0.05,
+     "trend-holo": 0.35,
+     "avg1-holo": 0.25,
+     "avg7-holo": 0.32,
+     "avg30-holo": 0.31
+    },
+    "tcgplayer": {
+     "unit": "USD",
+     "updated": "2026-09-29T09:52:53.159Z",
+     "normal": {
+      "productId": 219362,
+      "lowPrice": 0.01,
+      "midPrice": 0.2,
+      "highPrice": 14.06,
+      "marketPrice": 0.07,
+      "directLowPrice": 0.05
+     },
+     "reverse-holofoil": {
+      "productId": 219362,
+      "lowPrice": 0.1,
+      "midPrice": 0.44,
+      "highPrice": 2.31,
+      "marketPrice": 0.43,
+      "directLowPrice": null
+     }
+    }
+   }
+  },
+  {
+   "type": "reverse",
+   "size": "standard",
+   "thirdParty": {
+    "cardmarket": 483629,
+    "tcgplayer": 219362
+   },
+   "variantId": "cm4kqul3x1bwlz1f",
+   "pricing": {
+    "cardmarket": {
+     "updated": "2026-09-29T09:52:36.492Z",
+     "unit": "EUR",
+     "idProduct": 483629,
+     "avg": 0.1,
+     "low": 0.02,
+     "trend": 0.07,
+     "avg1": 0.04,
+     "avg7": 0.21,
+     "avg30": 0.09,
+     "avg-holo": 0.3,
+     "low-holo": 0.05,
+     "trend-holo": 0.35,
+     "avg1-holo": 0.25,
+     "avg7-holo": 0.32,
+     "avg30-holo": 0.31
+    },
+    "tcgplayer": {
+     "unit": "USD",
+     "updated": "2026-09-29T09:52:53.159Z",
+     "normal": {
+      "productId": 219362,
+      "lowPrice": 0.01,
+      "midPrice": 0.2,
+      "highPrice": 14.06,
+      "marketPrice": 0.07,
+      "directLowPrice": 0.05
+     },
+     "reverse-holofoil": {
+      "productId": 219362,
+      "lowPrice": 0.1,
+      "midPrice": 0.44,
+      "highPrice": 2.31,
+      "marketPrice": 0.43,
+      "directLowPrice": null
+     }
+    }
+   }
+  },
+  {
+   "type": "reverse",
+   "size": "standard",
+   "stamp": [
+    "player-rewards-program",
+    "thank-you"
+   ],
+   "thirdParty": {
+    "cardmarket": 845425
+   },
+   "variantId": "3skqdujv9rnp1qn90a0z4d7rd50waxks6s4jqpymz44lil0",
+   "pricing": {
+    "cardmarket": {
+     "updated": "2026-09-29T09:52:36.492Z",
+     "unit": "EUR",
+     "idProduct": 845425,
+     "avg": 7.33,
+     "low": 2.5,
+     "trend": 4.79,
+     "avg1": 3,
+     "avg7": 5.12,
+     "avg30": 2.25,
+     "avg-holo": 7.29,
+     "low-holo": 3.99,
+     "trend-holo": 5.47,
+     "avg1-holo": 9.95,
+     "avg7-holo": 6.88,
+     "avg30-holo": 3.94
+    },
+    "tcgplayer": null
+   }
+  }
+ ],
+ "dexId": [
+  659
+ ],
+ "updated": "2026-07-01T21:27:44+01:00",
+ "pricing": {
+  "cardmarket": {
+   "updated": "2026-09-29T09:52:36.492Z",
+   "unit": "EUR",
+   "idProduct": 483629,
+   "avg": 0.1,
+   "low": 0.02,
+   "trend": 0.07,
+   "avg1": 0.04,
+   "avg7": 0.21,
+   "avg30": 0.09,
+   "avg-holo": 0.3,
+   "low-holo": 0.05,
+   "trend-holo": 0.35,
+   "avg1-holo": 0.25,
+   "avg7-holo": 0.32,
+   "avg30-holo": 0.31
+  },
+  "tcgplayer": {
+   "unit": "USD",
+   "updated": "2026-09-29T09:52:53.159Z",
+   "normal": {
+    "productId": 219362,
+    "lowPrice": 0.01,
+    "midPrice": 0.2,
+    "highPrice": 14.06,
+    "marketPrice": 0.07,
+    "directLowPrice": 0.05
+   },
+   "reverse-holofoil": {
+    "productId": 219362,
+    "lowPrice": 0.1,
+    "midPrice": 0.44,
+    "highPrice": 2.31,
+    "marketPrice": 0.43,
+    "directLowPrice": null
+   }
+  }
+ }
+}

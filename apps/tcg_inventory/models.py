@@ -302,8 +302,9 @@ class CardPrice(Base):
 
     Sources are pricing.CHAIN's names: "dex" (Dex CSV Price cell, NOK,
     written by importer.py), "pokemontcg" (pokemontcg.io TCGplayer market
-    price, USD, written by price_refresh.py / importer.py), and Phase 3's
-    "tcgdex_tcgplayer"/"tcgdex_cardmarket" (not written yet).
+    price, USD, written by price_refresh.py / importer.py), and
+    "tcgdex_tcgplayer" (USD) / "tcgdex_cardmarket" (EUR), written by
+    tcgdex_prices.py (#211).
 
     A row can exist with no price at all -- only `lookup_failed_at` -- for a
     source that has been tried and never priced this card; that's the
