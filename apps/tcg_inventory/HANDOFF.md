@@ -1303,7 +1303,7 @@ values converted at 10.5 (~10% too high vs. the real ~9.58). Deliberately
 left as-is (history is not rewritten); expect a one-off step down in the
 Market Value chart as cards get re-priced.
 
-## Direct database change — PENDING user confirmation, NOT applied
+## Direct database change — applied 2026-09-30
 
 Existing `cards.tcgplayer_price` values (~209 cards) are ~10% inflated until
 re-fetched. Plan: after the PR is deployed, run
@@ -1319,7 +1319,21 @@ WHERE tcgplayer_price IS NOT NULL AND reference_price IS NOT NULL AND reference_
 ```
 
 2026-09-29: n=208, median 1.131. Expected to move toward ~1.03 afterwards.
-Update this entry when it has been applied.
+
+**Applied 2026-09-30** with the user's go-ahead: `--reprice-all` (dry run
+first: 209 cards at USD/NOK 9.576, source `live`) run from a detached
+worktree of `main` @ c84093c, with `DATABASE_URL` from the updated `.env`.
+pokemontcg.io's free tier dropped many lookups (a failed lookup keeps the
+old price), so it took three passes: 123, then 129, then the third pass
+stalled on a hung API request and was stopped. Result: 202 of 209 priced
+cards re-fetched at the live rate; the 7 left keep their old (~10% high)
+price until the daily cron refreshes them (stale priced cards go first
+since #216).
+
+After: median `tcgplayer_price / reference_price` **1.011** over the
+re-priced cards (171 of 201 within ±10% of Dex, vs 49 of 208 before).
+Total TCGplayer value (qty × price) 1,719 → 1,546 NOK. Past
+`card_snapshots` rows were not rewritten and keep the inflated values.
 
 ## Open item noticed, not built (resolved 2026-09-30, #216)
 
