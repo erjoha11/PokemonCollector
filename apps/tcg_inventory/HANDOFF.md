@@ -1574,3 +1574,94 @@ SELECTs only).
 - #212: calibrate `sources_disagree` on the TCGplayer family (Dex vs
   TCGplayer-via-TCGdex agree to median 0.99 here), and Dex vs Cardmarket
   for Japanese cards separately (numbers above).
+
+# Handoff notes — 2026-09-30 session (prod database access hardening)
+
+Defence-in-depth hardening of prod (Supabase `nverpumoregkjfeddrwa`), done by
+the user in the Supabase dashboard and SQL editor. No code change; the docs
+PR that records it touches only README/HANDOFF/CHANGELOG. Refs #223, #239.
+
+## Direct database changes (Supabase prod) — not in git anywhere else
+
+Done by the user on 2026-09-30, in this order:
+
+1. **Auth signups turned off** (dashboard). `auth.users` has one account,
+   the user's own.
+2. **Pre-change backup**: `pg_dump` (custom format, `public` + `auth`
+   schemas) to `~/pokemoncollector-backups/prod-2026-09-30-pre-rls.dump`
+   on the user's own machine, outside the repo. **It is unencrypted.** Once
+   the #223 backup workflow is set up (age key exists), encrypt it with the
+   backup age key or delete it.
+3. **RLS + privilege revokes** in the Supabase SQL editor, in a single
+   transaction: row-level security enabled on all 19 `public` tables (no
+   policies), all table/sequence/function privileges in `public` revoked
+   from `anon` and `authenticated`, and the matching default privileges for
+   `postgres` in `public` revoked.
+4. **Supabase Data API disabled** (dashboard).
+
+Equivalent SQL (reconstructed from the change as run; not the user's
+verbatim script). Table names are from a read-only prod query
+(`select tablename from pg_tables where schemaname='public' order by 1`,
+2026-09-30), which also showed `rowsecurity = true` on all 19:
+
+```sql
+BEGIN;
+ALTER TABLE public.binders            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.card_collections   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.card_prices        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.card_snapshots     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.cards              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.collections        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.favorite_pokemon   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fx_rates           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.import_log         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.listing_cards      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.listings           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.master_card_ids    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.master_cards       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pokemon_alias      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.releases           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schema_meta        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.set_release_order  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sets               ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions       ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON ALL TABLES    IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON TABLES    FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM anon, authenticated;
+COMMIT;
+```
+
+**Verified read-only afterwards (architect):** 0 `public` tables without
+RLS; 0 `anon`/`authenticated` table or sequence grants; 0
+`anon`/`authenticated` default ACL entries for `postgres` in `public`;
+`has_table_privilege('anon', 'public.cards', 'SELECT')` = false; reads as
+the app's `postgres` role still work (789 transactions, 869 cards). The
+user confirmed the prod Transactions page works.
+
+## Why nothing in the app changes
+
+- The app connects as `postgres` (table owner, `BYPASSRLS`), so RLS with no
+  policies and the revoked `anon`/`authenticated` grants don't affect it.
+- Nothing in the repo uses PostgREST/supabase-js (checked by grep:
+  no `/rest/v1`, no supabase client library). `auth.py` only calls
+  GoTrue over HTTP (`/auth/v1/token`, `/auth/v1/.well-known/jwks.json`),
+  which is unaffected by the Data API switch.
+- `backup_reader` (#223, not yet created) is specified with `BYPASSRLS`, so
+  the backup workflow keeps working once it's set up.
+
+## Open items
+
+- **#239**: `init_db()` should enable RLS on any table it creates on
+  Postgres. Until then, a deploy that adds a table leaves that table without
+  RLS; enable it by hand (`ALTER TABLE public.<t> ENABLE ROW LEVEL
+  SECURITY;`) as a normal direct prod write (backup and go-ahead first).
+  New tables created by `postgres` should get no `anon`/`authenticated`
+  grants (worth checking after the first one),
+  since the default privileges were revoked.
+- Encrypt or delete the unencrypted local dump
+  (`~/pokemoncollector-backups/prod-2026-09-30-pre-rls.dump`) once #223's
+  age key exists.

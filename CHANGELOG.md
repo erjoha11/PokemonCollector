@@ -31,6 +31,13 @@ yet.
   restore steps, and a documented local restore drill. The drill against a
   real prod backup is still pending the user's setup.
 
+**Docs: prod database access hardening (#223, #239)**
+- README: new "Database access hardening" note (Data API off, RLS on every
+  `public` table, no `anon`/`authenticated` grants, new tables must keep
+  it); "Backups and restore" now records that prod is on the Free plan, so
+  the #223 workflow is the only backup. HANDOFF.md logs the 2026-09-30
+  direct prod change with equivalent SQL.
+
 ## 2026-09-19 — backfill covering 2026-09-14 through 2026-09-19
 
 ### tcg_inventory

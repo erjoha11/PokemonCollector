@@ -703,6 +703,29 @@ so an expired session just bounces back to `/login`. Auth is skipped
 entirely whenever `SUPABASE_URL`/`SUPABASE_ANON_KEY` aren't both set —
 that's what keeps local `python app.py` login-free.
 
+### Database access hardening
+
+As defence in depth, prod's data is only read through direct Postgres
+connections (the app's `DATABASE_URL`, and `backup_reader` for backups),
+never through Supabase's API keys (since 2026-09-30):
+
+- The Supabase **Data API** (PostgREST) is disabled in the dashboard.
+  Nothing in this repo uses it: the app talks to Postgres directly, and
+  `auth.py` only calls the Auth API (GoTrue, `/auth/v1/...`).
+- **Row-level security is enabled on every `public` table**, with no
+  policies, and the `anon`/`authenticated` roles have no table, sequence
+  or function privileges in `public` (default privileges revoked too).
+  The app connects as `postgres` (table owner, `BYPASSRLS`), so it's
+  unaffected.
+- Auth signups are turned off; the only account is the one created by hand
+  in section 1, step 3 above.
+
+**Any new table must keep it that way**: RLS on, no `anon`/`authenticated`
+grants. Until #239 makes `init_db()` do this automatically, enable RLS by
+hand on prod after a deploy that adds a table (a direct prod write: backup
+and go-ahead first, as for any other). The exact SQL is in
+`HANDOFF.md` (2026-09-30, prod RLS hardening).
+
 ### Automatic daily sync (Vercel Cron)
 
 Once Dropbox import is set up (see "Dropbox import setup" above), the
@@ -1145,13 +1168,11 @@ checked 2026-09-30):
   restore custom roles' passwords.
 - Backups don't include Storage API objects (this app stores none).
 
-**Prod's plan (`nverpumoregkjfeddrwa`): to confirm by the user.** None of
-the tools available when this was written could read the billing plan
-without write access. Check Dashboard → Organization → Billing, or the
-project's Database → Backups page (Free projects show no backups there).
-On Free there is no Supabase-side backup at all, and the workflow below is
-the only copy. On Pro it's a second, downloadable, off-Supabase copy that
-can restore individual tables.
+**Prod (`nverpumoregkjfeddrwa`) is on the Free plan** (confirmed by the
+user, 2026-09-30), so Supabase keeps no backups of it at all and the
+workflow below is the only backup. If the project ever moves to Pro, the
+workflow stays useful as a second, downloadable, off-Supabase copy that can
+restore individual tables.
 
 ### How the backup works
 
@@ -1225,8 +1246,9 @@ app itself uses (see "Deploying" above). pg_dump needs a real session.
    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO backup_reader;
    ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON SEQUENCES TO backup_reader;
    ```
-   `BYPASSRLS` is there so the dump keeps working if row-level security is
-   ever turned on for a table. Without it, `pg_dump` aborts with "query
+   `BYPASSRLS` is needed because row-level security is enabled on every
+   `public` table (since 2026-09-30, see "Database access hardening"
+   above). Without it, `pg_dump` aborts with "query
    would be affected by row-level security policy" (reproduced in the drill
    below). The role still has only `SELECT`. Supabase's `postgres` role
    has `BYPASSRLS` and `CREATEROLE`, which Postgres 16+ requires to grant
