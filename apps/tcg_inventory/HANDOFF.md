@@ -1321,7 +1321,20 @@ WHERE tcgplayer_price IS NOT NULL AND reference_price IS NOT NULL AND reference_
 2026-09-29: n=208, median 1.131. Expected to move toward ~1.03 afterwards.
 Update this entry when it has been applied.
 
-## Open item noticed, not built
+## Open item noticed, not built (resolved 2026-09-30, #216)
+
+**Resolved 2026-09-30 by #216.** Verified on prod first (read-only): 660
+never-priced, 81 stale priced, 128 fresh. Fix: new nullable
+`cards.price_lookup_failed_at` (schema version 8 -> 9, added by
+`init_db()`'s additive pass on first deploy, no manual DB change), 14-day
+retry backoff (`PRICE_RETRY_AFTER_DAYS`), and tiered ordering (stale priced
+-> never tried -> failed past window). The importer's per-sync lookups share
+the same rule. Existing never-priceable cards get stamped as the cron works
+through them (100/day), so the first ~week still spends leftover budget on
+them, but stale priced cards go first from day one. #210 should carry the
+failure state over as per-source state in `card_prices` and retire the column.
+
+Original note:
 
 `price_refresh.refresh_stale_prices` sorts never-priced cards
 (`tcgplayer_price_updated_at IS NULL`) first and never stamps a failed

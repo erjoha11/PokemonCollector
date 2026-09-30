@@ -126,9 +126,135 @@ def test_refresh_stale_prices_respects_the_budget_and_prioritizes_oldest_first(d
     result = price_refresh.refresh_stale_prices(db_session, budget=1)
 
     assert result.cards_checked == 1
-    # Never-priced (oldest, via the NULL-sorts-first-in-Python ordering) is
-    # checked before the merely-stale card, and the fresh one isn't touched.
+    # Already-priced stale cards go first (issue #216); never-priced ones
+    # wait for leftover budget, and the fresh one isn't touched.
+    assert checked_names == ["Stale"]
+
+    checked_names.clear()
+    price_refresh.refresh_stale_prices(db_session, budget=5)
     assert checked_names == ["Never Priced"]
+
+
+def _fail_lookup(recorder=None):
+    def fake(name, set_name, number, variant=None):
+        if recorder is not None:
+            recorder.append(name)
+        return card_images.CardApiData(None, None)
+
+    return fake
+
+
+def test_refresh_stale_prices_stamps_a_failed_lookup(db_session, monkeypatch):
+    db_session.add(Card(card_id="a", variant=None, name="Japanese Print"))
+    db_session.commit()
+    monkeypatch.setattr(card_images, "fetch_card_data", _fail_lookup())
+
+    today = dt.date(2026, 9, 30)
+    result = price_refresh.refresh_stale_prices(db_session, today=today)
+
+    card = db_session.query(Card).one()
+    assert result.cards_checked == 1 and result.cards_updated == 0
+    assert card.price_lookup_failed_at == today
+    assert card.tcgplayer_price is None and card.tcgplayer_price_updated_at is None
+
+
+def test_refresh_stale_prices_stamps_a_low_confidence_match_as_failed(db_session, monkeypatch):
+    db_session.add(Card(card_id="a", variant=None, name="Shellder"))
+    db_session.commit()
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: card_images.CardApiData(None, None, low_confidence_match=True),
+    )
+
+    today = dt.date(2026, 9, 30)
+    price_refresh.refresh_stale_prices(db_session, today=today)
+
+    assert db_session.query(Card).one().price_lookup_failed_at == today
+
+
+def test_refresh_stale_prices_respects_the_retry_window(db_session, monkeypatch):
+    failed_on = dt.date(2026, 9, 1)
+    card = Card(card_id="a", variant=None, name="Japanese Print")
+    card.price_lookup_failed_at = failed_on
+    db_session.add(card)
+    db_session.commit()
+    looked_up = []
+    monkeypatch.setattr(card_images, "fetch_card_data", _fail_lookup(looked_up))
+
+    inside = failed_on + dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS)
+    assert price_refresh.refresh_stale_prices(db_session, today=inside).cards_checked == 0
+    assert looked_up == []
+
+    past = inside + dt.timedelta(days=1)
+    assert price_refresh.refresh_stale_prices(db_session, today=past).cards_checked == 1
+    assert looked_up == ["Japanese Print"]
+    assert db_session.query(Card).one().price_lookup_failed_at == past  # re-stamped
+
+
+def test_stale_priced_cards_win_the_budget_over_never_priceable_ones(db_session, monkeypatch):
+    # The prod shape from issue #216: many cards that never price, a few
+    # stale priced ones, a budget smaller than the never-priceable pile.
+    today = dt.date(2026, 9, 30)
+    for i in range(10):
+        db_session.add(Card(card_id=f"ja{i}", variant=None, name=f"Never {i}"))
+    for i in range(3):
+        card = Card(card_id=f"en{i}", variant=None, name=f"Stale {i}", tcgplayer_price=1.0)
+        card.tcgplayer_price_updated_at = today - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1 + i)
+        db_session.add(card)
+    db_session.commit()
+
+    def fake(name, set_name, number, variant=None):
+        return card_images.CardApiData(None, 2.0 if name.startswith("Stale") else None)
+
+    monkeypatch.setattr(card_images, "fetch_card_data", fake)
+
+    result = price_refresh.refresh_stale_prices(db_session, today=today, budget=5)
+
+    assert result.cards_checked == 5
+    assert result.cards_updated == 3
+    stale = db_session.query(Card).filter(Card.card_id.like("en%")).all()
+    assert all(c.tcgplayer_price_updated_at == today for c in stale)
+
+    # Next day: the 2 that failed are backed off, so the 5 never-tried ones
+    # get the budget instead of the same failures again.
+    looked_up = []
+    monkeypatch.setattr(card_images, "fetch_card_data", _fail_lookup(looked_up))
+    price_refresh.refresh_stale_prices(db_session, today=today + dt.timedelta(days=1), budget=5)
+    assert len(looked_up) == 5
+    stamped_yesterday = {c.name for c in db_session.query(Card) if c.price_lookup_failed_at == today}
+    assert stamped_yesterday.isdisjoint(looked_up)
+
+
+def test_failed_cards_past_their_window_come_after_never_tried_ones(db_session, monkeypatch):
+    today = dt.date(2026, 9, 30)
+    retried = Card(card_id="a", variant=None, name="Retry")
+    retried.price_lookup_failed_at = today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    db_session.add_all([retried, Card(card_id="b", variant=None, name="Never tried")])
+    db_session.commit()
+    looked_up = []
+    monkeypatch.setattr(card_images, "fetch_card_data", _fail_lookup(looked_up))
+
+    price_refresh.refresh_stale_prices(db_session, today=today, budget=1)
+
+    assert looked_up == ["Never tried"]
+
+
+def test_a_successful_lookup_clears_the_failure_stamp(db_session, monkeypatch):
+    today = dt.date(2026, 9, 30)
+    card = Card(card_id="a", variant=None, name="Shellder")
+    card.price_lookup_failed_at = today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    db_session.add(card)
+    db_session.commit()
+    monkeypatch.setattr(
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 7.0)
+    )
+
+    price_refresh.refresh_stale_prices(db_session, today=today)
+
+    card = db_session.query(Card).one()
+    assert card.tcgplayer_price == 7.0
+    assert card.price_lookup_failed_at is None
 
 
 def test_reprice_all_refetches_every_priced_card_regardless_of_staleness(db_session, monkeypatch):
@@ -170,6 +296,7 @@ def test_reprice_all_keeps_the_old_price_and_date_when_the_lookup_fails(db_sessi
     assert result.cards_updated == 0
     assert refreshed.tcgplayer_price == 110.0  # never rescaled, only replaced by a real lookup
     assert refreshed.tcgplayer_price_updated_at == old_date  # still due for the cron
+    assert refreshed.price_lookup_failed_at is None  # not backed off either
 
 
 def test_reprice_all_respects_limit_oldest_first(db_session, monkeypatch):

@@ -82,7 +82,7 @@ class Base(DeclarativeBase):
 # path *around* the migration chain, not a replacement for it: every
 # function in the chain must stay idempotent and safe to re-run regardless
 # of this gate, per README.md "Database migrations".
-CURRENT_SCHEMA_VERSION = 8  # 8: master_cards, master_card_ids, cards.master_card_id
+CURRENT_SCHEMA_VERSION = 9  # 8: master_cards, master_card_ids, cards.master_card_id; 9: cards.price_lookup_failed_at (#216)
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,

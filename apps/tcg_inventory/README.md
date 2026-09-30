@@ -713,11 +713,30 @@ refreshed as a side effect of a Dex sync — but that means pricing only gets
 fresher when a sync happens to run. `vercel.json` schedules a second,
 independent cron job, `GET /cron/price-refresh` (`0 6 * * *`, one hour after
 the Dropbox sync — edit `vercel.json` to change it), so pricing keeps moving
-on its own schedule regardless of Dex sync frequency. It walks up to 100
-cards oldest-priced (and never-priced) first per run — see
-`price_refresh.py` — using the same `CRON_SECRET` auth pattern as
+on its own schedule regardless of Dex sync frequency. It looks up at most
+100 due cards per run (`price_refresh.py`), using the same `CRON_SECRET` auth pattern as
 `/cron/dropbox-sync` (see that section above for setup) and writing its own
 `card_snapshots` row (`source="price-cron"`) right after refreshing.
+
+**Which cards, in what order** (issue #216). A card is due when its price
+is missing or older than 7 days (`PRICE_STALE_AFTER_DAYS`). A lookup that
+yields no usable price (no match, low-confidence match, no TCGplayer data)
+stamps `cards.price_lookup_failed_at`, and the card is skipped for 14 days
+(`PRICE_RETRY_AFTER_DAYS`) before being tried again; a successful lookup
+clears the stamp. The budget is spent in this order:
+
+1. already-priced stale cards, oldest price first, so existing prices are
+   refreshed every day;
+2. never-priced cards that have never failed;
+3. failed cards past their retry window, oldest failure first.
+
+Without this, hundreds of cards TCGplayer doesn't list (mostly Japanese
+prints) sorted first and took the whole budget every day. The Dex sync's
+own price lookups (`importer.py`, 25 per sync) use the same due/backoff
+rule (`price_refresh.price_lookup_due` / `apply_price_lookup`), in CSV
+order. A pokemontcg.io outage looks the same as "no match", so a flaky day
+can back off cards that would have priced; they simply retry after the
+window.
 
 **Currency.** TCGplayer prices come back in USD and are stored in NOK,
 converted at **Norges Bank's daily USD/NOK spot rate** (`fx_rates.py`,
@@ -734,8 +753,8 @@ converted at the fixed 10.5, ~10% too high, until re-fetched.
 
 **Forcing a full re-price** (ignores staleness and the 100-per-run budget;
 only cards that already have a `tcgplayer_price`; a failed lookup keeps the
-old price and date so the cron retries it; stored values are never
-rescaled):
+old price and date, and is not stamped as failed, so the cron retries it;
+stored values are never rescaled):
 
 ```bash
 cd apps/tcg_inventory

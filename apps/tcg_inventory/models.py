@@ -96,6 +96,13 @@ class Card(Base):
     # consumer should read, not this column directly.
     tcgplayer_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     tcgplayer_price_updated_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # When a price lookup last came back with no usable price (no match, a
+    # low-confidence match, or no tcgplayer data), so a card that can't be
+    # priced (e.g. most Japanese prints) waits price_refresh.
+    # PRICE_RETRY_AFTER_DAYS before being retried instead of taking the
+    # daily cron budget every day (issue #216). Cleared on a successful
+    # lookup. Expected to move to per-source state in card_prices (#210).
+    price_lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Real Set entity, replacing the string-matched `set_release_order` join

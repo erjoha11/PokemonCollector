@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 import card_images
 import constants
 import masterdata
+import price_refresh
 from db import get_or_create_set
 from models import Binder, Card, Collection, ImportLog
 
@@ -39,9 +40,11 @@ _MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 # Same reasoning, separate budget: unlike images (fetched once and cached
 # forever), a TCGPlayer price needs periodic refreshing since prices move,
 # so this budget is spent on stale-or-missing prices every sync rather than
-# only ever-missing ones -- see _PRICE_STALE_AFTER_DAYS below.
+# only ever-missing ones. Which cards are due (stale/missing, and not inside
+# a failed-lookup backoff window, issue #216) is price_refresh's rule,
+# shared with the daily price cron -- see price_refresh.price_lookup_due.
 _MAX_PRICE_LOOKUPS_PER_IMPORT = 25
-_PRICE_STALE_AFTER_DAYS = 7
+_PRICE_STALE_AFTER_DAYS = price_refresh.PRICE_STALE_AFTER_DAYS
 
 
 @dataclass
@@ -203,7 +206,6 @@ def import_dex_csv_files(
         cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
         image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
         price_lookup_budget = _MAX_PRICE_LOOKUPS_PER_IMPORT
-        price_stale_cutoff = today - dt.timedelta(days=_PRICE_STALE_AFTER_DAYS)
         # Reused across every row in this import call so get_or_create_set()
         # only queries/creates once per distinct (series, set) pair seen in
         # this sync, not once per card -- see get_or_create_set()'s docstring
@@ -258,10 +260,7 @@ def import_dex_csv_files(
             card.flagged_missing_since = None  # it's back, un-flag it
 
             needs_image = card.image_url is None and image_lookup_budget > 0
-            needs_price = (
-                card.tcgplayer_price is None or card.tcgplayer_price_updated_at is None
-                or card.tcgplayer_price_updated_at < price_stale_cutoff
-            ) and price_lookup_budget > 0
+            needs_price = price_lookup_budget > 0 and price_refresh.price_lookup_due(card, today)
             if needs_image or needs_price:
                 api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
                 if needs_image:
@@ -274,9 +273,10 @@ def import_dex_csv_files(
                     )
                     image_lookup_budget -= 1
                 if needs_price:
-                    if api_data.tcgplayer_price is not None:
-                        card.tcgplayer_price = api_data.tcgplayer_price
-                        card.tcgplayer_price_updated_at = today
+                    # Stamps price_lookup_failed_at on a miss, so a card
+                    # that can't be priced stops taking this budget every
+                    # sync (issue #216).
+                    if price_refresh.apply_price_lookup(card, api_data, today):
                         if api_data.variant_price_uncertain:
                             result.warnings.append(
                                 f"{card.name} ({card.set or '?'} {card.number or '?'}"

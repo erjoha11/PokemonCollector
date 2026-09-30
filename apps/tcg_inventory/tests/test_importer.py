@@ -130,6 +130,45 @@ def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch
     assert refreshed.tcgplayer_price_updated_at == dt.date.today()
 
 
+def test_my_collection_backs_off_a_failed_price_lookup(db_session, monkeypatch):
+    # Issue #216: a card that can't be priced is stamped and skipped by later
+    # syncs inside the retry window, instead of taking the budget every time.
+    card = Card(card_id="a", variant=None, name="Japanese Print", image_url="https://example.com/a.png")
+    db_session.add(card)
+    db_session.commit()
+    calls = []
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: calls.append(1) or card_images.CardApiData(None, None),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Japanese Print"}])
+
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    assert len(calls) == 1
+    assert db_session.query(Card).one().price_lookup_failed_at == dt.date.today()
+
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    assert len(calls) == 1  # backed off
+
+
+def test_my_collection_price_success_clears_the_failure_stamp(db_session, monkeypatch):
+    card = Card(card_id="a", variant=None, name="Shellder", image_url="https://example.com/a.png")
+    card.price_lookup_failed_at = dt.date.today() - dt.timedelta(days=importer.price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    db_session.add(card)
+    db_session.commit()
+    monkeypatch.setattr(
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 3.0)
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
+
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).one()
+    assert card.tcgplayer_price == 3.0
+    assert card.price_lookup_failed_at is None
+
+
 def test_my_collection_warns_instead_of_pricing_on_low_confidence_match(db_session, monkeypatch):
     monkeypatch.setattr(
         card_images,
