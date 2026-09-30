@@ -1485,3 +1485,24 @@ No direct production-database changes were made.
 - If a genuine large clear-out ever trips the breaker on the cron, the
   cron keeps failing daily until someone runs one manual sync with
   "Sync anyway".
+
+# Handoff notes — 2026-09-30 session (issue #223, decision 1: permission mode)
+
+## Code (in git, PR "Move bypassPermissions and .env reads to settings.local.json (part of #223)")
+
+- Removed `"defaultMode": "bypassPermissions"` and the `Read(.env)`,
+  `Read(**/.env)`, `Read(**/.env.local)` allow rules from the committed
+  `.claude/settings.json`. Everything else there is unchanged (including
+  `Bash(git push origin --delete *)`).
+- This changes how agent sessions behave on any other clone: they now get
+  normal permission prompts, including before reading `.env` files.
+
+## Not in git — local machine only
+
+- The same four settings are meant to live in the user's gitignored
+  `.claude/settings.local.json` in the main checkout, so the user's own
+  sessions behave as before. That file is not in git, so this setup is
+  not reproducible from git alone; a fresh clone has to re-add them by hand
+  if wanted. (See the PR for whether that local edit has been applied yet.)
+
+No direct production-database changes were made.
