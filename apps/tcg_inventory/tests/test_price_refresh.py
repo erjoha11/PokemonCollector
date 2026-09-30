@@ -2,7 +2,25 @@ import datetime as dt
 
 import card_images
 import price_refresh
+import pricing
 from models import Card
+
+
+def _priced(card, price, fetched_at):
+    """Give `card` a pokemontcg price (what used to be tcgplayer_price +
+    tcgplayer_price_updated_at on the card itself, before issue #210)."""
+    pricing.record_price(card, pricing.SOURCE_POKEMONTCG, price_nok=price, fetched_at=fetched_at)
+    card.tcgplayer_price, card.tcgplayer_price_updated_at = price, fetched_at
+    return card
+
+
+def _failed(card, on):
+    pricing.record_failure(card, pricing.SOURCE_POKEMONTCG, on)
+    return card
+
+
+def _row(card):
+    return pricing.get_row(card, pricing.SOURCE_POKEMONTCG)
 
 
 def test_refresh_stale_prices_updates_never_priced_cards(db_session, monkeypatch):
@@ -25,8 +43,7 @@ def test_refresh_stale_prices_updates_never_priced_cards(db_session, monkeypatch
 
 
 def test_refresh_stale_prices_skips_a_fresh_price(db_session, monkeypatch):
-    card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=1.0)
-    card.tcgplayer_price_updated_at = dt.date.today()
+    card = _priced(Card(card_id="a", variant=None, name="Shellder"), 1.0, dt.date.today())
     db_session.add(card)
     db_session.commit()
 
@@ -46,8 +63,11 @@ def test_refresh_stale_prices_skips_a_fresh_price(db_session, monkeypatch):
 
 
 def test_refresh_stale_prices_refetches_a_stale_price(db_session, monkeypatch):
-    card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=1.0)
-    card.tcgplayer_price_updated_at = dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1)
+    card = _priced(
+        Card(card_id="a", variant=None, name="Shellder"),
+        1.0,
+        dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1),
+    )
     db_session.add(card)
     db_session.commit()
 
@@ -107,12 +127,12 @@ def test_refresh_stale_prices_flags_variant_uncertain_matches_while_still_pricin
 
 def test_refresh_stale_prices_respects_the_budget_and_prioritizes_oldest_first(db_session, monkeypatch):
     never_priced = Card(card_id="a", variant=None, name="Never Priced")
-    stale = Card(card_id="b", variant=None, name="Stale")
-    stale.tcgplayer_price = 1.0
-    stale.tcgplayer_price_updated_at = dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1)
-    fresh = Card(card_id="c", variant=None, name="Fresh")
-    fresh.tcgplayer_price = 2.0
-    fresh.tcgplayer_price_updated_at = dt.date.today()
+    stale = _priced(
+        Card(card_id="b", variant=None, name="Stale"),
+        1.0,
+        dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1),
+    )
+    fresh = _priced(Card(card_id="c", variant=None, name="Fresh"), 2.0, dt.date.today())
     db_session.add_all([never_priced, stale, fresh])
     db_session.commit()
 
@@ -154,8 +174,10 @@ def test_refresh_stale_prices_stamps_a_failed_lookup(db_session, monkeypatch):
 
     card = db_session.query(Card).one()
     assert result.cards_checked == 1 and result.cards_updated == 0
-    assert card.price_lookup_failed_at == today
+    assert _row(card).lookup_failed_at == today
+    assert _row(card).price_nok is None
     assert card.tcgplayer_price is None and card.tcgplayer_price_updated_at is None
+    assert card.price_lookup_failed_at is None  # deprecated column, no longer written
 
 
 def test_refresh_stale_prices_stamps_a_low_confidence_match_as_failed(db_session, monkeypatch):
@@ -170,13 +192,12 @@ def test_refresh_stale_prices_stamps_a_low_confidence_match_as_failed(db_session
     today = dt.date(2026, 9, 30)
     price_refresh.refresh_stale_prices(db_session, today=today)
 
-    assert db_session.query(Card).one().price_lookup_failed_at == today
+    assert _row(db_session.query(Card).one()).lookup_failed_at == today
 
 
 def test_refresh_stale_prices_respects_the_retry_window(db_session, monkeypatch):
     failed_on = dt.date(2026, 9, 1)
-    card = Card(card_id="a", variant=None, name="Japanese Print")
-    card.price_lookup_failed_at = failed_on
+    card = _failed(Card(card_id="a", variant=None, name="Japanese Print"), failed_on)
     db_session.add(card)
     db_session.commit()
     looked_up = []
@@ -189,7 +210,7 @@ def test_refresh_stale_prices_respects_the_retry_window(db_session, monkeypatch)
     past = inside + dt.timedelta(days=1)
     assert price_refresh.refresh_stale_prices(db_session, today=past).cards_checked == 1
     assert looked_up == ["Japanese Print"]
-    assert db_session.query(Card).one().price_lookup_failed_at == past  # re-stamped
+    assert _row(db_session.query(Card).one()).lookup_failed_at == past  # re-stamped
 
 
 def test_stale_priced_cards_win_the_budget_over_never_priceable_ones(db_session, monkeypatch):
@@ -199,8 +220,11 @@ def test_stale_priced_cards_win_the_budget_over_never_priceable_ones(db_session,
     for i in range(10):
         db_session.add(Card(card_id=f"ja{i}", variant=None, name=f"Never {i}"))
     for i in range(3):
-        card = Card(card_id=f"en{i}", variant=None, name=f"Stale {i}", tcgplayer_price=1.0)
-        card.tcgplayer_price_updated_at = today - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1 + i)
+        card = _priced(
+            Card(card_id=f"en{i}", variant=None, name=f"Stale {i}"),
+            1.0,
+            today - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1 + i),
+        )
         db_session.add(card)
     db_session.commit()
 
@@ -214,7 +238,7 @@ def test_stale_priced_cards_win_the_budget_over_never_priceable_ones(db_session,
     assert result.cards_checked == 5
     assert result.cards_updated == 3
     stale = db_session.query(Card).filter(Card.card_id.like("en%")).all()
-    assert all(c.tcgplayer_price_updated_at == today for c in stale)
+    assert all(_row(c).fetched_at == today and c.tcgplayer_price_updated_at == today for c in stale)
 
     # Next day: the 2 that failed are backed off, so the 5 never-tried ones
     # get the budget instead of the same failures again.
@@ -222,14 +246,16 @@ def test_stale_priced_cards_win_the_budget_over_never_priceable_ones(db_session,
     monkeypatch.setattr(card_images, "fetch_card_data", _fail_lookup(looked_up))
     price_refresh.refresh_stale_prices(db_session, today=today + dt.timedelta(days=1), budget=5)
     assert len(looked_up) == 5
-    stamped_yesterday = {c.name for c in db_session.query(Card) if c.price_lookup_failed_at == today}
+    stamped_yesterday = {c.name for c in db_session.query(Card) if _row(c) and _row(c).lookup_failed_at == today}
     assert stamped_yesterday.isdisjoint(looked_up)
 
 
 def test_failed_cards_past_their_window_come_after_never_tried_ones(db_session, monkeypatch):
     today = dt.date(2026, 9, 30)
-    retried = Card(card_id="a", variant=None, name="Retry")
-    retried.price_lookup_failed_at = today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    retried = _failed(
+        Card(card_id="a", variant=None, name="Retry"),
+        today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1),
+    )
     db_session.add_all([retried, Card(card_id="b", variant=None, name="Never tried")])
     db_session.commit()
     looked_up = []
@@ -242,8 +268,10 @@ def test_failed_cards_past_their_window_come_after_never_tried_ones(db_session, 
 
 def test_a_successful_lookup_clears_the_failure_stamp(db_session, monkeypatch):
     today = dt.date(2026, 9, 30)
-    card = Card(card_id="a", variant=None, name="Shellder")
-    card.price_lookup_failed_at = today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    card = _failed(
+        Card(card_id="a", variant=None, name="Shellder"),
+        today - dt.timedelta(days=price_refresh.PRICE_RETRY_AFTER_DAYS + 1),
+    )
     db_session.add(card)
     db_session.commit()
     monkeypatch.setattr(
@@ -254,12 +282,12 @@ def test_a_successful_lookup_clears_the_failure_stamp(db_session, monkeypatch):
 
     card = db_session.query(Card).one()
     assert card.tcgplayer_price == 7.0
-    assert card.price_lookup_failed_at is None
+    assert _row(card).lookup_failed_at is None
+    assert card.market_price == 7.0 and card.market_price_source == "pokemontcg"
 
 
 def test_reprice_all_refetches_every_priced_card_regardless_of_staleness(db_session, monkeypatch):
-    fresh = Card(card_id="a", variant=None, name="Fresh", tcgplayer_price=110.0)
-    fresh.tcgplayer_price_updated_at = dt.date.today()
+    fresh = _priced(Card(card_id="a", variant=None, name="Fresh"), 110.0, dt.date.today())
     never = Card(card_id="b", variant=None, name="Never priced")
     db_session.add_all([fresh, never])
     db_session.commit()
@@ -281,8 +309,7 @@ def test_reprice_all_refetches_every_priced_card_regardless_of_staleness(db_sess
 
 def test_reprice_all_keeps_the_old_price_and_date_when_the_lookup_fails(db_session, monkeypatch):
     old_date = dt.date(2026, 9, 1)
-    card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=110.0)
-    card.tcgplayer_price_updated_at = old_date
+    card = _priced(Card(card_id="a", variant=None, name="Shellder"), 110.0, old_date)
     db_session.add(card)
     db_session.commit()
 
@@ -296,13 +323,13 @@ def test_reprice_all_keeps_the_old_price_and_date_when_the_lookup_fails(db_sessi
     assert result.cards_updated == 0
     assert refreshed.tcgplayer_price == 110.0  # never rescaled, only replaced by a real lookup
     assert refreshed.tcgplayer_price_updated_at == old_date  # still due for the cron
-    assert refreshed.price_lookup_failed_at is None  # not backed off either
+    assert _row(refreshed).fetched_at == old_date and _row(refreshed).price_nok == 110.0
+    assert _row(refreshed).lookup_failed_at is None  # not backed off either
 
 
 def test_reprice_all_respects_limit_oldest_first(db_session, monkeypatch):
     for i, day in enumerate([5, 1, 3]):
-        card = Card(card_id=f"c{i}", variant=None, name=f"Card {day}", tcgplayer_price=1.0)
-        card.tcgplayer_price_updated_at = dt.date(2026, 9, day)
+        card = _priced(Card(card_id=f"c{i}", variant=None, name=f"Card {day}"), 1.0, dt.date(2026, 9, day))
         db_session.add(card)
     db_session.commit()
 

@@ -5,6 +5,7 @@ from conftest import make_csv
 
 import card_images
 import importer
+import pricing
 from importer import _parse_number_int, _parse_price, import_dex_csv_files
 from models import Card, Collection, ImportLog
 
@@ -113,7 +114,8 @@ def test_my_collection_does_not_refetch_a_fresh_tcgplayer_price(db_session, monk
 
 def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch):
     card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=1.0)
-    card.tcgplayer_price_updated_at = dt.date.today() - dt.timedelta(days=importer._PRICE_STALE_AFTER_DAYS + 1)
+    stale_on = dt.date.today() - dt.timedelta(days=importer._PRICE_STALE_AFTER_DAYS + 1)
+    pricing.record_price(card, pricing.SOURCE_POKEMONTCG, price_nok=1.0, fetched_at=stale_on)
     db_session.add(card)
     db_session.commit()
 
@@ -146,7 +148,8 @@ def test_my_collection_backs_off_a_failed_price_lookup(db_session, monkeypatch):
 
     import_dex_csv_files(db_session, [("main.csv", csv)])
     assert len(calls) == 1
-    assert db_session.query(Card).one().price_lookup_failed_at == dt.date.today()
+    row = pricing.get_row(db_session.query(Card).one(), pricing.SOURCE_POKEMONTCG)
+    assert row.lookup_failed_at == dt.date.today()
 
     import_dex_csv_files(db_session, [("main.csv", csv)])
     assert len(calls) == 1  # backed off
@@ -154,7 +157,11 @@ def test_my_collection_backs_off_a_failed_price_lookup(db_session, monkeypatch):
 
 def test_my_collection_price_success_clears_the_failure_stamp(db_session, monkeypatch):
     card = Card(card_id="a", variant=None, name="Shellder", image_url="https://example.com/a.png")
-    card.price_lookup_failed_at = dt.date.today() - dt.timedelta(days=importer.price_refresh.PRICE_RETRY_AFTER_DAYS + 1)
+    pricing.record_failure(
+        card,
+        pricing.SOURCE_POKEMONTCG,
+        dt.date.today() - dt.timedelta(days=importer.price_refresh.PRICE_RETRY_AFTER_DAYS + 1),
+    )
     db_session.add(card)
     db_session.commit()
     monkeypatch.setattr(
@@ -166,7 +173,7 @@ def test_my_collection_price_success_clears_the_failure_stamp(db_session, monkey
 
     card = db_session.query(Card).one()
     assert card.tcgplayer_price == 3.0
-    assert card.price_lookup_failed_at is None
+    assert pricing.get_row(card, pricing.SOURCE_POKEMONTCG).lookup_failed_at is None
 
 
 def test_my_collection_warns_instead_of_pricing_on_low_confidence_match(db_session, monkeypatch):

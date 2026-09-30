@@ -585,8 +585,8 @@ def test_value_change_breakdown_splits_price_moves_from_new_cards(db_session):
     snapshots.record_daily_snapshot(db_session, as_of=start)
     # Then: a's price rises 100 -> 120, a second copy of a is added, and b
     # (worth 50 -> 60) is bought.
-    a.qty, a.reference_price = 2, 120
-    b.qty, b.reference_price = 1, 60
+    a.qty, a.market_price = 2, 120
+    b.qty, b.market_price = 1, 60
     db_session.commit()
     snapshots.record_daily_snapshot(db_session, as_of=end)
 
@@ -602,7 +602,7 @@ def test_value_change_breakdown_splits_price_moves_from_new_cards(db_session):
     assert queries.value_change_breakdown(db_session, "duplicates", dup) == {"price": 0, "cards": 120, "card_delta": 1}
 
     # Live cards stand in for the last point.
-    a.reference_price = 130
+    a.market_price = 130
     db_session.commit()
     live = queries.value_change_breakdown(db_session, "total", total, live_cards=db_session.query(Card).all())
     assert live == {"price": 30, "cards": 190, "card_delta": 2}
@@ -890,3 +890,89 @@ def test_price_movers_uses_earliest_day_when_history_is_short_and_none_without_h
     db_session.commit()
     result = queries.price_movers(db_session, [card], today=today)
     assert result["days"] == 4 and result["up"][0].change == 50
+
+
+def _resolved_card(card_id, price, source, qty=1):
+    from models import Card
+
+    return Card(card_id=card_id, name=card_id.upper(), qty=qty, market_price=price, market_price_source=source)
+
+
+def test_price_movers_leaves_out_source_switches_and_counts_them(db_session):
+    import datetime as dt
+
+    import queries
+    from models import CardSnapshot
+
+    today = dt.date(2026, 9, 24)
+    switched = _resolved_card("a", 500, "dex")
+    moved = _resolved_card("b", 120, "dex")
+    unknown_now = _resolved_card("c", 50, None)  # no source today: never a "switch"
+    db_session.add_all([switched, moved, unknown_now])
+    db_session.flush()
+    for card, old, source in [(switched, 400, "pokemontcg"), (moved, 100, "dex"), (unknown_now, 40, "dex")]:
+        db_session.add(
+            CardSnapshot(card_id=card.id, date=dt.date(2026, 9, 1), source="cron", qty=1, reference_price=old, price_source=source)
+        )
+    db_session.commit()
+
+    result = queries.price_movers(db_session, [switched, moved, unknown_now], today=today)
+
+    assert [m.card.card_id for m in result["up"]] == ["b", "c"]
+    assert result["n_source_changes"] == 1
+    assert result["n_up"] == 2
+
+
+def test_price_movers_infers_the_source_of_pre_210_snapshots(db_session):
+    """Snapshots written before price_source existed (NULL) showed
+    TCGplayer via pokemontcg.io whenever the card had such a price, else
+    Dex -- so a card with a pokemontcg price that now resolves to Dex is a
+    switch, not a move."""
+    import datetime as dt
+
+    import pricing
+    import queries
+    from models import CardSnapshot
+
+    today = dt.date(2026, 9, 24)
+    had_tcgplayer = _resolved_card("a", 100, "dex")
+    pricing.record_price(had_tcgplayer, "pokemontcg", price_nok=110, fetched_at=dt.date(2026, 8, 1))
+    dex_only = _resolved_card("b", 60, "dex")
+    db_session.add_all([had_tcgplayer, dex_only])
+    db_session.flush()
+    for card, old in [(had_tcgplayer, 110), (dex_only, 50)]:
+        db_session.add(CardSnapshot(card_id=card.id, date=dt.date(2026, 9, 1), source="cron", qty=1, reference_price=old))
+    db_session.commit()
+
+    result = queries.price_movers(db_session, [had_tcgplayer, dex_only], today=today)
+
+    assert [m.card.card_id for m in result["up"]] == ["b"]
+    assert result["down"] == []
+    assert result["n_source_changes"] == 1
+
+
+def test_top_valuable_cards_reads_the_resolved_market_price(db_session):
+    import queries
+
+    db_session.add_all([_resolved_card("a", 10, "dex"), _resolved_card("b", 99, "pokemontcg"), _resolved_card("c", None, None)])
+    db_session.commit()
+
+    assert [c.card_id for c in queries.top_valuable_cards(db_session)] == ["b", "a"]
+
+
+def test_card_price_history_includes_the_price_source(db_session):
+    import datetime as dt
+
+    import queries
+    from models import CardSnapshot
+
+    card = _resolved_card("a", 10, "dex")
+    db_session.add(card)
+    db_session.flush()
+    db_session.add(CardSnapshot(card_id=card.id, date=dt.date(2026, 9, 1), source="cron", qty=1, reference_price=9))
+    db_session.add(
+        CardSnapshot(card_id=card.id, date=dt.date(2026, 9, 2), source="cron", qty=1, reference_price=10, price_source="dex")
+    )
+    db_session.commit()
+
+    assert [p["source"] for p in queries.card_price_history(db_session, card.id)] == [None, "dex"]

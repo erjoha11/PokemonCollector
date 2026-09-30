@@ -229,3 +229,121 @@ def test_pinned_postgres_url_resolves_to_psycopg2_dialect():
 
     url = make_url(db_module._pin_postgres_driver("postgresql://u:p@host/db"))
     assert url.get_dialect().driver == "psycopg2"
+
+
+def _v9_database(monkeypatch, tmp_path, today=None):
+    """A database shaped like prod at schema version 9 (before issue #210):
+    no card_prices/fx_rates tables, no market_price columns on cards, no
+    price_source on card_snapshots -- plus legacy price data to backfill."""
+    import datetime as dt
+
+    today = today or dt.date.today()
+
+    def ago(days):
+        return (today - dt.timedelta(days=days)).isoformat()
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'v9.db'}")
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", sessionmaker(bind=engine))
+    db_module.Base.metadata.create_all(bind=engine)
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE card_prices"))
+        conn.execute(text("DROP TABLE fx_rates"))
+        for column in ("market_price", "market_price_source", "market_price_as_of", "price_flags"):
+            conn.execute(text(f"ALTER TABLE cards DROP COLUMN {column}"))
+        conn.execute(text("ALTER TABLE card_snapshots DROP COLUMN price_source"))
+        rows = [
+            # id, card_id, reference_price, tcgplayer_price, tcgplayer_price_updated_at, price_lookup_failed_at, flagged_missing_since
+            (1, "both", 100.0, 110.0, ago(2), None, None),
+            (2, "dex-only", 50.0, None, None, None, None),
+            (3, "failed", None, None, None, ago(5), None),
+            (4, "nothing", None, None, None, None, None),
+            (5, "old-tcg", None, 30.0, ago(60), None, None),
+            (6, "missing", 20.0, None, None, None, ago(20)),
+        ]
+        for r in rows:
+            conn.execute(
+                text(
+                    "INSERT INTO cards (id, card_id, name, qty, reference_price, tcgplayer_price, "
+                    "tcgplayer_price_updated_at, price_lookup_failed_at, flagged_missing_since) "
+                    "VALUES (:id, :cid, :cid, 1, :ref, :tcg, :tcg_at, :failed, :missing)"
+                ),
+                dict(zip(("id", "cid", "ref", "tcg", "tcg_at", "failed", "missing"), r)),
+            )
+        conn.execute(
+            text("INSERT INTO import_log (ran_at, source, cards_created, cards_updated, cards_flagged_missing, cards_deleted, warnings_count) VALUES (:ran_at, 'cron', 0, 0, 0, 0, 0)"),
+            {"ran_at": f"{ago(1)} 14:43:20.000000"},
+        )
+        conn.execute(
+            text("INSERT INTO card_snapshots (card_id, date, source, qty, reference_price) VALUES (1, :d, 'cron', 1, 110.0)"),
+            {"d": ago(1)},
+        )
+    db_module._set_schema_version(9)
+    return engine
+
+
+def test_migration_from_v9_adds_pricing_schema_and_backfills_every_card(monkeypatch, tmp_path):
+    import datetime as dt
+
+    import models
+
+    today = dt.date.today()
+    _v9_database(monkeypatch, tmp_path, today)
+
+    def ago(days):
+        return today - dt.timedelta(days=days)
+
+    db_module.init_db()
+
+    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION == 10
+    session = db_module.SessionLocal()
+    prices = {(p.card.card_id, p.source): p for p in session.query(models.CardPrice)}
+    assert set(prices) == {
+        ("both", "dex"),
+        ("both", "pokemontcg"),
+        ("dex-only", "dex"),
+        ("failed", "pokemontcg"),
+        ("old-tcg", "pokemontcg"),
+        ("missing", "dex"),
+    }
+    dex = prices[("both", "dex")]
+    assert (dex.price_nok, dex.currency, dex.fx_rate, dex.fetched_at) == (100.0, "NOK", 1.0, ago(1))
+    tcg = prices[("both", "pokemontcg")]
+    assert (tcg.price, tcg.price_nok, tcg.currency, tcg.fx_rate, tcg.fetched_at) == (None, 110.0, "USD", None, ago(2))
+    failed = prices[("failed", "pokemontcg")]
+    assert (failed.price_nok, failed.lookup_failed_at) == (None, ago(5))
+    assert prices[("missing", "dex")].fetched_at == ago(20)  # last seen in Dex
+
+    cards = {c.card_id: c for c in session.query(models.Card)}
+    resolved = {cid: (c.market_price, c.market_price_source, c.price_flags) for cid, c in cards.items()}
+    assert resolved == {
+        "both": (100.0, "dex", None),  # Dex first in the chain
+        "dex-only": (50.0, "dex", None),
+        "failed": (None, None, "no_price"),
+        "nothing": (None, None, "no_price"),
+        "old-tcg": (30.0, "pokemontcg", "stale"),  # kept, never dropped
+        "missing": (20.0, "dex", "stale"),
+    }
+    # Existing snapshot rows keep a NULL source (unknown, pre-#210).
+    assert session.query(models.CardSnapshot).one().price_source is None
+    session.close()
+
+    # Idempotent: a second start neither duplicates rows nor re-resolves.
+    db_module.init_db()
+    session = db_module.SessionLocal()
+    assert session.query(models.CardPrice).count() == 6
+    session.close()
+
+
+def test_card_price_backfill_failure_is_never_fatal(monkeypatch, tmp_path):
+    import pricing
+
+    _v9_database(monkeypatch, tmp_path)
+
+    def boom(session, today=None):
+        raise RuntimeError("simulated")
+
+    monkeypatch.setattr(pricing, "backfill_from_legacy", boom)
+    db_module.init_db()  # doesn't raise
+
+    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION

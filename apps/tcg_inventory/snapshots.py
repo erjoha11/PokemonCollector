@@ -19,9 +19,11 @@ from models import Card, CardSnapshot
 
 def record_daily_snapshot(db: Session, as_of: dt.date | None = None, source: str = "cron") -> int:
     """Write one CardSnapshot row per card for `as_of` (default: today) and
-    `source` ("cron" or "manual"), capturing its current qty and
-    display_price (TCGPlayer price when we have one, else Dex's reference
-    price).
+    `source` ("cron" or "manual"), capturing its current qty, resolved
+    market price (`display_price`, stored in the historically-named
+    `reference_price` column) and which source that price came from
+    (`price_source`, issue #210). Callers run pricing.resolve_cards() first
+    (app.py's sync/cron routes do) so freshness expiry is applied.
 
     Idempotent per (day, source): re-running this for a date/source that
     already has snapshots updates them in place instead of creating
@@ -49,6 +51,7 @@ def record_daily_snapshot(db: Session, as_of: dt.date | None = None, source: str
             db.add(snap)
         snap.qty = card.qty
         snap.reference_price = card.display_price
+        snap.price_source = card.market_price_source
         count += 1
 
     db.commit()

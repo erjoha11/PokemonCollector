@@ -77,3 +77,58 @@ def test_cron_price_refresh_reports_low_confidence_matches(client, monkeypatch):
     body = response.json()
     assert body["cards_updated"] == 0
     assert body["cards_low_confidence"] == ["Shellder (? ?)"]
+
+
+def test_cron_price_refresh_re_resolves_every_card_before_its_snapshot(client, monkeypatch):
+    """The cron's DB-only re-resolve pass is what applies freshness expiry
+    to cards nothing re-priced today (issue #210)."""
+    import datetime as dt
+
+    import db as db_module
+    import pricing
+
+    long_ago = dt.date.today() - dt.timedelta(days=pricing.FRESH_DAYS + 5)
+    with db_module.SessionLocal() as db:
+        card = Card(card_id="a", variant=None, name="Shellder", qty=1)
+        pricing.record_price(card, "dex", price_nok=40.0, fetched_at=long_ago)
+        pricing.record_failure(card, "pokemontcg", dt.date.today())  # backed off: no lookup today
+        db.add(card)
+        pricing.resolve_cards(db, today=long_ago)
+        db.commit()
+        assert db.query(Card).one().price_flags is None  # fresh when resolved back then
+
+    response = client.get("/cron/price-refresh")
+    assert response.status_code == 200 and response.json()["cards_checked"] == 0
+
+    with db_module.SessionLocal() as db:
+        card = db.query(Card).one()
+        assert (card.market_price, card.market_price_source, card.price_flags) == (40.0, "dex", "stale")
+        snap = db.query(CardSnapshot).one()
+        assert (snap.reference_price, snap.price_source) == (40.0, "dex")
+
+
+def test_dashboard_price_movers_caption_counts_source_changes(client):
+    import datetime as dt
+
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        card = Card(card_id="a", variant=None, name="Shellder", qty=1, market_price=50.0, market_price_source="dex")
+        db.add(card)
+        db.flush()
+        db.add(
+            CardSnapshot(
+                card_id=card.id,
+                date=dt.date.today() - dt.timedelta(days=3),
+                source="cron",
+                qty=1,
+                reference_price=40.0,
+                price_source="pokemontcg",
+            )
+        )
+        db.commit()
+
+    text = client.get("/").text
+
+    assert "1 source change left out" in text
+    assert "No price changes since" in text

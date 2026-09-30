@@ -1,6 +1,11 @@
-"""Standalone TCGPlayer price refresh, decoupled from Dex CSV sync.
+"""Standalone TCGplayer price refresh, decoupled from Dex CSV sync.
 
-`importer.py` already refreshes a card's `tcgplayer_price` as a side effect
+Since issue #210 this writes each card's `pokemontcg` row in `card_prices`
+(models.CardPrice; `cards.tcgplayer_price` is kept as a mirror) and then
+re-resolves the card's market price (pricing.resolve_cards). The due/backoff
+state below is read from that row, per source, not from `cards`.
+
+`importer.py` already refreshes a card's pokemontcg price as a side effect
 of a Dex sync (see its own `_MAX_PRICE_LOOKUPS_PER_IMPORT`/
 `_PRICE_STALE_AFTER_DAYS`) -- but that means pricing only ever gets fresher
 when a Dex sync happens to run. Per issue #93, Dex sync is meant to become
@@ -29,12 +34,15 @@ import argparse
 import datetime as dt
 from dataclasses import dataclass, field
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy import exists
+from sqlalchemy.orm import Session, selectinload
 
 import card_images
 import fx_rates
-from models import Card
+import pricing
+from models import Card, CardPrice
+
+SOURCE = pricing.SOURCE_POKEMONTCG
 
 # Independent of importer.py's own per-sync budget -- this cron isn't
 # sharing a serverless function's time budget with CSV parsing, so it can
@@ -45,8 +53,8 @@ MAX_PRICE_LOOKUPS_PER_RUN = 100
 # column on the same schedule, they just don't have to run together anymore.
 PRICE_STALE_AFTER_DAYS = 7
 
-# A card whose lookup came back with no usable price (stamped
-# Card.price_lookup_failed_at) is skipped for this many days before being
+# A card whose lookup came back with no usable price (stamped on its
+# pokemontcg card_prices row's lookup_failed_at) is skipped for this many days before being
 # tried again (issue #216) -- same idea as backfill_images'
 # IMAGE_RETRY_AFTER_DAYS, but shorter: pokemontcg.io's free tier is flaky
 # and a transient error looks the same as "no match", so an already-priced
@@ -56,17 +64,21 @@ PRICE_STALE_AFTER_DAYS = 7
 PRICE_RETRY_AFTER_DAYS = 14
 
 
+def _pokemontcg_row_exists(*conditions):
+    return exists().where(CardPrice.card_id == Card.id, CardPrice.source == SOURCE, *conditions)
+
+
 def due_for_price_lookup_filter(today: dt.date):
-    """SQL filter for cards whose price is missing or stale and that aren't
-    inside a failed-lookup backoff window. Shared by the cron, the CLI's
-    dry-run count, and (via price_lookup_due) importer.py's per-sync lookups.
+    """SQL filter for cards whose pokemontcg price is missing or stale and
+    that aren't inside a failed-lookup backoff window. Shared by the cron,
+    the CLI's dry-run count, and (via price_lookup_due) importer.py's
+    per-sync lookups.
     """
     stale_cutoff = today - dt.timedelta(days=PRICE_STALE_AFTER_DAYS)
     retry_cutoff = today - dt.timedelta(days=PRICE_RETRY_AFTER_DAYS)
-    return (
-        or_(Card.tcgplayer_price_updated_at.is_(None), Card.tcgplayer_price_updated_at < stale_cutoff)
-        & or_(Card.price_lookup_failed_at.is_(None), Card.price_lookup_failed_at < retry_cutoff)
-    )
+    fresh = _pokemontcg_row_exists(CardPrice.price_nok.isnot(None), CardPrice.fetched_at >= stale_cutoff)
+    backed_off = _pokemontcg_row_exists(CardPrice.lookup_failed_at >= retry_cutoff)
+    return ~fresh & ~backed_off
 
 
 def price_lookup_due(card: Card, today: dt.date) -> bool:
@@ -74,27 +86,36 @@ def price_lookup_due(card: Card, today: dt.date) -> bool:
     already in hand (importer.py walks CSV rows, not a query)."""
     stale_cutoff = today - dt.timedelta(days=PRICE_STALE_AFTER_DAYS)
     retry_cutoff = today - dt.timedelta(days=PRICE_RETRY_AFTER_DAYS)
-    stale = (
-        card.tcgplayer_price is None
-        or card.tcgplayer_price_updated_at is None
-        or card.tcgplayer_price_updated_at < stale_cutoff
-    )
-    backed_off = card.price_lookup_failed_at is not None and card.price_lookup_failed_at >= retry_cutoff
+    row = pricing.get_row(card, SOURCE)
+    stale = row is None or row.price_nok is None or row.fetched_at is None or row.fetched_at < stale_cutoff
+    backed_off = row is not None and row.lookup_failed_at is not None and row.lookup_failed_at >= retry_cutoff
     return stale and not backed_off
 
 
 def apply_price_lookup(card: Card, api_data: card_images.CardApiData, today: dt.date, record_failure: bool = True) -> bool:
-    """Store a lookup's price on `card` and return True, or (when there's no
-    usable price) stamp price_lookup_failed_at and return False. A success
-    clears any earlier failure stamp. The old price is never touched on a
-    failure."""
+    """Store a lookup's price as `card`'s pokemontcg card_prices row (and the
+    `tcgplayer_price` mirror) and return True, or -- when there's no usable
+    price -- stamp that row's lookup_failed_at and return False. A success
+    clears any earlier failure stamp; the old price is never touched on a
+    failure. The caller must pricing.resolve_cards() the card before
+    committing."""
     if api_data.tcgplayer_price is not None:
+        pricing.record_price(
+            card,
+            SOURCE,
+            price_nok=api_data.tcgplayer_price,
+            price=api_data.tcgplayer_price_usd,
+            currency="USD",
+            fx_rate=api_data.usd_to_nok,
+            variant_key=api_data.tcgplayer_variant_key,
+            fetched_at=today,
+            flags=[pricing.FLAG_VARIANT_UNCERTAIN] if api_data.variant_price_uncertain else [],
+        )
         card.tcgplayer_price = api_data.tcgplayer_price
         card.tcgplayer_price_updated_at = today
-        card.price_lookup_failed_at = None
         return True
     if record_failure:
-        card.price_lookup_failed_at = today
+        pricing.record_failure(card, SOURCE, today)
     return False
 
 
@@ -104,11 +125,12 @@ def _refresh_priority(card: Card) -> tuple:
     never failed, then cards retrying after a failed lookup (oldest failure
     first). Without this, cards that can never be priced sorted first and
     took the whole budget every day."""
-    if card.tcgplayer_price_updated_at is not None:
-        return (0, card.tcgplayer_price_updated_at, card.id)
-    if card.price_lookup_failed_at is None:
+    row = pricing.get_row(card, SOURCE)
+    if row is not None and row.price_nok is not None and row.fetched_at is not None:
+        return (0, row.fetched_at, card.id)
+    if row is None or row.lookup_failed_at is None:
         return (1, dt.date.min, card.id)
-    return (2, card.price_lookup_failed_at, card.id)
+    return (2, row.lookup_failed_at, card.id)
 
 
 @dataclass
@@ -130,10 +152,10 @@ def refresh_stale_prices(
     today: dt.date | None = None,
     budget: int = MAX_PRICE_LOOKUPS_PER_RUN,
 ) -> PriceRefreshResult:
-    """Refresh `tcgplayer_price` for up to `budget` due cards (see
+    """Refresh the pokemontcg price for up to `budget` due cards (see
     due_for_price_lookup_filter), in _refresh_priority order: stale priced
     cards, then never-tried cards, then failed cards past their retry
-    window. A lookup with no usable price stamps price_lookup_failed_at.
+    window. A lookup with no usable price stamps the row's lookup_failed_at.
 
     Low-confidence API matches (see card_images._is_confident_match) are
     skipped rather than trusted -- flagged in the result for visibility
@@ -142,7 +164,7 @@ def refresh_stale_prices(
     today = today or dt.date.today()
     result = PriceRefreshResult()
 
-    candidates = db.query(Card).filter(due_for_price_lookup_filter(today)).all()
+    candidates = db.query(Card).options(selectinload(Card.prices)).filter(due_for_price_lookup_filter(today)).all()
     # Tiered ordering in Python rather than a dialect-specific ORDER BY
     # (NULL ordering differs between SQLite and Postgres).
     candidates.sort(key=_refresh_priority)
@@ -158,13 +180,15 @@ def _refresh_cards(
     # card lookup below then reuses fx_rates' cached value (one Norges Bank
     # request per run, not per card), and the result records which rate
     # this run's prices were converted at.
-    rates = fx_rates.get_rates()
+    rates = fx_rates.get_rates(db.get_bind())
     result.usd_to_nok = rates.to_nok("USD")
     result.fx_source = rates.source
     result.fx_as_of = rates.as_of
 
+    pending: list[int] = []
     for card in cards:
         result.cards_checked += 1
+        pending.append(card.id)
         api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
         if apply_price_lookup(card, api_data, today, record_failure=record_failures):
             result.cards_updated += 1
@@ -177,8 +201,13 @@ def _refresh_cards(
                 f"{card.name} ({card.set or '?'} {card.number or '?'})"
             )
         if result.cards_checked % 25 == 0:
-            db.commit()  # long CLI runs keep progress if interrupted
+            # Long CLI runs keep progress if interrupted; each committed
+            # batch is resolved first so cards.market_price never lags.
+            pricing.resolve_cards(db, pending, today=today)
+            pending.clear()
+            db.commit()
 
+    pricing.resolve_cards(db, pending, today=today)
     db.commit()
 
 
@@ -187,27 +216,27 @@ def reprice_all(
     today: dt.date | None = None,
     limit: int | None = None,
 ) -> PriceRefreshResult:
-    """Re-fetch `tcgplayer_price` for every card that already has one,
+    """Re-fetch the pokemontcg price for every card that already has one,
     ignoring staleness and the cron's per-run budget -- a forced full
     re-price (issue #209). Only cards with an existing price are touched:
     it corrects stored values, it doesn't try to price cards that have
     never had one (the daily cron keeps doing that).
 
-    A card whose lookup fails keeps its old price *and* its old
-    `tcgplayer_price_updated_at`, and isn't stamped price_lookup_failed_at,
-    so the cron still treats it as due. Stored values are only ever replaced
+    A card whose lookup fails keeps its old price *and* its old fetch date,
+    and isn't stamped lookup_failed_at, so the cron still treats it as due. Stored values are only ever replaced
     by a fresh lookup, never rescaled.
     """
     today = today or dt.date.today()
     cards = (
         db.query(Card)
-        .filter(Card.tcgplayer_price.isnot(None))
+        .options(selectinload(Card.prices))
+        .filter(_has_price_filter())
         .order_by(Card.id)
         .all()
     )
     # Oldest-priced first, so a --limit'ed run makes progress the same way
     # the cron does.
-    cards.sort(key=lambda c: c.tcgplayer_price_updated_at or dt.date.min)
+    cards.sort(key=lambda c: pricing.get_row(c, SOURCE).fetched_at or dt.date.min)
     if limit is not None:
         cards = cards[:limit]
     result = PriceRefreshResult()
@@ -215,12 +244,16 @@ def reprice_all(
     return result
 
 
+def _has_price_filter():
+    return _pokemontcg_row_exists(CardPrice.price_nok.isnot(None))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="TCGPlayer price refresh (see module docstring).")
     parser.add_argument(
         "--reprice-all",
         action="store_true",
-        help="re-price every card that already has a tcgplayer_price, ignoring staleness/budget",
+        help="re-price every card that already has a pokemontcg price, ignoring staleness/budget",
     )
     parser.add_argument("--limit", type=int, default=None, help="max cards to look up this run")
     parser.add_argument(
@@ -238,13 +271,13 @@ def main() -> None:
         if args.dry_run:
             query = db.query(Card)
             if args.reprice_all:
-                query = query.filter(Card.tcgplayer_price.isnot(None))
+                query = query.filter(_has_price_filter())
                 count = query.count()
             else:
                 count = query.filter(due_for_price_lookup_filter(dt.date.today())).count()
             if args.limit is not None:
                 count = min(count, args.limit)
-            rates = fx_rates.get_rates()
+            rates = fx_rates.get_rates(db.get_bind())
             print(
                 f"price_refresh (dry run): would look up {count} card(s) at "
                 f"USD/NOK {rates.to_nok('USD')} ({rates.source}, as of {rates.as_of})"

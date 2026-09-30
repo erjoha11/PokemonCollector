@@ -73,7 +73,7 @@ def backfill_missing_images(
 def run_backfill(db, limit=_DEFAULT_LOOKUP_BUDGET, time_budget_s=None, today=None) -> BackfillResult:
     today = today or dt.date.today()
     retry_cutoff = today - dt.timedelta(days=IMAGE_RETRY_AFTER_DAYS)
-    price = func.coalesce(Card.tcgplayer_price, Card.reference_price)
+    price = Card.market_price
     cards = (
         db.query(Card)
         .filter(Card.image_url.is_(None))

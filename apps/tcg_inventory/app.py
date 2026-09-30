@@ -32,6 +32,7 @@ import auth
 import backfill_images
 import dropbox_client
 import price_refresh
+import pricing
 import set_sync
 import queries
 import snapshots
@@ -179,16 +180,18 @@ async def auth_guard(request: Request, call_next):
             pass
     return RedirectResponse("/login", status_code=303)
 
-_DISPLAY_PRICE_COL = func.coalesce(Card.tcgplayer_price, Card.reference_price)
+# The resolved market price (pricing.py, issue #210) -- a plain column, so
+# Inventory sorts/pages by it in SQL.
+_MARKET_PRICE_COL = Card.market_price
 
 SORT_COLUMNS = {
     "name": Card.name,
     "number": func.coalesce(Card.number_int, 999999),
     "series": Card.series,
     "set": Card.set,
-    "reference_price": _DISPLAY_PRICE_COL,
+    "reference_price": _MARKET_PRICE_COL,
     "qty": Card.qty,
-    "total_value": Card.qty * func.coalesce(_DISPLAY_PRICE_COL, 0),
+    "total_value": Card.qty * func.coalesce(_MARKET_PRICE_COL, 0),
     "rarity": queries.rarity_sort_expr(Card.rarity),  # tier order, not alphabetical
     "illustrator": Card.illustrator,
     "language": Card.language,
@@ -2408,6 +2411,7 @@ def import_dropbox_sync(
         dbx = dropbox_client.build_client_from_env()
         payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
         result = import_dex_csv_files(db, payload, full_load=full_load, source="dropbox")
+        _resolve_all_prices(db)
         snapshots.record_daily_snapshot(db, source="manual")
         return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
@@ -2418,6 +2422,15 @@ def import_dropbox_sync(
         )
     finally:
         db.close()
+
+
+def _resolve_all_prices(db: Session) -> None:
+    """Full DB-only re-resolve of every card's market price (pricing.py,
+    issue #210) -- run at the end of each sync/cron, right before its
+    snapshot. This is what applies freshness expiry (a source going stale)
+    to cards nothing re-priced today. No HTTP, a few statements."""
+    pricing.resolve_cards(db)
+    db.commit()
 
 
 @app.get("/cron/dropbox-sync")
@@ -2455,6 +2468,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         dbx = dropbox_client.build_client_from_env()
         files = dropbox_client.list_csv_files(dbx, folder)
         if not files:
+            _resolve_all_prices(db)
             snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
             return {
                 "status": "ok",
@@ -2467,6 +2481,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         # Snapshot after the sync, not before -- a cron run should always
         # record today's post-sync qty/price, never yesterday's leftover
         # state (see snapshots.record_daily_snapshot / README "Value history").
+        _resolve_all_prices(db)
         snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
         print(
             f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
@@ -2524,6 +2539,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
         result = price_refresh.refresh_stale_prices(db)
         # Snapshot right after refreshing, same reasoning as
         # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
+        _resolve_all_prices(db)
         snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
         # Then a small pass of missing card images (backfill_images.py),
         # time-boxed so the whole invocation stays inside the function limit.

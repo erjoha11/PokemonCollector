@@ -353,3 +353,20 @@ def test_unknown_id_schemes_and_network_errors_give_none(monkeypatch):
     assert card_images.fetch_image_by_card_id("jpn_sv2a-168", "Charmander", "168/165") is None
     assert card_images.fetch_image_by_card_id("chs_x-1", "Pikachu", "1") is None
     assert card_images.fetch_image_by_card_id(None, "Pikachu", "1") is None
+
+
+def test_fetch_card_data_reports_the_native_price_print_and_rate(monkeypatch):
+    # Recorded on the card's pokemontcg card_prices row (issue #210).
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(normal=5.0, reverseHolofoil=20.0),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Reverse Holo")
+
+    assert (result.tcgplayer_price_usd, result.tcgplayer_variant_key, result.usd_to_nok) == (
+        20.0,
+        "reverseHolofoil",
+        TEST_USD_TO_NOK,
+    )

@@ -1356,3 +1356,61 @@ lookup, so if 100+ cards can never be priced (no/low-confidence match,
 Japanese prints) they take the whole daily budget every day and already-
 priced cards never get refreshed by the cron. Not verified against prod.
 `--reprice-all` works around this for the one-off correction.
+
+# Handoff notes — 2026-09-30 session (issue #210, pricing Phase 2, part 1)
+
+## Code (in git, PR "Pricing Phase 2: card_prices, resolver, ..." — part 1 of #210)
+
+- New `card_prices` table (latest price per card + source, incl. the
+  per-source failed-lookup stamp `lookup_failed_at`) and `fx_rates` table
+  (Norges Bank rate per date + currency). New `cards.market_price`,
+  `market_price_source`, `market_price_as_of`, `price_flags` and
+  `card_snapshots.price_source`. Schema version 9 -> 10 (all additive,
+  applied by `init_db()`'s normal chain on first start).
+- `pricing.py`: chain `dex -> tcgdex_tcgplayer -> pokemontcg ->
+  tcgdex_cardmarket` (tcgdex_* unused until #211), 14-day freshness,
+  `stale` keeps the last price, `no_price` only when nothing ever existed.
+  Every consumer now reads `cards.market_price` (SQL) / `display_price`
+  (Python); the `coalesce(tcgplayer_price, reference_price)` SQL is gone.
+- `reference_price` / `tcgplayer_price` are now mirrors; an empty Dex Price
+  cell no longer wipes the price. `cards.price_lookup_failed_at` (#216) is
+  deprecated and unwritten; the price refresh reads backoff/ordering from
+  the `pokemontcg` card_prices row.
+- Price movers leaves out source switches ("· N source changes left out").
+- UI/labels (card-detail source line + per-source table, chart switch
+  tooltips, movers `title`, "Market price" wording, `market_price` sort
+  key) are part 2 of #210, a separate PR.
+
+## What happens on deploy (no manual DB step)
+
+The first request after deploy runs the v10 migration chain and then
+`_backfill_card_prices()` (`pricing.backfill_from_legacy`): seeds
+`card_prices` from the legacy columns with set-based `INSERT ... SELECT`
+(prod 2026-09-30, read-only count: 823 `dex` rows, 209 `pokemontcg` rows,
+0 failure stamps to carry over) and resolves all 869 cards in two chunked
+`UPDATE ... CASE` statements. ~a dozen round trips, never fatal (a failure
+logs `[init_db] card price backfill skipped` and retries next start;
+`display_price` falls back to the old rule meanwhile). Seeded `dex` rows are
+dated at the last Dex sync; seeded `pokemontcg` rows have no native USD
+value/rate.
+
+## Expect after deploy
+
+- **Displayed price changes for ~208 cards**: they have both a Dex and a
+  TCGplayer price, and Dex is now first in the chain (previously TCGplayer
+  won). After #209's re-price the two agree to a median 1.011, so the total
+  moves little, but individual cards can shift by more than 10%. The first
+  snapshot after deploy records `price_source = "dex"` for them.
+- **Price movers** will show "· ~200 source changes left out" for up to ~30
+  days: pre-#210 snapshots have `price_source` NULL, and their source is
+  inferred as `pokemontcg` for cards that have a pokemontcg price (the old
+  display rule), so those cards are treated as switched. That's correct
+  (they did switch), and it clears as the period's start snapshot moves
+  past the deploy date.
+- The Market Value chart can show a small one-off step on deploy day for
+  the same reason (charts don't exclude switches, by design).
+- Cards flagged missing from Dex get `stale` after 14 days (their Dex price
+  is no longer refreshed). Not surfaced in the UI until part 2 / #212.
+
+No direct production-database changes were made this session (read-only
+SELECTs only, to size the backfill).

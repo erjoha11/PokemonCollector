@@ -92,9 +92,9 @@ def test_backfill_never_uses_the_english_name_search_for_japanese_cards(db_sessi
 
 
 def test_backfill_goes_most_valuable_first_and_parks_misses(db_session, monkeypatch):
-    _make_card(db_session, card_id="cheap", name="Cheap", reference_price=1, qty=1)
-    _make_card(db_session, card_id="pricey", name="Pricey", reference_price=500, qty=1)
-    _make_card(db_session, card_id="gone", name="Gone", reference_price=900, qty=0)
+    _make_card(db_session, card_id="cheap", name="Cheap", market_price=1, qty=1)
+    _make_card(db_session, card_id="pricey", name="Pricey", market_price=500, qty=1)
+    _make_card(db_session, card_id="gone", name="Gone", market_price=900, qty=0)
     seen = []
     monkeypatch.setattr("backfill_images.card_images.fetch_image_by_card_id", lambda card_id, *a: seen.append(card_id))
     monkeypatch.setattr(

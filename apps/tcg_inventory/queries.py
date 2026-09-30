@@ -12,13 +12,15 @@ primary-collection tie-break logic in SQL.
 from __future__ import annotations
 
 import datetime as dt
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session, selectinload
 
 import constants
-from models import Card, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Set, Transaction
+import pricing
+from models import Card, CardPrice, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Set, Transaction
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -477,11 +479,10 @@ def top_valuable_cards(db: Session, limit: int = 10) -> list[Card]:
     owned can't appear here as if it still were -- see issue #132, same
     reasoning as `Card.unique_value`'s qty gating.
     """
-    display_price = func.coalesce(Card.tcgplayer_price, Card.reference_price)
     return (
         db.query(Card)
-        .filter(display_price.isnot(None), Card.qty > 0)
-        .order_by(display_price.desc())
+        .filter(Card.market_price.isnot(None), Card.qty > 0)
+        .order_by(Card.market_price.desc())
         .limit(limit)
         .all()
     )
@@ -641,7 +642,13 @@ def card_price_history(db: Session, card_id: int) -> list[dict]:
     for r in rows:
         by_date[r.date] = r  # later source wins
     return [
-        {"date": d, "label": d.strftime("%Y-%m-%d"), "price": r.reference_price, "qty": r.qty}
+        {
+            "date": d,
+            "label": d.strftime("%Y-%m-%d"),
+            "price": r.reference_price,
+            "qty": r.qty,
+            "source": r.price_source,  # null before issue #210
+        }
         for d, r in sorted(by_date.items())
     ]
 
@@ -712,6 +719,36 @@ def _snapshot_state(db: Session, date: dt.date) -> dict[int, tuple[int, float]]:
     return {r.card_id: (r.qty, r.reference_price or 0.0) for r in rows}  # later source wins
 
 
+def _snapshot_price_sources(db: Session, date: dt.date) -> dict[int, str | None]:
+    """card_id -> the price source recorded in `date`'s last snapshot (same
+    precedence as _snapshot_state). None for rows written before issue #210
+    added CardSnapshot.price_source."""
+    rows = (
+        db.query(CardSnapshot.card_id, CardSnapshot.source, CardSnapshot.price_source)
+        .filter(CardSnapshot.date == date)
+        .all()
+    )
+    rows.sort(key=lambda r: _SNAPSHOT_SOURCE_ORDER.get(r.source, len(_SNAPSHOT_SOURCE_ORDER)))
+    return {r.card_id: r.price_source for r in rows}  # later source wins
+
+
+def _legacy_price_source(db: Session) -> dict[int, str]:
+    """What a pre-#210 snapshot's price (price_source NULL) most likely came
+    from. The old rule was "TCGplayer (pokemontcg.io) if the card had one,
+    else Dex", and a pokemontcg price, once found, was never cleared -- so a
+    card that has a pokemontcg price today almost certainly showed it then
+    too. Only wrong for a card first priced by pokemontcg.io after the
+    snapshot date, which then drops out of Price movers for one period
+    rather than a real source switch showing up as a price move."""
+    with_tcgplayer = {
+        card_id
+        for (card_id,) in db.query(CardPrice.card_id).filter(
+            CardPrice.source == pricing.SOURCE_POKEMONTCG, CardPrice.price_nok.isnot(None)
+        )
+    }
+    return defaultdict(lambda: pricing.SOURCE_DEX, {cid: pricing.SOURCE_POKEMONTCG for cid in with_tcgplayer})
+
+
 # Below this absolute change (kr, per copy) a price move's % is hidden: a
 # 3 kr card going to 6 kr is "+100 %" but not news.
 PRICE_MOVE_PCT_MIN_KR = 10.0
@@ -747,6 +784,13 @@ def price_movers(
 
     Ranked by kr, not %, so a 5 kr card doubling doesn't crowd out a real
     move. Only cards owned now (qty > 0) with a price on both days count.
+
+    A card whose price *source* differs between the snapshot and today
+    (e.g. Dex -> pokemontcg.io, pricing.py) is left out and counted in
+    `n_source_changes` instead -- that's a switch, not a market move (issue
+    #210). Snapshots from before price_source existed get their source
+    inferred (_legacy_price_source); a card with no source on either side
+    is never counted as a switch.
     """
     today = today or dt.date.today()
     start = today - dt.timedelta(days=days)
@@ -757,12 +801,25 @@ def price_movers(
     if since is None:
         return None
     before = _snapshot_state(db, since)
+    before_sources = _snapshot_price_sources(db, since)
+    legacy_sources = None
     moves = []
+    n_source_changes = 0
     for card in cards:
         old = before.get(card.id, (0, 0.0))[1]
         new = card.display_price or 0.0
-        if card.qty > 0 and old > 0 and new > 0 and new != old:
-            moves.append(PriceMove(card, old, new))
+        if not (card.qty > 0 and old > 0 and new > 0 and new != old):
+            continue
+        old_source = before_sources.get(card.id)
+        if old_source is None:
+            if legacy_sources is None:
+                legacy_sources = _legacy_price_source(db)
+            old_source = legacy_sources[card.id]
+        new_source = card.market_price_source
+        if old_source and new_source and old_source != new_source:
+            n_source_changes += 1
+            continue
+        moves.append(PriceMove(card, old, new))
     return {
         "since": since,
         "days": (today - since).days,
@@ -770,6 +827,7 @@ def price_movers(
         "down": sorted((m for m in moves if m.change < 0), key=lambda m: m.change)[:limit],
         "n_up": sum(1 for m in moves if m.change > 0),
         "n_down": sum(1 for m in moves if m.change < 0),
+        "n_source_changes": n_source_changes,
     }
 
 
