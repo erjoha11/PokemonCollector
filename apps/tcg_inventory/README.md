@@ -638,7 +638,9 @@ become a real database (Vercel's filesystem is read-only/ephemeral —
 `db.py` refuses to start on Vercel without `DATABASE_URL` set, rather than
 silently failing on writes), and the app is now reachable by anyone with
 the URL, so it needs a login. Both are optional until you set the matching
-env vars — nothing here changes local `python app.py` behavior.
+env vars — nothing here changes local `python app.py` behavior. Once prod
+holds real data, set up the weekly encrypted backup too: see "Backups and
+restore" below.
 
 ### 1. Supabase (database + login)
 
@@ -1012,6 +1014,229 @@ Norges Bank rate replaced the fixed 10.5 USD/NOK (issue #209) keep their
 drop as cards get re-priced. See `HANDOFF.md`. There is no
 manual CSV-upload page in the app (removed — the only sync entry points are
 the Dropbox-based ones above and the price-refresh cron).
+
+## Backups and restore
+
+Issue #223. `transactions` (what was actually paid) is the one dataset that
+can't be rebuilt from a Dex export, and prod is sometimes edited directly
+with SQL, so prod gets an **encrypted weekly `pg_dump`** in a Dropbox folder
+we control, taken by the GitHub Actions workflow
+`.github/workflows/prod-backup.yml`. This repo is public, so the workflow
+is built so that nothing unencrypted reaches its logs or artifacts: see the
+header comment in the workflow file.
+
+### What Supabase itself provides
+
+From Supabase's docs
+([Database backups](https://supabase.com/docs/guides/platform/backups),
+checked 2026-09-30):
+
+| Plan | Automatic daily backups | Retention | Downloadable |
+|---|---|---|---|
+| Free | **None.** Supabase tells Free projects to export their own data regularly (`supabase db dump` / `pg_dump`) and keep it off-site | — | — |
+| Pro | Yes | 7 days | No, for projects on the newer *physical* backups (Postgres 15.8.1.079 and later, which covers prod's Postgres 17): "they are not available for direct download". Restore-in-place only |
+| Team | Yes | 14 days | Same as Pro |
+| Enterprise | Yes | up to 30 days | Same as Pro |
+
+- **PITR** (point-in-time recovery, 2-minute RPO) is a paid add-on on
+  Pro/Team/Enterprise, needs at least the Small compute add-on, and costs
+  about $100/month for 7 days' retention (up to about $400/month for 28
+  days). With PITR on, Supabase stops taking daily backups.
+- A dashboard restore overwrites the **whole project**, and the project is
+  down while it runs. It can't restore a single table, and it doesn't
+  restore custom roles' passwords.
+- Backups don't include Storage API objects (this app stores none).
+
+**Prod's plan (`nverpumoregkjfeddrwa`): to confirm by the user.** None of
+the tools available when this was written could read the billing plan
+without write access. Check Dashboard → Organization → Billing, or the
+project's Database → Backups page (Free projects show no backups there).
+On Free there is no Supabase-side backup at all, and the workflow below is
+the only copy. On Pro it's a second, downloadable, off-Supabase copy that
+can restore individual tables.
+
+### How the backup works
+
+Weekly (Sundays 03:17 UTC) and on demand (`gh workflow run prod-backup.yml`):
+
+1. `pg_dump` 17 (from the PGDG apt repo, since `pg_dump` must be at least
+   the server's major version and prod runs Postgres 17) dumps the whole
+   `public` schema, which covers every app table (`transactions`, `cards`,
+   `collections`, `listings`, `releases`, `card_snapshots`, masterdata, ...).
+   It uses `--format=custom --no-owner --no-privileges`.
+2. The dump is piped straight into `age -r <public key>`, so plaintext never
+   touches the runner's disk. CI only has the age **public** key: it can
+   create backups but can't read them.
+3. The `.dump.age` file is uploaded to Dropbox under
+   `tcg_inventory-YYYYMMDDTHHMMSSZ.dump.age` (`mode: add`, `autorename`, so
+   it never overwrites). The log shows only the file name, the encrypted
+   size, and the Dropbox path.
+
+If any required secret is missing, the job logs a warning that names the
+missing secrets and ends green without doing anything. That's the state
+until the setup below is done.
+
+**Connection string: use the Session pooler.** GitHub-hosted runners are
+IPv4-only. Supabase's direct connection host (`db.<ref>.supabase.co`) is
+IPv6-only unless you pay for the IPv4 add-on, and the shared pooler accepts
+IPv4. Use the **Session pooler** string (port **5432** on
+`aws-N-<region>.pooler.supabase.com`, username
+`<role>.nverpumoregkjfeddrwa`), not the transaction pooler on 6543 that the
+app itself uses (see "Deploying" above). pg_dump needs a real session.
+
+### One-time setup (user)
+
+1. **age keypair**, on your own machine (`brew install age`):
+   ```bash
+   age-keygen -o tcg-backup-key.txt
+   # prints "Public key: age1..."  <- this is BACKUP_AGE_RECIPIENT
+   ```
+   `tcg-backup-key.txt` is the **private** identity and the only thing that
+   can decrypt a backup. Store it **outside this repo**: in a password
+   manager (as a secure note) plus one offline copy (e.g. a USB stick or a
+   printout). Then delete the loose file. If it's lost, every backup is
+   unreadable. It never goes into GitHub or Dropbox.
+2. **Dropbox app for backups.** This is a *separate* app from the Dex
+   import one. Go to [dropbox.com/developers/apps](https://www.dropbox.com/developers/apps)
+   → Create app → **Scoped access** → **App folder** (the app then only
+   sees its own `Apps/<app name>/` folder, so it can't touch the Dex export
+   folder and vice versa). Under **Permissions**, enable
+   `files.content.write`, then submit. Note the App key and App secret.
+   Get a refresh token (`dropbox_setup.py` only requests the read scopes,
+   so do this by hand):
+   ```bash
+   # 1. Open in a browser, approve, and copy the code:
+   #    https://www.dropbox.com/oauth2/authorize?client_id=<APP_KEY>&response_type=code&token_access_type=offline
+   # 2. Exchange it (the response's "refresh_token" is what you need):
+   curl -s https://api.dropbox.com/oauth2/token \
+     -d grant_type=authorization_code -d code=<CODE> -u '<APP_KEY>:<APP_SECRET>'
+   ```
+3. **Read-only Postgres role.** This is a **write to prod**: run it
+   yourself (Supabase SQL editor) or confirm it before an agent does, and
+   log it in `HANDOFF.md`. A read-only inspection on 2026-09-30 found every
+   `public` table, sequence, and index owned by `postgres`, which is who
+   `init_db()` connects as, so the default-privileges lines below name
+   `postgres`. That way tables `init_db()` adds later are covered
+   automatically.
+   ```sql
+   CREATE ROLE backup_reader WITH LOGIN BYPASSRLS PASSWORD '<generate-a-strong-password>';
+   GRANT CONNECT ON DATABASE postgres TO backup_reader;
+   GRANT USAGE ON SCHEMA public TO backup_reader;
+   GRANT SELECT ON ALL TABLES IN SCHEMA public TO backup_reader;
+   GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO backup_reader;
+   ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON TABLES TO backup_reader;
+   ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT SELECT ON SEQUENCES TO backup_reader;
+   ```
+   `BYPASSRLS` is there so the dump keeps working if row-level security is
+   ever turned on for a table. Without it, `pg_dump` aborts with "query
+   would be affected by row-level security policy" (reproduced in the drill
+   below). The role still has only `SELECT`. Supabase's `postgres` role
+   has `BYPASSRLS` and `CREATEROLE`, which Postgres 16+ requires to grant
+   the attribute. The pooler picks up a new role automatically, with no
+   separate registration step.
+4. **GitHub secrets** (Settings → Secrets and variables → Actions, or
+   `gh secret set NAME` with no value argument so it prompts and the value
+   stays out of shell history):
+
+   | Secret | Value |
+   |---|---|
+   | `BACKUP_DATABASE_URL` | Session pooler URL as `backup_reader`: `postgresql://backup_reader.nverpumoregkjfeddrwa:<password>@aws-1-eu-west-1.pooler.supabase.com:5432/postgres` (copy the host from Dashboard → Connect → Session pooler) |
+   | `BACKUP_AGE_RECIPIENT` | the `age1...` public key from step 1 |
+   | `BACKUP_DROPBOX_APP_KEY` | backup Dropbox app's key |
+   | `BACKUP_DROPBOX_APP_SECRET` | backup Dropbox app's secret |
+   | `BACKUP_DROPBOX_REFRESH_TOKEN` | refresh token from step 2 |
+
+   Optional **variable** (not a secret) `BACKUP_DROPBOX_PATH`: the
+   destination folder, default `/backups`. With an App-folder app this is
+   relative to `Apps/<app name>/`.
+5. **Test it:** `gh workflow run prod-backup.yml`, then
+   `gh run watch` / `gh run list --workflow prod-backup.yml`. The run
+   summary shows the Dropbox path. Then do the restore below once with that
+   real file.
+
+### Restoring a backup
+
+Decrypted dumps contain everything, including every price paid, so do this
+**outside the repo** (e.g. in `~/tcg-restore/`) and delete the plaintext
+afterwards.
+
+```bash
+# 1. Download the .dump.age file from Dropbox, then decrypt it:
+age -d -i /path/to/tcg-backup-key.txt tcg_inventory-20261004T031700Z.dump.age > restore.dump
+
+# 2. A throwaway local Postgres 17 (any of these):
+docker run -d --name tcg-restore -e POSTGRES_PASSWORD=restore -p 55432:5432 postgres:17
+#    or without Docker: the EDB zip binaries / Postgres.app, then initdb + pg_ctl
+export PGPASSWORD=restore
+createdb -h localhost -p 55432 -U postgres tcg_restore
+
+# 3. Restore. The dump contains `CREATE SCHEMA public`, which a fresh
+#    database already has, so skip that one entry (otherwise pg_restore
+#    reports "schema public already exists" and exits non-zero):
+pg_restore -l restore.dump | grep -v ' SCHEMA - public ' > restore.list
+pg_restore -h localhost -p 55432 -U postgres --no-owner --no-privileges \
+  --exit-on-error -L restore.list -d tcg_restore restore.dump
+
+# 4. Sanity check:
+psql -h localhost -p 55432 -U postgres -d tcg_restore -c "
+  SELECT (SELECT count(*) FROM transactions) AS transactions,
+         (SELECT count(*) FROM cards)        AS cards,
+         (SELECT count(*) FROM collections)  AS collections,
+         (SELECT count(*) FROM listings)     AS listings,
+         (SELECT count(*) FROM releases)     AS releases,
+         (SELECT max(version) FROM schema_meta) AS schema_version;"
+
+# 5. Optional: run the app against it
+cd apps/tcg_inventory && DATABASE_URL=postgresql://postgres:restore@localhost:55432/tcg_restore python app.py
+
+# 6. Clean up the plaintext
+rm restore.dump restore.list && docker rm -f tcg-restore
+```
+
+**Real disaster (restore into Supabase):** either restore into a **new**
+Supabase project (steps 3–4 against its Session pooler URL as `postgres`,
+then point Vercel's `DATABASE_URL` at it) or, to repair specific tables in
+the existing project, restore just those with `pg_restore -t <table>
+--data-only` after emptying them (or restore into a scratch local DB and
+copy the rows you need across). Take a fresh backup of the current state
+first. Restoring over prod is itself a direct prod write (see the root
+`CLAUDE.md`, "Prod database access").
+
+### Restore drill
+
+**2026-09-30, local, synthetic data (no prod data involved):** Postgres
+17.11 (EDB macOS binaries), age 1.3.2, SQLAlchemy 2.0.52/psycopg2 2.9.13.
+Schema created by `init_db()` against an empty Postgres DB (schema version
+10, 20 tables), then seeded with 25 cards, 3 collections, 25
+`card_collections`, 20 transactions, 1 listing (2 `listing_cards`), and 3
+releases (incl. non-ASCII `æøå` text). The role SQL above was applied
+as-is (with the database name swapped), then a table was created *after*
+the grants and RLS was enabled on `transactions`, to exercise the
+default-privileges and `BYPASSRLS` lines. The workflow's own dump and
+Dropbox-upload shell steps were extracted and run as the `backup_reader`
+role (upload against a local mock of Dropbox's two endpoints). Then came
+`age -d` and the `pg_restore` above into a second, fresh database.
+**Result: pass.** Every table's row count matched source and restore
+(including the post-grant table), sequences carried over
+(`transactions_id_seq` = 20), the non-ASCII text survived, and the app's
+`/`, `/transactions`, `/listings` and `/releases` pages all returned 200
+against the restored DB. Also confirmed: without `BYPASSRLS`, `pg_dump`
+fails on the RLS-enabled table.
+
+**Prod drill: pending.** "One real backup produced and restored" needs the
+setup above and one successful workflow run. After that, restore that real
+file locally following the steps above and add a dated line here.
+
+### Follow-ups (not built)
+
+- **Retention/pruning:** nothing deletes old backups. At prod's current
+  size a weekly file is well under a few MB, so it's not urgent. Prune by
+  hand, or add a pruning step later (`files/list_folder` +
+  `files/delete_v2`, which needs `files.content.write` plus
+  `files.metadata.read`).
+- A backup failing silently: a failed run shows as a red scheduled run in
+  Actions (and GitHub emails the workflow's last editor), but nothing else
+  alerts.
 
 ## Project layout
 

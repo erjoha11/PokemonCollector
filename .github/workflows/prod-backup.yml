@@ -1,0 +1,166 @@
+# Weekly encrypted backup of tcg_inventory's prod database (Supabase) to
+# Dropbox. Issue #223. Setup and restore steps: apps/tcg_inventory/README.md,
+# "Backups and restore".
+#
+# This repo is PUBLIC, so nothing unencrypted may reach the logs, the
+# workspace-as-artifact, or the repo:
+#   - pg_dump is piped straight into `age -r <public key>`; plaintext never
+#     touches the runner's disk. CI only holds the age *public* key -- it
+#     can encrypt backups but never decrypt them.
+#   - No `set -x`, no printing of dump content, no actions/upload-artifact
+#     (artifacts on a public repo are downloadable by any signed-in user).
+#   - The short-lived Dropbox access token is masked the moment it exists.
+#
+# Connection: GitHub-hosted runners are IPv4-only and Supabase's direct
+# connection host (db.<ref>.supabase.co) is IPv6-only without the paid IPv4
+# add-on, so BACKUP_DATABASE_URL must be the *Session pooler* string
+# (aws-N-<region>.pooler.supabase.com, port 5432, user
+# `<role>.nverpumoregkjfeddrwa`) -- not the transaction pooler (6543), which
+# is what the app itself uses and which pg_dump shouldn't run through.
+#
+# With the secrets missing (e.g. before setup), the job logs a warning and
+# exits successfully without attempting anything.
+
+name: prod-backup
+
+on:
+  schedule:
+    - cron: "17 3 * * 0" # Sundays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prod-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check required secrets
+        id: check
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_DROPBOX_APP_KEY: ${{ secrets.BACKUP_DROPBOX_APP_KEY }}
+          BACKUP_DROPBOX_APP_SECRET: ${{ secrets.BACKUP_DROPBOX_APP_SECRET }}
+          BACKUP_DROPBOX_REFRESH_TOKEN: ${{ secrets.BACKUP_DROPBOX_REFRESH_TOKEN }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in BACKUP_DATABASE_URL BACKUP_AGE_RECIPIENT \
+                      BACKUP_DROPBOX_APP_KEY BACKUP_DROPBOX_APP_SECRET \
+                      BACKUP_DROPBOX_REFRESH_TOKEN; do
+            # Indirect expansion: checks the value without ever printing it.
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::warning title=prod-backup skipped::Missing repository secret(s): ${missing[*]}. No backup was taken. See apps/tcg_inventory/README.md \"Backups and restore\"."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install pg_dump 17 (PGDG) and age
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          # pg_dump's major version must be >= the server's (prod runs
+          # Postgres 17); Ubuntu's own packages lag, so use the PGDG repo.
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17 age > /dev/null
+          /usr/lib/postgresql/17/bin/pg_dump --version
+          age --version
+
+      - name: Dump and encrypt
+        id: dump
+        if: steps.check.outputs.ready == 'true'
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          PGCONNECT_TIMEOUT: "30"
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+          file="tcg_inventory-$(date -u +%Y%m%dT%H%M%SZ).dump.age"
+          # Plaintext only ever exists inside this pipe. pipefail makes a
+          # pg_dump failure fail the step even though age exits 0.
+          /usr/lib/postgresql/17/bin/pg_dump "$BACKUP_DATABASE_URL" \
+              --format=custom --no-owner --no-privileges --schema=public \
+            | age -r "$BACKUP_AGE_RECIPIENT" > "$RUNNER_TEMP/$file"
+          size=$(stat -c %s "$RUNNER_TEMP/$file")
+          echo "Encrypted backup: $file ($size bytes)"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Dropbox
+        if: steps.check.outputs.ready == 'true'
+        env:
+          BACKUP_DROPBOX_APP_KEY: ${{ secrets.BACKUP_DROPBOX_APP_KEY }}
+          BACKUP_DROPBOX_APP_SECRET: ${{ secrets.BACKUP_DROPBOX_APP_SECRET }}
+          BACKUP_DROPBOX_REFRESH_TOKEN: ${{ secrets.BACKUP_DROPBOX_REFRESH_TOKEN }}
+          # Optional repo variable; relative to the Dropbox app's own folder
+          # when the app uses "App folder" access (recommended).
+          BACKUP_DROPBOX_PATH: ${{ vars.BACKUP_DROPBOX_PATH || '/backups' }}
+          FILE: ${{ steps.dump.outputs.file }}
+        run: |
+          set -euo pipefail
+          # 1. Refresh token -> short-lived access token. Credentials go to
+          # curl via a stdin config, not argv; the response body (which
+          # holds the token) is never printed on success.
+          token_json=$(curl -sS -w '\n%{http_code}' https://api.dropbox.com/oauth2/token --config - <<EOF
+          data-urlencode = "grant_type=refresh_token"
+          data-urlencode = "refresh_token=${BACKUP_DROPBOX_REFRESH_TOKEN}"
+          user = "${BACKUP_DROPBOX_APP_KEY}:${BACKUP_DROPBOX_APP_SECRET}"
+          EOF
+          )
+          code=${token_json##*$'\n'}
+          body=${token_json%$'\n'*}
+          if [ "$code" != "200" ]; then
+            # Dropbox's OAuth error JSON (e.g. {"error": "invalid_grant"})
+            # never echoes the credentials back.
+            echo "::error::Dropbox token exchange failed (HTTP $code): $body"
+            exit 1
+          fi
+          access_token=$(jq -r '.access_token // empty' <<< "$body")
+          unset token_json body
+          if [ -z "$access_token" ]; then
+            echo "::error::Dropbox token response had no access_token"
+            exit 1
+          fi
+          echo "::add-mask::$access_token"
+
+          # 2. Upload (single request; fine up to 150 MB -- prod's whole
+          # database is ~20 MB before compression).
+          dest="${BACKUP_DROPBOX_PATH%/}/$FILE"
+          api_arg=$(jq -cn --arg path "$dest" \
+            '{path: $path, mode: "add", autorename: true, mute: true}')
+          resp=$(curl -sS -w '\n%{http_code}' -X POST https://content.dropboxapi.com/2/files/upload \
+            --config - \
+            --header "Content-Type: application/octet-stream" \
+            --header "Dropbox-API-Arg: $api_arg" \
+            --data-binary @"$RUNNER_TEMP/$FILE" <<EOF
+          header = "Authorization: Bearer ${access_token}"
+          EOF
+          )
+          code=${resp##*$'\n'}
+          body=${resp%$'\n'*}
+          if [ "${code:0:1}" != "2" ]; then
+            echo "::error::Dropbox upload failed (HTTP $code): $body"
+            exit 1
+          fi
+          stored=$(jq -r '.path_display // empty' <<< "$body")
+          size=$(jq -r '.size // empty' <<< "$body")
+          echo "Uploaded to Dropbox: ${stored:-$dest} ($size bytes)"
+          echo "### prod-backup: \`${stored:-$dest}\` ($size bytes, age-encrypted)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove local encrypted file
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/tcg_inventory-*.dump.age
