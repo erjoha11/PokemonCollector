@@ -769,6 +769,22 @@ seeded `dex` rows are dated at the last Dex sync (or the day a card went
 missing from Dex); `pokemontcg` rows keep `tcgplayer_price_updated_at` and
 have no native USD value or rate (not recorded before #210).
 
+**In the UI** (part 2 of #210). The price is labelled "Market price"
+everywhere it stands alone ("Price" is kept for transaction prices). Source
+labels come from `pricing.SOURCE_LABELS`: `dex` is "TCGplayer via Dex" for
+every language, Japanese included (Dex uses TCGplayer prices for Japanese
+cards too). The card page shows the source and age under the price
+("TCGplayer via Dex · 2 d ago") with a chip per flag (`pricing.FLAG_LABELS`),
+and a "Price sources" table with every `card_prices` row in chain order,
+open by default only when the card is flagged. Charts keep source-switch
+points (Price movers leaves them out) and say so in the tooltip: the card
+price chart per point (`card_price_history`'s `source_note`), the Market
+Value chart per day with a card count (`queries.history_source_notes`,
+window functions in SQL; pre-#210 snapshots get their source inferred like
+Price movers). Price movers' change `title` names the source. The price sort
+key is `market_price` (Inventory `sort`, Dashboard `tsort`, card picker
+`gsort`); the pre-#210 `reference_price` is still accepted as an alias.
+
 ### Price refresh (Vercel Cron)
 
 Each card's `pokemontcg` price (see "Pricing" above) is normally

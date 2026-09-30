@@ -69,13 +69,13 @@
 
 <div class="breakdown-grid">
   <div class="card-pair">
-  {% set dashboard_market_value_heading %}Market Value {{ info("The collection's actual value per day, from the daily snapshots — real historical prices, not an estimate — ending on today's value. Pick what to count (unique cards, duplicates only, or everything) and a period; the change is from the first to the last day shown. See Transactions for the full financial picture. Empty until at least one day of snapshots has accumulated.", below=true) }}{% endset %}
+  {% set dashboard_market_value_heading %}Market Value {{ info("The collection's actual value per day, from the daily snapshots — real historical prices, not an estimate — ending on today's value. Pick what to count (unique cards, duplicates only, or everything) and a period; the change is from the first to the last day shown. See Transactions for the full financial picture. Empty until at least one day of snapshots has accumulated. A day where some cards' price switched source says so in its tooltip.", below=true) }}{% endset %}
   {{ market_value_card('dashboard-market-value-card', dashboard_market_value_heading, extra_class='viz-root') }}
 
   <div class="card" id="dashboard-top-cards-card">
     <h2>Most valuable cards {{ info('The individual cards with the highest price — not adjusted for how many of each you own. Below the price: gain, the value of the copies you own minus what you paid for them (only when a purchase is registered).', align_right=true, below=true) }}</h2>
     <div class="viz-filter top-cards-sort" aria-label="Sort">
-      {% for label, field in [('Price', 'reference_price'), ('Name', 'name'), ('Set', 'set'), ('No.', 'number')] %}
+      {% for label, field in [('Market price', 'market_price'), ('Name', 'name'), ('Set', 'set'), ('No.', 'number')] %}
       {%- set href = sort_url(request, 'tsort', 'tdir', field, tsort, tdir, '/') -%}
       <a href="{{ href }}" hx-get="{{ href }}" hx-target="#dashboard-top-cards-card" hx-select="#dashboard-top-cards-card" hx-swap="outerHTML"
          class="viz-filter-pill{{ ' active' if tsort == field else '' }}">{{ label }}{% if tsort == field %} {{ '▲' if tdir == 'asc' else '▼' }}{% endif %}</a>

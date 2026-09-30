@@ -1394,6 +1394,13 @@ logs `[init_db] card price backfill skipped` and retries next start;
 dated at the last Dex sync; seeded `pokemontcg` rows have no native USD
 value/rate.
 
+**Confirmed on prod (verified read-only 2026-09-30):** the v10 migration and
+the backfill ran on the first request after deploy; that cold start took
+~50 s, a one-time migration cost worth knowing about for future schema bumps.
+Result: `card_prices` dex 823, pokemontcg 209; `cards.market_price_source`
+dex 823 (value 11,531 NOK, 1 flagged), pokemontcg 1, NULL 45 (all 45 flagged
+`no_price`).
+
 ## Expect after deploy
 
 - **Displayed price changes for ~208 cards**: they have both a Dex and a
@@ -1414,3 +1421,31 @@ value/rate.
 
 No direct production-database changes were made this session (read-only
 SELECTs only, to size the backfill).
+
+# Handoff notes — 2026-09-30 session (issue #210, pricing Phase 2, part 2: UI)
+
+## Code (in git, PR "Pricing Phase 2 part 2: source line, per-source table, switch tooltips, label cleanup")
+
+- Card page: "Market price" KPI, a source line under it ("TCGplayer via Dex ·
+  2 d ago") with flag chips (amber; red only for "No price"), and a
+  "Price sources" `<details>` table (one row per `card_prices` row, chain
+  order: native price, NOK, fetched, "Used" / "Lookup failed" / flags),
+  open by default only when the card is flagged. Replaces the old one-line
+  "Prices" entry that read the legacy mirror columns.
+- Switch tooltips: `queries.history_source_notes` (Market Value chart, SQL
+  window functions, per day "Source: A → B (N cards)") and
+  `card_price_history`'s `source_note` (card price chart). Pre-#210
+  snapshots get their source inferred like Price movers. Checked read-only
+  on prod: the query takes ~0.4 s over 24k snapshot rows, and today's live
+  point shows "TCGplayer via pokemontcg.io → TCGplayer via Dex (208 cards)",
+  the #222 deploy switch. Tomorrow's first snapshot will carry that note
+  instead.
+- Price movers: the change's `title` names the current source.
+- Labels: "Market price" wherever a card price stands alone, "TCGplayer"
+  spelling, no "Dex's price". Sort key `reference_price` -> `market_price`
+  (Inventory `sort`, Dashboard `tsort`, card picker `gsort`); the old key is
+  still accepted as an alias (`app._SORT_KEY_ALIASES`).
+
+No schema change, no direct production-database changes (read-only SELECTs
+only). Still open, in #212: the "Price needs a look" filter, "!" markers,
+and the dashboard line.

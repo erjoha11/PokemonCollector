@@ -97,6 +97,24 @@ templates.env.filters["kr"] = _format_kr
 templates.env.filters["lang"] = constants.language_code
 
 
+def _days_ago(d: dt.date | None) -> str:
+    """"today" / "1 d ago" / "12 d ago" -- a price's age on the card page."""
+    if d is None:
+        return ""
+    days = (dt.date.today() - d).days
+    if days <= 0:
+        return "today"
+    return f"{days} d ago"
+
+
+templates.env.filters["days_ago"] = _days_ago
+# Price source / flag labels (pricing.py, issue #210).
+templates.env.filters["source_label"] = pricing.source_label
+templates.env.filters["price_flags"] = pricing.flag_list
+templates.env.filters["flag_label"] = pricing.flag_label
+templates.env.filters["flag_title"] = pricing.flag_title
+
+
 def _card_image_large(url: str | None) -> str | None:
     """The bigger version of a stored card thumbnail, for the card viewer
     (partials/card_viewer.html). Each image host serves its sizes under a
@@ -189,7 +207,7 @@ SORT_COLUMNS = {
     "number": func.coalesce(Card.number_int, 999999),
     "series": Card.series,
     "set": Card.set,
-    "reference_price": _MARKET_PRICE_COL,
+    "market_price": _MARKET_PRICE_COL,
     "qty": Card.qty,
     "total_value": Card.qty * func.coalesce(_MARKET_PRICE_COL, 0),
     "rarity": queries.rarity_sort_expr(Card.rarity),  # tier order, not alphabetical
@@ -206,8 +224,16 @@ TOP_CARD_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "number": lambda c: c.number_int if c.number_int is not None else 999999,
     "set": lambda c: (c.set or "").lower(),
-    "reference_price": lambda c: c.display_price or 0,
+    "market_price": lambda c: c.display_price or 0,
 }
+
+# The price sort key was `reference_price` before issue #210; old links and
+# bookmarks with ?sort=reference_price (and tsort=/gsort=) still work.
+_SORT_KEY_ALIASES = {"reference_price": "market_price"}
+
+
+def _sort_key(key: str) -> str:
+    return _SORT_KEY_ALIASES.get(key, key)
 
 
 def _sorted_rows(rows, sort: str, direction: str, keys: dict):
@@ -361,6 +387,8 @@ def _market_value_context(
         "market_value_invested": invested_line,
         "market_value_change": queries.period_change(history),
         "market_value_breakdown": queries.value_change_breakdown(db, metric, history, live_cards),
+        # Tooltip lines at price-source switch points (issue #210).
+        "market_value_source_notes": queries.history_source_notes(db, history, live_cards),
         "market_value_stats": _market_value_stats(headline, economic, metric),
         "metric": metric,
         "metric_label": queries.VALUE_GROWTH_METRICS[metric][0],
@@ -390,7 +418,7 @@ def dashboard(
     pdir: str = "desc",
     fsort: str = "name",
     fdir: str = "asc",
-    tsort: str = "reference_price",
+    tsort: str = "market_price",
     tdir: str = "desc",
     metric: str = "total",
     period: str = "all",
@@ -437,6 +465,7 @@ def dashboard(
         _sort_cards_in_buckets(collection_rows, csort, cdir)
         _sort_cards_in_buckets(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
+        tsort = _sort_key(tsort)
         top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
 
         # Pokemon is different from the other breakdowns: it's a flat top-10
@@ -703,6 +732,7 @@ def inventory(
     page: int = 1,
     page_size: int = INVENTORY_PAGE_SIZE,
 ):
+    sort = _sort_key(sort)
     db = get_db_session()
     try:
         query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity, language, unowned)
@@ -850,6 +880,7 @@ def card_detail(request: Request, card_pk: int):
                 selectinload(Card.binder),
                 selectinload(Card.linked_set),
                 selectinload(Card.transactions),
+                selectinload(Card.prices),
             )
             .filter(Card.id == card_pk)
             .one_or_none()
@@ -877,6 +908,9 @@ def card_detail(request: Request, card_pk: int):
                 "invested": invested,
                 "gain": (card.total_value - invested) if invested is not None else None,
                 "price_history": history,
+                # Per-source table, display-priority order (pricing.CHAIN).
+                "price_rows": sorted(card.prices, key=lambda p: pricing.chain_rank(p.source)),
+                "fresh_days": pricing.FRESH_DAYS,
             },
         )
     finally:
@@ -1489,7 +1523,7 @@ def _card_field_sort_keys(purchase_prices_by_card: dict[int, list[float]] | None
         "variant": lambda c: (c.variant or "").lower(),
         "series": lambda c: (c.series or "").lower(),
         "set": lambda c: (c.set or "").lower(),
-        "reference_price": lambda c: c.display_price if c.display_price is not None else -1,
+        "market_price": lambda c: c.display_price if c.display_price is not None else -1,
         "card_id": lambda c: c.card_id.lower(),
     }
     if purchase_prices_by_card is not None:
@@ -1676,6 +1710,7 @@ def _transactions_context(
         picker_cards = [c for c in all_picker_cards if c.created_at is not None]
     else:
         picker_cards = list(all_picker_cards)
+    gsort = _sort_key(gsort)
     picker_cards = _sorted_rows(picker_cards, gsort, gdir, card_keys)
     undated_count = sum(1 for c in picker_cards if c.created_at is None)
     pick_counts = {
@@ -2515,7 +2550,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 
 @app.get("/cron/price-refresh")
 def cron_price_refresh(request: Request, secret: str = ""):
-    """Scheduled TCGPlayer price refresh, decoupled from Dex sync (see
+    """Scheduled TCGplayer price refresh, decoupled from Dex sync (see
     price_refresh.py and issue #93) -- its own Vercel Cron entry in
     vercel.json, separate from /cron/dropbox-sync's schedule so pricing
     keeps moving even on a day the Dex sync doesn't run (or once Dex sync

@@ -2,7 +2,7 @@
 {% block title %}Inventory – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info %}
 {% block content %}
-<h1>Inventory {{ info("Price = Dex's market price per card. Total value = price × how many you own of that exact print (duplicates included).") }}</h1>
+<h1>Inventory {{ info("Market price = the card's current market price (TCGplayer first; the card's page shows which source). Total value = market price × how many you own of that exact print (duplicates included).") }}</h1>
 
 {% include "partials/kpi_module.html" %}
 

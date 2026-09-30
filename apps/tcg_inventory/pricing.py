@@ -62,10 +62,58 @@ FRESH_DAYS = 14
 FLAG_STALE = "stale"
 FLAG_NO_PRICE = "no_price"
 FLAG_VARIANT_UNCERTAIN = "variant_price_uncertain"
+FLAG_LOW_CONFIDENCE = "low_confidence"
 # A source row carrying one of these is never chosen while it's fresh (it
 # can still be the stale last resort). Nothing writes one yet; #212's
 # cross-checks will.
-DISQUALIFYING_FLAGS = frozenset({"low_confidence"})
+DISQUALIFYING_FLAGS = frozenset({FLAG_LOW_CONFIDENCE})
+
+# Flag chips on the card page: (label, tooltip). Unknown flags fall back to
+# the raw value, so a flag added later still shows up (just unlabelled).
+FLAG_LABELS: dict[str, tuple[str, str]] = {
+    FLAG_STALE: ("Stale", f"No source has a price fetched in the last {FRESH_DAYS} days -- showing the most recent one."),
+    FLAG_NO_PRICE: ("No price", "No source has ever returned a price for this card."),
+    FLAG_VARIANT_UNCERTAIN: (
+        "Variant uncertain",
+        "The source had several prints of this card and the variant couldn't be matched to one of them.",
+    ),
+    FLAG_LOW_CONFIDENCE: ("Low confidence", "This price failed a cross-check against the other sources."),
+}
+
+
+def source_label(source: str | None) -> str:
+    """Human label for a `card_prices.source` / `market_price_source` value
+    ("TCGplayer via Dex"). The raw value for anything not in SOURCE_LABELS,
+    "–" for none."""
+    if not source:
+        return "–"
+    return SOURCE_LABELS.get(source, source)
+
+
+def flag_list(value: str | None) -> list[str]:
+    """A stored comma-joined flags value as a list (template helper)."""
+    return _split_flags(value)
+
+
+def flag_label(flag: str) -> str:
+    return FLAG_LABELS.get(flag, (flag, ""))[0]
+
+
+def flag_title(flag: str) -> str:
+    return FLAG_LABELS.get(flag, (flag, ""))[1]
+
+
+def source_switch_note(old: str | None, new: str | None, n_cards: int | None = None) -> str | None:
+    """Chart tooltip line for a price-source change between two consecutive
+    points ("Source: TCGplayer via pokemontcg.io → TCGplayer via Dex"), or
+    None when it isn't a switch. Gaining or losing a price altogether (either
+    side None) isn't a switch, same rule as queries.price_movers."""
+    if not old or not new or old == new:
+        return None
+    note = f"Source: {source_label(old)} → {source_label(new)}"
+    if n_cards is not None:
+        note += f" ({n_cards} card{'s' if n_cards != 1 else ''})"
+    return note
 
 _CHUNK = 500
 
@@ -79,8 +127,12 @@ def _join_flags(flags: Iterable[str]) -> str | None:
     return ",".join(unique) if unique else None
 
 
-def _chain_rank(source: str) -> int:
+def chain_rank(source: str) -> int:
+    """Position in CHAIN (display priority); unknown sources sort last."""
     return CHAIN.index(source) if source in CHAIN else len(CHAIN)
+
+
+_chain_rank = chain_rank
 
 
 @dataclass(frozen=True)

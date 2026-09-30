@@ -15,7 +15,7 @@ import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, literal, null, select
 from sqlalchemy.orm import Session, selectinload
 
 import constants
@@ -641,16 +641,148 @@ def card_price_history(db: Session, card_id: int) -> list[dict]:
     by_date: dict[dt.date, CardSnapshot] = {}
     for r in rows:
         by_date[r.date] = r  # later source wins
-    return [
-        {
-            "date": d,
-            "label": d.strftime("%Y-%m-%d"),
-            "price": r.reference_price,
-            "qty": r.qty,
-            "source": r.price_source,  # null before issue #210
-        }
-        for d, r in sorted(by_date.items())
-    ]
+    legacy = None
+    points = []
+    prev_source = None
+    for d, r in sorted(by_date.items()):
+        source = r.price_source
+        if source is None and r.reference_price is not None:
+            # Pre-#210 snapshot (no price_source recorded): infer its source
+            # the same way price_movers does, for switch detection only.
+            if legacy is None:
+                legacy = _legacy_price_source(db, card_id)
+            source = legacy[card_id]
+        points.append(
+            {
+                "date": d,
+                "label": d.strftime("%Y-%m-%d"),
+                "price": r.reference_price,
+                "qty": r.qty,
+                "source": r.price_source,  # as recorded; null before issue #210
+                # Tooltip line where this point's price came from a different
+                # source than the previous one's (issue #210), else None.
+                "source_note": pricing.source_switch_note(prev_source, source) if points else None,
+            }
+        )
+        prev_source = source
+    return points
+
+
+def _effective_snapshot_source(ptcg_card_id):
+    """SQL counterpart of card_price_history's per-point source: the
+    snapshot's recorded price_source, or for a pre-#210 snapshot with a price
+    the _legacy_price_source guess (`ptcg_card_id` is the outer-joined id of
+    the card's priced pokemontcg row, NULL when it has none)."""
+    return case(
+        (CardSnapshot.price_source.isnot(None), CardSnapshot.price_source),
+        (CardSnapshot.reference_price.is_(None), null()),
+        (ptcg_card_id.isnot(None), literal(pricing.SOURCE_POKEMONTCG)),
+        else_=literal(pricing.SOURCE_DEX),
+    )
+
+
+def _snapshot_source_switches(db: Session, since: dt.date | None = None) -> dict[dt.date, dict[tuple[str, str], int]]:
+    """date -> {(old source, new source): number of cards} for every snapshot
+    day on which a card's price source differs from its own previous
+    snapshot day's (each day's closing snapshot, _SNAPSHOT_SOURCE_ORDER).
+    A card gaining or losing a price altogether isn't a switch.
+
+    Done in SQL with window functions (ROW_NUMBER for the day's closing
+    snapshot, LAG for the card's previous day), so only the handful of
+    switch rows come back, never card_snapshots itself (#162).
+    """
+    ptcg = (
+        select(CardPrice.card_id)
+        .where(CardPrice.source == pricing.SOURCE_POKEMONTCG, CardPrice.price_nok.isnot(None))
+        .subquery()
+    )
+    source_rank = case(_SNAPSHOT_SOURCE_ORDER, value=CardSnapshot.source, else_=len(_SNAPSHOT_SOURCE_ORDER))
+    closing = (
+        select(
+            CardSnapshot.card_id,
+            CardSnapshot.date,
+            _effective_snapshot_source(ptcg.c.card_id).label("src"),
+            func.row_number()
+            .over(partition_by=(CardSnapshot.card_id, CardSnapshot.date), order_by=source_rank.desc())
+            .label("rn"),
+        )
+        .select_from(CardSnapshot)
+        .outerjoin(ptcg, ptcg.c.card_id == CardSnapshot.card_id)
+        .subquery()
+    )
+    lagged = (
+        select(
+            closing.c.date,
+            closing.c.src,
+            func.lag(closing.c.src).over(partition_by=closing.c.card_id, order_by=closing.c.date).label("prev"),
+        )
+        .where(closing.c.rn == 1)
+        .subquery()
+    )
+    q = (
+        select(lagged.c.date, lagged.c.prev, lagged.c.src, func.count().label("n"))
+        .where(lagged.c.prev.isnot(None), lagged.c.src.isnot(None), lagged.c.prev != lagged.c.src)
+        .group_by(lagged.c.date, lagged.c.prev, lagged.c.src)
+    )
+    if since is not None:
+        q = q.where(lagged.c.date >= since)
+    result: dict[dt.date, dict[tuple[str, str], int]] = {}
+    for date, prev, src, n in db.execute(q):
+        if isinstance(date, str):  # SQLite through a subquery, just in case
+            date = dt.date.fromisoformat(date)
+        result.setdefault(date, {})[(prev, src)] = int(n)
+    return result
+
+
+def history_source_notes(
+    db: Session, history: list[dict], live_cards: list[Card] | None = None, today: dt.date | None = None
+) -> list[list[str]]:
+    """Per real_value_history point, the tooltip lines for cards whose price
+    source switched that day ("Source: A → B (N cards)", most cards first;
+    issue #210) -- empty for most points. Charts deliberately keep those
+    points (unlike Price movers), so the tooltip is what explains a step.
+
+    When the last point is today's live value with no snapshot taken yet
+    today, it's compared against `live_cards`' current sources instead.
+    """
+    if not history:
+        return []
+    today = today or dt.date.today()
+    switches = _snapshot_source_switches(db, since=history[0]["date"])
+
+    last = history[-1]["date"]
+    if (
+        live_cards is not None
+        and last == today
+        and today not in switches
+        and db.query(CardSnapshot.id).filter(CardSnapshot.date == today).first() is None
+    ):
+        prev_date = db.query(func.max(CardSnapshot.date)).filter(CardSnapshot.date < today).scalar()
+        if prev_date is not None:
+            before = _snapshot_price_sources(db, prev_date, with_price=True)
+            legacy = None
+            counts: dict[tuple[str, str], int] = {}
+            for card in live_cards:
+                if card.id not in before:
+                    continue
+                old, had_price = before[card.id]
+                if old is None and had_price:
+                    if legacy is None:
+                        legacy = _legacy_price_source(db)
+                    old = legacy[card.id]
+                new = card.market_price_source
+                if old and new and old != new:
+                    counts[(old, new)] = counts.get((old, new), 0) + 1
+            if counts:
+                switches[today] = counts
+
+    notes = []
+    for row in history:
+        day = switches.get(row["date"], {})
+        notes.append(
+            [pricing.source_switch_note(old, new, n) for (old, new), n in sorted(day.items(), key=lambda kv: -kv[1])]
+        )
+    return notes
 
 
 def collection_detail(db: Session, collection_id: int) -> dict | None:
@@ -719,20 +851,23 @@ def _snapshot_state(db: Session, date: dt.date) -> dict[int, tuple[int, float]]:
     return {r.card_id: (r.qty, r.reference_price or 0.0) for r in rows}  # later source wins
 
 
-def _snapshot_price_sources(db: Session, date: dt.date) -> dict[int, str | None]:
+def _snapshot_price_sources(db: Session, date: dt.date, with_price: bool = False) -> dict:
     """card_id -> the price source recorded in `date`'s last snapshot (same
     precedence as _snapshot_state). None for rows written before issue #210
-    added CardSnapshot.price_source."""
+    added CardSnapshot.price_source. With `with_price`, the value is
+    (source, whether that snapshot had a price) instead."""
     rows = (
-        db.query(CardSnapshot.card_id, CardSnapshot.source, CardSnapshot.price_source)
+        db.query(CardSnapshot.card_id, CardSnapshot.source, CardSnapshot.price_source, CardSnapshot.reference_price)
         .filter(CardSnapshot.date == date)
         .all()
     )
     rows.sort(key=lambda r: _SNAPSHOT_SOURCE_ORDER.get(r.source, len(_SNAPSHOT_SOURCE_ORDER)))
+    if with_price:
+        return {r.card_id: (r.price_source, r.reference_price is not None) for r in rows}
     return {r.card_id: r.price_source for r in rows}  # later source wins
 
 
-def _legacy_price_source(db: Session) -> dict[int, str]:
+def _legacy_price_source(db: Session, card_id: int | None = None) -> dict[int, str]:
     """What a pre-#210 snapshot's price (price_source NULL) most likely came
     from. The old rule was "TCGplayer (pokemontcg.io) if the card had one,
     else Dex", and a pokemontcg price, once found, was never cleared -- so a
@@ -740,12 +875,12 @@ def _legacy_price_source(db: Session) -> dict[int, str]:
     too. Only wrong for a card first priced by pokemontcg.io after the
     snapshot date, which then drops out of Price movers for one period
     rather than a real source switch showing up as a price move."""
-    with_tcgplayer = {
-        card_id
-        for (card_id,) in db.query(CardPrice.card_id).filter(
-            CardPrice.source == pricing.SOURCE_POKEMONTCG, CardPrice.price_nok.isnot(None)
-        )
-    }
+    q = db.query(CardPrice.card_id).filter(
+        CardPrice.source == pricing.SOURCE_POKEMONTCG, CardPrice.price_nok.isnot(None)
+    )
+    if card_id is not None:  # just the one card (the card page)
+        q = q.filter(CardPrice.card_id == card_id)
+    with_tcgplayer = {cid for (cid,) in q}
     return defaultdict(lambda: pricing.SOURCE_DEX, {cid: pricing.SOURCE_POKEMONTCG for cid in with_tcgplayer})
 
 

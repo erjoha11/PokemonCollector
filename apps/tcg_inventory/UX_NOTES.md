@@ -380,3 +380,13 @@ per-source table) and #212 (flags).
 6. **"Variant uncertain" isn't persisted** — it only lives in the refresh
    result (`card_images.py:49`), so it must be stored before the UI can
    show it (#210).
+
+**Built (#210 part 2), where it differs from the above:** the chart tooltip
+uses the full source labels and, on the Market Value chart, a card count
+("Source: TCGplayer via pokemontcg.io → TCGplayer via Dex (208 cards)"),
+since that chart aggregates many cards. The per-source table's last column
+is "Status" (the "Used" marker, "Lookup failed <date>", and the row's own
+flag chips); native price only shows for non-NOK sources. The card price
+history table gained a Source column. Items 2 (labels, sort key), 4 (card
+page, movers `title`) and 6 are done; items 3, 5 and the "!" markers remain
+for #212.

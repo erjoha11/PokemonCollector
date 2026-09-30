@@ -9,7 +9,7 @@
    the current result has a value (`empty_columns`, see app.inventory). #}
 {% set optional_cols = [
   ('number', 'No.'), ('series', 'Series'), ('set', 'Set'), ('collections', 'Collections'),
-  ('price', 'Price'), ('net_paid', 'Net paid'), ('total_value', 'Total value'), ('gain', 'Gain'),
+  ('price', 'Market price'), ('net_paid', 'Net paid'), ('total_value', 'Total value'), ('gain', 'Gain'),
   ('qty', 'Total'), ('duplicates', 'Duplicates'), ('variant', 'Variant'), ('language', 'Language'),
   ('rarity', 'Rarity'), ('illustrator', 'Illustrator'), ('binder', 'Binder'),
   ('classification', 'Classification'), ('location', 'Location'), ('notes', 'Notes'), ('card_id', 'Card ID'),
@@ -48,7 +48,7 @@
         <th data-col="series">{{ sort_link('series', 'Series') }}</th>
         <th data-col="set">{{ sort_link('release', 'Set') }}</th>
         <th data-col="collections">Collections</th>
-        <th data-col="price" class="num">{{ sort_link('reference_price', 'Price') }}</th>
+        <th data-col="price" class="num">{{ sort_link('market_price', 'Market price') }}</th>
         <th data-col="net_paid" class="num">{{ sort_link('net_invested', 'Net paid') }}</th>
         <th data-col="total_value" class="num">{{ sort_link('total_value', 'Total value') }}</th>
         <th data-col="gain" class="num">{{ sort_link('gain_loss', 'Gain') }}</th>
