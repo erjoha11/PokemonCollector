@@ -1449,3 +1449,39 @@ SELECTs only, to size the backfill).
 No schema change, no direct production-database changes (read-only SELECTs
 only). Still open, in #212: the "Price needs a look" filter, "!" markers,
 and the dashboard line.
+
+# Handoff notes — 2026-09-30 session (issue #225, importer safety)
+
+## Code (in git, PR "Importer: remove full_load, protect transactions, add sync circuit breaker (#225)")
+
+- **`full_load` removed entirely**: the `import_dex_csv_files(full_load=...)`
+  parameter, the hard-delete branch, the `/import/dropbox/sync` form field
+  and the checkbox in `partials/dropbox_files.html`. No sync deletes cards
+  any more; missing cards are only flagged. `ImportLog.cards_deleted` stays
+  (additive-only schema) and is written as 0 from now on.
+- **`Card.transactions` lost its `all, delete-orphan` ORM cascade.** An ORM
+  delete of a card with transactions now fails on flush (NOT NULL
+  `card_id`) instead of silently deleting them. The importer was the only
+  code path that ever deleted `Card` rows; no card-delete route exists.
+- **Circuit breaker** (`importer._check_circuit_breaker`, before any write):
+  aborts on an empty/header-only file when there are no My Collection rows,
+  or when the sync would newly flag > `MISSING_ABORT_FRACTION` (5%) of cards
+  and > `MISSING_ABORT_MIN_CARDS` (10). Prod has ~869 cards, so the limit
+  there is ~43 newly flagged cards in one sync. Manual Dropbox sync shows
+  the error and a "Sync anyway" button (mass-drop case only); the cron
+  returns HTTP 409 `{"status": "aborted"}`, writes nothing and takes no
+  snapshot that day.
+
+No direct production-database changes were made.
+
+## Open items, deliberately not built
+
+- The DB-level FKs on `transactions.card_id`, `card_snapshots.card_id`,
+  `card_prices.card_id` and `listing_cards.card_id` are still
+  `ON DELETE CASCADE` (prod Postgres enforces them). A raw SQL
+  `DELETE FROM cards` would still take the history with it. Changing
+  `transactions`/`card_snapshots` to `RESTRICT` needs a deliberate migration
+  (`init_db()` can't alter an FK) — recommended as a follow-up.
+- If a genuine large clear-out ever trips the breaker on the cron, the
+  cron keeps failing daily until someone runs one manual sync with
+  "Sync anyway".

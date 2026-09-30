@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,7 +39,7 @@ import snapshots
 import constants
 from constants import CARD_CONDITIONS
 from db import SessionLocal, init_db
-from importer import import_dex_csv_files
+from importer import ImportAborted, import_dex_csv_files
 from models import (
     Binder,
     Card,
@@ -2427,7 +2427,7 @@ def import_dropbox_sync(
     request: Request,
     folder: str = Form(""),
     paths: list[str] = Form(default=[]),
-    full_load: bool = Form(False),
+    allow_mass_missing: bool = Form(False),
 ):
     if not paths:
         return templates.TemplateResponse(
@@ -2445,10 +2445,19 @@ def import_dropbox_sync(
     try:
         dbx = dropbox_client.build_client_from_env()
         payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
-        result = import_dex_csv_files(db, payload, full_load=full_load, source="dropbox")
+        result = import_dex_csv_files(db, payload, source="dropbox", allow_mass_missing=allow_mass_missing)
         _resolve_all_prices(db)
         snapshots.record_daily_snapshot(db, source="manual")
         return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
+    except ImportAborted as exc:
+        # Circuit breaker (issue #225): nothing was written; show why, plus
+        # a "sync anyway" re-post of the same selection when overridable.
+        db.rollback()
+        return templates.TemplateResponse(
+            request,
+            "partials/import_result.html",
+            {"aborted": str(exc), "overridable": exc.overridable, "folder": folder, "paths": paths},
+        )
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         return templates.TemplateResponse(
             request,
@@ -2473,8 +2482,10 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     """Scheduled sync, triggered by the Vercel Cron job in vercel.json.
 
     Pulls every CSV currently in the configured Dropbox folder and runs a
-    normal (non-full-load) sync -- a cron job runs unattended, so it never
-    deletes cards, only flags missing ones (see importer.py). Protected by
+    normal sync -- no sync ever deletes cards, only flags missing ones (see
+    importer.py). If the import's circuit breaker trips (empty/header-only
+    My Collection, or a mass drop), nothing is written and this returns 409
+    with `"status": "aborted"` -- the cron never overrides the breaker. Protected by
     CRON_SECRET rather than the Supabase login: Vercel's cron invocations
     carry no browser session to log in with. Vercel automatically sends
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
@@ -2512,7 +2523,17 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
                 "cards_snapshotted": snapshotted,
             }
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
-        result = import_dex_csv_files(db, payload, full_load=False, source="cron")
+        try:
+            result = import_dex_csv_files(db, payload, source="cron")
+        except ImportAborted as exc:
+            # Unattended: log it for Vercel's runtime logs, and a non-2xx so
+            # the cron run shows as failed. No snapshot either -- nothing ran.
+            db.rollback()
+            print(f"[cron/dropbox-sync] aborted: files={[f.name for f in files]} reason={exc}")
+            return JSONResponse(
+                status_code=409,
+                content={"status": "aborted", "folder": folder, "files": [f.name for f in files], "error": str(exc)},
+            )
         # Snapshot after the sync, not before -- a cron run should always
         # record today's post-sync qty/price, never yesterday's leftover
         # state (see snapshots.record_daily_snapshot / README "Value history").

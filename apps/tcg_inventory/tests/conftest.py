@@ -130,7 +130,7 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def seed_import(client, files, full_load=False):
+def seed_import(client, files):
     """Load Dex CSV fixtures straight into the `client` fixture's test DB.
 
     There is no manual CSV-upload route in the app (removed -- users never
@@ -147,7 +147,7 @@ def seed_import(client, files, full_load=False):
     payload = [(filename, data) for _, (filename, data, *_rest) in files]
     db = db_module.SessionLocal()
     try:
-        return import_dex_csv_files(db, payload, full_load=full_load)
+        return import_dex_csv_files(db, payload)
     finally:
         db.close()
 

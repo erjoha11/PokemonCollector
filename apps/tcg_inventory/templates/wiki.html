@@ -109,8 +109,9 @@
   </p>
   <ul>
     <li><strong>My Collection</strong> creates/updates every card row. A card missing from
-      this export gets flagged (never deleted) unless the sync is explicitly run as a
-      "full load".</li>
+      this export gets flagged, never deleted. A sync whose My Collection export is empty, or
+      would flag an unusually large share of the collection at once, is stopped with nothing
+      changed.</li>
     <li><strong>Binder folders</strong> (Illustrator Binder, Vintage Binder, 151 Binder,
       Tradebinder) set a card's single binder.</li>
     <li>Every other folder becomes a <strong>collection tag</strong> — a card can hold

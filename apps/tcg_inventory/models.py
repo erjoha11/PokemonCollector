@@ -161,9 +161,14 @@ class Card(Base):
     collections: Mapped[list[Collection]] = relationship(
         secondary=card_collections, back_populates="cards"
     )
-    transactions: Mapped[list["Transaction"]] = relationship(
-        back_populates="card", cascade="all, delete-orphan"
-    )
+    # Deliberately no "delete"/"delete-orphan" cascade (issue #225): a Card
+    # can be re-synced from Dex, its purchase/sale/trade history can't. With
+    # the default cascade, deleting a Card that still has transactions makes
+    # the ORM try to null Transaction.card_id (NOT NULL), so the flush fails
+    # loudly instead of silently taking the money history with it. (The DB
+    # FK is still ondelete=CASCADE; changing it to RESTRICT would need a
+    # deliberate migration -- init_db() is additive-only.)
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="card")
     # Named `linked_set`, not `set` -- `Card.set` is already the plain
     # string column above (Dex's "Set" export column).
     linked_set: Mapped["Set | None"] = relationship(back_populates="cards")
