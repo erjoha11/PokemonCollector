@@ -33,6 +33,24 @@ yet.
   imports it directly).
 - Root README documents the local Python version and the upgrade process.
 
+**CI enforces lint, schema-version bumps and cross-app sync (#238)**
+- Root `pyproject.toml` configures `ruff check .` with only `E9` + `F`
+  selected. The CI `ruff` job is still pending (adding it to `tests.yml`
+  needs a token with the `workflow` scope; tracked in #238). Fixed the real findings it
+  turned up (unused imports in `backfill_images.py` / `test_app.py`, an
+  undefined `models` name in an `importer.py` annotation).
+- `apps/tcg_inventory/tests/test_schema_guard.py` + committed
+  `schema_snapshot.json`: fails when model tables/columns change without a
+  `CURRENT_SCHEMA_VERSION` bump (the #181 failure), or when the version is
+  bumped without regenerating the snapshot. Regenerate with
+  `python apps/tcg_inventory/tests/test_schema_guard.py --update`.
+- Root `tests/test_cross_app_sync.py` compares `finn_ad_scraper`'s copied
+  rules (Dex language prefixes, variant codes/aliases, `normalize_variant()`,
+  conditions) with `tcg_inventory`'s. One existing drift recorded, not
+  fixed: finn-only variant aliases `reverse`/`reverseholo` -> `reverse_holo`
+  and `non_holo` -> `normal`.
+- `.github/pull_request_template.md` carries the Definition of Done.
+
 ### tcg_inventory
 
 **Prices are never stored at the FX fallback constant; runs report degraded (#229)**

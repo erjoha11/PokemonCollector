@@ -35,6 +35,21 @@ python -m pytest apps/tcg_inventory/tests/test_importer.py
 python -m pytest apps/tcg_inventory/tests/test_importer.py::test_some_case -v
 ```
 
+Root `tests/` holds cross-app checks (e.g. `tests/test_cross_app_sync.py`, which compares `finn_ad_scraper`'s copied rules against `tcg_inventory`'s without either app importing the other); it runs as part of `python -m pytest` from the repo root.
+
+Lint (config in the root `pyproject.toml`, deliberately only `E9` + `F` -- real bugs, no style rules or formatter; a CI `ruff` job is pending, see #238):
+
+```bash
+pip install ruff==0.16.9   # standalone pin, deliberately not in the requirements lockfiles
+ruff check .
+```
+
+Schema guard: `apps/tcg_inventory/tests/test_schema_guard.py` fails if the models' tables/columns change without a `db.CURRENT_SCHEMA_VERSION` bump, or if the version is bumped without regenerating the committed snapshot. After bumping the version (and making sure `init_db()`'s chain creates the change), regenerate and commit:
+
+```bash
+python apps/tcg_inventory/tests/test_schema_guard.py --update
+```
+
 Run each app directly:
 
 ```bash

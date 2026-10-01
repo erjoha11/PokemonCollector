@@ -1,0 +1,17 @@
+# Repo-wide tool config only -- this is not a package (each app under apps/
+# keeps its own requirements.txt). See CLAUDE.md "Setup and common commands".
+
+[tool.ruff]
+# Matches CI's Python (tests.yml); #227 owns the real version pin.
+target-version = "py312"
+
+[tool.ruff.lint]
+# Deliberately minimal (#238): syntax errors (E9) and pyflakes (F) --
+# undefined names, unused imports/variables, etc. Real bugs, not style.
+# No formatter and no style rules; widen this in its own PR if wanted.
+select = ["E9", "F"]
+
+# Non-trivial findings that are deliberately left in place get a per-file
+# ignore here, each with a comment saying why, rather than a refactor:
+[tool.ruff.lint.per-file-ignores]
+# (none yet)

@@ -1,0 +1,179 @@
+{
+  "schema_version": 12,
+  "fingerprint": "f5af46cb0eaf08984ca27d3d27c884404b5d33ef10aac1a2e7e3e355b6fcc9fc",
+  "tables": {
+    "binders": [
+      ["id", "INTEGER", false],
+      ["name", "VARCHAR", false]
+    ],
+    "card_collections": [
+      ["card_id", "INTEGER", false],
+      ["collection_id", "INTEGER", false]
+    ],
+    "card_prices": [
+      ["card_id", "INTEGER", false],
+      ["currency", "VARCHAR", true],
+      ["fetched_at", "DATE", true],
+      ["flags", "VARCHAR", true],
+      ["fx_rate", "FLOAT", true],
+      ["id", "INTEGER", false],
+      ["lookup_failed_at", "DATE", true],
+      ["price", "FLOAT", true],
+      ["price_nok", "FLOAT", true],
+      ["source", "VARCHAR", false],
+      ["source_updated_at", "DATE", true],
+      ["variant_key", "VARCHAR", true]
+    ],
+    "card_snapshots": [
+      ["card_id", "INTEGER", false],
+      ["date", "DATE", false],
+      ["id", "INTEGER", false],
+      ["price_source", "VARCHAR", true],
+      ["qty", "INTEGER", false],
+      ["reference_price", "FLOAT", true],
+      ["source", "VARCHAR", false]
+    ],
+    "cards": [
+      ["binder_id", "INTEGER", true],
+      ["card_id", "VARCHAR", false],
+      ["classification", "VARCHAR", true],
+      ["condition", "VARCHAR", true],
+      ["created_at", "DATETIME", true],
+      ["flagged_missing_since", "DATE", true],
+      ["id", "INTEGER", false],
+      ["illustrator", "VARCHAR", true],
+      ["image_lookup_failed_at", "DATE", true],
+      ["image_url", "VARCHAR", true],
+      ["language", "VARCHAR", true],
+      ["location", "VARCHAR", true],
+      ["market_price", "FLOAT", true],
+      ["market_price_as_of", "DATE", true],
+      ["market_price_source", "VARCHAR", true],
+      ["master_card_id", "INTEGER", true],
+      ["name", "VARCHAR", false],
+      ["notes", "VARCHAR", true],
+      ["number", "VARCHAR", true],
+      ["number_int", "INTEGER", true],
+      ["price_flags", "VARCHAR", true],
+      ["price_lookup_failed_at", "DATE", true],
+      ["qty", "INTEGER", false],
+      ["rarity", "VARCHAR", true],
+      ["reference_price", "FLOAT", true],
+      ["series", "VARCHAR", true],
+      ["set", "VARCHAR", true],
+      ["set_id", "INTEGER", true],
+      ["tcgplayer_price", "FLOAT", true],
+      ["tcgplayer_price_updated_at", "DATE", true],
+      ["variant", "VARCHAR", true]
+    ],
+    "collections": [
+      ["id", "INTEGER", false],
+      ["name", "VARCHAR", false],
+      ["priority_rank", "INTEGER", false]
+    ],
+    "favorite_pokemon": [
+      ["name", "VARCHAR", false]
+    ],
+    "fx_rates": [
+      ["currency", "VARCHAR", false],
+      ["date", "DATE", false],
+      ["fetched_at", "DATETIME", true],
+      ["id", "INTEGER", false],
+      ["rate_nok", "FLOAT", false]
+    ],
+    "import_log": [
+      ["binders_touched", "VARCHAR", true],
+      ["cards_created", "INTEGER", false],
+      ["cards_deleted", "INTEGER", false],
+      ["cards_flagged_missing", "INTEGER", false],
+      ["cards_updated", "INTEGER", false],
+      ["collections_touched", "VARCHAR", true],
+      ["files", "VARCHAR", true],
+      ["id", "INTEGER", false],
+      ["job", "VARCHAR", true],
+      ["message", "TEXT", true],
+      ["ran_at", "DATETIME", false],
+      ["source", "VARCHAR", false],
+      ["status", "VARCHAR", true],
+      ["warnings_count", "INTEGER", false],
+      ["warnings_text", "TEXT", true]
+    ],
+    "listing_cards": [
+      ["card_id", "INTEGER", false],
+      ["listing_id", "INTEGER", false]
+    ],
+    "listings": [
+      ["created_at", "DATETIME", false],
+      ["description", "VARCHAR", false],
+      ["id", "INTEGER", false],
+      ["platform", "VARCHAR", false],
+      ["status", "VARCHAR", false],
+      ["suggested_price", "FLOAT", true],
+      ["title", "VARCHAR", false]
+    ],
+    "master_card_ids": [
+      ["external_id", "VARCHAR", false],
+      ["id", "INTEGER", false],
+      ["master_card_id", "INTEGER", false],
+      ["matched_at", "DATE", true],
+      ["matched_by", "VARCHAR", false],
+      ["source", "VARCHAR", false]
+    ],
+    "master_cards": [
+      ["created_at", "DATETIME", true],
+      ["id", "INTEGER", false],
+      ["language", "VARCHAR", false],
+      ["name", "VARCHAR", true],
+      ["number", "VARCHAR", false],
+      ["printed_number", "VARCHAR", true],
+      ["series", "VARCHAR", true],
+      ["set_code", "VARCHAR", false],
+      ["set_name", "VARCHAR", true],
+      ["variant", "VARCHAR", false],
+      ["variant_label", "VARCHAR", true]
+    ],
+    "pokemon_alias": [
+      ["canonical_name", "VARCHAR", false],
+      ["name", "VARCHAR", false]
+    ],
+    "releases": [
+      ["body", "VARCHAR", false],
+      ["created_at", "DATETIME", false],
+      ["date", "DATE", false],
+      ["id", "INTEGER", false],
+      ["title", "VARCHAR", false]
+    ],
+    "schema_meta": [
+      ["id", "INTEGER", false],
+      ["version", "INTEGER", false]
+    ],
+    "set_release_order": [
+      ["id", "INTEGER", false],
+      ["release_rank", "INTEGER", false],
+      ["series", "VARCHAR", false],
+      ["set", "VARCHAR", false]
+    ],
+    "sets": [
+      ["id", "INTEGER", false],
+      ["name", "VARCHAR", false],
+      ["release_rank", "INTEGER", true],
+      ["series", "VARCHAR", false],
+      ["total_cards", "INTEGER", true]
+    ],
+    "transactions": [
+      ["card_id", "INTEGER", false],
+      ["date", "DATE", false],
+      ["direction", "VARCHAR", true],
+      ["fees", "FLOAT", true],
+      ["id", "INTEGER", false],
+      ["listing_id", "INTEGER", true],
+      ["note", "VARCHAR", true],
+      ["platform", "VARCHAR", true],
+      ["price", "FLOAT", false],
+      ["purchase_id", "INTEGER", true],
+      ["purchase_shipping", "FLOAT", true],
+      ["purchase_total", "FLOAT", true],
+      ["type", "VARCHAR", false]
+    ]
+  }
+}

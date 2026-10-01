@@ -32,7 +32,7 @@ import datetime as dt
 import time
 from dataclasses import dataclass
 
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 
 import card_images
 from db import SessionLocal, init_db
