@@ -206,7 +206,6 @@
           <th class="num">{{ series_sort('Total value', 'total_value') }}</th>
           <th class="num">Net invested</th>
           <th class="num">Gain/loss</th>
-          <th class="num">Completion {{ info('Share of the set you own: distinct card numbers owned / total cards in the set (a reverse holo or a second language of the same number doesn\'t count twice). A series shows the same across its sets with a known size, and how many of its sets that covers. "unknown" means the set\'s size isn\'t known -- Japanese/Korean sets aren\'t in the card-set API it\'s synced from.', align_right=true) }}</th>
         </tr>
       </thead>
       <tbody>
@@ -220,8 +219,6 @@
           <td class="num">{{ s.unique_value | kr }}</td>
           <td class="num">{{ s.total_value | kr }}</td>
           {{ bucket_money_cells(s) }}
-          {% set sc = s.series_completion %}
-          <td class="num">{% if sc %}<span title="{{ sc.owned }}/{{ sc.total }} cards across {{ sc.sets_known }} of {{ sc.sets }} set{{ 's' if sc.sets != 1 }} with a known size">{{ sc.pct | round | int }}%{% if sc.sets_known < sc.sets %} <span class="muted">· {{ sc.sets_known }}/{{ sc.sets }} sets</span>{% endif %}</span>{% else %}<span class="muted" title="None of this series' sets has a known size yet">unknown</span>{% endif %}</td>
         </tr>
         {% for set_b in s.child_sets %}
         {% set set_row_id = series_row_id ~ '-set-' ~ loop.index %}
@@ -233,7 +230,6 @@
           <td class="num">{{ set_b.unique_value | kr }}</td>
           <td class="num">{{ set_b.total_value | kr }}</td>
           {{ bucket_money_cells(set_b) }}
-          <td class="num">{% if set_b.total_cards %}<span title="{{ set_b.owned_numbers }}/{{ set_b.total_cards }} cards">{{ set_b.completion_pct | round | int }}%</span>{% else %}<span class="muted" title="Set size unknown -- not synced yet, or a Japanese/Korean set the card-set API doesn't cover">unknown</span>{% endif %}</td>
         </tr>
         {% for card in set_b.cards %}
         {{ card_leaf_row(card, 'grandchild-row', set_row_id) }}
