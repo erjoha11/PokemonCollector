@@ -257,6 +257,8 @@
                  value="{{ group.platform if group.platform is not none else '' }}"
                  class="{{ 'tx-input-lg' if group.platform is none and group.summary_platform else 'tx-input-md' }}"
                  title="{{ 'This order\'s rows don\'t all share one platform, so this starts blank. Left blank, each card keeps its own platform; typing one sets it on every row — use Edit order for per-card platforms.' if group.platform is none and group.summary_platform else 'Platform for the whole order. Leaving it blank keeps what\'s saved; typing one sets it on every row.' }}">
+          {# A rejected save (422, issue #228) -- static/form-errors.js. #}
+          <p class="warnings" role="alert" hidden data-form-error style="flex-basis: 100%; margin: 0;"></p>
           <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
           <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
           <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"

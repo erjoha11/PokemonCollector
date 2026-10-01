@@ -17,7 +17,9 @@ from urllib.parse import urlencode, urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -39,8 +41,17 @@ import queries
 import snapshots
 import tcgdex_prices
 import constants
+import form_validation
 from constants import CARD_CONDITIONS
 from db import SessionLocal, init_db
+from form_validation import (
+    FormError,
+    parse_amount,
+    parse_date,
+    parse_optional_amount,
+    parse_tx_type,
+    require_same_length,
+)
 from importer import ImportAborted, import_dex_csv_files
 from models import (
     Binder,
@@ -88,6 +99,26 @@ app = FastAPI(title="TCG Inventory", lifespan=lifespan)
 app.router.route_class = _LargeFormRoute
 app.mount("/static", StaticFiles(directory=APP_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=APP_DIR / "templates")
+
+
+# Issue #228: one error pattern for every htmx form. A rejected value is a
+# 422 with a short plain-text message naming the field, which
+# static/form-errors.js drops into the form's [data-form-error] slot (no
+# swap, so the user's input stays). Plain-form routes catch FormError
+# themselves and re-render their page with the message instead.
+@app.exception_handler(FormError)
+async def _form_error_handler(request: Request, exc: FormError):
+    return PlainTextResponse(str(exc), status_code=422)
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_handler(request: Request, exc: RequestValidationError):
+    # FastAPI's own 422 is JSON -- fine for API clients, but an htmx form
+    # would show it raw in the error slot. Plain text for htmx requests.
+    if request.headers.get("HX-Request"):
+        message = form_validation.describe_request_validation_error(exc.errors())
+        return PlainTextResponse(message, status_code=422)
+    return await request_validation_exception_handler(request, exc)
 
 
 def _format_kr(v: float | None) -> str:
@@ -1070,16 +1101,18 @@ def sales_review(request: Request, card_ids: list[int] = Query(default=[])):
 def _sale_items_from_form(
     db: Session, card_ids: list[int], qtys: list[int], conditions: list[str], prices: list[str]
 ) -> list[ads.SaleItem]:
+    require_same_length(card_id=card_ids, qty=qtys, condition=conditions, price=prices)
+    # Blank asking price = "no price in the ad"; anything else must be a
+    # finite, non-negative number (issue #228) -- never "nan kr" in an ad.
+    parsed_prices = [
+        parse_optional_amount(raw, "Asking price", row=i + 1) for i, raw in enumerate(prices)
+    ]
     cards_by_id = {c.id: c for c in db.query(Card).filter(Card.id.in_(card_ids)).all()}
     items = []
-    for card_id, qty, condition, price_raw in zip(card_ids, qtys, conditions, prices):
+    for card_id, qty, condition, price in zip(card_ids, qtys, conditions, parsed_prices):
         card = cards_by_id.get(card_id)
         if card is None:
             continue
-        try:
-            price = float(price_raw) if price_raw not in (None, "") else None
-        except ValueError:
-            price = None
         # Never let a stray form value exceed how many of this card exist --
         # the qty being sold, unlike the card's own qty, is a per-listing
         # decision that must not silently imply "sell everything owned".
@@ -1110,6 +1143,10 @@ def sales_generate(
 ):
     db = get_db_session()
     try:
+        # Validate before persisting anything (issue #228).
+        require_same_length(card_id=card_id, qty=qty, condition=condition, price=price)
+        for i, raw in enumerate(price):
+            parse_optional_amount(raw, "Asking price", row=i + 1)
         # Persist any condition set here back onto the card -- it's real
         # per-card data (see models.Card.condition), not scoped just to this
         # one ad, so it should still be there next time this card is listed.
@@ -1145,10 +1182,7 @@ def sales_mark_listed(
     db = get_db_session()
     try:
         cards = db.query(Card).filter(Card.id.in_(card_id)).all()
-        try:
-            price = float(suggested_price) if suggested_price else None
-        except ValueError:
-            price = None
+        price = parse_optional_amount(suggested_price, "Suggested price")
         listing = Listing(
             created_at=dt.datetime.utcnow(),
             title=title,
@@ -1438,12 +1472,23 @@ def listing_edit_submit(
                 [],
                 error="Select at least one card before saving.",
             )
-            return templates.TemplateResponse(request, "listing_edit.html", context)
+            return templates.TemplateResponse(request, "listing_edit.html", context, status_code=422)
 
         try:
-            price = float(suggested_price) if suggested_price else None
-        except ValueError:
-            price = None
+            price = parse_optional_amount(suggested_price, "Suggested price")
+        except FormError as exc:
+            # Re-render with everything as submitted -- before, a bad price
+            # was silently saved as "no price" (issue #228).
+            cards_by_id = {c.id: c for c in cards}
+            context = _listing_edit_context(
+                listing_id,
+                title,
+                description,
+                suggested_price,
+                [cards_by_id[cid] for cid in unique_ids if cid in cards_by_id],
+                error=str(exc),
+            )
+            return templates.TemplateResponse(request, "listing_edit.html", context, status_code=422)
 
         listing.title = title
         listing.description = description
@@ -1453,17 +1498,6 @@ def listing_edit_submit(
         return RedirectResponse("/orders/listings", status_code=303)
     finally:
         db.close()
-
-
-def _optional_amount(raw: str | None) -> float | None:
-    """A blank-or-number form field: None when blank, else a float >= 0.
-    Raises ValueError for anything else (text, negative)."""
-    if raw is None or not str(raw).strip():
-        return None
-    value = float(str(raw).replace(",", "."))
-    if value < 0 or value != value:  # negative or NaN
-        raise ValueError(raw)
-    return value
 
 
 def _split_order_fees(total: float | None, prices: list[float]) -> list[float | None]:
@@ -1491,17 +1525,19 @@ def _split_order_fees(total: float | None, prices: list[float]) -> list[float | 
     return [c / 100 for c in cents]
 
 
-def _mark_sold_rows(listing: Listing) -> list[dict]:
+def _mark_sold_rows(listing: Listing, submitted: dict[int, str] | None = None) -> list[dict]:
     """One row per card currently in `listing`, each pre-filled with a
     starting-guess price (`suggested_price / card_count`, editable, never
     auto-submitted -- see models.Listing's mark-sold docstring) for the
-    mark-sold form.
+    mark-sold form. `submitted` (card id -> the raw price as posted) wins
+    over the guess, so a rejected submit re-renders what the user typed.
     """
     cards = list(listing.cards)
     default_price = None
     if listing.suggested_price and cards:
         default_price = round(listing.suggested_price / len(cards), 2)
-    return [{"card": card, "default_price": default_price} for card in cards]
+    submitted = submitted or {}
+    return [{"card": card, "default_price": submitted.get(card.id, default_price)} for card in cards]
 
 
 @app.get("/listings/{listing_id}/mark-sold")
@@ -1528,6 +1564,7 @@ def listing_mark_sold_form(request: Request, listing_id: int, show_delisted: boo
                 "rows": _mark_sold_rows(listing),
                 "today": dt.date.today().isoformat(),
                 "error": None,
+                "platform": listing.platform or "",
                 "fees": "",
                 "shipping": "",
                 # Cancel returns to the Listings tab as it was filtered (#255).
@@ -1579,20 +1616,23 @@ def listing_mark_sold_submit(
             return RedirectResponse(_listings_url(show_delisted, sold_only), status_code=303)
 
         def _rerender(error: str) -> HTMLResponse:
+            # 422 + every submitted value re-filled (issue #228).
             return templates.TemplateResponse(
                 request,
                 "listing_mark_sold.html",
                 {
                     "listing": listing,
-                    "rows": _mark_sold_rows(listing),
+                    "rows": _mark_sold_rows(listing, dict(zip(card_id, price))),
                     "today": date or dt.date.today().isoformat(),
                     "error": error,
+                    "platform": platform,
                     "fees": fees,
                     "shipping": shipping,
                     "show_delisted": _flag(show_delisted),
                     "sold_only": _flag(sold_only),
                     "cancel_url": _listings_url(show_delisted, sold_only),
                 },
+                status_code=422,
             )
 
         lot_card_ids = {c.id for c in listing.cards}
@@ -1604,25 +1644,23 @@ def listing_mark_sold_submit(
             return _rerender("Missing a price for one or more cards.")
 
         parsed_prices: dict[int, float] = {}
-        for cid, price_raw in zip(card_id, price):
+        for i, (cid, price_raw) in enumerate(zip(card_id, price)):
             try:
-                p = float(price_raw)
-            except (TypeError, ValueError):
-                return _rerender("Every card needs a valid, positive sold price.")
-            if p <= 0:
-                return _rerender("Every card needs a valid, positive sold price.")
+                p = parse_amount(price_raw, "Sold price", row=i + 1)
+            except FormError:
+                p = None
+            # A sale needs a real price: finite and above 0 (NaN/inf
+            # rejected too, issue #228).
+            if p is None or p <= 0:
+                return _rerender(f"Sold price on row {i + 1} must be a number above 0.")
             parsed_prices[cid] = p
 
         try:
-            tx_date = dt.date.fromisoformat(date)
-        except ValueError:
-            return _rerender("Invalid date.")
-
-        try:
-            fees_total = _optional_amount(fees)
-            shipping_total = _optional_amount(shipping)
-        except ValueError:
-            return _rerender("Fees and shipping must be blank or a number of 0 or more.")
+            tx_date = parse_date(date)
+            fees_total = parse_optional_amount(fees, "Fees")
+            shipping_total = parse_optional_amount(shipping, "Shipping")
+        except FormError as exc:
+            return _rerender(str(exc))
 
         new_purchase_id = _next_purchase_id(db)
         row_fees = _split_order_fees(fees_total, [parsed_prices[cid] for cid in submitted_ids])
@@ -2287,11 +2325,11 @@ def create_purchase(
     date: str = Form(...),
     platform: str = Form(""),
     purchase_id: int = Form(...),
-    purchase_total: float | None = Form(None),
-    purchase_shipping: float | None = Form(None),
-    fees: float | None = Form(None),
+    purchase_total: str = Form(""),
+    purchase_shipping: str = Form(""),
+    fees: str = Form(""),
     card_id: list[int] = Form(default=[]),
-    price: list[float] = Form(default=[]),
+    price: list[str] = Form(default=[]),
     direction: list[str] = Form(default=[]),
 ):
     """Registers the New Order cart. `purchase_shipping` is the order's
@@ -2302,17 +2340,26 @@ def create_purchase(
     (`_split_order_fees`); ignored for trade/ripped orders, which aren't
     cash orders and never count fees anywhere.
     """
+    # Validate everything before touching the DB (issue #228): a rejected
+    # value is a plain-text 422 shown in the cart's error slot, and the
+    # cart stays as typed.
+    type = parse_tx_type(type)
+    tx_date = parse_date(date)
+    total_value = parse_optional_amount(purchase_total, "Total")
+    shipping_value = parse_optional_amount(purchase_shipping, "Shipping")
+    fees_value = parse_optional_amount(fees, "Fees")
+    require_same_length(card_id=card_id, price=price)
+    parsed = [parse_amount(raw, "Price", row=i + 1) for i, raw in enumerate(price)]
     db = get_db_session()
     try:
-        if len(card_id) != len(price) or not card_id:
+        if not card_id:
             return _render_orders(
                 request, db, order_tab([type]),
                 error="No cards added to the order yet — search for at least one card first.",
             )
-        tx_date = dt.date.fromisoformat(date)
-        prices = [_price_for(type, p) for p in price]
+        prices = [_price_for(type, p) for p in parsed]
         cash_order = type in ("purchase", "sale")
-        row_fees = _split_order_fees(fees if cash_order and fees and fees > 0 else None, prices)
+        row_fees = _split_order_fees(fees_value if cash_order and fees_value else None, prices)
         for i, (cid, p) in enumerate(zip(card_id, prices)):
             db.add(
                 Transaction(
@@ -2324,8 +2371,8 @@ def create_purchase(
                     fees=row_fees[i],
                     platform=platform or None,
                     purchase_id=purchase_id,
-                    purchase_total=purchase_total,
-                    purchase_shipping=purchase_shipping,
+                    purchase_total=total_value,
+                    purchase_shipping=shipping_value,
                 )
             )
         db.commit()
@@ -2344,8 +2391,8 @@ def create_purchase(
 def set_purchase_total(
     request: Request,
     purchase_id: int,
-    purchase_total: float | None = Form(None),
-    purchase_shipping: float | None = Form(None),
+    purchase_total: str = Form(""),
+    purchase_shipping: str = Form(""),
     platform: str | None = Form(None),
 ):
     """Sets the order's Total, shipping cost, and platform on every row
@@ -2368,11 +2415,13 @@ def set_purchase_total(
       shipping, enter 0; to clear/split platforms, use Edit order's
       per-row fields. A non-blank platform still overwrites every row.
     """
+    total_value = parse_optional_amount(purchase_total, "Total")
+    shipping_value = parse_optional_amount(purchase_shipping, "Shipping")
     db = get_db_session()
     try:
-        values: dict = {"purchase_total": purchase_total}
-        if purchase_shipping is not None:
-            values["purchase_shipping"] = purchase_shipping
+        values: dict = {"purchase_total": total_value}
+        if shipping_value is not None:
+            values["purchase_shipping"] = shipping_value
         if platform and platform.strip():
             values["platform"] = platform.strip()
         db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(values)
@@ -2525,14 +2574,14 @@ def update_purchase(
     tx_id: list[int] = Form(default=[]),
     type: list[str] = Form(default=[]),
     date: list[str] = Form(default=[]),
-    price: list[float] = Form(default=[]),
+    price: list[str] = Form(default=[]),
     platform: list[str] = Form(default=[]),
     note: list[str] = Form(default=[]),
     card_id: list[int] = Form(default=[]),
     new_purchase_id: list[int] = Form(default=[]),
     delete_tx_id: list[int] = Form(default=[]),
-    purchase_total: float | None = Form(None),
-    purchase_shipping: float | None = Form(None),
+    purchase_total: str = Form(""),
+    purchase_shipping: str = Form(""),
     direction: list[str] = Form(default=[]),
 ):
     """Applies every row edit for this order -- including reassigning a
@@ -2549,9 +2598,29 @@ def update_purchase(
     purchase_total/purchase_shipping applied uniformly, same semantics as
     set_purchase_total.
     """
+    # Validate every row being kept before writing any (issue #228):
+    # misaligned lists used to IndexError into a 500, and a bad
+    # type/date/price on row 5 would otherwise only be caught after rows
+    # 1-4 were already changed. A row being deleted needs no valid fields
+    # (deleting a mistyped row must not be blocked by the typo).
+    delete_set = set(delete_tx_id)
+    kept = [i for i, txid in enumerate(tx_id) if txid not in delete_set]
+    row_types: dict[int, str] = {}
+    row_dates: dict[int, dt.date] = {}
+    row_prices: dict[int, float] = {}
+    if kept:
+        require_same_length(
+            tx_id=tx_id, type=type, date=date, price=price, platform=platform,
+            note=note, card_id=card_id, new_purchase_id=new_purchase_id,
+        )
+        for i in kept:
+            row_types[i] = parse_tx_type(type[i], row=i + 1)
+            row_dates[i] = parse_date(date[i], row=i + 1)
+            row_prices[i] = parse_amount(price[i], "Price", row=i + 1)
+    total_value = parse_optional_amount(purchase_total, "Total")
+    shipping_value = parse_optional_amount(purchase_shipping, "Shipping")
     db = get_db_session()
     try:
-        delete_set = set(delete_tx_id)
         for i, txid in enumerate(tx_id):
             if txid in delete_set:
                 db.query(Transaction).filter(Transaction.id == txid).delete()
@@ -2560,10 +2629,10 @@ def update_purchase(
             if tx is None:
                 continue
             tx.card_id = card_id[i]
-            tx.type = type[i]
-            tx.direction = _trade_direction(type[i], direction, i)
-            tx.date = dt.date.fromisoformat(date[i])
-            tx.price = _price_for(type[i], price[i])
+            tx.type = row_types[i]
+            tx.direction = _trade_direction(row_types[i], direction, i)
+            tx.date = row_dates[i]
+            tx.price = _price_for(row_types[i], row_prices[i])
             tx.platform = platform[i] or None
             tx.note = note[i] or None
             target_purchase_id = new_purchase_id[i]
@@ -2573,8 +2642,8 @@ def update_purchase(
                 tx.purchase_shipping = None
             else:
                 tx.purchase_id = purchase_id
-                tx.purchase_total = purchase_total
-                tx.purchase_shipping = purchase_shipping
+                tx.purchase_total = total_value
+                tx.purchase_shipping = shipping_value
         db.commit()
         # Stay on the edit page (with a "Saved" confirmation and a Back
         # button) so the user can check the result or keep editing -- unless
@@ -2597,12 +2666,16 @@ def create_transaction(
     card_id: int = Form(...),
     type: str = Form(...),
     date: str = Form(...),
-    price: float = Form(...),
+    price: str = Form(...),
     platform: str = Form(""),
-    fees: float | None = Form(None),
+    fees: str = Form(""),
     purchase_id: int | None = Form(None),
     upsert: bool = Form(False),
 ):
+    type = parse_tx_type(type)
+    tx_date = parse_date(date)
+    price_value = parse_amount(price, "Price")
+    fees_value = parse_optional_amount(fees, "Fees")
     db = get_db_session()
     try:
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
@@ -2627,17 +2700,17 @@ def create_transaction(
                 existing = candidates[0]
 
         if existing is not None:
-            existing.date = dt.date.fromisoformat(date)
-            existing.price = _price_for(type, price)
+            existing.date = tx_date
+            existing.price = _price_for(type, price_value)
             existing.purchase_id = purchase_id
         else:
             tx = Transaction(
                 card_id=card.id,
                 type=type,
-                date=dt.date.fromisoformat(date),
-                price=_price_for(type, price),
+                date=tx_date,
+                price=_price_for(type, price_value),
                 platform=platform or None,
-                fees=fees,
+                fees=fees_value,
                 purchase_id=purchase_id,
             )
             db.add(tx)
@@ -2679,9 +2752,9 @@ def update_transaction(
     tx_id: int,
     date: str = Form(...),
     type: str = Form(...),
-    price: float = Form(...),
+    price: str = Form(...),
     platform: str = Form(""),
-    fees: float | None = Form(None),
+    fees: str = Form(""),
     purchase_id: int | None = Form(None),
     direction: str = Form(""),
 ):
@@ -2694,17 +2767,23 @@ def update_transaction(
     (update_purchase above) instead; this single-row form intentionally
     doesn't try to replicate that reconciliation.
     """
+    # Rejected -> plain-text 422 into the row form's error slot; the row
+    # stays in edit mode with the input as typed (issue #228).
+    type = parse_tx_type(type)
+    tx_date = parse_date(date)
+    price_value = parse_amount(price, "Price")
+    fees_value = parse_optional_amount(fees, "Fees")
     db = get_db_session()
     try:
         tx = db.query(Transaction).filter(Transaction.id == tx_id).one_or_none()
         if tx is None:
             return HTMLResponse("")
-        tx.date = dt.date.fromisoformat(date)
+        tx.date = tx_date
         tx.type = type
         tx.direction = _trade_direction(type, [direction], 0)
-        tx.price = _price_for(type, price)
+        tx.price = _price_for(type, price_value)
         tx.platform = platform or None
-        tx.fees = fees
+        tx.fees = fees_value
         tx.purchase_id = purchase_id
         db.commit()
         db.refresh(tx)

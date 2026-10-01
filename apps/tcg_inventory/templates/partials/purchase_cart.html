@@ -65,6 +65,8 @@
       <button type="button" class="secondary" onclick="distributeRemaining()">Distribute evenly across empty prices</button>
     </div>
 
+    {# A rejected Register (422, issue #228) shows here -- static/form-errors.js. #}
+    <p class="warnings" role="alert" hidden data-form-error></p>
     <button type="submit">Register</button>
     <span id="register-order-indicator" class="tx-search-spinner htmx-indicator">Registering…</span>
     <button type="button" class="secondary" onclick="if (!confirmDiscardCart()) return; document.getElementById('purchase-cart-container').innerHTML='';">Cancel</button>

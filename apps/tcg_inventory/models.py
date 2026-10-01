@@ -367,6 +367,13 @@ class FxRate(Base):
     fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+# Every value `Transaction.type` may hold -- the routes that write a type
+# validate against this (form_validation.parse_tx_type, issue #228), since
+# the money queries only count "purchase"/"sale" and a typo would silently
+# drop a row out of every figure.
+TRANSACTION_TYPES = ("purchase", "sale", "trade", "ripped")
+
+
 class Transaction(Base):
     __tablename__ = "transactions"
 

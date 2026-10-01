@@ -65,6 +65,22 @@ yet.
   removed; the daily cron sync is unchanged.
 - `/releases` and `/import` 308 to `/sync-status`, keeping the query string.
 
+**Server-side form validation and one 422 error pattern (#228, part a)**
+- New `form_validation.py`: the type must be one of
+  `models.TRANSACTION_TYPES`, prices and amounts must be finite and >= 0 (no
+  more `nan kr`), dates must be ISO dates, and parallel row lists must line
+  up. Applies to the cart, the order total/shipping form, Edit order, the
+  single-transaction create and row edit, Mark sold, Edit listing, the ad
+  builder and Mark as listed. Malformed input used to cause a 500 or a
+  silent no-op. It is now a 422.
+- htmx forms get a plain-text message in a shared
+  `[data-form-error]` slot (`static/form-errors.js`), and the input is kept.
+  The plain listing forms re-render with status 422 and every value filled
+  back in. Edit order's own inline error handler was replaced by the shared one.
+- The cart's leave-page guard is switched back on after a rejected Register.
+- Part (b), server-assigned Order IDs and scoping Edit order to its own
+  rows, follows separately.
+
 **init_db enables row level security on Postgres (#239)**
 - New `db._enable_row_level_security()` step in `init_db()`'s
   version-gated chain: `ALTER TABLE public."<name>" ENABLE ROW LEVEL

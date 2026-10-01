@@ -120,6 +120,13 @@ if (!window.__tcgOrdersCartInit) {
     evt.returnValue = '';
     return '';
   });
+  // confirmRegisterOrder/submitPicker switch the guard off just before
+  // their request. If that request is rejected (a 422 shown in the form's
+  // error slot, issue #228) or never reaches the server, the cart is still
+  // on screen and unsaved -- switch the guard back on.
+  ['htmx:responseError', 'htmx:sendError'].forEach(function (name) {
+    document.addEventListener(name, function () { leavingDeliberately = false; });
+  });
 }
 window.__tcgOrdersCartInit = true;
 

@@ -28,6 +28,7 @@
     {% if already_listed_count %}
     <p class="listed-warning">{{ already_listed_count }} card{{ '' if already_listed_count == 1 else 's' }} in this ad {{ 'is' if already_listed_count == 1 else 'are' }} already in another active listing.</p>
     {% endif %}
+    <p class="warnings" role="alert" hidden data-form-error></p>
     <button type="submit">Mark as listed</button>
   </form>
 </div>
