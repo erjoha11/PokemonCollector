@@ -1665,3 +1665,33 @@ user confirmed the prod Transactions page works.
 - Encrypt or delete the unencrypted local dump
   (`~/pokemoncollector-backups/prod-2026-09-30-pre-rls.dump`) once #223's
   age key exists.
+
+# Handoff notes — 2026-10-01 session (#254: sales at net proceeds)
+
+## Code (in git, PR for #254)
+
+- Every Net invested figure (`economic_summary`, `net_invested_by_card`,
+  `cash_flow_by_month`, `net_invested_at_dates`) now counts a sale at net
+  proceeds: `price − fees − its share of seller-paid shipping`
+  (`queries.net_proceeds` / `queries.net_invested_amount`).
+  `shipping_shares` splits an order's `purchase_shipping` across its
+  purchase *and* sale rows by price; `purchase_shipping` deliberately keeps
+  its name and also carries sale shipping (init_db is additive-only).
+- Mark sold (`POST /listings/{id}/mark-sold`) takes optional `fees` and
+  `shipping`; the New Order cart takes an optional order-level `fees`
+  (purchase/sale only). Fees are split into per-row `fees` by price.
+- `cash_flow_by_month` previously ignored purchase shipping entirely; it
+  now includes it, so the chart's cumulative line ends on the same Net
+  invested as the KPI.
+
+## Decision recorded
+
+The user explicitly decided that sale fees and seller-paid shipping should
+count in the money figures, and accepted that **historical Net invested and
+paper gain shift upward** for existing sale rows that already have `fees`
+or `purchase_shipping` recorded (previously those were ignored on sales).
+Nothing was rewritten: the shift comes purely from the new read-time rule.
+
+## Direct database changes
+
+None. No production DB read or write was made for this change.

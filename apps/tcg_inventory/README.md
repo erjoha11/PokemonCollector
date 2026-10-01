@@ -256,7 +256,26 @@ run).
   purchase row carries a share of it split by price (`queries.shipping_shares`; evenly when nothing in the
   order is priced yet). That share is shown under the row's price, and it
   counts in the card's Net paid (`net_invested_by_card`) and in Net
-  invested, so a 25 kr card with 38 kr shipping shows as having cost 63 kr. A single ungrouped
+  invested, so a 25 kr card with 38 kr shipping shows as having cost 63 kr.
+  **Sales count at net proceeds** (issue #254): a sale row brings in
+  `price − fees − its share of the order's seller-paid shipping`
+  (`queries.net_proceeds`), and that, not the gross price, is what
+  `economic_summary`, `net_invested_by_card`, `cash_flow_by_month` and
+  `net_invested_at_dates` subtract. Despite its name, `purchase_shipping`
+  carries **any** order's shipping — on a sale order it's the shipping the
+  seller paid. It's split by `shipping_shares` exactly like a purchase
+  order's: across the order's purchase and sale rows by price (trade/ripped
+  rows get none), evenly when none is priced, a 0-price row among priced
+  ones gets nothing. (No separate column or rename — `init_db()` is
+  additive-only.) Every Net invested figure is built from the one rule
+  `queries.net_invested_amount`, so `sum(net_invested_by_card) ==
+  economic_summary["net_invested"]` still holds and the cash-flow chart's
+  cumulative line ends on the same number (purchase shipping now counts
+  there too). The New Order cart has an optional order-level **Fees**
+  field (purchase and sale orders; hidden and ignored for trade/ripped),
+  split across the rows' per-row `fees` by price in whole øre with the
+  leftover øre going to the rows with the largest rounding remainders, so
+  the stored fees add up to exactly what was typed. A single ungrouped
   row can still be edited in place via its own quick-edit form, including
   its Order ID. The "+ New Order" cart's search box has a "Show cards
   without an order" toggle next to it — browses cards with no linked
@@ -561,6 +580,15 @@ without updating both the code and this doc.
    join) alongside cost/market/listed price, and a "Sold only" toggle
    narrows the page to just sold listings, alongside the existing "Show
    delisted" toggle.
+
+   The mark-sold form also takes optional order-level **Fees** and
+   **Shipping you paid** (issue #254). Fees are split across the sale rows'
+   `fees` by price (same whole-øre split as the cart's Fees field);
+   shipping is written to every row's `purchase_shipping`, once per order
+   like a purchase's, and split at read time by `queries.shipping_shares`.
+   Both come off the sale's net proceeds in Net invested, paper gain and
+   the cash-flow chart (see the Transactions section). Blank stores
+   nothing; a negative or non-numeric value is rejected without writing.
 
 ## CSV import format
 

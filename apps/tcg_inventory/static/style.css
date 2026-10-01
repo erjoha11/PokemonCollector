@@ -1490,6 +1490,8 @@ button.secondary {
 .cart-is-trade .cart-trade-only { display: table-cell; }
 /* Ripped cards are free: the cart hides the price column and fills 0 (see syncCartType). */
 .cart-is-ripped .cart-price-col { display: none; }
+/* Order-level fees only apply to cash orders (purchase/sale), not trade/ripped. */
+.cart-is-trade .cart-cash-only, .cart-is-ripped .cart-cash-only { display: none; }
 
 /* --------------------------------------------------------------------
    Transactions: the merged card picker

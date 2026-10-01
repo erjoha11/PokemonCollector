@@ -400,7 +400,11 @@ class Transaction(Base):
     purchase_total: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Shipping cost for the whole purchase -- same redundant-per-row pattern
     # as purchase_total, and subtracted alongside it when computing the diff
-    # above, so shipping doesn't masquerade as an unpriced card.
+    # above, so shipping doesn't masquerade as an unpriced card. Despite
+    # the name, it carries a *sale* order's shipping too (what the seller
+    # paid -- Mark sold and the cart with type Sale write it), which comes
+    # off that sale's net proceeds; see queries.shipping_shares (issue
+    # #254). Not renamed: init_db() is additive-only.
     purchase_shipping: Mapped[float | None] = mapped_column(Float, nullable=True)
     # Free-form note on this row, e.g. "Kjopt pa Collect63 Card Show" -- see
     # issue #109 / HANDOFF.md's 2026-09-14 entry, which set a note like this

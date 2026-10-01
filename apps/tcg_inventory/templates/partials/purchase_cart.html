@@ -21,8 +21,13 @@
          is saved. Clearing the field goes back to the auto sum. #}
       <input type="number" step="0.01" name="purchase_total" placeholder="Total (optional)"
              title="The full amount you paid for the order. Leave blank to use the automatic sum of card prices + shipping (not saved); type a value to override it and track the difference as Remaining.">
-      <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping (optional)"
-             title="Shipping cost for the whole order — subtracted along with the card total when the diff against the Total is calculated.">
+      <input type="number" step="0.01" min="0" name="purchase_shipping" placeholder="Shipping (optional)"
+             title="Shipping cost for the whole order — on a purchase what you paid, on a sale the shipping you paid as seller (comes off what the sale brought in).">
+      {# Order-level fees (issue #254): split across the cards by price
+         into each row's fees (app.py _split_order_fees). Hidden for
+         trade/ripped, which never count fees. #}
+      <input type="number" step="0.01" min="0" name="fees" placeholder="Fees (optional)" class="cart-cash-only"
+             title="Platform/payment fees for the whole order. On a sale they come off what the sale brought in; on a purchase they add to what you paid.">
     </div>
 
     <div class="autocomplete tx-search mt-1 mb-1">

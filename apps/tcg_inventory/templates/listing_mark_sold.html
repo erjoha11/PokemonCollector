@@ -7,7 +7,8 @@
   until you submit: this creates one real <a href="/transactions">Transaction</a> per card below (all
   sharing one order), then marks the listing sold. Prices are pre-filled as an even split of the
   listed price ({{ listing.suggested_price | kr }}) — edit each one to what the card actually sold
-  for before saving. See <a href="/listings">Listings</a>.
+  for before saving. Fees and the shipping you paid are optional and come off what the sale
+  brought in. See <a href="/listings">Listings</a>.
 </p>
 
 {% if error %}
@@ -18,6 +19,12 @@
   <div class="filters" style="margin-bottom: 0.9rem;">
     <input type="date" name="date" value="{{ today }}" required>
     <input type="text" name="platform" placeholder="Platform" value="{{ listing.platform }}">
+    {# Optional order-level amounts (issue #254): both come off what the
+       sale brought in (net proceeds) in Net invested and Paper gain. #}
+    <input type="number" step="0.01" min="0" name="fees" placeholder="Fees (optional)" value="{{ fees or '' }}"
+           title="Platform/payment fees for the whole sale — split across the cards by price.">
+    <input type="number" step="0.01" min="0" name="shipping" placeholder="Shipping you paid (optional)" value="{{ shipping or '' }}"
+           title="Shipping you paid as seller for the whole sale — stored once on the order, like a purchase's shipping.">
   </div>
 
   <div class="table-scroll">
