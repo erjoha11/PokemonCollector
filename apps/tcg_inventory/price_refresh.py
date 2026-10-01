@@ -98,7 +98,13 @@ def apply_price_lookup(card: Card, api_data: card_images.CardApiData, today: dt.
     price -- stamp that row's lookup_failed_at and return False. A success
     clears any earlier failure stamp; the old price is never touched on a
     failure. The caller must pricing.resolve_cards() the card before
-    committing."""
+    committing.
+
+    A lookup that only failed because no real exchange rate was available
+    (`api_data.fx_unavailable`, issue #229) writes nothing at all -- no price,
+    no failure stamp -- so the card stays due and is retried next run."""
+    if api_data.fx_unavailable:
+        return False
     if api_data.tcgplayer_price is not None:
         pricing.record_price(
             card,
@@ -140,11 +146,16 @@ class PriceRefreshResult:
     cards_low_confidence: list[str] = field(default_factory=list)
     cards_variant_uncertain: list[str] = field(default_factory=list)
     # The USD/NOK rate this run converted at, and where it came from
-    # ("live" / "last-known" / "fallback", see fx_rates) -- surfaced in the
-    # cron response so a run priced at the fallback constant is visible.
+    # ("live" / "last-known" / "stored" / "fallback", see fx_rates).
     usd_to_nok: float | None = None
     fx_source: str | None = None
     fx_as_of: dt.date | None = None
+    # "ok", or "degraded" when the only rate available was fx_rates' fallback
+    # constant (issue #229): then no card is looked up or written at all --
+    # every due card stays due (cards_skipped) and the next run retries.
+    status: str = "ok"
+    degraded_reason: str | None = None
+    cards_skipped: int = 0
 
 
 def refresh_stale_prices(
@@ -184,6 +195,14 @@ def _refresh_cards(
     result.usd_to_nok = rates.to_nok("USD")
     result.fx_source = rates.source
     result.fx_as_of = rates.as_of
+    if not rates.usable("USD"):
+        # Never store a price at the fallback constant (issue #229). Nothing
+        # is looked up or stamped, so freshness doesn't advance and every
+        # card is still due next run.
+        result.status = "degraded"
+        result.degraded_reason = fx_rates.FALLBACK_REASON
+        result.cards_skipped = len(cards)
+        return
 
     pending: list[int] = []
     for card in cards:
@@ -288,8 +307,10 @@ def main() -> None:
         else:
             budget = args.limit if args.limit is not None else MAX_PRICE_LOOKUPS_PER_RUN
             result = refresh_stale_prices(db, budget=budget)
+        if result.status != "ok":
+            print(f"price_refresh: DEGRADED -- {result.degraded_reason} skipped={result.cards_skipped}")
         print(
-            f"price_refresh: checked={result.cards_checked} updated={result.cards_updated} "
+            f"price_refresh: status={result.status} checked={result.cards_checked} updated={result.cards_updated} "
             f"low_confidence={len(result.cards_low_confidence)} "
             f"variant_uncertain={len(result.cards_variant_uncertain)} "
             f"usd_to_nok={result.usd_to_nok} ({result.fx_source}, as of {result.fx_as_of})"

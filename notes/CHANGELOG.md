@@ -35,6 +35,18 @@ yet.
 
 ### tcg_inventory
 
+**Prices are never stored at the FX fallback constant; runs report degraded (#229)**
+- When no real USD/EUR->NOK rate exists (Norges Bank unreachable and
+  `fx_rates` empty), `price_refresh` (cron + `--reprice-all`), the TCGdex
+  pass and a Dex sync's TCGplayer lookups write nothing, not even
+  `lookup_failed_at`, so every card stays due and the next run retries.
+- `/cron/price-refresh` returns `"status": "degraded"` plus
+  `degraded_reason`/`cards_skipped`, and the `tcgdex` summary has its own
+  `status`. `/cron/dropbox-sync` returns `"degraded"` with a warning. The
+  price-refresh run is logged on `/sync-status` with a new `degraded`
+  status (a problem status, shown like empty/aborted/failed). No schema
+  change.
+
 **Sync status page; Wiki, Release Notes and manual Dropbox picker removed (#264)**
 - The Activity Log is now **Sync status** (`/sync-status`): an at-a-glance
   card per background job (last success, plus the last empty/aborted/failed

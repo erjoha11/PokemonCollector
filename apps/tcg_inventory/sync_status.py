@@ -40,7 +40,10 @@ OK = "ok"
 EMPTY = "empty"  # Dex sync found no CSV files in the Dropbox folder
 ABORTED = "aborted"  # Dex sync stopped by the import circuit breaker (#225)
 FAILED = "failed"  # an error (Dropbox, API, or unexpected)
-PROBLEM_STATUSES = (EMPTY, ABORTED, FAILED)
+# Price refresh ran, but wrote no prices: only fx_rates' fallback constant
+# was available (issue #229).
+DEGRADED = "degraded"
+PROBLEM_STATUSES = (EMPTY, ABORTED, FAILED, DEGRADED)
 
 
 def record_run(

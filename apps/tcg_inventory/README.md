@@ -770,7 +770,7 @@ of these does:
 | Job (`job`) | Recorded outcomes (`status`) | Written by |
 |---|---|---|
 | `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error) | `importer._log_import` (ok), `/cron/dropbox-sync` (the rest) |
-| `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `failed` | `/cron/price-refresh` |
+| `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `degraded` (no prices written, only the FX fallback constant was available, #229; shown as a problem), `failed` | `/cron/price-refresh` |
 | `set-sync` | `ok`, `failed` (API call failed, or an error) | `/cron/set-sync` |
 | `image-backfill` | `ok`, `failed` | `/cron/image-backfill` |
 
@@ -1123,7 +1123,9 @@ it); only `lookup_failed_at` is set. The whole pass is contained, so an
 unexpected error is logged and the cron still resolves and snapshots. The
 cron response has a `tcgdex` summary (checked, priced, `ids_matched`,
 `cards_unmatched` with reasons, `cards_variant_uncertain`, `stopped`,
-`http_calls`).
+`http_calls`, `status`/`degraded_reason`). With only the FX fallback
+constant available, the pass is skipped and reported as degraded (see
+"Currency" under "Price refresh").
 
 By hand, same `DATABASE_URL` convention as `price_refresh.py`:
 
@@ -1175,9 +1177,27 @@ cached in-process and stored in the `fx_rates` table (date, currency,
 `rate_nok`), so another invocation within 6 hours reuses it without a
 request. If Norges Bank can't be reached, the last rate fetched in that
 process is reused, else the latest rate in `fx_rates`, and only if there is
-none the old fixed 10.5 is used as a last resort, so an FX outage never
-blocks pricing. The cron response reports `usd_to_nok`, `fx_source`
-(`live` / `last-known` / `stored` / `fallback`) and `fx_as_of`. EUR/NOK comes
+none it falls back to the old fixed constants (USD 10.5, EUR 11.5). The cron
+response reports `usd_to_nok`, `fx_source` (`live` / `last-known` /
+`stored` / `fallback`) and `fx_as_of`.
+
+**A price is never stored at the fallback constant** (issue #229; 10.5 is
+the ~10%-inflated rate #209 removed). When the only rate available is
+`fallback` (Norges Bank has never answered and `fx_rates` is empty), or a
+currency was filled in from the constant (`FxRates.usable()`), every price
+write path skips: `price_refresh` (cron and `--reprice-all`) looks nothing
+up, the TCGdex pass stops before any request (`stopped: "fx_unavailable"`),
+and a Dex sync skips its TCGplayer lookups (images still fill, the Dex
+price is unaffected). Nothing is stamped, neither a price nor
+`lookup_failed_at`, so freshness doesn't advance and every card stays due
+for the next run. The run is reported as degraded, not "ok":
+`/cron/price-refresh` returns HTTP 200 with `"status": "degraded"`, a
+`degraded_reason` and `cards_skipped`, and its `tcgdex` summary has its own
+`status`/`degraded_reason`. `/cron/dropbox-sync` returns
+`"status": "degraded"` with the reason in `warnings` (its Sync status row
+stays `ok`, with that warning in its text). A degraded price refresh is
+logged on Sync status as `degraded`. The snapshot and image passes still
+run. EUR/NOK comes
 in the same request and is used for Cardmarket via TCGdex (see "TCGdex"
 above). Each `pokemontcg` row records the native USD price
 and the rate it was converted at (`card_prices.price`/`fx_rate`); rows

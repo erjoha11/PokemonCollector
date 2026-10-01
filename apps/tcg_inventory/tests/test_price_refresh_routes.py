@@ -132,3 +132,40 @@ def test_dashboard_price_movers_caption_counts_source_changes(client):
 
     assert "1 source change left out" in text
     assert "No price changes since" in text
+
+
+def test_cron_price_refresh_reports_degraded_at_the_fx_fallback_rate(client, monkeypatch):
+    """Issue #229: live Norges Bank fetch fails + empty fx_rates table ->
+    neither price pass writes anything, and the run isn't "ok"."""
+    import fx_rates
+
+    _add_card(client)
+    fx_rates.reset_cache()
+    monkeypatch.setattr(
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
+    )
+
+    response = client.get("/cron/price-refresh")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "degraded"
+    assert body["degraded_reason"] == fx_rates.FALLBACK_REASON
+    assert body["fx_source"] == "fallback"
+    assert (body["cards_checked"], body["cards_updated"], body["cards_skipped"]) == (0, 0, 1)
+    assert body["tcgdex"]["status"] == "degraded"
+    assert body["tcgdex"]["stopped"] == "fx_unavailable"
+
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        assert db.query(Card).filter(Card.card_id == "a").one().tcgplayer_price is None
+
+
+def test_cron_price_refresh_status_ok_with_a_real_rate(client, monkeypatch):
+    _add_card(client)
+    monkeypatch.setattr(
+        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
+    )
+    body = client.get("/cron/price-refresh").json()
+    assert (body["status"], body["degraded_reason"], body["tcgdex"]["status"]) == ("ok", None, "ok")
