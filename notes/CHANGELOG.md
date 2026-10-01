@@ -53,6 +53,16 @@ yet.
 
 ### tcg_inventory
 
+**Collections index page and nav item removed (#252)**
+- `GET /collections` (`collections_index`) and `templates/collections.html`
+  are gone, and so is the "Collections" nav item. `/collections` now 404s.
+  The page only repeated the Dashboard's Inventory membership table.
+- Per-collection galleries (`/collections/{id}`) stay, reached from the
+  collection links in Inventory and on the Card page. Their breadcrumb now
+  points to Inventory, and they light up the Inventory nav item.
+- No schema or data change: `collections`/`card_collections`, importer
+  routing/priority and the Dashboard breakdown are untouched.
+
 **Prices are never stored at the FX fallback constant; runs report degraded (#229)**
 - When no real USD/EUR->NOK rate exists (Norges Bank unreachable and
   `fx_rates` empty), `price_refresh` (cron + `--reprice-all`), the TCGdex
