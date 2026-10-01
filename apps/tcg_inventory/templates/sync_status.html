@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Sync status – TCG Inventory{% endblock %}
+{% block content %}
+<h1>Sync status</h1>
+<p class="muted">
+  When each background job last ran, and what happened. Read-only: nothing runs from this page.
+  Times are UTC.
+</p>
+
+{% macro run_time(log) %}{{ log.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endmacro %}
+
+<div class="sync-glance" id="sync-glance">
+  {% for entry in overview %}
+  {% set ok = entry.last_ok %}
+  {% set problem = entry.last_problem %}
+  <section class="card sync-glance-item{% if problem %} sync-glance-problem{% endif %}" aria-labelledby="glance-{{ entry.job }}">
+    <h2 id="glance-{{ entry.job }}">{{ entry.label }}</h2>
+    {% if ok %}
+    <p class="sync-glance-when">
+      <span class="tx-badge status-ok">Last success</span>
+      {{ run_time(ok) }} <span class="muted">· {{ ok.source }}</span>
+    </p>
+    {% if entry.job == 'dex-sync' %}
+    <p class="sync-glance-detail muted">
+      {% if ok.files %}{{ ok.files }} · {% endif %}{{ ok.cards_created }} created, {{ ok.cards_updated }} updated, {{ ok.cards_flagged_missing }} flagged{% if ok.warnings_count %}, {{ ok.warnings_count }} warning{{ '' if ok.warnings_count == 1 else 's' }}{% endif %}
+    </p>
+    {% elif ok.message %}
+    <p class="sync-glance-detail muted">{{ ok.message }}</p>
+    {% endif %}
+    {% else %}
+    <p class="sync-glance-when muted">No successful run recorded yet.</p>
+    {% endif %}
+    {% if problem %}
+    <p class="sync-glance-when">
+      <span class="tx-badge status-problem">{{ problem.status_name | capitalize }}</span>
+      {{ run_time(problem) }} <span class="muted">· {{ problem.source }}</span>
+    </p>
+    {% if problem.message %}<p class="sync-glance-detail">{{ problem.message }}</p>{% endif %}
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+<p class="muted" style="font-size: 0.85rem;">
+  Price refresh, set sync, image backfill, empty-folder runs and aborted or failed syncs have only been
+  recorded since 2026-10-01 (issue #264); older runs of those left no row.
+</p>
+
+{% include "partials/import_log.html" %}
+{% endblock %}

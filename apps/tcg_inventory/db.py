@@ -85,7 +85,8 @@ class Base(DeclarativeBase):
 # 8: master_cards, master_card_ids, cards.master_card_id; 9: cards.price_lookup_failed_at (#216);
 # 10: card_prices, fx_rates, cards.market_price/_source/_as_of/price_flags,
 #     card_snapshots.price_source (#210); 11: RLS enabled on every table (Postgres, #239)
-CURRENT_SCHEMA_VERSION = 11
+# 12: import_log.job/status/message/warnings_text (#264)
+CURRENT_SCHEMA_VERSION = 12
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
@@ -175,6 +176,24 @@ def _normalize_legacy_transaction_types():
                 text("UPDATE transactions SET type = :new WHERE type = :old"),
                 {"new": new, "old": old},
             )
+
+
+def _backfill_import_log_defaults():
+    """`import_log.job`/`status` (issue #264) are added by
+    `_add_missing_columns()` as plain nullable columns, so every row written
+    before them reads NULL. All of those rows were successful Dex syncs
+    (aborts and empty runs weren't recorded before #264), so fill exactly
+    that in. Idempotent: the WHERE only matches rows still NULL.
+    """
+    inspector = inspect(engine)
+    if not inspector.has_table("import_log"):
+        return
+    columns = {col["name"] for col in inspector.get_columns("import_log")}
+    if not {"job", "status"} <= columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE import_log SET job = 'dex-sync' WHERE job IS NULL"))
+        conn.execute(text("UPDATE import_log SET status = 'ok' WHERE status IS NULL"))
 
 
 def _widen_card_snapshot_source_constraint():
@@ -395,6 +414,7 @@ def init_db():
         _add_missing_columns()
         _normalize_legacy_transaction_types()
         _widen_card_snapshot_source_constraint()
+        _backfill_import_log_defaults()
         _enable_row_level_security()
         _set_schema_version(CURRENT_SCHEMA_VERSION)
 

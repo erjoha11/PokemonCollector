@@ -188,7 +188,7 @@ def import_dex_csv_files(
     the Vintage export in one call (as every sync should) merges correctly
     without either one clobbering the other's untouched data.
 
-    `source` ("manual" | "dropbox" | "cron") is only used to label the
+    `source` ("manual" | "cron") is only used to label the
     ImportLog row this call writes -- see _log_import below.
 
     Never deletes a card: one missing from My Collection is only flagged
@@ -496,6 +496,11 @@ def _log_import(db: Session, result: ImportResult, source: str, filenames: list[
             collections_touched=", ".join(sorted(result.collections_touched)) or None,
             binders_touched=", ".join(sorted(result.binders_touched)) or None,
             warnings_count=len(result.warnings),
+            job="dex-sync",
+            status="ok",
+            # One warning per line; a warning's own line breaks are flattened
+            # so the split back into a list on /sync-status stays 1:1.
+            warnings_text="\n".join(" ".join(w.splitlines()) for w in result.warnings) or None,
         )
     )
 

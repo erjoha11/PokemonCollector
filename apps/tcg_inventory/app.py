@@ -34,6 +34,7 @@ import dropbox_client
 import price_refresh
 import pricing
 import set_sync
+import sync_status
 import queries
 import snapshots
 import tcgdex_prices
@@ -49,7 +50,6 @@ from models import (
     ImportLog,
     Listing,
     PokemonAlias,
-    Release,
     Set,
     Transaction,
 )
@@ -2730,122 +2730,97 @@ def update_transaction(
 
 
 # --------------------------------------------------------------------------
-# CSV import / sync
+# Run log (import_log) -- shown on /sync-status
 # --------------------------------------------------------------------------
 LOG_SORT_KEYS = {
     "ran_at": lambda log: log.ran_at,
+    "job": lambda log: log.job_name,
+    "status": lambda log: log.status_name,
     "source": lambda log: log.source,
     "files": lambda log: (log.files or "").lower(),
     "cards_created": lambda log: log.cards_created,
     "cards_updated": lambda log: log.cards_updated,
     "cards_flagged_missing": lambda log: log.cards_flagged_missing,
-    "cards_deleted": lambda log: log.cards_deleted,
     "warnings_count": lambda log: log.warnings_count,
     "collections_touched": lambda log: (log.collections_touched or "").lower(),
     "binders_touched": lambda log: (log.binders_touched or "").lower(),
 }
 
-DROPBOX_FILE_SORT_KEYS = {
-    "name": lambda f: f.name.lower(),
-    "client_modified": lambda f: f.client_modified,
-    "size": lambda f: f.size,
-}
+# Dex syncs plus the daily price refresh: 30 rows is roughly two weeks.
+_SYNC_LOG_LIMIT = 30
 
 
-def _recent_import_logs(db: Session, lsort: str = "ran_at", ldir: str = "desc", limit: int = 20) -> list[ImportLog]:
+def _recent_import_logs(
+    db: Session, lsort: str = "ran_at", ldir: str = "desc", limit: int = _SYNC_LOG_LIMIT
+) -> list[ImportLog]:
     logs = db.query(ImportLog).order_by(ImportLog.ran_at.desc(), ImportLog.id.desc()).limit(limit).all()
     return _sorted_rows(logs, lsort, ldir, LOG_SORT_KEYS)
 
 
+# --------------------------------------------------------------------------
+# Sync status (issue #264) -- the slimmed-down former Activity Log: an
+# at-a-glance block per background job, then the run log. Read-only.
+# --------------------------------------------------------------------------
+@app.get("/sync-status")
+def sync_status_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
+    db = get_db_session()
+    try:
+        context = {
+            "overview": sync_status.overview(db),
+            "logs": _recent_import_logs(db, lsort, ldir),
+            "lsort": lsort,
+            "ldir": ldir,
+            "job_labels": sync_status.JOB_LABELS,
+        }
+        return templates.TemplateResponse(request, "sync_status.html", context)
+    finally:
+        db.close()
+
+
+@app.get("/sync-status/log")
+def sync_log_partial(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
+    """The run log's own column-sort target (see partials/import_log.html):
+    swaps just that section back in via htmx, so a sort doesn't reload the
+    page and jump back above the at-a-glance block."""
+    db = get_db_session()
+    try:
+        return templates.TemplateResponse(
+            request,
+            "partials/import_log.html",
+            {
+                "logs": _recent_import_logs(db, lsort, ldir),
+                "lsort": lsort,
+                "ldir": ldir,
+                "job_labels": sync_status.JOB_LABELS,
+            },
+        )
+    finally:
+        db.close()
+
+
+# Old addresses of this page (#159 merged the Sync Log into /releases; #264
+# renamed it again). 308s keep any lsort/ldir query string.
 @app.get("/import")
 def import_redirect(request: Request):
-    """The Sync Log used to be its own page -- now merged into /releases
-    (issue #159) as its own section. Redirects old bookmarks/links there,
-    carrying over any lsort/ldir query string so a saved sorted view still
-    sorts the same way.
-    """
-    query = f"?{request.query_params}" if request.query_params else ""
-    return RedirectResponse(f"/releases{query}#sync-log", status_code=308)
+    return _redirect_keeping_query(request, "/sync-status")
+
+
+@app.get("/releases")
+def releases_redirect(request: Request):
+    return _redirect_keeping_query(request, "/sync-status")
 
 
 @app.get("/releases/sync-log")
-def sync_log_partial(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
-    """Sync Log's own column-sort target (see partials/import_log.html) --
-    swaps just that section back in via htmx instead of a plain page
-    navigation, which would otherwise reload /releases and land at the top,
-    above the Release Notes section below it.
-    """
-    db = get_db_session()
-    try:
-        return templates.TemplateResponse(
-            request, "partials/import_log.html", {"logs": _recent_import_logs(db, lsort, ldir), "lsort": lsort, "ldir": ldir}
-        )
-    finally:
-        db.close()
+def releases_sync_log_redirect(request: Request):
+    return _redirect_keeping_query(request, "/sync-status/log")
 
 
-# --------------------------------------------------------------------------
-# CSV import / sync -- straight from Dropbox
-# --------------------------------------------------------------------------
-@app.get("/import/dropbox/list")
-def import_dropbox_list(request: Request, folder: str = "", dsort: str = "client_modified", ddir: str = "desc"):
-    folder = folder or dropbox_client.default_folder()
-    context = {"folder": folder, "files": None, "error": None, "dsort": dsort, "ddir": ddir}
-    try:
-        dbx = dropbox_client.build_client_from_env()
-        files = dropbox_client.list_csv_files(dbx, folder)
-        context["files"] = _sorted_rows(files, dsort, ddir, DROPBOX_FILE_SORT_KEYS)
-    except dropbox_client.DropboxNotConfigured as exc:
-        context["error"] = str(exc)
-    except dropbox_client.DropboxImportError as exc:
-        context["error"] = str(exc)
-    return templates.TemplateResponse(request, "partials/dropbox_files.html", context)
-
-
-@app.post("/import/dropbox/sync")
-def import_dropbox_sync(
-    request: Request,
-    folder: str = Form(""),
-    paths: list[str] = Form(default=[]),
-    allow_mass_missing: bool = Form(False),
-):
-    if not paths:
-        return templates.TemplateResponse(
-            request,
-            "partials/dropbox_files.html",
-            {
-                "folder": folder,
-                "files": None,
-                "error": "Select at least one file to sync.",
-                "dsort": "client_modified",
-                "ddir": "desc",
-            },
-        )
-    db = get_db_session()
-    try:
-        dbx = dropbox_client.build_client_from_env()
-        payload = [(path.rsplit("/", 1)[-1], dropbox_client.download_file(dbx, path)) for path in paths]
-        result = import_dex_csv_files(db, payload, source="dropbox", allow_mass_missing=allow_mass_missing)
-        _resolve_all_prices(db)
-        snapshots.record_daily_snapshot(db, source="manual")
-        return templates.TemplateResponse(request, "partials/import_result.html", {"result": result})
-    except ImportAborted as exc:
-        # Circuit breaker (issue #225): nothing was written; show why, plus
-        # a "sync anyway" re-post of the same selection when overridable.
-        db.rollback()
-        return templates.TemplateResponse(
-            request,
-            "partials/import_result.html",
-            {"aborted": str(exc), "overridable": exc.overridable, "folder": folder, "paths": paths},
-        )
-    except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
-        return templates.TemplateResponse(
-            request,
-            "partials/dropbox_files.html",
-            {"folder": folder, "files": None, "error": str(exc)},
-        )
-    finally:
-        db.close()
+def _run_source(request: Request) -> str:
+    """"cron" only for the real scheduled Vercel call (it carries
+    `Authorization: Bearer <CRON_SECRET>`), else "manual" -- the same split
+    the /cron routes use for snapshot sources."""
+    cron_secret = os.environ.get("CRON_SECRET", "")
+    return "cron" if cron_secret and request.headers.get("authorization") == f"Bearer {cron_secret}" else "manual"
 
 
 def _resolve_all_prices(db: Session) -> None:
@@ -2880,6 +2855,12 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     same route -- see snapshots.record_daily_snapshot and HANDOFF.md. With
     no CRON_SECRET configured at all there's no way to tell the two apart,
     so every request is treated as "manual".
+
+    Every outcome leaves an `import_log` row for /sync-status (issue #264):
+    a successful import writes its own (importer._log_import); an empty
+    folder, a circuit-breaker abort and a Dropbox or unexpected error are
+    recorded here via sync_status.record_run, committed separately after
+    the rollback so the row survives it.
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
@@ -2890,12 +2871,22 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 
     folder = dropbox_client.default_folder()
     db = get_db_session()
+    file_names: list[str] = []
     try:
         dbx = dropbox_client.build_client_from_env()
         files = dropbox_client.list_csv_files(dbx, folder)
+        file_names = [f.name for f in files]
         if not files:
             _resolve_all_prices(db)
             snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
+            sync_status.record_run(
+                db,
+                job=sync_status.DEX_SYNC,
+                status=sync_status.EMPTY,
+                source=snapshot_source,
+                message=f"No CSV files found in {folder}",
+            )
+            print(f"[cron/dropbox-sync] empty: no CSV files in {folder}")
             return {
                 "status": "ok",
                 "folder": folder,
@@ -2904,15 +2895,24 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             }
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
         try:
-            result = import_dex_csv_files(db, payload, source="cron")
+            result = import_dex_csv_files(db, payload, source=snapshot_source)
         except ImportAborted as exc:
-            # Unattended: log it for Vercel's runtime logs, and a non-2xx so
-            # the cron run shows as failed. No snapshot either -- nothing ran.
+            # Unattended: a non-2xx so the cron run shows as failed, plus a
+            # row on /sync-status. No snapshot -- nothing ran. The rollback
+            # discards the import; the log row is its own commit after it.
             db.rollback()
-            print(f"[cron/dropbox-sync] aborted: files={[f.name for f in files]} reason={exc}")
+            print(f"[cron/dropbox-sync] aborted: files={file_names} reason={exc}")
+            sync_status.record_run(
+                db,
+                job=sync_status.DEX_SYNC,
+                status=sync_status.ABORTED,
+                source=snapshot_source,
+                files=file_names,
+                message=str(exc),
+            )
             return JSONResponse(
                 status_code=409,
-                content={"status": "aborted", "folder": folder, "files": [f.name for f in files], "error": str(exc)},
+                content={"status": "aborted", "folder": folder, "files": file_names, "error": str(exc)},
             )
         # Snapshot after the sync, not before -- a cron run should always
         # record today's post-sync qty/price, never yesterday's leftover
@@ -2942,9 +2942,29 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         }
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
         # Cron runs unattended -- nobody's watching a response body, so this
-        # has to land in Vercel's runtime logs to be debuggable at all.
+        # lands in Vercel's runtime logs and on /sync-status.
         print(f"[cron/dropbox-sync] failed: {exc}")
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=sync_status.DEX_SYNC,
+            status=sync_status.FAILED,
+            source=snapshot_source,
+            files=file_names,
+            message=f"Dropbox error: {exc}",
+        )
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=sync_status.DEX_SYNC,
+            status=sync_status.FAILED,
+            source=snapshot_source,
+            files=file_names,
+            message=f"{exc.__class__.__name__}: {exc}",
+        )
+        raise
     finally:
         db.close()
 
@@ -3004,6 +3024,13 @@ def cron_price_refresh(request: Request, secret: str = ""):
                 f"transient_errors={tcgdex.transient_errors} stopped={tcgdex.stopped} "
                 f"http_calls={tcgdex.http_calls} eur_to_nok={tcgdex.eur_to_nok}"
             )
+        sync_status.record_run(
+            db,
+            job=sync_status.PRICE_REFRESH,
+            status=sync_status.OK,
+            source=_run_source(request),
+            message=_price_refresh_message(result, tcgdex, images, snapshotted),
+        )
         return {
             "status": "ok",
             "usd_to_nok": result.usd_to_nok,
@@ -3018,8 +3045,37 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "images_filled": images.filled,
             "tcgdex": _tcgdex_summary(tcgdex),
         }
+    except Exception as exc:
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=sync_status.PRICE_REFRESH,
+            status=sync_status.FAILED,
+            source=_run_source(request),
+            message=f"{exc.__class__.__name__}: {exc}",
+        )
+        raise
     finally:
         db.close()
+
+
+def _price_refresh_message(result, tcgdex, images, snapshotted: int) -> str:
+    """One-line /sync-status summary of a /cron/price-refresh run."""
+    parts = [f"TCGplayer: checked {result.cards_checked}, updated {result.cards_updated}"]
+    if result.cards_low_confidence or result.cards_variant_uncertain:
+        parts.append(
+            f"{len(result.cards_low_confidence)} low confidence, "
+            f"{len(result.cards_variant_uncertain)} variant uncertain"
+        )
+    if tcgdex is None:
+        parts.append("TCGdex: failed")
+    else:
+        parts.append(f"TCGdex: checked {tcgdex.cards_checked}, priced {tcgdex.cards_priced}")
+    parts.append(f"images: filled {images.filled} of {images.attempted}")
+    parts.append(f"{snapshotted} cards snapshotted")
+    if result.usd_to_nok is not None:
+        parts.append(f"USD/NOK {result.usd_to_nok:g} ({result.fx_source})")
+    return "; ".join(parts)
 
 
 # Per daily /cron/price-refresh run: a modest image pass after prices.
@@ -3079,6 +3135,13 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
         remaining = db.query(Card).filter(Card.image_url.is_(None), Card.image_lookup_failed_at.is_(None)).count()
         with_image = db.query(Card).filter(Card.image_url.isnot(None)).count()
         print(f"[cron/image-backfill] attempted={result.attempted} filled={result.filled} remaining={remaining}")
+        sync_status.record_run(
+            db,
+            job=sync_status.IMAGE_BACKFILL,
+            status=sync_status.OK,
+            source=_run_source(request),
+            message=f"Filled {result.filled} of {result.attempted} attempted; {remaining} still missing",
+        )
         return {
             "status": "ok",
             "attempted": result.attempted,
@@ -3086,6 +3149,16 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
             "cards_with_image": with_image,
             "remaining": remaining,
         }
+    except Exception as exc:
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=sync_status.IMAGE_BACKFILL,
+            status=sync_status.FAILED,
+            source=_run_source(request),
+            message=f"{exc.__class__.__name__}: {exc}",
+        )
+        raise
     finally:
         db.close()
 
@@ -3113,11 +3186,32 @@ def cron_set_sync(request: Request, secret: str = ""):
             f"[cron/set-sync] api_ok={result.api_call_succeeded} "
             f"matched={len(result.matched)} unmatched={len(result.unmatched)}"
         )
+        sync_status.record_run(
+            db,
+            job=sync_status.SET_SYNC,
+            status=sync_status.OK if result.api_call_succeeded else sync_status.FAILED,
+            source=_run_source(request),
+            message=(
+                f"Matched {len(result.matched)} sets, {len(result.unmatched)} unmatched"
+                if result.api_call_succeeded
+                else "api.pokemontcg.io call failed; nothing updated"
+            ),
+        )
         return {
             "status": "ok" if result.api_call_succeeded else "api_call_failed",
             "matched": len(result.matched),
             "unmatched": sorted(result.unmatched),
         }
+    except Exception as exc:
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=sync_status.SET_SYNC,
+            status=sync_status.FAILED,
+            source=_run_source(request),
+            message=f"{exc.__class__.__name__}: {exc}",
+        )
+        raise
     finally:
         db.close()
 
@@ -3175,74 +3269,6 @@ def orders_charts(request: Request, metric: str = "total", period: str = "all"):
 @app.get("/wiki")
 def wiki_redirect():
     return RedirectResponse("/", status_code=308)
-
-
-# --------------------------------------------------------------------------
-# Release Notes (issue #144) -- a small, hand-authored log of user-facing
-# changes, stored in the `releases` table (see models.Release's docstring
-# for why a DB table, not a CHANGELOG.md file or git/PR-history generation).
-# No new RBAC: both routes pass through the same auth_guard middleware as
-# every other non-public route. No edit-in-place for v1 -- delete and
-# re-add a mistaken entry instead.
-# --------------------------------------------------------------------------
-_RECENT_RELEASES_LIMIT = 15
-
-
-@app.get("/releases")
-def releases_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
-    """Merged with the former Sync Log page (issue #159) -- an operational,
-    read-only sync history and a hand-authored, editable release changelog
-    don't share an action model, so they're two stacked sections here
-    (#sync-log first, since it's the more routinely checked one) rather than
-    interleaved into one timeline.
-    """
-    db = get_db_session()
-    try:
-        releases = db.query(Release).order_by(Release.date.desc(), Release.id.desc()).all()
-        context = {
-            "releases": releases,
-            "recent_releases": releases[:_RECENT_RELEASES_LIMIT],
-            "older_releases": releases[_RECENT_RELEASES_LIMIT:],
-            "today": dt.date.today().isoformat(),
-            "logs": _recent_import_logs(db, lsort, ldir),
-            "lsort": lsort,
-            "ldir": ldir,
-        }
-        return templates.TemplateResponse(request, "releases.html", context)
-    finally:
-        db.close()
-
-
-@app.post("/releases")
-def releases_create(
-    request: Request,
-    date: dt.date = Form(...),
-    title: str = Form(...),
-    body: str = Form(...),
-):
-    db = get_db_session()
-    try:
-        db.add(Release(date=date, title=title, body=body, created_at=dt.datetime.utcnow()))
-        db.commit()
-        return RedirectResponse("/releases", status_code=303)
-    finally:
-        db.close()
-
-
-@app.post("/releases/{release_id}/delete")
-def releases_delete(request: Request, release_id: int):
-    db = get_db_session()
-    try:
-        release = db.query(Release).filter(Release.id == release_id).first()
-        if release is not None:
-            db.delete(release)
-            db.commit()
-        # Already gone (e.g. double-submit or two tabs) is treated as a no-op,
-        # not an error -- the user's intent (this entry should not exist) is
-        # already satisfied.
-        return RedirectResponse("/releases", status_code=303)
-    finally:
-        db.close()
 
 
 # --------------------------------------------------------------------------
