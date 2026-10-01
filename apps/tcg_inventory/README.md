@@ -848,10 +848,12 @@ never through Supabase's API keys (since 2026-09-30):
   in section 1, step 3 above.
 
 **Any new table must keep it that way**: RLS on, no `anon`/`authenticated`
-grants. Until #239 makes `init_db()` do this automatically, enable RLS by
-hand on prod after a deploy that adds a table (a direct prod write: backup
-and go-ahead first, as for any other). The exact SQL is in
-`HANDOFF.md` (2026-09-30, prod RLS hardening).
+grants. Since #239 (schema version 11), `init_db()` enables RLS on every
+table in `Base.metadata` on Postgres as part of its migration chain (see
+"Database migrations" under "Not built yet"), so a deploy that adds a table
+no longer needs a manual step. Grants are still not automated: a new table
+picks up whatever `public`'s default privileges say. The original hand-run
+SQL is in `HANDOFF.md` (2026-09-30, prod RLS hardening).
 
 ### Automatic daily sync (Vercel Cron)
 
@@ -1554,7 +1556,8 @@ network access or the app's real `tcg_inventory.db` involved.
   Supabase table by hand.
   - `init_db()` gates its migration chain (`create_all()` →
     `_add_missing_columns()` → `_normalize_legacy_transaction_types()` →
-    `_widen_card_snapshot_source_constraint()`) behind a single-row
+    `_widen_card_snapshot_source_constraint()` →
+    `_enable_row_level_security()`) behind a single-row
     `schema_meta` table + `db.CURRENT_SCHEMA_VERSION` constant, so a
     serverless cold start against an already-migrated Supabase database
     does one `SELECT` and returns instead of a chain of round trips on
@@ -1566,6 +1569,14 @@ network access or the app's real `tcg_inventory.db` involved.
     against prod (see `HANDOFF.md`) instead of through this chain, also
     bump `schema_meta`'s stored version accordingly — otherwise this gate
     will skip a migration that should still run.
+  - `_enable_row_level_security()` (#239, Postgres only, no-op on SQLite)
+    runs `ALTER TABLE public."<name>" ENABLE ROW LEVEL SECURITY` for every
+    table in `Base.metadata.sorted_tables`. Idempotent (re-enabling is a
+    no-op) and adds no policies: Supabase's `anon`/`authenticated` roles
+    get no rows, while the app connects as `postgres` (`BYPASSRLS`) and is
+    unaffected. Because it's version-gated, a new table gets RLS on the
+    first start after the deploy that bumps `CURRENT_SCHEMA_VERSION` for
+    it, which every table-adding change already does.
   - `_backfill_sets()` (see "Chronological sorting" above) is one
     exception to that gate (so are `_backfill_master_cards()` and
     `_backfill_card_prices()`, both a single cheap `SELECT` once done) — it runs on every `init_db()` call regardless

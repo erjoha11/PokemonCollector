@@ -84,8 +84,8 @@ class Base(DeclarativeBase):
 # of this gate, per README.md "Database migrations".
 # 8: master_cards, master_card_ids, cards.master_card_id; 9: cards.price_lookup_failed_at (#216);
 # 10: card_prices, fx_rates, cards.market_price/_source/_as_of/price_flags,
-#     card_snapshots.price_source (#210)
-CURRENT_SCHEMA_VERSION = 10
+#     card_snapshots.price_source (#210); 11: RLS enabled on every table (Postgres, #239)
+CURRENT_SCHEMA_VERSION = 11
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
@@ -210,6 +210,25 @@ def _widen_card_snapshot_source_constraint():
                     "UNIQUE (card_id, date, source)"
                 )
             )
+
+
+def _enable_row_level_security():
+    """Defence in depth (#239): enable row level security on every app
+    table on Postgres, so a table added later gets it automatically instead
+    of relying on a manual step against prod. No policies are added -- with
+    RLS on and no policies, Supabase's `anon`/`authenticated` roles (the
+    Data API) can't read or write any row, while the app itself connects as
+    `postgres` (table owner, `BYPASSRLS`) and is unaffected.
+
+    Idempotent: `ENABLE ROW LEVEL SECURITY` on a table that already has it
+    is a no-op. Runs after `create_all()`, so every table in metadata exists.
+    SQLite (local/tests) has no RLS, so this is a no-op there.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            conn.execute(text(f'ALTER TABLE public."{table.name}" ENABLE ROW LEVEL SECURITY'))
 
 
 def get_or_create_set(session, series, set_name, *, release_rank=None, cache=None):
@@ -376,6 +395,7 @@ def init_db():
         _add_missing_columns()
         _normalize_legacy_transaction_types()
         _widen_card_snapshot_source_constraint()
+        _enable_row_level_security()
         _set_schema_version(CURRENT_SCHEMA_VERSION)
 
     # Not part of the version-gated chain above -- see _backfill_sets()'s
