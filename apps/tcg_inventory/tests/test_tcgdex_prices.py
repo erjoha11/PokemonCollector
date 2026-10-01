@@ -21,7 +21,7 @@ TODAY = dt.date(2026, 9, 30)
 
 
 def fixture(name: str) -> dict:
-    return json.loads((FIXTURES / name).read_text())
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 def with_updated(payload: dict, when: str = "2026-09-29T09:52:40.527Z") -> dict:

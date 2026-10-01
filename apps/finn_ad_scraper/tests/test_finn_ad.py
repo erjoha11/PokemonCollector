@@ -11,7 +11,7 @@ URL = "https://www.finn.no/recommerce/forsale/item/999"
 
 
 def test_parses_json_ld_product():
-    ad = parse_ad(FIXTURE.read_text(), URL)
+    ad = parse_ad(FIXTURE.read_text(encoding="utf-8"), URL)
     assert ad.title == "Pokemon kort samling - Charizard m.fl."
     assert "Charizard" in ad.description
     assert (ad.price, ad.currency) == (1500.0, "NOK")
@@ -74,7 +74,7 @@ class FakeSession:
 
 def test_plain_http_is_enough_when_structured_data_is_present(monkeypatch):
     monkeypatch.setattr(finn_ad, "_fetch_html_via_browser", lambda url: pytest.fail("browser not needed"))
-    html = FIXTURE.read_text()
+    html = FIXTURE.read_text(encoding="utf-8")
     assert fetch_html(URL, session=FakeSession(FakeResponse(html))) == html
 
 
@@ -89,4 +89,4 @@ def test_no_browser_and_http_failure_raises():
 
 
 def test_fetch_finn_ad_with_given_html_skips_network():
-    assert fetch_finn_ad(URL, html=FIXTURE.read_text()).price == 1500.0
+    assert fetch_finn_ad(URL, html=FIXTURE.read_text(encoding="utf-8")).price == 1500.0
