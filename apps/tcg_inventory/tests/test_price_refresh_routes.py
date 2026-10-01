@@ -158,8 +158,13 @@ def test_cron_price_refresh_reports_degraded_at_the_fx_fallback_rate(client, mon
 
     import db as db_module
 
+    from models import ImportLog
+
     with db_module.SessionLocal() as db:
         assert db.query(Card).filter(Card.card_id == "a").one().tcgplayer_price is None
+        log = db.query(ImportLog).filter(ImportLog.job == "price-refresh").one()
+        assert log.status == "degraded"
+        assert fx_rates.FALLBACK_REASON in log.message
 
 
 def test_cron_price_refresh_status_ok_with_a_real_rate(client, monkeypatch):
