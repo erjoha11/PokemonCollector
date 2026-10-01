@@ -9,7 +9,7 @@ every entry that also gets typed into `/releases` by hand.
 
 Entries are grouped by app, since apps in this monorepo are independent.
 This first entry backfills everything merged to `main` since 2026-09-14
-(the earliest session `apps/tcg_inventory/HANDOFF.md` covers); it does not
+(the earliest session `notes/tcg_inventory/HANDOFF.md` covers); it does not
 attempt to reconstruct the project's earlier history. From here on, each
 new entry should cover only what's merged since the previous one.
 
