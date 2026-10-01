@@ -285,7 +285,9 @@ run).
   to the order (search below the table — created immediately against
   this order, defaulted to today/purchase/0 and editable in place, not
   deferred until Save), or moving/merging/splitting rows between orders
-  by reassigning Order ID — all edits in a group commit atomically, and
+  by reassigning Order ID ("Start new order" blanks a row's Order ID;
+  the new order's ID is assigned on save, see "Order IDs" below) — all
+  edits in a group commit atomically, and
   moving a row out of an order clears that row's Total/shipping
   rather than guessing how to split it (set the destination order's
   total/shipping afterward). Save keeps you on the edit page with a
@@ -500,6 +502,32 @@ A rejection is a **422** that the user can read:
   too, and stay JSON for everything else.
 - **Plain-form pages** (Edit listing, Mark sold) re-render with the message
   in a `role="alert"` box and every submitted value filled back in.
+
+### Order IDs (issue #228)
+
+A new order's ID (`purchase_id`) is assigned by the server **when the order
+is saved**, never when a form opens. That covers registering the New Order
+cart, Mark sold on a listing, and "Start new order" on Edit order:
+
+- The cart's heading reads "(Order ID assigned on Register)". It no longer
+  shows or posts a reserved number, and the server ignores any posted
+  `purchase_id`.
+- On Edit order, "Start new order" blanks the row's Order ID field
+  (placeholder "New"). Every row left blank in one save moves into the same
+  new order. A typed number still moves or merges the row into that order.
+- The ID is one past the highest in use, computed inside the save
+  transaction (`app._allocating_order_id`). A lock is held until commit: a
+  process-level lock on SQLite and a transaction-scoped
+  `pg_advisory_xact_lock` on Postgres, which covers several Vercel
+  instances. Two saves that overlap, such as a cart in one tab and Mark sold
+  in another, get two different orders instead of merging into one.
+
+Edit order only edits and deletes rows that belong to the order being
+edited. If a posted row id belongs to another order, or to no order, the
+save is rejected with a 422 ("Transaction N belongs to order #M, not order
+#K -- nothing was saved. Reload the page and try again.") and nothing is
+written. A row id that no longer exists, for example one already deleted in
+another tab, is skipped as before.
 
 ## Data model
 

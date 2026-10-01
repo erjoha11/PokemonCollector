@@ -120,7 +120,6 @@ def _cart(ids, **overrides):
     data = {
         "type": "purchase",
         "date": "2026-01-01",
-        "purchase_id": "9",
         "card_id": [str(ids["a"]), str(ids["b"])],
         "price": ["10", "20"],
     }
@@ -274,8 +273,8 @@ def test_row_edit_rejects_unknown_type_and_malformed_date(client):
 
 def test_unparseable_int_field_is_plain_text_for_htmx_and_json_otherwise(client):
     ids = _seed(client)
-    data = _cart(ids, purchase_id="abc")
-    _assert_plain_422(client.post("/transactions/purchase", data=data, headers=HX), "Order ID", "whole number")
+    data = _cart(ids, card_id=["abc", str(ids["b"])])
+    _assert_plain_422(client.post("/transactions/purchase", data=data, headers=HX), "Card on row 1", "whole number")
     plain = client.post("/transactions/purchase", data=data)
     assert plain.status_code == 422
     assert plain.headers["content-type"].startswith("application/json")

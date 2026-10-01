@@ -53,6 +53,21 @@ yet.
 
 ### tcg_inventory
 
+**Order IDs assigned on save; Edit order scoped to its own rows (#228 b)**
+- A new order's `purchase_id` is computed inside the save transaction (cart
+  Register, Mark sold, Edit order's "Start new order") under a lock held
+  until commit: a process lock on SQLite, `pg_advisory_xact_lock` on
+  Postgres. A cart opened in one tab and a listing marked sold in another
+  now become two orders instead of merging into one. The cart no longer
+  shows or posts a reserved Order ID ("Order ID assigned on Register"), and
+  a posted `purchase_id` is ignored.
+- Edit order's "Start new order" blanks the row's Order ID. Blank rows move
+  into one new order whose ID is assigned on save.
+- `update_purchase` rejects with a 422 (nothing written) any posted row id
+  that belongs to another order or to no order. It used to delete or edit
+  any id posted to it.
+- No schema change. Part (a), validation and the 422 pattern, was #271.
+
 **Collections index page and nav item removed (#252)**
 - `GET /collections` (`collections_index`) and `templates/collections.html`
   are gone, and so is the "Collections" nav item. `/collections` now 404s.

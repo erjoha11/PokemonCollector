@@ -1,5 +1,5 @@
 {% from "partials/purchase_edit_card_cell.html" import purchase_edit_card_cell %}
-{% macro purchase_edit_row(purchase_id, tx, next_purchase_id) %}
+{% macro purchase_edit_row(purchase_id, tx) %}
 <tr>
   {{ purchase_edit_card_cell(purchase_id, tx.id, tx.card) }}
   <td>
@@ -27,8 +27,11 @@
     <input type="text" name="note" value="{{ tx.note or '' }}" placeholder="Note" class="tx-input-lg">
   </td>
   <td>
-    <input type="number" name="new_purchase_id" value="{{ tx.purchase_id }}" class="tx-input-xs">
-    <button type="button" class="muted secondary" onclick="this.previousElementSibling.value = {{ next_purchase_id }}">Start new order</button>
+    {# Blank = split into a new order whose ID is assigned on save (issue
+       #228 b) -- never a number reserved when the page opened. #}
+    <input type="number" name="new_purchase_id" value="{{ tx.purchase_id }}" class="tx-input-xs" placeholder="New"
+           title="Leave blank to move this row into a new order (its Order ID is assigned on save).">
+    <button type="button" class="muted secondary" onclick="this.previousElementSibling.value = ''">Start new order</button>
   </td>
   <td><input type="checkbox" name="delete_tx_id" value="{{ tx.id }}" title="Delete this row"></td>
 </tr>

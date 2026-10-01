@@ -872,7 +872,6 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
         data={
             "type": "purchase",
             "date": "2026-01-01",
-            "purchase_id": "4",
             "purchase_total": "100",
             "card_id": [str(ids["a"]), str(ids["b"])],
             "price": ["10", "50"],
@@ -882,7 +881,7 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     assert response.status_code == 200
 
     db = db_module.SessionLocal()
-    txs = db.query(Transaction).filter(Transaction.purchase_id == 4).all()
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 1).all()
     assert all(t.purchase_total == 100 for t in txs)
     db.close()
 
@@ -890,11 +889,11 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     # the normal-print cards not priced individually yet are the
     # still-unaccounted-for 40 kr, flagged as Remaining since it's nonzero.
     text = client.get("/transactions").text
-    assert summary_cell(text, 4, "value") == "60 kr"
-    assert summary_cell(text, 4, "total") == "100 kr"
-    assert order_remaining(text, 4) == "Remaining 40 kr"
-    assert "tx-diff-flag" in order_section(text, 4)
-    assert "oc-remaining" not in order_summary(text, 4)
+    assert summary_cell(text, 1, "value") == "60 kr"
+    assert summary_cell(text, 1, "total") == "100 kr"
+    assert order_remaining(text, 1) == "Remaining 40 kr"
+    assert "tx-diff-flag" in order_section(text, 1)
+    assert "oc-remaining" not in order_summary(text, 1)
 
 
 def test_purchase_shipping_is_subtracted_from_the_diff(client):
@@ -994,7 +993,6 @@ def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
         data={
             "type": "purchase",
             "date": "2026-01-01",
-            "purchase_id": "12",
             "card_id": [str(card_id)],
             "price": ["25"],
         },
@@ -1002,9 +1000,9 @@ def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
     )
     assert response.status_code == 200
     assert response.history  # actually redirected, not a bare 200
-    assert "open_order=12" in str(response.history[-1].headers["location"])
+    assert "open_order=1" in str(response.history[-1].headers["location"])
 
-    order_details = response.text.split('id="order-12"', 1)[1].split(">", 1)[0]
+    order_details = response.text.split('id="order-1"', 1)[1].split(">", 1)[0]
     assert "open" in order_details
 
 
@@ -1161,7 +1159,6 @@ def test_purchase_cart_without_a_typed_total_leaves_purchase_total_null(client, 
     data = {
         "type": "purchase",
         "date": "2026-01-01",
-        "purchase_id": "5",
         "purchase_shipping": "10",
         "card_id": [str(ids["a"]), str(ids["b"])],
         "price": ["20", "30"],
@@ -1172,15 +1169,15 @@ def test_purchase_cart_without_a_typed_total_leaves_purchase_total_null(client, 
     assert response.status_code == 200
 
     db = db_module.SessionLocal()
-    txs = db.query(Transaction).filter(Transaction.purchase_id == 5).all()
+    txs = db.query(Transaction).filter(Transaction.purchase_id == 1).all()
     assert len(txs) == 2
     assert all(t.purchase_total is None for t in txs)
     assert all(t.purchase_shipping == 10 for t in txs)
     db.close()
 
     text = client.get("/transactions").text
-    assert summary_cell(text, 5, "total") == "60 kr auto"
-    assert order_remaining(text, 5) is None
+    assert summary_cell(text, 1, "total") == "60 kr auto"
+    assert order_remaining(text, 1) is None
 
 
 def test_purchase_cart_total_field_is_blank_with_auto_wiring(client):
@@ -1365,34 +1362,24 @@ def test_platform_bulk_edit_field_is_blank_when_group_rows_disagree(client):
     assert "Mixed" in platform_input
 
 
-def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
-    import datetime as dt
-
-    import db as db_module
-    from models import Card, Transaction
-
+def test_purchase_cart_start_reserves_no_order_id(client):
+    """The cart no longer shows or posts a pre-reserved Order ID (issue
+    #228 b) -- it's assigned when the cart is registered."""
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    # No transactions yet -- the cart starts at purchase_id 1.
     response = client.get("/transactions/purchase/start")
     assert response.status_code == 200
-    assert "Order ID 1" in response.text
+    assert "Order ID assigned on Register" in response.text
+    assert 'name="purchase_id"' not in response.text
     assert "New Order" in response.text
     assert '<option value="purchase" selected>' in response.text
 
-    db = db_module.SessionLocal()
-    card_id = db.query(Card).filter(Card.card_id == "a").one().id
-    db.add(Transaction(card_id=card_id, type="purchase", date=dt.date.today(), price=10, purchase_id=7))
-    db.commit()
-    db.close()
-
-    # One purchase already on record at id 7 -- the next cart reserves 8,
-    # not 1, so it never collides with an existing group.
     # The Sold tab's "+ Record sale without listing" cart (issue #255): a
     # hidden type=sale input instead of the type select.
     response = client.get("/transactions/purchase/start?type=sale")
-    assert "Order ID 8" in response.text
+    assert "Order ID assigned on Register" in response.text
+    assert 'name="purchase_id"' not in response.text
     assert '<input type="hidden" name="type" value="sale">' in response.text
     assert 'select name="type"' not in response.text
 
@@ -1461,7 +1448,6 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
             "type": "purchase",
             "date": "2026-06-01",
             "platform": "Kortmesse",
-            "purchase_id": "3",
             "card_id": [str(ids["a"]), str(ids["b"])],
             "price": ["15", "20"],
         },
@@ -1470,7 +1456,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
     assert response.status_code == 200
 
     db = db_module.SessionLocal()
-    txs = sorted(db.query(Transaction).filter(Transaction.purchase_id == 3).all(), key=lambda t: t.card_id)
+    txs = sorted(db.query(Transaction).filter(Transaction.purchase_id == 1).all(), key=lambda t: t.card_id)
     assert len(txs) == 2
     assert {t.price for t in txs} == {15, 20}
     assert all(t.type == "purchase" and t.platform == "Kortmesse" for t in txs)
@@ -1478,7 +1464,7 @@ def test_purchase_cart_search_result_adds_a_row_and_final_submit_creates_transac
 
     # And History groups them together under that shared purchase_id.
     history = client.get("/transactions").text
-    assert "Order #3" in history
+    assert "Order #1" in history
     assert "2 cards" in history
 
 

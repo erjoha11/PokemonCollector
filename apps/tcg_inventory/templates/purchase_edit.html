@@ -35,7 +35,7 @@
       </thead>
       <tbody id="purchase-edit-rows">
         {% for tx in transactions %}
-        {{ purchase_edit_row(purchase_id, tx, next_purchase_id) }}
+        {{ purchase_edit_row(purchase_id, tx) }}
         {% endfor %}
       </tbody>
     </table>
@@ -89,6 +89,7 @@
   <p class="muted">
     Moving a row to a different Order ID clears this order's Total/shipping for that row —
     set the destination order's total/shipping afterward from the Orders page, it's never guessed or split automatically.
+    "Start new order" blanks a row's Order ID: every blank row moves into one new order, whose ID is assigned when you save.
   </p>
 
   {# A failed save -- a 422's own message, else the generic "Could not
