@@ -226,7 +226,7 @@ without re-running the review. Ordered by the agent's own priority:
    above already turned that page into the read-only "Synk-logg". Also
    cheap, no schema change.~~ **Addressed 2026-09-15** (translation session
    below): rewritten to describe the current read-only "Sync Log" page.
-3. **Synk-logg's "Advarsler" column is a dead end.** `partials/import_log.html`
+3. ~~**Synk-logg's "Advarsler" column is a dead end.** `partials/import_log.html`
    line 16 shows a warning *count*, but the actual warning text is never
    persisted (`models.py` `ImportLog.warnings_count` only stores the count;
    `app.py` ~line 1090 passes `result.warnings` into a one-off response,
@@ -234,7 +234,10 @@ without re-running the review. Ordered by the agent's own priority:
    ever see what a past sync's warnings said. **Has data-model
    implications** (new column or related table to store raw warning text) —
    check with the `architect` agent on storage shape before implementing,
-   unlike #1/#2 above.
+   unlike #1/#2 above.~~ **Addressed 2026-10-01** (#264): a nullable
+   `import_log.warnings_text` column stores each sync's warnings, one per
+   line, and `/sync-status` shows them behind the warning count. See the
+   2026-10-01 #264 entry at the end of this file.
 4. ~~**Accessibility: `--muted` (`static/style.css` line 9, `#868b96`) is
    under WCAG AA contrast (~3.4:1) at the small sizes it's actually used**
    (table headers, KPI labels, Historikk dates/metadata). Also
@@ -1721,3 +1724,61 @@ Code only, no direct database changes, no schema change.
   `tests/test_listed_badge.py`).
 - Not yet clicked through in a real browser; badge placement on a narrow
   screen is unreviewed by `ux`.
+
+# Handoff notes — 2026-10-01 session (#264: Sync status page; Wiki, Release Notes and Dropbox picker removed)
+
+## Code (in git, PR for #264)
+
+- **Activity Log -> Sync status** (`/sync-status`, nav "Sync status"): an
+  at-a-glance card per background job (Dex sync, Price refresh, Set sync,
+  Image backfill) with its last successful run, plus its last
+  empty/aborted/failed run when that is newer than the last success; then
+  the run log (30 most recent runs, sortable via `/sync-status/log`). The
+  dead "Deleted" column is gone from the UI only.
+- **Newly recorded in `import_log`**: empty-folder cron runs, #225
+  circuit-breaker aborts (its own commit after the import rollback, so it
+  survives it), Dropbox and unexpected errors, every price-refresh /
+  set-sync / image-backfill run, and the import warning text.
+  `sync_status.record_run` writes the non-import rows and never raises.
+- **Schema (additive, version 12)**: four nullable columns on the existing
+  `import_log` (`job`, `status`, `message`, `warnings_text`); no new table,
+  so nothing extra for #239's RLS pass (`import_log` already has RLS).
+  `db._backfill_import_log_defaults` sets `job='dex-sync'`, `status='ok'`
+  on pre-existing rows on first start after deploy (every older row was a
+  successful Dex sync). Nothing dropped, renamed or retyped;
+  `cards_deleted` stays in the table.
+- **Redirects (308, query string kept)**: `/releases` and `/import` ->
+  `/sync-status`; `/releases/sync-log` -> `/sync-status/log`; `/wiki` -> `/`.
+
+## Decided and deliberately dropped
+
+- **In-app Wiki removed.** Its money-figure definitions moved into
+  `apps/tcg_inventory/README.md` ("Money figures (glossary)"). The README is
+  the one reference now; no tooltip work was done in this ticket.
+- **Release Notes removed** (page section, form, `POST /releases`,
+  `POST /releases/{id}/delete`). `notes/CHANGELOG.md` is the record of
+  changes from now on. The `releases` table and `Release` model stay in the
+  DB/code, unused, so existing rows aren't lost. Dropping them would need a
+  deliberate migration and hasn't been decided.
+- **Manual Dropbox picker removed**: `partials/dropbox_files.html`,
+  `partials/import_result.html`, `GET /import/dropbox/list`,
+  `POST /import/dropbox/sync` and their tests. #199's "Run now" is the
+  replacement. `dropbox_client.py`, `dropbox_setup.py` and
+  `/cron/dropbox-sync` are unchanged. One side effect: the importer's
+  `allow_mass_missing` ("Sync anyway") override is no longer reachable from
+  any page. A real big clear-out that trips the circuit breaker needs
+  #199 (or a one-off local run) to override it.
+
+## Direct database changes
+
+None. No production DB read or write was made. The column add and backfill
+run automatically through `init_db()` on the first start after deploy.
+
+## Expect after deploy
+
+- `/sync-status` shows only Dex sync history at first. The other jobs read
+  "No successful run recorded yet" until their next run: price refresh
+  daily at 06:00 UTC, set sync monthly (the 1st, 04:00 UTC). Image backfill
+  has no cron of its own (the daily price refresh runs a small image pass,
+  counted in its summary), so that card only fills in after a manual
+  `/cron/image-backfill?secret=...` call.
