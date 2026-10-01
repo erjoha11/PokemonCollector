@@ -343,3 +343,128 @@ def test_reprice_all_respects_limit_oldest_first(db_session, monkeypatch):
     price_refresh.reprice_all(db_session, limit=2)
 
     assert looked_up == ["Card 1", "Card 3"]
+
+
+# --------------------------------------------------------------------------
+# FX fallback guard (issue #229)
+# --------------------------------------------------------------------------
+import fx_rates
+from models import FxRate
+
+
+def _no_real_rate():
+    """Live Norges Bank fetch fails (conftest turns the network off) and the
+    fx_rates table is empty -> get_rates() can only return the constant."""
+    fx_rates.reset_cache()
+
+
+def _store_old_rate(db, usd=9.4, eur=10.9):
+    """A rate stored days ago (not "recent", so get_rates still tries the
+    live fetch, which fails, and lands on "stored")."""
+    old = dt.datetime.utcnow() - dt.timedelta(days=3)
+    for currency, rate in (("USD", usd), ("EUR", eur)):
+        db.add(FxRate(date=dt.date.today() - dt.timedelta(days=3), currency=currency, rate_nok=rate, fetched_at=old))
+    db.commit()
+    fx_rates.reset_cache()
+
+
+def test_refresh_writes_nothing_at_the_fx_fallback_rate_and_reports_degraded(db_session, monkeypatch):
+    stale = dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1)
+    priced = _priced(Card(card_id="a", variant=None, name="Shellder"), 1.0, stale)
+    never = Card(card_id="b", variant=None, name="Slowbro")
+    db_session.add_all([priced, never])
+    db_session.commit()
+    _no_real_rate()
+    calls = []
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda *a, **k: calls.append(1) or card_images.CardApiData(None, 42.0),
+    )
+
+    result = price_refresh.refresh_stale_prices(db_session)
+
+    assert result.status == "degraded"
+    assert result.fx_source == "fallback"
+    assert result.degraded_reason == fx_rates.FALLBACK_REASON
+    assert (result.cards_checked, result.cards_updated, result.cards_skipped) == (0, 0, 2)
+    assert calls == []
+    assert (_row(priced).price_nok, _row(priced).fetched_at, _row(priced).lookup_failed_at) == (1.0, stale, None)
+    assert _row(never) is None
+    # Both still due, so the next run retries.
+    due = db_session.query(Card).filter(price_refresh.due_for_price_lookup_filter(dt.date.today())).count()
+    assert due == 2
+
+
+def test_reprice_all_also_skips_at_the_fx_fallback_rate(db_session, monkeypatch):
+    card = _priced(Card(card_id="a", variant=None, name="Shellder"), 1.0, dt.date.today())
+    db_session.add(card)
+    db_session.commit()
+    _no_real_rate()
+    monkeypatch.setattr(card_images, "fetch_card_data", lambda *a, **k: card_images.CardApiData(None, 42.0))
+
+    result = price_refresh.reprice_all(db_session)
+
+    assert result.status == "degraded"
+    assert _row(card).price_nok == 1.0
+
+
+def test_refresh_with_a_stored_rate_is_unchanged(db_session, monkeypatch):
+    card = Card(card_id="a", variant=None, name="Shellder")
+    db_session.add(card)
+    db_session.commit()
+    _store_old_rate(db_session)
+    monkeypatch.setattr(card_images, "fetch_card_data", lambda *a, **k: card_images.CardApiData(None, 42.0))
+
+    result = price_refresh.refresh_stale_prices(db_session)
+
+    assert (result.status, result.degraded_reason, result.fx_source, result.usd_to_nok) == ("ok", None, "stored", 9.4)
+    assert (result.cards_checked, result.cards_updated, result.cards_skipped) == (1, 1, 0)
+    assert _row(card).price_nok == 42.0
+
+
+def test_a_stored_set_missing_usd_counts_as_fallback_for_usd(db_session, monkeypatch):
+    """The constant filling in a currency the stored rows lack is the same
+    fallback, just per currency."""
+    old = dt.datetime.utcnow() - dt.timedelta(days=3)
+    db_session.add(FxRate(date=dt.date.today(), currency="EUR", rate_nok=10.9, fetched_at=old))
+    db_session.add(Card(card_id="a", variant=None, name="Shellder"))
+    db_session.commit()
+    fx_rates.reset_cache()
+    monkeypatch.setattr(card_images, "fetch_card_data", lambda *a, **k: card_images.CardApiData(None, 42.0))
+
+    result = price_refresh.refresh_stale_prices(db_session)
+
+    assert (result.fx_source, result.status, result.cards_updated) == ("stored", "degraded", 0)
+
+
+def test_fetch_card_data_returns_no_price_at_the_fx_fallback_rate(monkeypatch):
+    import httpx
+
+    payload = {
+        "data": [
+            {
+                "name": "Shellder",
+                "number": "1",
+                "images": {"small": "https://img/shellder.png"},
+                "tcgplayer": {"prices": {"normal": {"market": 2.0}}},
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **k: httpx.Response(200, json=payload, request=httpx.Request("GET", "https://x")),
+    )
+    fx_rates.reset_cache()
+    fx_rates.set_rates(fx_rates.FxRates(rates=dict(fx_rates.FALLBACK_RATES), as_of=None, source="fallback"))
+
+    data = card_images.fetch_card_data("Shellder", None, "1/100")
+
+    assert data.image_url == "https://img/shellder.png"  # images need no rate
+    assert (data.tcgplayer_price, data.tcgplayer_price_usd, data.fx_unavailable) == (None, None, True)
+
+    # ...and applying it writes nothing, not even a failure stamp.
+    card = Card(card_id="a", variant=None, name="Shellder")
+    assert price_refresh.apply_price_lookup(card, data, dt.date.today()) is False
+    assert _row(card) is None

@@ -554,10 +554,15 @@ class TcgdexRefreshResult:
     cards_variant_uncertain: list[str] = field(default_factory=list)
     transient_errors: int = 0
     http_calls: int = 0
-    stopped: str | None = None  # "time" | "rate_limited" | "errors"
+    stopped: str | None = None  # "time" | "rate_limited" | "errors" | "fx_unavailable"
     eur_to_nok: float | None = None
     usd_to_nok: float | None = None
     fx_source: str | None = None
+    # "ok", or "degraded" when the only rate available was fx_rates' fallback
+    # constant (issue #229): then the run is skipped entirely -- no request,
+    # no price, no failure stamp -- and every due card is retried next run.
+    status: str = "ok"
+    degraded_reason: str | None = None
 
 
 def _label(card: Card) -> str:
@@ -576,7 +581,11 @@ def _upstream_too_old(price: SourcePrice, today: dt.date) -> bool:
 def lookup_card(client: Client, db: Session, card: Card, today: dt.date, rates, result: TcgdexRefreshResult) -> bool:
     """Look one card up and record what came back. Returns True when at
     least one TCGdex price was stored. Raises TransientError (nothing
-    recorded) when TCGdex couldn't be asked."""
+    recorded) when TCGdex couldn't be asked. `rates` must not be the
+    fallback constant (refresh_tcgdex_prices checks, issue #229); a fallback
+    rate here raises ValueError rather than storing a wrong price."""
+    if not (rates.usable("EUR") and rates.usable("USD")):
+        raise ValueError("tcgdex_prices.lookup_card: refusing to price at the FX fallback constant (issue #229)")
     master = card.master_card
     language = master.language
     parsed = masterdata.parse_dex_card_id(card.card_id)
@@ -674,6 +683,15 @@ def refresh_tcgdex_prices(
     result.eur_to_nok = rates.to_nok("EUR")
     result.usd_to_nok = rates.to_nok("USD")
     result.fx_source = rates.source
+    if not (rates.usable("EUR") and rates.usable("USD")):
+        # Both TCGdex prices need a USD or EUR rate; never store one at the
+        # fallback constant (issue #229). Skipping the whole run (rather than
+        # per card) also skips ID resolution -- harmless, it happens on the
+        # next run that has a real rate.
+        result.status = "degraded"
+        result.degraded_reason = fx_rates.FALLBACK_REASON
+        result.stopped = "fx_unavailable"
+        return result
 
     cards = (
         db.query(Card)
@@ -738,7 +756,7 @@ def main() -> None:
             return
         result = refresh_tcgdex_prices(db, budget=args.limit)
         print(
-            f"tcgdex_prices: checked={result.cards_checked} priced={result.cards_priced} "
+            f"tcgdex_prices: status={result.status} checked={result.cards_checked} priced={result.cards_priced} "
             f"ids_matched={result.ids_matched} unmatched={len(result.cards_unmatched)} "
             f"variant_uncertain={len(result.cards_variant_uncertain)} "
             f"transient_errors={result.transient_errors} stopped={result.stopped} "

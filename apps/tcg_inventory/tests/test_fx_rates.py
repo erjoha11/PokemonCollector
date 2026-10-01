@@ -183,7 +183,10 @@ def test_card_pricing_never_blocks_on_an_fx_outage(monkeypatch):
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102")
 
-    assert result.tcgplayer_price == 105.0  # fallback constant, still priced
+    # Doesn't block or raise, but never prices at the fallback constant
+    # (issue #229): no price, flagged so the caller leaves the card due.
+    assert result.tcgplayer_price is None
+    assert result.fx_unavailable is True
 
 
 # --- fx_rates table (issue #210) ---------------------------------------------

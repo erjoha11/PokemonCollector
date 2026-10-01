@@ -77,6 +77,9 @@ class ImportResult:
     collections_touched: set[str] = field(default_factory=set)
     binders_touched: set[str] = field(default_factory=set)
     warnings: list[str] = field(default_factory=list)
+    # True when this sync's TCGplayer price lookups were skipped because the
+    # only exchange rate available was fx_rates' fallback constant (#229).
+    price_lookup_degraded: bool = False
 
 
 def _parse_price(raw: str | None) -> float | None:
@@ -254,6 +257,7 @@ def import_dex_csv_files(
         dex_prices: dict[Card, float] = {}
         imported_cards: list[Card] = []
         fx_primed = False
+        fx_fallback = False
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -311,13 +315,21 @@ def import_dex_csv_files(
 
             needs_image = card.image_url is None and image_lookup_budget > 0
             needs_price = price_lookup_budget > 0 and price_refresh.price_lookup_due(card, today)
+            if (needs_image or needs_price) and not fx_primed:
+                # Resolve the USD/NOK rate once, with the DB, so it's
+                # stored / reused / falls back to the last stored rate
+                # (fx_rates.py); fetch_card_data then hits the cache.
+                fx_primed = True
+                if not fx_rates.get_rates(db.get_bind()).usable("USD"):
+                    # Only the fixed fallback constant is available: no
+                    # TCGplayer price is written this sync (issue #229) and
+                    # nothing is stamped, so every card stays due.
+                    fx_fallback = True
+                    result.price_lookup_degraded = True
+                    result.warnings.append(f"TCGPlayer prices: {fx_rates.FALLBACK_REASON}")
+            if fx_fallback:
+                needs_price = False
             if needs_image or needs_price:
-                if not fx_primed:
-                    # Resolve the USD/NOK rate once, with the DB, so it's
-                    # stored / reused / falls back to the last stored rate
-                    # (fx_rates.py); fetch_card_data then hits the cache.
-                    fx_rates.get_rates(db.get_bind())
-                    fx_primed = True
                 api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
                 if needs_image:
                     # By Dex's own card_id first (see card_images.

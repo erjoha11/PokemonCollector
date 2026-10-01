@@ -2929,7 +2929,10 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             f"snapshotted={snapshotted}"
         )
         return {
-            "status": "ok",
+            # "degraded" (issue #229): the sync itself went through, but its
+            # TCGplayer price lookups were skipped -- only fx_rates' fallback
+            # constant was available. Details in `warnings`.
+            "status": "degraded" if result.price_lookup_degraded else "ok",
             "folder": folder,
             "files_synced": [f.name for f in files],
             "cards_created": result.cards_created,
@@ -3009,7 +3012,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
             f"[cron/price-refresh] images: attempted={images.attempted} filled={images.filled}"
         )
         print(
-            f"[cron/price-refresh] ok: checked={result.cards_checked} "
+            f"[cron/price-refresh] {result.status}: checked={result.cards_checked} "
             f"updated={result.cards_updated} "
             f"low_confidence={len(result.cards_low_confidence)} "
             f"variant_uncertain={len(result.cards_variant_uncertain)} "
@@ -3024,15 +3027,28 @@ def cron_price_refresh(request: Request, secret: str = ""):
                 f"transient_errors={tcgdex.transient_errors} stopped={tcgdex.stopped} "
                 f"http_calls={tcgdex.http_calls} eur_to_nok={tcgdex.eur_to_nok}"
             )
+        # Degraded (issue #229) when either price pass had only fx_rates'
+        # fallback constant and so wrote nothing -- still a 200 (the snapshot
+        # and image pass ran), but never reported as "ok".
+        degraded_reasons = list(
+            dict.fromkeys(
+                r.degraded_reason for r in (result, tcgdex) if r is not None and r.status != "ok" and r.degraded_reason
+            )
+        )
+        status = "degraded" if degraded_reasons else "ok"
+        if degraded_reasons:
+            print(f"[cron/price-refresh] DEGRADED: {' '.join(degraded_reasons)}")
+        message = _price_refresh_message(result, tcgdex, images, snapshotted)
         sync_status.record_run(
             db,
             job=sync_status.PRICE_REFRESH,
-            status=sync_status.OK,
+            status=sync_status.DEGRADED if degraded_reasons else sync_status.OK,
             source=_run_source(request),
-            message=_price_refresh_message(result, tcgdex, images, snapshotted),
+            message=f"{' '.join(degraded_reasons)} {message}" if degraded_reasons else message,
         )
         return {
-            "status": "ok",
+            "status": status,
+            "degraded_reason": " ".join(degraded_reasons) or None,
             "usd_to_nok": result.usd_to_nok,
             "fx_source": result.fx_source,
             "fx_as_of": result.fx_as_of.isoformat() if result.fx_as_of else None,
@@ -3040,6 +3056,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "cards_updated": result.cards_updated,
             "cards_low_confidence": result.cards_low_confidence,
             "cards_variant_uncertain": result.cards_variant_uncertain,
+            "cards_skipped": result.cards_skipped,
             "cards_snapshotted": snapshotted,
             "images_attempted": images.attempted,
             "images_filled": images.filled,
@@ -3112,6 +3129,8 @@ def _tcgdex_summary(result) -> dict | None:
         "http_calls": result.http_calls,
         "eur_to_nok": result.eur_to_nok,
         "fx_source": result.fx_source,
+        "status": result.status,
+        "degraded_reason": result.degraded_reason,
     }
 
 

@@ -791,3 +791,60 @@ def test_import_updates_set_id_when_an_existing_card_moves_sets(db_session):
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert card.set_id != first_set_id
     assert card.linked_set.name == "Vivid Voltage"
+
+
+# --------------------------------------------------------------------------
+# FX fallback guard on the import-time price lookup (issue #229)
+# --------------------------------------------------------------------------
+def test_import_skips_tcgplayer_prices_at_the_fx_fallback_rate(db_session, monkeypatch):
+    import fx_rates
+
+    fx_rates.reset_cache()  # live fetch fails (network off), fx_rates table empty
+    # Resolve the rate up front: db_session is a single shared in-memory
+    # connection (StaticPool), so fx_rates reading the table mid-import would
+    # roll back the import's own pending writes -- a test-only artefact.
+    assert fx_rates.get_rates(db_session.get_bind()).source == "fallback"
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
+
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert result.price_lookup_degraded is True
+    assert any(fx_rates.FALLBACK_REASON in w for w in result.warnings)
+    assert card.tcgplayer_price is None
+    assert pricing.get_row(card, pricing.SOURCE_POKEMONTCG) is None  # no price, no failure stamp
+    assert card.reference_price == 0.48  # the Dex (NOK) price is unaffected
+    assert importer.price_refresh.price_lookup_due(card, dt.date.today())
+
+
+def test_import_with_a_stored_fx_rate_prices_as_before(db_session, monkeypatch):
+    import fx_rates
+    from models import FxRate
+
+    old = dt.datetime.utcnow() - dt.timedelta(days=3)
+    db_session.add_all(
+        [
+            FxRate(date=dt.date.today(), currency="USD", rate_nok=9.4, fetched_at=old),
+            FxRate(date=dt.date.today(), currency="EUR", rate_nok=10.9, fetched_at=old),
+        ]
+    )
+    db_session.commit()
+    fx_rates.reset_cache()
+    assert fx_rates.get_rates(db_session.get_bind()).source == "stored"  # see the test above
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
+    )
+    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
+
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert result.price_lookup_degraded is False
+    assert card.tcgplayer_price == 9.99

@@ -26,6 +26,14 @@ currency in `FALLBACK_RATES`, falling back in this order:
 4. "fallback"   -- nothing has ever succeeded anywhere: the old fixed
                    approximations below, last resort only.
 
+A "fallback" rate is never used to *store* a price (issue #229): USD 10.5 is
+the ~10%-inflated constant #209 existed to remove. Every price-write path
+(price_refresh, the import-time lookup via card_images, tcgdex_prices)
+checks `FxRates.usable(currency)` (False for "fallback", and for a single
+currency a live response / the stored rows lacked and the constant filled
+in) and skips writing -- leaving the card due so the
+next run retries -- and reports the run as degraded instead of "ok".
+
 Caching is per process (module-level): the first price lookup of a run pays
 for one HTTP request, every later card in that run reuses it. A failed fetch
 is cached too (for `_FAILURE_TTL`), so an unreachable API costs one timeout
@@ -59,6 +67,15 @@ _TIMEOUT = 5.0
 # kept as-is on purpose; EUR is a similarly rough approximation.
 FALLBACK_RATES: dict[str, float] = {"USD": 10.5, "EUR": 11.5}
 
+FALLBACK_SOURCE = "fallback"
+
+# Human-readable reason a run is degraded, shared by every price-write path's
+# result and the cron/import responses.
+FALLBACK_REASON = (
+    "No usable USD/EUR->NOK exchange rate (Norges Bank unreachable and no "
+    "stored rate) -- prices were not updated; the next run retries."
+)
+
 _CACHE_TTL = 6 * 60 * 60  # seconds; Norges Bank publishes once per business day
 _FAILURE_TTL = 10 * 60  # retry a failed fetch at most this often
 
@@ -69,7 +86,22 @@ class FxRates:
 
     rates: dict[str, float]
     as_of: dt.date | None  # Norges Bank's observation date; None for fallback
-    source: str  # "live" | "last-known" | "fallback"
+    source: str  # "live" | "last-known" | "stored" | "fallback"
+    # Currencies whose rate here is FALLBACK_RATES' constant even though the
+    # set as a whole isn't "fallback" (a live response or the stored rows
+    # lacked that currency and it was filled in from the constant).
+    fallback_currencies: frozenset[str] = frozenset()
+
+    @property
+    def is_fallback(self) -> bool:
+        """True when these are the fixed FALLBACK_RATES -- not fit for
+        storing a price (issue #229, see module docstring)."""
+        return self.source == FALLBACK_SOURCE
+
+    def usable(self, currency: str) -> bool:
+        """True when `currency`'s rate is a real observed one, i.e. fit for
+        storing a price (issue #229) -- not the fallback constant."""
+        return not self.is_fallback and currency.upper() not in self.fallback_currencies
 
     def to_nok(self, currency: str) -> float:
         return self.rates[currency.upper()]
@@ -186,7 +218,12 @@ def _load_stored(bind, fresh_since: dt.datetime | None = None) -> FxRates | None
         return None
     if not rates:
         return None
-    return FxRates(rates={**FALLBACK_RATES, **rates}, as_of=as_of, source="stored")
+    return FxRates(
+        rates={**FALLBACK_RATES, **rates},
+        as_of=as_of,
+        source="stored",
+        fallback_currencies=frozenset(FALLBACK_RATES) - frozenset(rates),
+    )
 
 
 def _store(bind, rates: FxRates) -> None:
@@ -232,7 +269,9 @@ def get_rates(bind=None, force_refresh: bool = False) -> FxRates:
     if bind is not None and not force_refresh:
         recent = _load_stored(bind, fresh_since=dt.datetime.utcnow() - dt.timedelta(seconds=_CACHE_TTL))
         if recent is not None:
-            rates = FxRates(rates=recent.rates, as_of=recent.as_of, source="live")
+            rates = FxRates(
+                rates=recent.rates, as_of=recent.as_of, source="live", fallback_currencies=recent.fallback_currencies
+            )
             _last_known = rates
             _cache, _cache_expires_at = rates, now + _CACHE_TTL
             return rates
@@ -241,7 +280,10 @@ def get_rates(bind=None, force_refresh: bool = False) -> FxRates:
     if live is not None:
         # Fill in any currency the response lacked from what we had before.
         merged = {**FALLBACK_RATES, **(_last_known.rates if _last_known else {}), **live.rates}
-        rates = FxRates(rates=merged, as_of=live.as_of, source="live")
+        known = set(live.rates) | (set(_last_known.rates) - _last_known.fallback_currencies if _last_known else set())
+        rates = FxRates(
+            rates=merged, as_of=live.as_of, source="live", fallback_currencies=frozenset(FALLBACK_RATES) - known
+        )
         _last_known = rates
         _cache, _cache_expires_at = rates, now + _CACHE_TTL
         if bind is not None:
@@ -250,11 +292,16 @@ def get_rates(bind=None, force_refresh: bool = False) -> FxRates:
 
     stored = _load_stored(bind) if bind is not None and _last_known is None else None
     if _last_known is not None:
-        rates = FxRates(rates=_last_known.rates, as_of=_last_known.as_of, source="last-known")
+        rates = FxRates(
+            rates=_last_known.rates,
+            as_of=_last_known.as_of,
+            source="last-known",
+            fallback_currencies=_last_known.fallback_currencies,
+        )
     elif stored is not None:
         rates = stored
     else:
-        rates = FxRates(rates=dict(FALLBACK_RATES), as_of=None, source="fallback")
+        rates = FxRates(rates=dict(FALLBACK_RATES), as_of=None, source=FALLBACK_SOURCE)
     _cache, _cache_expires_at = rates, now + _FAILURE_TTL
     return rates
 

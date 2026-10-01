@@ -518,3 +518,57 @@ def test_cron_price_refresh_survives_a_tcgdex_crash(client, monkeypatch):
     assert response.json()["tcgdex"] is None
     with db_module.SessionLocal() as db:
         assert db.query(CardSnapshot).count() == 1
+
+
+# --------------------------------------------------------------------------
+# FX fallback guard (issue #229)
+# --------------------------------------------------------------------------
+def test_refresh_writes_nothing_at_the_fx_fallback_rate(db_session, fake_api):
+    import fx_rates
+
+    card = add_card(db_session)
+    fake = fake_api(ja_routes())
+    fx_rates.reset_cache()  # live fetch fails, fx_rates table empty
+
+    result = T.refresh_tcgdex_prices(db_session, today=TODAY)
+
+    assert (result.status, result.stopped, result.fx_source) == ("degraded", "fx_unavailable", "fallback")
+    assert result.degraded_reason == fx_rates.FALLBACK_REASON
+    assert (result.cards_checked, result.cards_priced, result.ids_matched) == (0, 0, 0)
+    assert fake.calls == []  # TCGdex not even asked
+    assert pricing.get_row(card, T.SOURCE_CM) is None and pricing.get_row(card, T.SOURCE_TP) is None
+    assert tcgdex_ids(db_session) == set()
+    assert db_session.query(Card).filter(T.due_filter(TODAY)).count() == 1  # still due
+
+
+def test_lookup_card_refuses_a_fallback_rate(db_session):
+    import fx_rates
+
+    card = add_card(db_session)
+    rates = fx_rates.FxRates(rates=dict(fx_rates.FALLBACK_RATES), as_of=None, source="fallback")
+    with pytest.raises(ValueError):
+        T.lookup_card(T.Client(), db_session, card, TODAY, rates, T.TcgdexRefreshResult())
+    assert pricing.get_row(card, T.SOURCE_CM) is None
+
+
+def test_refresh_with_a_stored_rate_is_unchanged(db_session, fake_api):
+    import fx_rates
+    from models import FxRate
+
+    card = add_card(db_session)
+    old = dt.datetime.utcnow() - dt.timedelta(days=3)
+    db_session.add_all(
+        [
+            FxRate(date=TODAY, currency="USD", rate_nok=9.4, fetched_at=old),
+            FxRate(date=TODAY, currency="EUR", rate_nok=10.9, fetched_at=old),
+        ]
+    )
+    db_session.commit()
+    fx_rates.reset_cache()
+    fake_api(ja_routes())
+
+    result = T.refresh_tcgdex_prices(db_session, today=TODAY)
+
+    assert (result.status, result.fx_source, result.cards_priced) == ("ok", "stored", 1)
+    row = pricing.get_row(card, T.SOURCE_CM)
+    assert (row.fx_rate, row.price_nok) == (10.9, round(0.59 * 10.9, 2))

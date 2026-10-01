@@ -58,6 +58,12 @@ class CardApiData:
     tcgplayer_price_usd: float | None = None
     tcgplayer_variant_key: str | None = None
     usd_to_nok: float | None = None
+    # True when the API had a confident match but the only USD/NOK rate
+    # available was fx_rates' fixed fallback constant (issue #229): no price
+    # is returned (tcgplayer_price is None), and callers must treat this as
+    # "try again later", not as a failed lookup -- see
+    # price_refresh.apply_price_lookup.
+    fx_unavailable: bool = False
 
 
 def _printed_number(number: str | None) -> str | None:
@@ -229,7 +235,10 @@ def fetch_card_data(
 
     card = data[0]
     confident = _is_confident_match(name, number, card)
-    choice = _choose_tcgplayer_price(card.get("tcgplayer"), variant) if confident else None
+    # Never convert at the fallback constant (issue #229, fx_rates docstring):
+    # no price this time, flagged so the caller leaves the card due.
+    fx_unavailable = confident and not fx_rates.get_rates().usable("USD")
+    choice = _choose_tcgplayer_price(card.get("tcgplayer"), variant) if confident and not fx_unavailable else None
     return CardApiData(
         image_url=card.get("images", {}).get("small"),
         tcgplayer_price=choice.nok if choice else None,
@@ -238,6 +247,7 @@ def fetch_card_data(
         tcgplayer_price_usd=choice.usd if choice else None,
         tcgplayer_variant_key=choice.key if choice else None,
         usd_to_nok=choice.usd_to_nok if choice else None,
+        fx_unavailable=fx_unavailable,
     )
 
 
