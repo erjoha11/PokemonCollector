@@ -2061,6 +2061,20 @@ def test_dashboard_series_breakdown_reflects_set_release_rank_edits(client):
     assert text.index("XY") < text.index("Original")
 
 
+def test_dashboard_series_table_has_no_completion_column(client):
+    """Issue #241: the Completion column is hidden from the Dashboard's
+    Series table at every level (header, series row, set row) -- removed
+    from the render, not CSS-hidden. The backend still computes it."""
+    _seed_two_series_and_link_sets(client, old_rank=1, new_rank=50)
+
+    text = client.get("/").text.split('id="dashboard-series-card"', 1)[1]
+    series_table = text.split("</table>", 1)[0]
+    assert "Original" in series_table  # sanity: rows rendered
+    assert "Completion" not in series_table
+    assert "with a known size" not in series_table  # series-row cell tooltip
+    assert "Set size unknown" not in series_table  # set-row cell tooltip
+
+
 def test_inventory_kpi_series_breakdown_reflects_set_release_rank_edits(client):
     """Same source as the Dashboard, exercised through Inventory's
     collapsed KPI module (a full, non-htmx page load only, per app.py)."""
