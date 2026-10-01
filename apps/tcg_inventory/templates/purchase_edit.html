@@ -3,8 +3,10 @@
 {% from "partials/purchase_edit_row.html" import purchase_edit_row %}
 {% block content %}
 <p class="mb-05">
-  <a href="/transactions?open_order={{ purchase_id }}" hx-get="/transactions?open_order={{ purchase_id }}"
-     hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">&larr; Back to Transactions</a>
+  {# Back to the tab this order is on now (issue #255) -- not a fixed
+     Purchased link, and not through the old /transactions redirect. #}
+  <a href="{{ back_url }}" hx-get="{{ back_url }}"
+     hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">&larr; Back to {{ order_tab_label }}</a>
 </p>
 <h1>Edit Order #{{ purchase_id }}</h1>
 {% if saved %}<p class="saved-note" role="status">Saved ✓</p>{% endif %}
@@ -88,15 +90,15 @@
   </p>
   <p class="muted">
     Moving a row to a different Order ID clears this order's Total/shipping for that row —
-    set the destination order's total/shipping afterward from the Transactions page, it's never guessed or split automatically.
+    set the destination order's total/shipping afterward from the Orders page, it's never guessed or split automatically.
   </p>
 
   <button type="submit">Save changes</button>
   <span id="save-order-indicator" class="tx-search-spinner htmx-indicator">Saving…</span>
   {% if saved %}<span class="saved-note" role="status">Saved ✓</span>{% endif %}
-  <button type="button" class="secondary" hx-get="/transactions?open_order={{ purchase_id }}"
+  <button type="button" class="secondary" hx-get="{{ back_url }}"
           hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true"
-          title="Back to Transactions -- unsaved changes on this page are discarded.">&larr; Back</button>
+          title="Back to {{ order_tab_label }} -- unsaved changes on this page are discarded.">&larr; Back</button>
 </form>
 
 <script>

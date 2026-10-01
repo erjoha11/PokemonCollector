@@ -1,6 +1,10 @@
 {% from "partials/macros.html" import card_link %}
 
-{% macro tx_row(tx, shipping=None) %}
+{# `moved`: set by POST /transactions/{id} when the edit moved this row (or
+   its order) to the other Orders tab -- {"label": "Sold", "url": ...}. The
+   row is swapped in place, so it says so instead of silently sitting on the
+   wrong tab until reload (issue #255). #}
+{% macro tx_row(tx, shipping=None, moved=None) %}
 <tr id="tx-row-{{ tx.id }}">
   <td class="muted">
     {{ tx.date }}
@@ -17,7 +21,8 @@
       {{ meta | join(' · ') }}
     </div>
   </td>
-  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-ripped' if tx.type == 'ripped' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span></td>
+  <td><span class="tx-badge {{ 'tx-badge-sell' if tx.type == 'sale' else 'tx-badge-trade' if tx.type == 'trade' else 'tx-badge-ripped' if tx.type == 'ripped' else 'tx-badge-buy' }}">{{ tx.type | capitalize }}{% if tx.type == 'trade' and tx.direction %} {{ tx.direction }}{% endif %}</span>
+    {%- if moved %}<div class="tx-card-meta" role="status">Moved to <a href="{{ moved.url }}">{{ moved.label }}</a></div>{% endif %}</td>
   <td class="num tx-price{{ ' muted' if tx.type in ('trade', 'ripped') else '' }}"
       {%- if tx.type == 'ripped' %} title="Pulled from a pack yourself — always 0, and not counted toward Net invested or any other money figure."{% endif %}
       {%- if tx.type == 'trade' %} title="On a trade, price is cash that moved with the card (paid on In, received on Out). It counts in the trade's gain but not toward Net invested, Paper gain/loss, or any other KPI."{% endif %}>

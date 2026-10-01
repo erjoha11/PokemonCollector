@@ -1,0 +1,22 @@
+{# The Orders page's heading + tab strip (issue #255), shared by the
+   Purchased, Sold and Listings tabs. Expects `tab` in the context.
+
+   - Rendered inside #main-content on purpose: several flows swap
+     #main-content (cart Register, Edit order, Back), and the strip has to
+     come along so the active tab stays right.
+   - Plain <a> links, not htmx swaps, so a tab click is a real navigation
+     and the in-progress-cart beforeunload guard fires.
+   - No role="tablist": these are page links, and tablist promises
+     arrow-key behaviour they don't have. The active tab is marked with
+     aria-current="page" and shown by weight + a bottom border, not colour
+     alone. #}
+<h1>Orders</h1>
+<nav class="tabs" aria-label="Orders">
+  {% for key, label in [('purchased', 'Purchased'), ('sold', 'Sold'), ('listings', 'Listings')] %}
+  <a href="/orders/{{ key }}" class="tab{{ ' active' if tab == key }}"{% if tab == key %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+{% if tab == 'purchased' %}<p class="muted tab-subtitle">Purchases, trades and ripped packs</p>
+{% elif tab == 'sold' %}<p class="muted tab-subtitle">Sales, from Mark sold on a listing or recorded by hand</p>
+{% elif tab == 'listings' %}<p class="muted tab-subtitle">finn.no ads recorded via Mark as listed</p>
+{% endif %}

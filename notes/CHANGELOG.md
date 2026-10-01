@@ -20,6 +20,18 @@ yet.
 
 ### tcg_inventory
 
+**Orders page: one nav item, Purchased / Sold / Listings tabs (#255)**
+- "Orders" replaces the Transactions, Sell on finn.no and Listings nav
+  items; tabs at `/orders/purchased`, `/orders/sold`, `/orders/listings`.
+  An order is on Sold only if every row is a sale (`app.order_tab`), else
+  Purchased; every post-write redirect lands on the order's own tab.
+- Old URLs 308 with their query string: `/transactions`, `/listings`,
+  `/transactions/charts` (now `/orders/charts`), `/analyse`.
+- Sold shows Sold for / Fees & shipping / Net received / counts (no gain
+  until #256) and "+ Record sale without listing"; the Purchased cart no
+  longer offers Sale. Adding cards from the card list to a sale order is
+  now rejected (it used to write purchase rows into it).
+
 **Sales count at net proceeds; Mark sold captures fees/shipping (#254)**
 - A sale now counts at `price − fees − its share of seller-paid shipping`
   in Net invested, paper gain, per-card Net paid, the cash-flow chart and

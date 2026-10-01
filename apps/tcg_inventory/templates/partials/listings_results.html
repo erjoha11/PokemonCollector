@@ -1,6 +1,10 @@
 <div id="listings-results">
 {% if not overview %}
-<p class="muted">No listings recorded yet.</p>
+{% if not has_any_listings %}
+<p class="muted">No listings yet. Create one on <a href="/sales">Sell on finn.no</a>.</p>
+{% else %}
+<p class="muted">No listings match these filters.</p>
+{% endif %}
 {% else %}
 {% for entry in overview %}
 {% include "partials/listing_entry.html" %}

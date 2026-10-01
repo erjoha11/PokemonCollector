@@ -4,11 +4,11 @@
 <h1>Mark Listing Sold</h1>
 <p class="muted">
   "{{ listing.title }}" — confirm the real price each card actually sold for. Nothing is recorded
-  until you submit: this creates one real <a href="/transactions">Transaction</a> per card below (all
-  sharing one order), then marks the listing sold. Prices are pre-filled as an even split of the
+  until you submit: this creates one real sale per card below (all sharing one order, shown on the
+  <a href="/orders/sold">Sold</a> tab), then marks the listing sold. Prices are pre-filled as an even split of the
   listed price ({{ listing.suggested_price | kr }}) — edit each one to what the card actually sold
   for before saving. Fees and the shipping you paid are optional and come off what the sale
-  brought in. See <a href="/listings">Listings</a>.
+  brought in. See <a href="{{ cancel_url }}">Listings</a>.
 </p>
 
 {% if error %}
@@ -16,6 +16,8 @@
 {% endif %}
 
 <form method="post" action="/listings/{{ listing.id }}/mark-sold">
+  <input type="hidden" name="show_delisted" value="{{ 'true' if show_delisted else '' }}">
+  <input type="hidden" name="sold_only" value="{{ 'true' if sold_only else '' }}">
   <div class="filters" style="margin-bottom: 0.9rem;">
     <input type="date" name="date" value="{{ today }}" required>
     <input type="text" name="platform" placeholder="Platform" value="{{ listing.platform }}">
@@ -50,6 +52,6 @@
   </div>
 
   <button type="submit">Confirm sold</button>
-  <a href="/listings"><button type="button">Cancel</button></a>
+  <a href="{{ cancel_url }}"><button type="button">Cancel</button></a>
 </form>
 {% endblock %}

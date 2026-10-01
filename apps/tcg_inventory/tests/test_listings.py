@@ -39,7 +39,7 @@ def test_listings_page_with_no_listings_shows_empty_state(client):
     response = client.get("/listings")
 
     assert response.status_code == 200
-    assert "No listings recorded yet" in response.text
+    assert "No listings yet. Create one on" in response.text
 
 
 def test_listings_page_shows_listed_card_and_status(client):
@@ -102,10 +102,12 @@ def test_listings_page_does_not_change_qty_or_collections(client):
 
 
 def test_listings_nav_link_present_on_base_pages(client):
+    # One "Orders" nav item since issue #255; Listings is its third tab.
     response = client.get("/listings")
 
     assert response.status_code == 200
-    assert 'href="/listings"' in response.text
+    assert 'href="/orders/purchased" class="active">Orders</a>' in response.text
+    assert 'href="/orders/listings"' in response.text
 
 
 def _listing_id(client):
@@ -175,7 +177,8 @@ def test_delisted_listing_excluded_from_default_listings_view(client):
     response = client.get("/listings")
 
     assert response.status_code == 200
-    assert "No listings recorded yet" in response.text
+    # A (delisted) listing exists, so this is the no-filter-match state.
+    assert "No listings match these filters." in response.text
 
 
 def test_show_delisted_toggle_reveals_delisted_listing(client):
@@ -261,7 +264,7 @@ def test_delete_removes_listing_from_listings_page(client):
     response = client.get("/listings")
 
     assert response.status_code == 200
-    assert "No listings recorded yet" in response.text
+    assert "No listings yet." in response.text
 
 
 def test_delete_htmx_response_is_empty(client):
@@ -467,7 +470,7 @@ def test_edit_nonexistent_listing_redirects_to_listings(client):
     response = client.get("/listings/999999/edit", follow_redirects=False)
 
     assert response.status_code in (303, 307)
-    assert response.headers["location"] == "/listings"
+    assert response.headers["location"] == "/orders/listings"
 
 
 # --------------------------------------------------------------------------
@@ -643,7 +646,7 @@ def test_mark_sold_form_redirects_when_already_sold(client):
     response = client.get(f"/listings/{listing_id}/mark-sold", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/listings"
+    assert response.headers["location"] == "/orders/listings"
 
 
 def test_listings_page_shows_sold_price_after_marking_sold(client):

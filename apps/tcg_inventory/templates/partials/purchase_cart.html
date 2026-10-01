@@ -1,5 +1,11 @@
+{# Two flavours (issue #255): the Purchased tab's "+ New Order" (type
+   select: Purchase / Trade / Ripped -- no Sale, sales live on the Sold tab)
+   and the Sold tab's "+ Record sale without listing" (?type=sale: a hidden
+   type input, no select, and no "Show cards without an order", since
+   unacquired cards make no sense to sell). The cart JS reads the type via
+   form.elements.type, which works for either. #}
 <div class="card mb-15">
-  <h2>New Order <span class="muted">(Order ID {{ purchase_id }})</span></h2>
+  <h2>{{ 'New sale' if type == 'sale' else 'New Order' }} <span class="muted">(Order ID {{ purchase_id }})</span></h2>
   <form method="post" action="/transactions/purchase" class="{{ 'cart-is-trade' if type == 'trade' }}{{ ' cart-is-ripped' if type == 'ripped' }}"
         hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
         hx-indicator="#register-order-indicator"
@@ -7,12 +13,15 @@
     <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
-      <select name="type" onchange="syncCartType(this.form)">
+      {% if type == 'sale' %}
+      <input type="hidden" name="type" value="sale">
+      {% else %}
+      <select name="type" onchange="syncCartType(this.form)" aria-label="Order type">
         <option value="purchase" {{ 'selected' if type == 'purchase' }}>Purchase</option>
-        <option value="sale" {{ 'selected' if type == 'sale' }}>Sale</option>
         <option value="trade" {{ 'selected' if type == 'trade' }}>Trade</option>
         <option value="ripped" {{ 'selected' if type == 'ripped' }}>Ripped (pulled myself)</option>
       </select>
+      {% endif %}
       <input type="date" name="date" value="{{ today }}" required>
       <input type="text" name="platform" placeholder="Platform (optional)">
       {# Left blank, Total shows the live card prices + Shipping sum as its
@@ -20,7 +29,7 @@
          placeholder is never submitted, so only a Total you actually type
          is saved. Clearing the field goes back to the auto sum. #}
       <input type="number" step="0.01" name="purchase_total" placeholder="Total (optional)"
-             title="The full amount you paid for the order. Leave blank to use the automatic sum of card prices + shipping (not saved); type a value to override it and track the difference as Remaining.">
+             title="{{ 'The full amount you received for the sale.' if type == 'sale' else 'The full amount you paid for the order.' }} Leave blank to use the automatic sum of card prices + shipping (not saved); type a value to override it and track the difference as Remaining.">
       <input type="number" step="0.01" min="0" name="purchase_shipping" placeholder="Shipping (optional)"
              title="Shipping cost for the whole order — on a purchase what you paid, on a sale the shipping you paid as seller (comes off what the sale brought in).">
       {# Order-level fees (issue #254): split across the cards by price
@@ -35,7 +44,9 @@
              hx-get="/transactions/purchase/search" hx-trigger="keyup changed delay:250ms" hx-target="#cart-search-results"
              hx-indicator="#cart-search-indicator"
              oninput="resetBrowseUnorderedToggle()" onkeydown="if (event.key === 'Enter') event.preventDefault();" name="q">
+      {% if type != 'sale' %}
       <button type="button" class="muted secondary" id="browse-unordered-toggle" onclick="toggleBrowseUnordered(this)">Show cards without an order</button>
+      {% endif %}
       <span id="cart-search-indicator" class="tx-search-spinner htmx-indicator">Searching…</span>
       <span id="cart-add-indicator" class="tx-search-spinner htmx-indicator">Adding…</span>
       <div id="cart-search-results"></div>

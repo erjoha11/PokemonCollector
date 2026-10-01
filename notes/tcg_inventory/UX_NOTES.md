@@ -390,3 +390,53 @@ flag chips); native price only shows for non-NOK sources. The card price
 history table gained a Source column. Items 2 (labels, sort key), 4 (card
 page, movers `title`) and 6 are done; items 3, 5 and the "!" markers remain
 for #212.
+
+## 2026-10-01 — #255 Orders shell UX pass
+
+**Reviewed:** the ux agent's review on issue #255
+(https://github.com/erjoha11/PokemonCollector/issues/255#issuecomment-5930505661),
+from source only: `base.html` nav, `transactions.html`,
+`partials/{card_picker,purchase_cart,kpi_module,listing_entry,listings_results}.html`,
+`listings.html`, `listing_mark_sold.html`, `purchase_edit.html`, and the
+`/transactions`, `/listings`, mark-sold, add-existing-cards and
+`POST /transactions/{tx_id}` routes.
+
+**Decisions:**
+- **Header per tab.** Purchased keeps the KPI band + Net invested / Paper
+  gain caption + View charts (Net invested's tooltip now says "paid minus
+  sales received"). Sold shows only figures read off the sale rows — Sold
+  for · Fees & shipping · Net received (#254's net proceeds, which landed
+  first) · N sales / N cards — and a muted "Card quantities update at the next Dex sync." No
+  gain there until #256: `economic_summary`'s net invested is bought −
+  sold while `qty` lags until the sync, so Paper gain jumps after Mark sold
+  and would read as realized profit on a "Sold" tab. Listings: no money
+  header, just "Sell on finn.no", the filters and "N active".
+- **Manual sale kept** as a secondary "+ Record sale without listing" on
+  Sold (in-person / other-platform sales have no listing). Its cart has a
+  hidden `type=sale` input instead of the select and no "Show cards
+  without an order"; the Purchased cart loses its Sale option.
+- **Tab label and markup.** "Purchased" (not "Purchased & acquired") with a
+  muted subtitle "Purchases, trades and ripped packs" and `?type=` pills.
+  One h1 "Orders", `<nav class="tabs" aria-label="Orders">` of plain links
+  (no `role="tablist"` — no arrow-key behaviour to promise), active tab
+  `aria-current="page"` + weight + bottom border, all inside
+  `#main-content`. The "Orders" nav item also lights up on `/sales`,
+  listing edit/mark-sold and Edit order.
+- **Silent-break pitfalls flagged (all handled in the build):** hardcoded
+  `/transactions` in every `sort_th` call and `_pick_url` (a sort click on
+  Sold would 308 to Purchased); one function deciding an order's tab for
+  both the list and every redirect, Sold only when every row is a sale
+  (else the total form's `hx-select="#order-N"` swaps in nothing); cart
+  Register / Edit order landing on the other tab must `HX-Redirect`, not
+  swap; the old `/listings` "any HX-Request = fragment" heuristic must key
+  on `HX-Target == "listings-results"`; the picker's "Adding to" listed
+  sale orders and add-existing-cards wrote purchase rows into them (now
+  filtered + rejected server-side); in-app links must point at the order's
+  own tab rather than lean on the 308; mark-sold → `/orders/sold?open_order=N`,
+  Cancel keeps the Listings filters; the cart JS read
+  `select[name="type"]`, which throws with a hidden input (now
+  `form.elements.type`, moved to `static/orders-cart.js`); a single-row
+  type edit that moves a row says "Moved to …".
+
+**Status:** Addressed in #255 (PR "Orders shell: route-based tabs,
+redirects, single nav item"). Realized gain on Sold is #256.

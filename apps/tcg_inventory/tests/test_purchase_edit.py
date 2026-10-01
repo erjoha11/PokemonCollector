@@ -327,7 +327,7 @@ def test_moving_every_row_out_leaves_no_dangling_empty_order(client):
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/transactions"
+    assert response.headers["location"] == "/orders/purchased"
 
 
 def test_order_rows_show_their_share_of_shipping(client):
@@ -363,7 +363,7 @@ def test_update_purchase_stays_on_edit_page_with_saved_note_and_back_link(client
 
     html = client.get(response.headers["location"]).text
     assert "Saved ✓" in html
-    assert 'href="/transactions?open_order=5"' in html
+    assert 'href="/orders/purchased?open_order=5"' in html
     assert "Saved ✓" not in client.get("/transactions/purchase/5/edit").text
 
 
