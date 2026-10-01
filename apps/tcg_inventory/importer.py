@@ -28,7 +28,7 @@ import masterdata
 import price_refresh
 import pricing
 from db import get_or_create_set
-from models import Binder, Card, Collection, ImportLog
+from models import Binder, Card, Collection, ImportLog, Set
 
 MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
 
@@ -249,7 +249,7 @@ def import_dex_csv_files(
         # only queries/creates once per distinct (series, set) pair seen in
         # this sync, not once per card -- see get_or_create_set()'s docstring
         # (db.py) and issue #134.
-        sets_cache: dict[tuple[str, str], "models.Set"] = {}
+        sets_cache: dict[tuple[str, str], Set] = {}
         masters_cache: dict = {}
         # Dex's Price cell per card, written to card_prices in bulk after the
         # loop (pricing.bulk_record_prices) -- one statement per chunk, not

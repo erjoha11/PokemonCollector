@@ -1554,8 +1554,6 @@ def test_card_picker_lists_cards_with_a_filter_for_recently_added(client):
 
 
 def test_card_picker_merges_dated_and_undated_cards_into_one_table(client):
-    import datetime as dt
-
     import db as db_module
     from models import Card
 
