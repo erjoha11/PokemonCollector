@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 import constants
 import pricing
 from models import Card, CardPrice, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Set, Transaction
+from models import listing_cards
 
 # Series with no research done in set_release_order yet sort after every
 # known series, not before -- mirrors app.py's UNKNOWN_RELEASE_RANK.
@@ -1556,6 +1557,31 @@ def listing_entry(db: Session, listing_id: int) -> ListingOverview | None:
     invested_by_card = net_invested_by_card(db)
     sold_prices = _sold_prices_by_listing_card(db, [listing_id])
     return _build_listing_overview(listing, invested_by_card, sold_prices)
+
+
+def active_listings_by_card(db: Session, card_ids: list[int] | None = None) -> dict[int, list[int]]:
+    """card id -> ids of every `status == "active"` `Listing` it's in,
+    newest first -- feeds the "Listed" badge on Inventory and `/sales`
+    (issue #257). One query over `listing_cards` joined to `listings`, run
+    once per request, never per row. Delisted and sold listings don't count.
+    `card_ids` optionally narrows the lookup (e.g. `/sales`' selection);
+    None means every card. Read-only -- nothing here touches `qty`,
+    `card_collections`, or `binder_id`.
+    """
+    query = (
+        select(listing_cards.c.card_id, Listing.id)
+        .join(Listing, Listing.id == listing_cards.c.listing_id)
+        .where(Listing.status == "active")
+        .order_by(Listing.created_at.desc(), Listing.id.desc())
+    )
+    if card_ids is not None:
+        if not card_ids:
+            return {}
+        query = query.where(listing_cards.c.card_id.in_(card_ids))
+    result: dict[int, list[int]] = {}
+    for card_id, listing_id in db.execute(query):
+        result.setdefault(card_id, []).append(listing_id)
+    return result
 
 
 @dataclass

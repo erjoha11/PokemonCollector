@@ -590,6 +590,15 @@ without updating both the code and this doc.
    the cash-flow chart (see the Transactions section). Blank stores
    nothing; a negative or non-numeric value is rejected without writing.
 
+   A card in an `"active"` listing shows a **Listed** badge after its name
+   on Inventory and `/sales`, linking to the newest such listing on
+   `/listings` ("Listed ×N" if it's in several); delisted and sold listings
+   don't count. `/sales` also warns, above the review table and again next
+   to "Mark as listed", when selected cards are already in an active
+   listing — a warning only, listing a card twice is still allowed. The
+   lookup is `queries.active_listings_by_card`, one query per request; it's
+   read-only and never touches `qty`, `card_collections`, or `binder_id`.
+
 ## CSV import format
 
 Dex export, semicolon-separated:

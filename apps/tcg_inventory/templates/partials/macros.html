@@ -41,6 +41,12 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
    leaving would lose unsaved state (e.g. the purchase card picker). #}
 {% macro card_link(card, new_tab=false, css_class='') %}<a href="/cards/{{ card.id }}"{% if css_class %} class="{{ css_class }}"{% endif %}{% if new_tab %} target="_blank" rel="noopener"{% endif %}>{{ card.name }}</a>{% endmacro %}
 
+{# "Listed" pill for a card in one or more active listings (issue #257).
+   `listing_ids` is one value of queries.active_listings_by_card (newest
+   first); links to the newest listing's card on /listings, with a count
+   when the card is in several. Renders nothing for an empty/None value. #}
+{% macro listed_badge(listing_ids) %}{% if listing_ids %}<a href="/listings#listing-{{ listing_ids[0] }}" class="tx-badge tx-badge-buy listed-badge" title="In {{ listing_ids | length }} active listing{{ '' if listing_ids | length == 1 else 's' }} -- open the newest">Listed{% if listing_ids | length > 1 %} &times;{{ listing_ids | length }}{% endif %}</a>{% endif %}{% endmacro %}
+
 {% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does
