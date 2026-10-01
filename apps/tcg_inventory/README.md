@@ -65,8 +65,10 @@ run).
   day). Every card name in the app links here (`card_link` in
   `partials/macros.html`); Dex is a link on this page, and the photo viewer
   has a "Card details" button. Replaced name → Dex links (24.09.2026).
-- **Collections** (`/collections`, `/collections/{id}`) — the membership
-  table as an index, and a per-collection gallery grouped by set with value,
+- **Collection gallery** (`/collections/{id}`) — reached from the collection
+  links in Inventory and on the Card page (the `/collections` index page and
+  its nav item were removed in #252; the Dashboard's Inventory table shows
+  the same membership rows). A per-collection gallery grouped by set with value,
   duplicates, "shared" badges and completion (`queries.collection_detail`:
   per set, distinct numbers / `total_cards`; the collection total covers only
   known-size sets). `assign_bucket_investment` also fills

@@ -149,12 +149,25 @@ def test_collection_detail_completion_counts_numbers_per_set(db_session):
     assert queries.collection_detail(db_session, 999) is None
 
 
-def test_collections_index_lists_membership_and_bulk(client):
+def test_collections_index_page_is_removed(client):
+    """Issue #252: the /collections index page is gone; galleries stay."""
     _seed(client)
-    html = client.get("/collections").text
-    assert "Vintage Collection" in html and "Tomokazu Komiya Collection" in html
-    assert "/inventory?collection=__none__" in html
-    assert "Total" in html
+    assert client.get("/collections").status_code == 404
+    html = client.get("/").text
+    assert 'href="/collections"' not in html
+    assert ">Collections</a>" not in html
+
+
+def test_collection_gallery_breadcrumb_and_nav_point_to_inventory(client):
+    _seed(client)
+    with _session() as db:
+        coll_id = db.query(Collection).first().id
+    resp = client.get(f"/collections/{coll_id}")
+    assert resp.status_code == 200
+    html = resp.text
+    assert 'href="/collections"' not in html
+    assert '<p class="muted breadcrumb"><a href="/inventory">Inventory</a></p>' in html
+    assert '<a href="/inventory" class="active">Inventory</a>' in html
 
 
 def test_collection_page_404s(client):

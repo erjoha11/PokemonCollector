@@ -18,8 +18,10 @@
   <nav>
     <strong>TCG Inventory</strong>
     <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
-    <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' }}">Inventory</a>
-    <a href="/collections" class="{{ 'active' if request.url.path.startswith('/collections') }}">Collections</a>
+    {# Collection galleries (/collections/{id}) are reached from Inventory's
+       collection links, so they light up Inventory. The /collections index
+       page was removed (issue #252). #}
+    <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' or request.url.path.startswith('/collections/') }}">Inventory</a>
     {# One item for the whole Orders area (issue #255): its three tabs, plus
        the pages reached from them -- the /sales ad builder, listing
        edit/mark-sold, Edit order -- which no longer have a nav item of

@@ -1032,24 +1032,6 @@ def card_detail(request: Request, card_pk: int):
         db.close()
 
 
-@app.get("/collections")
-def collections_index(request: Request):
-    """Every collection with its real-membership numbers -- the same rows as
-    the Dashboard's Inventory table, as an entry point to each gallery."""
-    db = get_db_session()
-    try:
-        cards = queries.all_cards_with_collections(db)
-        breakdown = queries.collection_membership_breakdown(db, cards)
-        ids = {c.name: c.id for c in db.query(Collection).all()}
-        return templates.TemplateResponse(
-            request,
-            "collections.html",
-            {"breakdown": breakdown, "collection_ids": ids, "no_collection_filter": NO_COLLECTION_FILTER},
-        )
-    finally:
-        db.close()
-
-
 @app.get("/collections/{collection_id}")
 def collection_page(request: Request, collection_id: int, owned: str = "1"):
     """Gallery of one collection's cards with value, completion per set and
