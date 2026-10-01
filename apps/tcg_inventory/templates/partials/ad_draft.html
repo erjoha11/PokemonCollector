@@ -25,6 +25,9 @@
     <input type="hidden" id="mark-listed-title" name="title" value="{{ draft.title }}">
     <input type="hidden" id="mark-listed-description" name="description" value="{{ draft.description }}">
     <input type="hidden" name="suggested_price" value="{{ draft.suggested_price or '' }}">
+    {% if already_listed_count %}
+    <p class="listed-warning">{{ already_listed_count }} card{{ '' if already_listed_count == 1 else 's' }} in this ad {{ 'is' if already_listed_count == 1 else 'are' }} already in another active listing.</p>
+    {% endif %}
     <button type="submit">Mark as listed</button>
   </form>
 </div>

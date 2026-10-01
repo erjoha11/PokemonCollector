@@ -161,6 +161,15 @@ tbody tr:hover td { background: var(--accent-wash); }
 .tx-badge-trade { background: rgba(120, 90, 200, 0.14); color: #6a3fb0; }
 .tx-badge-ripped { background: rgba(20, 150, 110, 0.14); color: #0d7a57; }
 .ripped-flag { margin-left: 0.35rem; font-size: 0.65rem; padding: 0.05rem 0.4rem; }
+/* "Listed" pill (issue #257) on Inventory and /sales for a card in an
+   active listing -- same compact sizing as .ripped-flag so it rides inline
+   with the name without widening the Inventory row much; it's a link to
+   the listing, so drop the underline and keep the pill colors on hover. */
+.listed-badge { margin-left: 0.35rem; font-size: 0.65rem; padding: 0.05rem 0.4rem; text-decoration: none; vertical-align: middle; }
+.listed-badge:hover, .listed-badge:focus-visible { text-decoration: underline; }
+/* Short per-row / next-to-button note on /sales that the card is already
+   listed elsewhere -- a warning tone, but quiet (not the full .warnings box). */
+.listed-warning { font-size: 0.75rem; color: #9a6a00; margin: 0.15rem 0 0.4rem; }
 
 /* A purchase group's <summary> line: "Order #N" plus a run of small stats
    (card count, Value, shipping & cost, an optional diff flag) with the

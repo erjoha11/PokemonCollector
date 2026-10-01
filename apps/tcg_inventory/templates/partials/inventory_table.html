@@ -1,5 +1,5 @@
 {% from "partials/macros.html" import sort_th with context %}
-{% from "partials/macros.html" import card_link %}
+{% from "partials/macros.html" import card_link, listed_badge %}
 {% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
 {% macro page_link(label, url, current=false) %}{% if current %}<span class="current" aria-current="page">{{ label }}</span>{% else %}<a href="{{ url }}" hx-get="{{ url }}" hx-target="#inventory-results" hx-push-url="true">{{ label }}</a>{% endif %}{% endmacro %}
 
@@ -69,7 +69,7 @@
       {% for card in cards %}
       <tr{{ ' class="card-row-unowned"' | safe if card.qty == 0 }}>
         <td><input type="checkbox" class="sale-select" data-card-id="{{ card.id }}"></td>
-        <td>{{ card_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}</td>
+        <td>{{ card_link(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}{% if listed_by_card %}{{ listed_badge(listed_by_card.get(card.id)) }}{% endif %}</td>
         <td data-col="number">{{ card.number or '' }}</td>
         <td data-col="series">{{ card.series or '' }}</td>
         <td data-col="set">{{ card.set or '' }}</td>

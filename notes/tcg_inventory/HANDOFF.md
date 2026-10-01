@@ -542,7 +542,8 @@ as code only, no direct database changes.
   generate → copy → mark-listed flow by hand, especially the sessionStorage
   re-hydration after an Inventory filter change, before relying on it.
 - **Deferred, not built**: CSV export of the sale list, an "already listed"
-  badge back on Inventory/`/sales` for a card with an active `Listing`, and
+  badge back on Inventory/`/sales` for a card with an active `Listing`
+  (built in #257, see the 2026-10-01 entry), and
   linking a `Listing` to the `Transaction` that eventually sells it
   (`Listing.status` has a "sold" value reserved for this, nothing sets it
   yet). None of these were asked for; flagging in case they come up.
@@ -571,7 +572,7 @@ database changes — code only.
 - **Explicitly deferred** (per the issue, scope kept tight on purpose):
   the optional show/hide toggle for non-sale card detail (illustrator/
   rarity/variant/language), the "already listed since" badge back on
-  Inventory/`/sales`, and any "mark as sold"/Transaction-linking flow.
+  Inventory/`/sales` (built in #257), and any "mark as sold"/Transaction-linking flow.
 - New tests: `tests/test_listings.py` (empty state, card+status render,
   all three prices rendered independently with a real `Transaction` for
   cost, no qty/binder mutation, nav link present). Full suite green (242
@@ -664,7 +665,8 @@ change, no direct database changes — code only.
 - `models.Listing`'s docstring and README's "Sales listings (finn.no)"
   section updated per the issue's doc-update discipline.
 - Explicitly out of scope, per the issue: mark-as-sold/Transaction-linking
-  (separate ticket), and any Inventory-side "already listed" badge.
+  (separate ticket), and any Inventory-side "already listed" badge (built
+  in #257).
 - New/updated tests in `tests/test_listings.py` (delete + cascade + no
   qty/collection/binder/transaction mutation + 404 + htmx-empty-response +
   confirm-attribute-present; edit prefill + update fields + card set add/
@@ -1695,3 +1697,26 @@ Nothing was rewritten: the shift comes purely from the new read-time rule.
 ## Direct database changes
 
 None. No production DB read or write was made for this change.
+
+## "Listed" badge on Inventory and /sales (issue #257) — 2026-10-01 session
+
+Code only, no direct database changes, no schema change.
+
+- Builds the "already listed" badge deferred in three earlier entries
+  above (each now annotated "built in #257").
+- `queries.active_listings_by_card(db, card_ids=None)` returns card id ->
+  active listing ids (newest first) in one query over `listing_cards` ⨝
+  `listings` (`status == "active"` only — delisted/sold don't count).
+  Called once per request on `/inventory`, `/sales`, and `/sales/generate`.
+- Inventory: a small "Listed" pill after the card name (same cell and
+  sizing as the "Ripped" flag), linking to `/listings#listing-<newest id>`;
+  "Listed ×N" when the card is in several active listings.
+- `/sales`: the same pill plus "Already in an active listing" under the
+  card's name, and a `.warnings` box above the table counting how many of
+  the selected cards are already listed. The generated ad draft repeats a
+  one-line warning above "Mark as listed". Warning only — marking listed
+  again still creates the second listing.
+- Never touches `qty`, `card_collections`, or `binder_id` (asserted in
+  `tests/test_listed_badge.py`).
+- Not yet clicked through in a real browser; badge placement on a narrow
+  screen is unreviewed by `ux`.

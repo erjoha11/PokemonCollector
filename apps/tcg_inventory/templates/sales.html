@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import listed_badge %}
 {% block title %}Sell on finn.no – TCG Inventory{% endblock %}
 {% block content %}
 <h1>Sell on finn.no</h1>
@@ -10,6 +11,16 @@
 </p>
 {% else %}
 <p class="muted">Review quantity, condition, and asking price for each card, then generate the ad text.</p>
+{% set already_listed = cards | selectattr('id', 'in', listed_by_card) | list %}
+{% if already_listed %}
+<p class="warnings" role="status" id="already-listed-warning">
+  {{ already_listed | length }} of the selected cards
+  {{ 'is' if already_listed | length == 1 else 'are' }} already in an active listing (marked
+  <strong>Listed</strong> below). Marking this ad as listed will put
+  {{ 'it' if already_listed | length == 1 else 'them' }} in two ads at once — remove
+  {{ 'it' if already_listed | length == 1 else 'them' }} from the selection if that's not what you want.
+</p>
+{% endif %}
 
 <form hx-post="/sales/generate" hx-target="#ad-draft" hx-swap="innerHTML">
   <div class="table-scroll">
@@ -29,6 +40,10 @@
           <td>
             <input type="hidden" name="card_id" value="{{ card.id }}">
             {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }})
+            {%- if card.id in listed_by_card %}
+            {{ listed_badge(listed_by_card[card.id]) }}
+            <div class="listed-warning">Already in an active listing</div>
+            {%- endif %}
           </td>
           <td class="num">{{ card.qty }}</td>
           <td class="num">

@@ -765,6 +765,9 @@ def inventory(
         txs = db.query(Transaction).all()
         invested_by_card = queries.net_invested_by_card(db, txs)
         ripped_card_ids = {t.card_id for t in txs if t.type == "ripped"}
+        # "Listed" badge (issue #257): one query for every active listing's
+        # cards, not one per row. Unfiltered -- active listings are few.
+        listed_by_card = queries.active_listings_by_card(db)
         if sort in INVENTORY_VALUE_SORTS:
             def value_sort_key(card):
                 invested = invested_by_card.get(card.id)
@@ -817,6 +820,7 @@ def inventory(
             "direction": direction,
             "invested_by_card": invested_by_card,
             "ripped_card_ids": ripped_card_ids,
+            "listed_by_card": listed_by_card,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,
@@ -962,10 +966,14 @@ def sales_review(request: Request, card_ids: list[int] = Query(default=[])):
         # Preserve the order the user selected them in, not the DB's own order.
         cards_by_id = {c.id: c for c in cards}
         cards = [cards_by_id[cid] for cid in card_ids if cid in cards_by_id]
+        # Cards already in another active listing get a "Listed" badge and a
+        # warning (issue #257) -- not a block, listing a card twice can be
+        # deliberate, but it should be a conscious choice.
+        listed_by_card = queries.active_listings_by_card(db, [c.id for c in cards])
         return templates.TemplateResponse(
             request,
             "sales.html",
-            {"cards": cards, "conditions": CARD_CONDITIONS},
+            {"cards": cards, "conditions": CARD_CONDITIONS, "listed_by_card": listed_by_card},
         )
     finally:
         db.close()
@@ -1026,10 +1034,13 @@ def sales_generate(
         if not items:
             raise HTTPException(status_code=400, detail="No cards selected")
         draft = ads.build_listing(items)
+        # Repeated next to "Mark as listed" (issue #257) so the warning from
+        # the review list is still in view at the moment of the write.
+        listed_by_card = queries.active_listings_by_card(db, [item.card_id for item in items])
         return templates.TemplateResponse(
             request,
             "partials/ad_draft.html",
-            {"draft": draft, "card_ids": card_id},
+            {"draft": draft, "card_ids": card_id, "already_listed_count": len(listed_by_card)},
         )
     finally:
         db.close()
