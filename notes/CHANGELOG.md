@@ -38,6 +38,11 @@ yet.
   the #223 workflow is the only backup. HANDOFF.md logs the 2026-09-30
   direct prod change with equivalent SQL.
 
+**Dashboard: Completion column hidden from the Series table (#241)**
+- Removed from the template render at header, series and set level; the
+  backend (`completion_pct`, `owned_numbers`, `series_completion`) is
+  unchanged and the collection page still shows completion. Wiki updated.
+
 ## 2026-09-19 — backfill covering 2026-09-14 through 2026-09-19
 
 ### tcg_inventory
