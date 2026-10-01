@@ -1007,16 +1007,14 @@ def value_change_breakdown(
 
 
 def net_invested_at_dates(txs: list[Transaction], dates: list[dt.date]) -> list[float]:
-    """Cumulative Net invested (economic_summary's rules, shipping included)
-    as of each of `dates` -- the "what had I paid by then" line drawn under
-    the Market Value chart."""
+    """Cumulative Net invested (economic_summary's rules: shipping included,
+    sales counted at net proceeds) as of each of `dates` -- the "what had I
+    paid by then" line drawn under the Market Value chart."""
     shares = shipping_shares(txs)
     amounts = []
     for tx in txs:
-        if tx.type == "purchase":
-            amounts.append((tx.date, tx.price + (tx.fees or 0.0) + shares.get(tx.id, 0.0)))
-        elif tx.type == "sale":
-            amounts.append((tx.date, -tx.price))
+        if tx.type in CASH_TYPES:
+            amounts.append((tx.date, net_invested_amount(tx, shares)))
     amounts.sort(key=lambda pair: pair[0])
     result, running, i = [], 0.0, 0
     for date in sorted(dates):
@@ -1038,19 +1036,23 @@ def period_change(history: list[dict]) -> dict | None:
 
 
 def cash_flow_by_month(db: Session) -> list[dict]:
-    """Actual money in (purchase, price + fees) and money out (sale, price)
-    per calendar month, straight from the Transaction log -- real history,
-    not an estimate (unlike collection_value_growth above).
+    """Actual money in (purchase: price + fees + its shipping share) and
+    money out (sale: net proceeds, see `net_proceeds`) per calendar month,
+    straight from the Transaction log -- real history, not an estimate
+    (unlike collection_value_growth above). Same rules as
+    `economic_summary`, so the last month's `cumulative_invested` equals
+    its `net_invested`.
     """
     txs = db.query(Transaction).all()
+    shares = shipping_shares(txs)
     by_month: dict[str, dict[str, float]] = {}
     for tx in txs:
         label = tx.date.strftime("%Y-%m")
         bucket = by_month.setdefault(label, {"bought": 0.0, "sold": 0.0})
         if tx.type == "purchase":
-            bucket["bought"] += tx.price + (tx.fees or 0.0)
+            bucket["bought"] += net_invested_amount(tx, shares)
         elif tx.type == "sale":
-            bucket["sold"] += tx.price
+            bucket["sold"] += net_proceeds(tx, shares)
 
     result = []
     cumulative_invested = 0.0
@@ -1068,10 +1070,15 @@ def cash_flow_by_month(db: Session) -> list[dict]:
     return result
 
 
-def _purchase_shipping_total(txs: list[Transaction]) -> float:
-    """Sum of `purchase_shipping` across `txs`, counted once per order.
+def _purchase_shipping_total(txs: list[Transaction], types: tuple[str, ...] = ("purchase",)) -> float:
+    """Sum of `purchase_shipping` across `txs`, counted once per order, over
+    rows whose type is in `types` -- purchase rows by default; pass
+    `("sale",)` for seller-paid shipping on sale orders (despite its name,
+    `purchase_shipping` also carries a sale order's shipping, see
+    `shipping_shares`). `economic_summary` itself builds on
+    `shipping_shares`, whose per-order shares add up to the same totals.
 
-    Every purchase-type row sharing a `purchase_id` carries an identical copy
+    Every row sharing a `purchase_id` carries an identical copy
     of that order's shipping cost (see `app.py::create_purchase` -- the same
     value is written onto every row when the order is registered, it's not
     divided across cards), so naively summing `t.purchase_shipping` per row
@@ -1084,7 +1091,7 @@ def _purchase_shipping_total(txs: list[Transaction]) -> float:
     total = 0.0
     seen_purchase_ids: set[int] = set()
     for t in txs:
-        if t.type != "purchase" or not t.purchase_shipping:
+        if t.type not in types or not t.purchase_shipping:
             continue
         if t.purchase_id is None:
             total += t.purchase_shipping
@@ -1106,6 +1113,12 @@ def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
     already accounted for it, understating the "Net invested"/"Paper
     gain/loss" KPIs whenever any order had shipping set.
 
+    Sale-side money is net proceeds (`net_proceeds`: price - fees - the
+    row's share of seller-paid shipping), not the gross price -- issue
+    #254. Both sides are built from the same `shipping_shares`, so
+    `sum(net_invested_by_card(...).values()) == net_invested` holds (up to
+    float rounding).
+
     `txs`, when given, is a caller-supplied `Transaction.query.all()` result
     (e.g. `dashboard()` loading it once and threading it through both this
     and `net_invested_by_card` instead of each independently re-scanning the
@@ -1113,8 +1126,9 @@ def economic_summary(db: Session, txs: list[Transaction] | None = None) -> dict:
     """
     if txs is None:
         txs = db.query(Transaction).all()
-    total_bought = sum(t.price + (t.fees or 0.0) for t in txs if t.type == "purchase") + _purchase_shipping_total(txs)
-    total_sold = sum(t.price for t in txs if t.type == "sale")
+    shares = shipping_shares(txs)
+    total_bought = sum(net_invested_amount(t, shares) for t in txs if t.type == "purchase")
+    total_sold = sum(net_proceeds(t, shares) for t in txs if t.type == "sale")
     net_invested = total_bought - total_sold
     return {
         "total_bought": total_bought,
@@ -1327,23 +1341,35 @@ def order_gain(
     return {"gain": gain, "unpriced": unpriced, "reason": None}
 
 
+CASH_TYPES = ("purchase", "sale")
+
+
 def shipping_shares(txs: list[Transaction]) -> dict[int, float]:
-    """Each purchase row's share of its order's shipping, keyed by
-    transaction id -- shipping is part of what a card actually cost.
+    """Each purchase or sale row's share of its order's shipping, keyed by
+    transaction id. On a purchase, shipping is part of what a card actually
+    cost; on a sale it's seller-paid shipping that comes off the proceeds
+    (issue #254). Either way it pushes Net invested up.
+
+    Despite the column name, `purchase_shipping` carries the shipping of
+    any order, purchase or sale (Mark sold and the New Order cart with type
+    Sale write it there too). No separate column and no rename on purpose:
+    init_db() is additive-only.
 
     An order's `purchase_shipping` (stored redundantly on every row, see
-    `_purchase_shipping_total`) is split across the order's purchase-type
-    rows in proportion to their `price`, so a 100 kr card carries more of it
-    than a 5 kr card. When none of them has a price yet (price 0 = not
-    priced, e.g. before "Distribute remaining" has run) it's split evenly
-    instead. A row with no `purchase_id` carries its own shipping in full.
-    The shares of an order always add up to its shipping, so totals built
-    from them match `economic_summary`.
+    `_purchase_shipping_total`) is split across the order's purchase- and
+    sale-type rows together (trade/ripped rows get none) in proportion to
+    their `price`, so a 100 kr card carries more of it than a 5 kr card.
+    When none of them has a price yet (price 0 = not priced, e.g. before
+    "Distribute remaining" has run) it's split evenly instead; when some
+    are priced, a 0-price row gets no share. A row with no `purchase_id`
+    carries its own shipping in full. Shares are unrounded floats, so an
+    order's shares always add up to its shipping (no cent remainder to
+    assign) and totals built from them match `economic_summary`.
     """
     shares: dict[int, float] = {}
     groups: dict[int, list[Transaction]] = {}
     for t in txs:
-        if t.type != "purchase":
+        if t.type not in CASH_TYPES:
             continue
         if t.purchase_id is None:
             if t.purchase_shipping:
@@ -1361,13 +1387,33 @@ def shipping_shares(txs: list[Transaction]) -> dict[int, float]:
     return shares
 
 
+def net_proceeds(tx: Transaction, shares: dict[int, float]) -> float:
+    """What a sale row actually brought in: price - fees - its share of the
+    order's seller-paid shipping (`shares` from `shipping_shares`)."""
+    return tx.price - (tx.fees or 0.0) - shares.get(tx.id, 0.0)
+
+
+def net_invested_amount(tx: Transaction, shares: dict[int, float]) -> float:
+    """A row's signed contribution to Net invested: a purchase adds price +
+    fees + its shipping share, a sale subtracts its `net_proceeds`, any
+    other type (trade, ripped) adds 0. The one rule every Net invested
+    figure (`economic_summary`, `net_invested_by_card`,
+    `net_invested_at_dates`, `cash_flow_by_month`) is built from."""
+    if tx.type == "purchase":
+        return tx.price + (tx.fees or 0.0) + shares.get(tx.id, 0.0)
+    if tx.type == "sale":
+        return -net_proceeds(tx, shares)
+    return 0.0
+
+
 def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> dict[int, float]:
     """Return actual net investment per card using economic-summary rules.
 
     Like `economic_summary`, this includes `purchase_shipping`: each
     purchase row carries its share of its order's shipping (see
     `shipping_shares` -- split by price across the order's cards), so a
-    card's figure is what it really cost to get it home, and
+    card's figure is what it really cost to get it home. A sale counts at
+    its net proceeds (`net_proceeds`), and
     `sum(net_invested_by_card(db).values())` still equals
     `economic_summary`'s `net_invested`.
 
@@ -1380,13 +1426,7 @@ def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> d
     shares = shipping_shares(txs)
     invested: dict[int, float] = {}
     for tx in txs:
-        if tx.type == "purchase":
-            amount = tx.price + (tx.fees or 0.0) + shares.get(tx.id, 0.0)
-        elif tx.type == "sale":
-            amount = -tx.price
-        else:
-            amount = 0.0
-        invested[tx.card_id] = invested.get(tx.card_id, 0.0) + amount
+        invested[tx.card_id] = invested.get(tx.card_id, 0.0) + net_invested_amount(tx, shares)
     return invested
 
 

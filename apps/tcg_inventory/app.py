@@ -1312,6 +1312,42 @@ def listing_edit_submit(
         db.close()
 
 
+def _optional_amount(raw: str | None) -> float | None:
+    """A blank-or-number form field: None when blank, else a float >= 0.
+    Raises ValueError for anything else (text, negative)."""
+    if raw is None or not str(raw).strip():
+        return None
+    value = float(str(raw).replace(",", "."))
+    if value < 0 or value != value:  # negative or NaN
+        raise ValueError(raw)
+    return value
+
+
+def _split_order_fees(total: float | None, prices: list[float]) -> list[float | None]:
+    """Split an order-level fee across the order's rows (issue #254), since
+    `Transaction.fees` is per row. In proportion to each row's price, or
+    evenly when no row has a price. Shares are in whole øre: each row gets
+    its exact share rounded down, then the leftover øre go one each to the
+    rows with the largest dropped fractions (ties: earlier row first) --
+    so the stored fees add up to exactly `total` and none is ever negative.
+    A 0-price row in an order where other rows are priced gets no fee.
+    None/0 total -> no fees on any row (all None).
+    """
+    if not total or not prices:
+        return [None] * len(prices)
+    price_sum = sum(p or 0.0 for p in prices)
+    total_cents = round(total * 100)
+    exact = [
+        total_cents * ((p or 0.0) / price_sum if price_sum > 0 else 1 / len(prices)) for p in prices
+    ]
+    cents = [int(e) for e in exact]
+    leftover = total_cents - sum(cents)
+    by_fraction = sorted(range(len(prices)), key=lambda i: (-(exact[i] - cents[i]), i))
+    for i in by_fraction[:leftover]:
+        cents[i] += 1
+    return [c / 100 for c in cents]
+
+
 def _mark_sold_rows(listing: Listing) -> list[dict]:
     """One row per card currently in `listing`, each pre-filled with a
     starting-guess price (`suggested_price / card_count`, editable, never
@@ -1349,6 +1385,8 @@ def listing_mark_sold_form(request: Request, listing_id: int):
                 "rows": _mark_sold_rows(listing),
                 "today": dt.date.today().isoformat(),
                 "error": None,
+                "fees": "",
+                "shipping": "",
             },
         )
     finally:
@@ -1363,6 +1401,8 @@ def listing_mark_sold_submit(
     platform: str = Form(""),
     card_id: list[int] = Form(default=[]),
     price: list[str] = Form(default=[]),
+    fees: str = Form(""),
+    shipping: str = Form(""),
 ):
     """Creates one `Transaction(type="sale", listing_id=<this listing>.id)`
     per card in the lot, all sharing one fresh `purchase_id` (same grouping
@@ -1371,6 +1411,13 @@ def listing_mark_sold_submit(
     leaves orphaned Transactions or a status stuck between "active" and
     "sold" (acceptance criteria). Never touches `qty`, `card_collections`,
     or `binder_id` -- same invariant as every other listing action.
+
+    `fees` and `shipping` are optional order-level amounts (issue #254):
+    the platform's sale fees and the shipping the seller paid. Fees are
+    split across the rows' `fees` by price (`_split_order_fees`); shipping
+    is stored once per order in `purchase_shipping`, same as a purchase
+    order's, and split at read time by `queries.shipping_shares`. Both come
+    off the sale's net proceeds in every Net invested figure.
     """
     db = get_db_session()
     try:
@@ -1391,6 +1438,8 @@ def listing_mark_sold_submit(
                     "rows": _mark_sold_rows(listing),
                     "today": date or dt.date.today().isoformat(),
                     "error": error,
+                    "fees": fees,
+                    "shipping": shipping,
                 },
             )
 
@@ -1417,16 +1466,25 @@ def listing_mark_sold_submit(
         except ValueError:
             return _rerender("Invalid date.")
 
+        try:
+            fees_total = _optional_amount(fees)
+            shipping_total = _optional_amount(shipping)
+        except ValueError:
+            return _rerender("Fees and shipping must be blank or a number of 0 or more.")
+
         new_purchase_id = _next_purchase_id(db)
-        for cid in submitted_ids:
+        row_fees = _split_order_fees(fees_total, [parsed_prices[cid] for cid in submitted_ids])
+        for cid, fee in zip(submitted_ids, row_fees):
             db.add(
                 Transaction(
                     card_id=cid,
                     type="sale",
                     date=tx_date,
                     price=parsed_prices[cid],
+                    fees=fee,
                     platform=platform or listing.platform or None,
                     purchase_id=new_purchase_id,
+                    purchase_shipping=shipping_total,
                     listing_id=listing.id,
                 )
             )
@@ -1952,10 +2010,19 @@ def create_purchase(
     purchase_id: int = Form(...),
     purchase_total: float | None = Form(None),
     purchase_shipping: float | None = Form(None),
+    fees: float | None = Form(None),
     card_id: list[int] = Form(default=[]),
     price: list[float] = Form(default=[]),
     direction: list[str] = Form(default=[]),
 ):
+    """Registers the New Order cart. `purchase_shipping` is the order's
+    shipping whatever its type -- on a Sale it's the seller-paid shipping,
+    which comes off the sale's net proceeds (issue #254, see
+    `queries.shipping_shares`). `fees` is an optional order-level fee
+    (platform/payment fees), split across the rows' per-row `fees` by price
+    (`_split_order_fees`); ignored for trade/ripped orders, which aren't
+    cash orders and never count fees anywhere.
+    """
     db = get_db_session()
     try:
         if len(card_id) != len(price) or not card_id:
@@ -1967,14 +2034,18 @@ def create_purchase(
                 ),
             )
         tx_date = dt.date.fromisoformat(date)
-        for i, (cid, p) in enumerate(zip(card_id, price)):
+        prices = [_price_for(type, p) for p in price]
+        cash_order = type in ("purchase", "sale")
+        row_fees = _split_order_fees(fees if cash_order and fees and fees > 0 else None, prices)
+        for i, (cid, p) in enumerate(zip(card_id, prices)):
             db.add(
                 Transaction(
                     card_id=cid,
                     type=type,
                     direction=_trade_direction(type, direction, i),
                     date=tx_date,
-                    price=_price_for(type, p),
+                    price=p,
+                    fees=row_fees[i],
                     platform=platform or None,
                     purchase_id=purchase_id,
                     purchase_total=purchase_total,

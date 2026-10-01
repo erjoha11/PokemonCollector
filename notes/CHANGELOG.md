@@ -20,6 +20,20 @@ yet.
 
 ### tcg_inventory
 
+**Sales count at net proceeds; Mark sold captures fees/shipping (#254)**
+- A sale now counts at `price − fees − its share of seller-paid shipping`
+  in Net invested, paper gain, per-card Net paid, the cash-flow chart and
+  the Net invested line on the value chart. Sale shipping lives in
+  `purchase_shipping` (no rename/migration) and is split across the order's
+  rows by price like purchase shipping. The cash-flow chart now also counts
+  purchase shipping, so its cumulative line matches Net invested.
+- Mark sold and the New Order cart take optional order-level Fees (and
+  Mark sold a "Shipping you paid" field); fees are split across rows by
+  price in whole øre.
+- Behaviour change, decided by the user: historical Net invested and paper
+  gain shift upward for existing sales that already have fees/shipping
+  recorded. No database write.
+
 **Order history: Gain column, Remaining moved into the order (#246)**
 - New **Gain** column right after Total: today's market value of the
   order's still-owned copies minus the Total the row shows (typed, else
