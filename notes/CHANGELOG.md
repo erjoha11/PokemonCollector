@@ -20,6 +20,18 @@ yet.
 
 ### tcg_inventory
 
+**Order history: Gain column, Remaining moved into the order (#246)**
+- New **Gain** column right after Total: today's market value of the
+  order's still-owned copies minus the Total the row shows (typed, else
+  auto Value + Shipping); a trade order adds its trade gain, sale orders
+  show "—", as does an order with no priced cards. Copies of a card bought
+  in several orders but no longer all owned are credited to the newest
+  orders first (`queries.held_acquisition_ids` / `order_gain`).
+- The **Remaining** column is gone from the summary row; the same figure
+  (✓ or the flagged difference, once a Total is typed) now shows in the
+  expanded order next to the Total form. Backend `diff`, Total editing and
+  the New Order "Remaining amount" distribute helper are unchanged.
+
 **Prod backups (#223)**
 - New `.github/workflows/prod-backup.yml`: a weekly (plus on-demand)
   `pg_dump` of prod's `public` schema, age-encrypted to a public key and

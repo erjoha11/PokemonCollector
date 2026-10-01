@@ -1576,6 +1576,10 @@ def _group_transactions_by_purchase(
             ungrouped.append(tx)
         else:
             groups.setdefault(tx.purchase_id, []).append(tx)
+    # Which acquisition rows' copies are still owned -- judged across every
+    # transaction, since one card's copies can sit in several orders (see
+    # queries.held_acquisition_ids). Feeds each order's Gain (issue #246).
+    held_ids = queries.held_acquisition_ids(txs)
     purchase_groups = []
     for pid, group_txs in groups.items():
         # A group can legitimately mix purchase/sale rows (both real cash
@@ -1608,6 +1612,8 @@ def _group_transactions_by_purchase(
         # row has one set -- same first-non-null-across-the-group pattern
         # already used for purchase_total/purchase_shipping/diff.
         summary_platform = next((t.platform for t in group_txs if t.platform), None)
+        auto_total = total_price + (purchase_shipping or 0)
+        trade = queries.trade_summary(group_txs, trade_prices_then)
         purchase_groups.append(
             {
                 "purchase_id": pid,
@@ -1620,7 +1626,7 @@ def _group_transactions_by_purchase(
                 # been typed/saved (issue #202): Value + Shipping, rendered as
                 # "auto". Display-only -- never stored, and it doesn't make
                 # `diff` non-None, so Remaining stays "—" for such an order.
-                "auto_total": total_price + (purchase_shipping or 0),
+                "auto_total": auto_total,
                 "platform": group_platform,
                 "summary_platform": summary_platform,
                 # What's left unaccounted for once both the card prices and
@@ -1633,7 +1639,13 @@ def _group_transactions_by_purchase(
                 "min_date": min(t.date for t in group_txs),
                 "min_id": min(t.id for t in group_txs),
                 # None for an order with no trade rows -- see queries.trade_summary.
-                "trade": queries.trade_summary(group_txs, trade_prices_then),
+                "trade": trade,
+                # Order history's Gain column (issue #246): today's value of
+                # this order's still-owned copies minus the Total the row
+                # shows (typed, else auto). See queries.order_gain.
+                "gain": queries.order_gain(
+                    group_txs, purchase_total if purchase_total is not None else auto_total, held_ids, trade
+                ),
             }
         )
     purchase_groups.sort(key=lambda g: g["purchase_id"], reverse=True)
