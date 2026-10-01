@@ -97,15 +97,16 @@ def test_partially_priced_order_counts_unpriced_as_zero_and_flags_it(client):
     assert "1 card without a market price counted as 0." in order_summary(text, 4)
 
 
-def test_sale_order_has_no_gain_column_on_the_sold_tab(client):
-    # Issue #255: a sale order lives on the Sold tab, which leaves the
-    # Paper gain column out entirely (realized gain is #256) instead of a
-    # column of dashes -- and it's no longer listed on Purchased at all.
+def test_sale_order_shows_realized_not_paper_gain_on_the_sold_tab(client):
+    # Issue #255: a sale order lives on the Sold tab and is no longer listed
+    # on Purchased at all. Its gain column is Realized gain (#256), never
+    # Paper gain.
     ids = _seed(client, [{"id": "a", "price": "100", "qty": 0}])
     _add(_tx(ids["a"], 5, 80, type="sale"))
     sold = client.get("/orders/sold").text
     assert 'id="order-5"' in sold
-    assert "oc-gain" not in sold
+    assert "Paper gain" not in sold
+    assert '<span class="oc-gain num">Realized gain</span>' in sold
     assert 'id="order-5"' not in client.get("/orders/purchased").text
 
 
