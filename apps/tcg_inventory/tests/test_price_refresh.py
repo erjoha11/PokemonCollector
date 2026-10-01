@@ -348,8 +348,8 @@ def test_reprice_all_respects_limit_oldest_first(db_session, monkeypatch):
 # --------------------------------------------------------------------------
 # FX fallback guard (issue #229)
 # --------------------------------------------------------------------------
-import fx_rates  # noqa: E402
-from models import FxRate  # noqa: E402
+import fx_rates
+from models import FxRate
 
 
 def _no_real_rate():
