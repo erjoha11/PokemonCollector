@@ -396,6 +396,69 @@ run).
   (`#sync-log`, preserving any `lsort`/`ldir` query string) for old
   bookmarks/links.
 
+## Money figures (glossary)
+
+One place for what each money figure means. This used to live on the in-app
+Wiki page (removed in issue #264). The sections linked below have the
+implementation detail.
+
+- **Net invested**: everything paid for cards (card prices, shipping and
+  fees included) minus what sales brought in, counted at net proceeds
+  (`price − fees − its share of seller-paid shipping`, #254). One rule,
+  `queries.net_invested_amount`, feeds every Net invested figure (KPI band,
+  Orders caption, card page, cash-flow chart, the chart's Net invested
+  line). Trade and ripped rows carry no cash.
+- **Gain / loss** (also **Paper gain/loss** on Orders): total value,
+  duplicates included, minus Net invested. This is the one gain definition
+  app-wide: the Market Value hero, every table's Gain/loss column,
+  Inventory's per-card Gain, the card page and the Most valuable
+  collection/series cards all use it. The Market Value chart's stat row
+  only shows it on the Total metric.
+- **No purchase price**: an owned card with no registered transaction has
+  no known cost, so its whole value lands in the gain. The line under the
+  gain equation (and every bucket-level Gain) says how many such cards
+  there are and how much of the gain they make up
+  (`no_cost_count`/`no_cost_value`).
+- **Per-order Paper gain** (Orders → Purchased, `queries.order_gain`):
+  today's market value of the order's copies you still own, minus the
+  order's Total (typed, else auto). Copies sold or traded away count as 0;
+  when a card was bought in several orders, the newest orders are the ones
+  treated as still holding it. Trade orders add their trade gain. "—" when
+  none of the held cards has a market price (or the order mixes sale and
+  purchase rows). When only some lack a price, they count as 0 and the
+  figure gets a "*". Per-order gains don't add up to the headline Paper
+  gain/loss; see "Orders → Purchased" above for why.
+- **Above / below cost**: each owned card's value today (all copies) vs
+  what you paid for it, since purchase. Only cards with a registered cost
+  count; a ripped card counts as up by its full value.
+- **Price movers**: price per copy today vs the daily snapshot from the
+  start of the period (30 days back, or the earliest snapshot while history
+  is shorter). That's a different baseline from Above / below cost, so the
+  up/down counts differ. The % is hidden for moves under 10 kr.
+- **Market Value chart change**: first to last point of the chart
+  ("since first snapshot DATE" on All), not since you bought the cards.
+
+## Shared UI conventions
+
+- **Sorting**: every table sorts the same way. Click a header for
+  ascending, again for descending (▲/▼ shows the direction). In tables with
+  expandable rows (collections, series, rarity) a sort only reorders the
+  cards inside a row; the rows themselves keep their fixed order. Flat top
+  lists (Pokemon Top 10) reorder the rows. Most valuable cards has no sort:
+  always market price, highest first. A column whose value isn't
+  unambiguous per row (e.g. Set/Series on a Pokemon folder spanning several
+  sets, shown as "Multiple" with the list on hover) is plain text, not a
+  sort link.
+- **Pokemon folders** (Dashboard): the Pokemon breakdown groups cards by
+  Pokemon name, not by print. A starred favorite always shows in the
+  Favorites table, top 10 or not. "Put Pokemon in the same folder" merges
+  several names (alternate print names like Celebi / Dark Celebi, or a
+  whole evolution family) into one row. Merging only changes this display,
+  never cards, prices or exports, and every merge has an "Undo".
+- **Duplicates** are `qty − 1` per physical card, keyed on (card id,
+  variant): a card's "Normal" and "Poké Ball Holo" prints are two cards,
+  not duplicates of each other.
+
 ## Data model
 
 `cards`, `collections`, `card_collections` (many-to-many), `binders`,

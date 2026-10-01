@@ -528,7 +528,7 @@ def test_image_backfill_route_is_secret_gated_and_reports_progress(client, monke
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
+    for path in ["/", "/inventory", "/transactions", "/import"]:
         response = client.get(path)
         assert response.status_code == 200, path
 
@@ -639,13 +639,12 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     assert "Value (Total)" in fallback_page.text
 
 
-def test_wiki_page_documents_the_main_features(client):
-    response = client.get("/wiki")
-    assert response.status_code == 200
-    text = response.text
-    for heading in ["Dashboard", "Pokemon folders", "Sorting", "Inventory", "Transactions", "Sync Log"]:
-        assert heading in text
-    assert 'href="/wiki"' in text  # linked from the nav
+def test_wiki_redirects_to_dashboard(client):
+    # The in-app Wiki was removed (issue #264); old bookmarks land on /.
+    response = client.get("/wiki?x=1", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/"
+    assert 'href="/wiki"' not in client.get("/").text  # no nav link any more
 
 
 def test_transactions_page_shows_transaction_id(client):

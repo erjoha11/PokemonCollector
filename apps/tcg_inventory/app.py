@@ -3169,11 +3169,12 @@ def orders_charts(request: Request, metric: str = "total", period: str = "all"):
 
 
 # --------------------------------------------------------------------------
-# Wiki -- static in-app reference, no DB access
+# The in-app Wiki was removed (issue #264) -- README.md is the one reference
+# now. Old bookmarks land on the Dashboard.
 # --------------------------------------------------------------------------
 @app.get("/wiki")
-def wiki(request: Request):
-    return templates.TemplateResponse(request, "wiki.html", {})
+def wiki_redirect():
+    return RedirectResponse("/", status_code=308)
 
 
 # --------------------------------------------------------------------------

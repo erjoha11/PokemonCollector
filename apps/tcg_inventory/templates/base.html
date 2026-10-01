@@ -9,7 +9,7 @@
   <script src="/static/card-viewer.js" defer></script>
   {# Chart.js (204KB) + its renderer are only needed by pages that actually
      render a chart_card (Dashboard, Transactions) -- see macros.html's
-     chart_card. Every other route (login, wiki, listings, sales, releases,
+     chart_card. Every other route (login, listings, sales, sync status,
      inventory) never fetches/parses them. See issue #164. #}
   {% block chart_scripts %}{% endblock %}
 </head>
@@ -24,7 +24,6 @@
        edit/mark-sold, Edit order -- which no longer have a nav item of
        their own and would otherwise light up nothing. #}
     <a href="/orders/purchased" class="{{ 'active' if request.url.path.startswith(('/orders', '/sales', '/listings', '/transactions')) }}">Orders</a>
-    <a href="/wiki" class="{{ 'active' if request.url.path == '/wiki' }}">Wiki</a>
     <a href="/releases" class="{{ 'active' if request.url.path == '/releases' }}">Activity Log</a>
     {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Log out</a>{% endif %}
   </nav>
