@@ -20,6 +20,14 @@ yet.
 
 ### tcg_inventory
 
+**init_db enables row level security on Postgres (#239)**
+- New `db._enable_row_level_security()` step in `init_db()`'s
+  version-gated chain: `ALTER TABLE public."<name>" ENABLE ROW LEVEL
+  SECURITY` for every table in metadata. Postgres only, idempotent, no
+  policies (the app connects as `postgres` and is unaffected).
+- `CURRENT_SCHEMA_VERSION` 10 -> 11, so already-migrated databases run it
+  once on next start.
+
 **Orders page: one nav item, Purchased / Sold / Listings tabs (#255)**
 - "Orders" replaces the Transactions, Sell on finn.no and Listings nav
   items; tabs at `/orders/purchased`, `/orders/sold`, `/orders/listings`.

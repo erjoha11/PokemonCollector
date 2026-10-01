@@ -295,7 +295,7 @@ def test_migration_from_v9_adds_pricing_schema_and_backfills_every_card(monkeypa
 
     db_module.init_db()
 
-    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION == 10
+    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION >= 10
     session = db_module.SessionLocal()
     prices = {(p.card.card_id, p.source): p for p in session.query(models.CardPrice)}
     assert set(prices) == {
@@ -347,3 +347,79 @@ def test_card_price_backfill_failure_is_never_fatal(monkeypatch, tmp_path):
     db_module.init_db()  # doesn't raise
 
     assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION
+
+
+class _RecordingConn:
+    def __init__(self, statements):
+        self._statements = statements
+
+    def execute(self, clause, *args, **kwargs):
+        self._statements.append(str(clause))
+
+
+class _FakePostgresEngine:
+    """Just enough of an Engine for _enable_row_level_security(): a
+    postgresql dialect name and a begin() context manager whose connection
+    records every statement instead of sending it anywhere."""
+
+    def __init__(self):
+        self.statements = []
+        self.dialect = type("Dialect", (), {"name": "postgresql"})()
+
+    def begin(self):
+        from contextlib import contextmanager
+
+        @contextmanager
+        def _cm():
+            yield _RecordingConn(self.statements)
+
+        return _cm()
+
+
+def test_enable_rls_emits_statement_for_every_table_on_postgres(monkeypatch):
+    import models  # noqa: F401  (registers every model on Base.metadata)
+
+    fake = _FakePostgresEngine()
+    monkeypatch.setattr(db_module, "engine", fake)
+
+    db_module._enable_row_level_security()
+
+    expected = [
+        f'ALTER TABLE public."{t.name}" ENABLE ROW LEVEL SECURITY'
+        for t in db_module.Base.metadata.sorted_tables
+    ]
+    assert fake.statements == expected
+    # Sanity: covers real app tables plus init_db's own bookkeeping table.
+    names = {t.name for t in db_module.Base.metadata.sorted_tables}
+    assert {"cards", "transactions", "schema_meta"} <= names
+
+
+def test_enable_rls_is_noop_on_sqlite(monkeypatch):
+    engine = _fresh_engine()
+    monkeypatch.setattr(db_module, "engine", engine)
+
+    def boom(*a, **k):
+        raise AssertionError("SQLite path must not open a transaction for RLS")
+
+    monkeypatch.setattr(engine, "begin", boom)
+    db_module._enable_row_level_security()  # must not raise
+
+
+def test_init_db_chain_runs_rls_step_after_create_all(monkeypatch):
+    engine = _fresh_engine()
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", sessionmaker(bind=engine))
+
+    calls = []
+    original_create_all = db_module.Base.metadata.create_all
+
+    def spy_create_all(*args, **kwargs):
+        calls.append("create_all")
+        return original_create_all(*args, **kwargs)
+
+    monkeypatch.setattr(db_module.Base.metadata, "create_all", spy_create_all)
+    monkeypatch.setattr(db_module, "_enable_row_level_security", lambda: calls.append("rls"))
+
+    db_module.init_db()
+
+    assert calls == ["create_all", "rls"]
