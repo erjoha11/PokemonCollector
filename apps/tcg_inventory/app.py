@@ -221,15 +221,8 @@ INVENTORY_VALUE_SORTS = {"net_invested", "gain_loss"}
 # before -- see Set's docstring.
 UNKNOWN_RELEASE_RANK = 999999
 
-TOP_CARD_SORT_KEYS = {
-    "name": lambda c: c.name.lower(),
-    "number": lambda c: c.number_int if c.number_int is not None else 999999,
-    "set": lambda c: (c.set or "").lower(),
-    "market_price": lambda c: c.display_price or 0,
-}
-
 # The price sort key was `reference_price` before issue #210; old links and
-# bookmarks with ?sort=reference_price (and tsort=/gsort=) still work.
+# bookmarks with ?sort=reference_price (and gsort=) still work.
 _SORT_KEY_ALIASES = {"reference_price": "market_price"}
 
 
@@ -261,9 +254,8 @@ _COMMON_ROW_SORT_KEYS = {
 # Inventory/Serie/Rarity's column headers only ever re-sort the deepest
 # level -- the actual cards -- never the bucket rows themselves (collection,
 # series, set, rarity always keep their default order from queries.py; see
-# by_series_breakdown etc). This is deliberately a different key set from
-# TOP_CARD_SORT_KEYS above: "unique" has no per-card equivalent to a bucket's
-# unique_count, since a single card is always exactly 1 or 0.
+# by_series_breakdown etc). "unique" has no per-card equivalent to a
+# bucket's unique_count, since a single card is always exactly 1 or 0.
 CARD_LEAF_SORT_KEYS = {
     "name": lambda c: c.name.lower(),
     "unique": lambda c: 1 if c.qty > 0 else 0,
@@ -419,8 +411,6 @@ def dashboard(
     pdir: str = "desc",
     fsort: str = "name",
     fdir: str = "asc",
-    tsort: str = "market_price",
-    tdir: str = "desc",
     metric: str = "total",
     period: str = "all",
     open_pokemon_folder: bool = False,
@@ -466,8 +456,11 @@ def dashboard(
         _sort_cards_in_buckets(collection_rows, csort, cdir)
         _sort_cards_in_buckets(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
-        tsort = _sort_key(tsort)
-        top_cards = _sorted_rows(top_cards, tsort, tdir, TOP_CARD_SORT_KEYS)
+        # "Most valuable cards" is always market price, highest first -- no
+        # sort pills (issue #245). Re-sorted on display_price (what the tile
+        # shows) since the query orders on the stored market_price. Old
+        # ?tsort=/?tdir= bookmarks are simply ignored as unknown params.
+        top_cards = sorted(top_cards, key=lambda c: c.display_price or 0, reverse=True)
 
         # Pokemon is different from the other breakdowns: it's a flat top-10
         # (by unique prints owned, the fixed cutoff), and a column click
@@ -543,8 +536,6 @@ def dashboard(
                 "pdir": pdir,
                 "fsort": fsort,
                 "fdir": fdir,
-                "tsort": tsort,
-                "tdir": tdir,
                 "open_pokemon_folder": open_pokemon_folder,
             },
         )

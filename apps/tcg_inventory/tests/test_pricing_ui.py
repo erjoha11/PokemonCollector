@@ -7,6 +7,8 @@ import datetime as dt
 import json
 import re
 
+import pytest
+
 from conftest import make_csv, seed_import
 
 import pricing
@@ -326,12 +328,24 @@ def test_inventory_market_price_sort_and_reference_price_alias(client):
     assert "Market price" in new
 
 
-def test_dashboard_and_picker_price_sort_alias(client):
+@pytest.mark.parametrize(
+    "query",
+    ["", "?tsort=reference_price&tdir=asc", "?tsort=name&tdir=asc", "?tsort=set", "?tsort=number&tdir=asc", "?tsort=bogus&tdir=x"],
+)
+def test_dashboard_top_cards_always_market_price_desc(client, query):
+    # Issue #245: Most valuable cards has no sort pills; stale ?tsort=/?tdir=
+    # bookmarks don't error and fall back to market price, highest first.
     _seed_prices(client)
-    html = client.get("/?tsort=reference_price&tdir=asc").text
-    top = html.split('id="dashboard-top-cards-card"', 1)[1]
-    assert top.index("Cheapmon") < top.index("Midmon") < top.index("Dearmon")
-    assert "viz-filter-pill active" in top.split("Market price", 1)[0].rsplit("<a", 1)[1]
+    resp = client.get("/" + query)
+    assert resp.status_code == 200
+    top = resp.text.split('id="dashboard-top-cards-card"', 1)[1]
+    top = top[: top.index('id="dashboard-inventory-card"')]
+    assert top.index("Dearmon") < top.index("Midmon") < top.index("Cheapmon")
+    assert "viz-filter-pill" not in top and "tsort=" not in top
+
+
+def test_picker_price_sort_alias(client):
+    _seed_prices(client)
 
     old = client.get("/transactions?pick=all&gsort=reference_price&gdir=desc").text
     new = client.get("/transactions?pick=all&gsort=market_price&gdir=desc").text

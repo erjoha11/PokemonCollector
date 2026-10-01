@@ -841,8 +841,9 @@ price chart per point (`card_price_history`'s `source_note`), the Market
 Value chart per day with a card count (`queries.history_source_notes`,
 window functions in SQL; pre-#210 snapshots get their source inferred like
 Price movers). Price movers' change `title` names the source. The price sort
-key is `market_price` (Inventory `sort`, Dashboard `tsort`, card picker
-`gsort`); the pre-#210 `reference_price` is still accepted as an alias.
+key is `market_price` (Inventory `sort`, card picker `gsort`; Dashboard's
+Most valuable cards has no sort since #245 -- always market price
+descending, a stale `tsort` is ignored); the pre-#210 `reference_price` is still accepted as an alias.
 
 #### TCGdex (issue #211)
 
