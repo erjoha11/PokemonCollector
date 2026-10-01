@@ -1,6 +1,6 @@
 {
-  "schema_version": 11,
-  "fingerprint": "8c1e868a09015beb3ea702f192967cd604153d2ca72b717a08dbd606b433f015",
+  "schema_version": 12,
+  "fingerprint": "f5af46cb0eaf08984ca27d3d27c884404b5d33ef10aac1a2e7e3e355b6fcc9fc",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -90,9 +90,13 @@
       ["collections_touched", "VARCHAR", true],
       ["files", "VARCHAR", true],
       ["id", "INTEGER", false],
+      ["job", "VARCHAR", true],
+      ["message", "TEXT", true],
       ["ran_at", "DATETIME", false],
       ["source", "VARCHAR", false],
-      ["warnings_count", "INTEGER", false]
+      ["status", "VARCHAR", true],
+      ["warnings_count", "INTEGER", false],
+      ["warnings_text", "TEXT", true]
     ],
     "listing_cards": [
       ["card_id", "INTEGER", false],
