@@ -1,0 +1,6 @@
+# Input for requirements.txt (the lockfile). Edit, then re-lock from the repo
+# root: python tools/lock_requirements.py
+playwright>=1.45
+beautifulsoup4>=4.12
+requests>=2.31
+anthropic>=1.8

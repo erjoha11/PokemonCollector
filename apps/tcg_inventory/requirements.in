@@ -1,0 +1,13 @@
+# Input for requirements.txt (the lockfile Vercel installs). Edit, then
+# re-lock from the repo root: python tools/lock_requirements.py
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0
+jinja2>=3.1
+python-multipart>=0.0.9
+httpx>=0.27
+dropbox>=12.0
+python-dotenv>=1.0
+psycopg2-binary>=2.9
+pyjwt[crypto]>=2.9
+requests>=2.31  # imported directly by dropbox_setup.py, not just via dropbox

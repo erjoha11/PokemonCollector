@@ -1,0 +1,5 @@
+# Input for requirements-dev.txt (the lockfile CI and local setup install).
+# Edit this / apps/*/requirements.in, then re-lock: python tools/lock_requirements.py
+-r apps/finn_ad_scraper/requirements.in
+-r apps/tcg_inventory/requirements.in
+pytest>=8.0
