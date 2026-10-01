@@ -110,7 +110,7 @@
    --------------------------------------------------------------------- #}
 <section class="orders-section">
   <div class="section-head">
-    <h2>Order history {{ info("Each order groups the cards bought or sold together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Total is the amount for the whole order. Until you type a Total it shows Value + Shipping, marked auto, and Remaining shows —. Once a Total is saved, Remaining is the difference — usually cards you haven't priced individually yet.") }}</h2>
+    <h2>Order history {{ info("Each order groups the cards bought or sold together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Total is the amount for the whole order — until you type one it shows Value + Shipping, marked auto. Gain is today's market value of the order's cards you still own minus its Total (a trade order adds its trade gain); sale orders show —. Gains don't add up exactly to Paper gain/loss: that figure also counts copies with no order, individually registered cards and sale proceeds, and uses recorded card prices rather than a typed Total.") }}</h2>
     <div class="section-actions">
       {# What's left of the old standalone .tx-kpi-bar. Its "Current value"
          was `headline.unique_value`, which the Market Value card above
@@ -141,7 +141,7 @@
       <span class="oc-value num">Value</span>
       <span class="oc-shipping num">Shipping</span>
       <span class="oc-total num">Total</span>
-      <span class="oc-remaining num">Remaining</span>
+      <span class="oc-gain num">Gain</span>
       <span class="oc-platform">Platform</span>
     </div>
 
@@ -155,20 +155,22 @@
         <span class="oc-shipping num">{% if group.purchase_shipping %}{{ group.purchase_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
         {# No typed Total yet: show Value + Shipping, visibly marked as
            automatic (muted + an "auto" text marker, not colour alone). It's
-           display-only -- Remaining below stays "—" for it (issue #202). #}
+           display-only -- the order body's Remaining isn't shown for it
+           (issue #202). #}
         <span class="oc-total num">
           {%- if group.purchase_total is not none -%}{{ group.purchase_total | kr }}
           {%- else -%}<span class="muted oc-total-auto" title="Automatic: Value + Shipping. Type a Total in the order to override it.">{{ group.auto_total | kr }} <small class="auto-marker">auto</small></span>
           {%- endif -%}
         </span>
-        {# A real column, not a badge that only appears when nonzero: with
-           the old conditional badge, "settled" and "no total set yet" both
-           rendered as nothing, so you couldn't scan for orders that still
-           need work -- which is this list's main job. #}
-        <span class="oc-remaining num">
-          {%- if group.purchase_total is none -%}<span class="muted">—</span>
-          {%- elif group.diff | round(2) != 0 -%}<span class="tx-diff-flag">{{ group.diff | kr }}</span>
-          {%- else -%}<span class="oc-settled" title="Recorded card prices and shipping add up to the Total.">✓</span>
+        {# Paper gain/loss for this order (issue #246, queries.order_gain):
+           today's value of its still-owned copies minus the Total shown
+           left of it. Replaces the Remaining column in the summary row --
+           Remaining (group.diff) is still computed and shown in the
+           expanded order body next to the Total it depends on. #}
+        <span class="oc-gain num">
+          {%- set g = group.gain -%}
+          {%- if g.gain is none -%}<span class="muted" title="{{ 'Sale order — nothing from it is still owned to value.' if g.reason == 'sale' else 'None of the cards in this order has a market price.' if g.reason == 'no_price' else 'Nothing in this order to value.' }}">—</span>
+          {%- else -%}<span class="{{ 'viz-delta-gain' if g.gain >= 0 else 'viz-delta-loss' }}"{% if g.unpriced %} title="{{ g.unpriced }} card{{ 's' if g.unpriced != 1 }} without a market price counted as 0."{% endif %}>{{ '+' if g.gain > 0 }}{{ g.gain | kr }}{% if g.unpriced %} *{% endif %}</span>
           {%- endif -%}
         </span>
         <span class="oc-platform">
@@ -189,7 +191,7 @@
           <input type="number" step="0.01" name="purchase_total"
                  placeholder="{{ 'Total' if group.purchase_total is not none else 'Total (auto ' ~ (group.auto_total | kr) ~ ')' }}"
                  value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg"
-                 title="The full amount paid for the whole order. Leave blank to use the automatic Value + Shipping (Remaining then shows —).">
+                 title="The full amount paid for the whole order. Leave blank to use the automatic Value + Shipping (no Remaining is shown then).">
           <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
                  value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md"
                  title="Shipping for the whole order. Leaving it blank keeps what's saved; enter 0 to clear it.">
@@ -209,6 +211,18 @@
           <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
                   hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
           {% if group.total_fees %}<span class="muted">Fees {{ group.total_fees | kr }}</span>{% endif %}
+          {# What used to be Order history's Remaining column (hidden from
+             the summary row in issue #246): only once a Total is typed --
+             the auto Total is fully accounted for by definition. ✓ when card
+             prices + shipping add up to it, else the flagged difference
+             (usually cards not priced individually yet). #}
+          {% if group.purchase_total is not none %}
+          <span class="order-remaining">Remaining
+            {%- if group.diff | round(2) != 0 %} <span class="tx-diff-flag">{{ group.diff | kr }}</span>
+            {%- else %} <span class="oc-settled" title="Recorded card prices and shipping add up to the Total.">✓</span>
+            {%- endif -%}
+          </span>
+          {% endif %}
         </form>
 
         {% if group.trade %}{{ trade_block(group.trade) }}{% endif %}

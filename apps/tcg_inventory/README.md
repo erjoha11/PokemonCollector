@@ -93,20 +93,40 @@ run).
   **Order history** is the page's primary content, directly under the KPI
   cards: one row per order with the numbers that describe the deal — Order
   #, Date, Qty, Value (sum of recorded per-card prices, trades excluded),
-  Shipping, Total, Remaining, Platform. **Total** is the amount paid for
+  Shipping, Total, Gain, Platform. **Total** is the amount paid for
   the whole order (`purchase_total`, stored on every row of the order).
   When none has been typed/saved, the column shows the automatic
   `Value + Shipping` (`auto_total` from `_group_transactions_by_purchase`),
-  muted and tagged "auto" — display-only, never stored — and Remaining
-  shows "—" for it: an automatic total is by definition fully accounted
+  muted and tagged "auto" — display-only, never stored — and no Remaining
+  is shown for it: an automatic total is by definition fully accounted
   for, so ✓ would claim a reconciliation nobody did. A typed Total
   overrides it, is saved, stays put (never recalculated), and drives
   Remaining: ✓ when card prices + shipping add up to it, otherwise the
-  flagged difference. Net invested and gain never used the Total, so
-  they're unaffected either way. Remaining is a real column rather than a
-  badge that only appears when nonzero, so "settled" (✓) and "no Total
-  typed yet" (—) are distinguishable at a glance instead of both
-  rendering as nothing. Expanding a row reveals that order's cards, its
+  flagged difference. Remaining used to be its own summary column; since
+  #246 it shows inside the expanded order, next to the Total form (the
+  backend `diff` is unchanged). Net invested and the headline gain never
+  used the Total, so they're unaffected either way.
+
+  **Gain** (#246, `queries.order_gain`) is the order's paper gain/loss:
+  today's market value (`display_price`) of the order's copies you still
+  own, minus the Total the row shows (typed, else auto). One transaction
+  row is one copy; when a card has more acquisition rows (purchase,
+  ripped, trade "in") than its current `qty`, the newest rows are the ones
+  treated as still held (`queries.held_acquisition_ids`, disposals assumed
+  oldest-first), so a copy sold or traded away contributes no value and
+  its order shows its cost as a loss. A trade order adds the expanded
+  order's "Trade gain" (got − gave + cash, today's prices). A sale order —
+  or one mixing sale and purchase rows — shows "—", as does an order
+  where none of the held cards has a market price; when only some lack
+  one they count as 0 and the figure gets a "*" with a tooltip. Gains
+  don't sum exactly to the headline Paper gain/loss, which also counts
+  copies with no order row (individually registered cards, qty beyond the
+  registered rows, cards with no transaction at all), credits sale
+  proceeds, includes fees, and uses recorded card prices + shipping rather
+  than a typed Total; it also values trade-in cards at full value with no
+  cost rather than netting off what was given.
+
+  Expanding a row reveals that order's cards, its
   total/shipping/platform form (Total left empty when nothing's saved,
   with the auto figure as its placeholder, so "Set total/shipping" never
   persists the auto sum by accident) and an "+ Add cards to this order"

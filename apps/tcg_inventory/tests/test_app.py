@@ -8,7 +8,8 @@ from conftest import make_csv, seed_import
 
 # --- Transactions "Order history" helpers ---------------------------------
 # An order renders as <details id="order-N"> with a grid <summary> whose
-# cells are the Qty/Value/Shipping/Total/Remaining columns. Anchor on
+# cells are the Qty/Value/Shipping/Total/Gain columns (Remaining moved
+# into the expanded body in issue #246 -- see order_remaining). Anchor on
 # that id rather than on the text "Order #N": the card picker's "Adding to"
 # <select> also lists every order by that label, so a plain text split lands
 # in the wrong part of the page.
@@ -34,8 +35,8 @@ def summary_cell(text: str, purchase_id: int, column: str) -> str:
     """Visible text of one summary column, tags stripped and whitespace
     collapsed, e.g. summary_cell(text, 4, "value") -> '60 kr'. `column` is
     the oc-* class suffix used in transactions.html (order/date/qty/value/
-    shipping/total/remaining/platform). Handles the columns that wrap their
-    value in a nested <span> (Remaining's diff flag, Platform's badge)."""
+    shipping/total/gain/platform). Handles the columns that wrap their
+    value in a nested <span> (Gain's colour span, Platform's badge)."""
     summary = order_summary(text, purchase_id)
     after = summary.split(f'class="oc-{column}', 1)[1]
     # Walk to the matching close of this cell's own <span>.
@@ -61,6 +62,19 @@ def summary_cell(text: str, purchase_id: int, column: str) -> str:
         out.append(after[i])
         i += 1
     return " ".join("".join(out).split())
+
+
+def order_remaining(text: str, purchase_id: int) -> str | None:
+    """The order body's Remaining indicator (issue #246 moved it out of the
+    summary row), tags stripped -- e.g. 'Remaining 40 kr' / 'Remaining ✓' --
+    or None when it isn't rendered (no Total typed)."""
+    body = order_section(text, purchase_id).split("</summary>", 1)[1]
+    if 'class="order-remaining"' not in body:
+        return None
+    # The indicator is "Remaining" plus one nested <span> (flag or ✓).
+    m = re.search(r'class="order-remaining">(.*?<span[^>]*>.*?</span>)', body, re.S)
+    chunk = m.group(1)
+    return " ".join(re.sub(r"<[^>]+>", " ", chunk).split())
 
 
 def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client):
@@ -848,8 +862,9 @@ def test_purchase_cart_records_a_declared_total_and_shows_the_diff(client):
     text = client.get("/transactions").text
     assert summary_cell(text, 4, "value") == "60 kr"
     assert summary_cell(text, 4, "total") == "100 kr"
-    assert summary_cell(text, 4, "remaining") == "40 kr"
-    assert "tx-diff-flag" in order_summary(text, 4)
+    assert order_remaining(text, 4) == "Remaining 40 kr"
+    assert "tx-diff-flag" in order_section(text, 4)
+    assert "oc-remaining" not in order_summary(text, 4)
 
 
 def test_purchase_shipping_is_subtracted_from_the_diff(client):
@@ -894,8 +909,8 @@ def test_purchase_shipping_is_subtracted_from_the_diff(client):
     # the ✓ marker, not a red diff flag. (It is no longer rendered as
     # *nothing*: blank could equally mean "no agreed total set yet", which
     # made settled and untouched orders indistinguishable at a glance.)
-    assert "tx-diff-flag" not in order_summary(text, 1)
-    assert "oc-settled" in order_summary(text, 1)
+    assert order_remaining(text, 1) == "Remaining ✓"
+    assert "tx-diff-flag" not in order_section(text, 1)
 
 
 def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
@@ -930,8 +945,7 @@ def test_trade_row_price_does_not_leak_into_a_mixed_orders_total(client):
     assert "9 999 kr" not in summary_section
     # Remaining is 0 (the agreed total matches the real purchase row
     # exactly) -- settled, so the ✓ marker rather than a red diff flag.
-    assert "tx-diff-flag" not in summary_section
-    assert "oc-settled" in summary_section
+    assert order_remaining(text, 9) == "Remaining ✓"
 
 
 def test_create_purchase_reopens_the_new_orders_details_via_open_order(client):
@@ -981,14 +995,14 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     )
 
     # No declared total yet -- Total shows the automatic Value + Shipping
-    # (issue #202), tagged "auto", and Remaining an em dash, distinct from
+    # (issue #202), tagged "auto", and no Remaining at all, distinct from
     # a settled order's ✓.
     text = client.get("/transactions").text
     assert summary_cell(text, 6, "total") == "10 kr auto"
     assert "oc-total-auto" in order_summary(text, 6)
-    assert summary_cell(text, 6, "remaining") == "—"
-    assert "oc-settled" not in order_summary(text, 6)
-    assert "tx-diff-flag" not in order_summary(text, 6)
+    assert order_remaining(text, 6) is None
+    assert "oc-settled" not in order_section(text, 6)
+    assert "tx-diff-flag" not in order_section(text, 6)
 
     response = client.post(
         "/transactions/purchase/6/total", data={"purchase_total": "10"}, follow_redirects=True
@@ -1010,8 +1024,7 @@ def test_purchase_total_can_be_set_on_an_existing_purchase(client):
     text = client.get("/transactions").text
     assert summary_cell(text, 6, "total") == "10 kr"
     assert "oc-total-auto" not in order_summary(text, 6)
-    assert "tx-diff-flag" not in order_summary(text, 6)
-    assert "oc-settled" in order_summary(text, 6)
+    assert order_remaining(text, 6) == "Remaining ✓"
 
 
 def test_order_history_header_says_total_not_agreed_total(client):
@@ -1058,13 +1071,13 @@ def test_unsaved_order_total_shows_value_plus_shipping_as_auto_and_nothing_is_st
     text = client.get("/transactions").text
     summary = order_summary(text, 7)
     # Value (1 100) + Shipping (25), marked automatic with a text tag (not
-    # colour alone) and a tooltip; Remaining stays a dash, never ✓.
+    # colour alone) and a tooltip; no Remaining is shown, never ✓.
     assert summary_cell(text, 7, "total") == "1 125 kr auto"
     assert "oc-total-auto" in summary
     assert "Automatic: Value + Shipping" in summary
-    assert summary_cell(text, 7, "remaining") == "—"
-    assert "oc-settled" not in summary
-    assert "tx-diff-flag" not in summary
+    assert order_remaining(text, 7) is None
+    assert "oc-settled" not in order_section(text, 7)
+    assert "tx-diff-flag" not in order_section(text, 7)
 
     # The order body's Total input stays empty (the auto sum is only its
     # placeholder), so "Set total/shipping" can't persist it by accident.
@@ -1096,8 +1109,7 @@ def test_saved_total_still_drives_remaining_diff_not_the_auto_figure(client):
     text = client.get("/transactions").text
     assert summary_cell(text, 8, "total") == "150 kr"
     assert "oc-total-auto" not in order_summary(text, 8)
-    assert summary_cell(text, 8, "remaining") == "30 kr"
-    assert "tx-diff-flag" in order_summary(text, 8)
+    assert order_remaining(text, 8) == "Remaining 30 kr"
     total_input = order_section(text, 8).split('name="purchase_total"', 1)[1].split(">", 1)[0]
     assert 'value="150' in total_input
 
@@ -1138,7 +1150,7 @@ def test_purchase_cart_without_a_typed_total_leaves_purchase_total_null(client, 
 
     text = client.get("/transactions").text
     assert summary_cell(text, 5, "total") == "60 kr auto"
-    assert summary_cell(text, 5, "remaining") == "—"
+    assert order_remaining(text, 5) is None
 
 
 def test_purchase_cart_total_field_is_blank_with_auto_wiring(client):

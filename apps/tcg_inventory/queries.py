@@ -1246,6 +1246,87 @@ def trade_summary(txs: list[Transaction], prices_then: dict[int, float | None] |
     }
 
 
+# Row types that bring a copy of a card into the collection -- what an
+# order's Gain values (issue #246). A trade only counts on its "in" side.
+_ACQUIRING_TYPES = ("purchase", "ripped")
+
+
+def _is_acquisition(t: Transaction) -> bool:
+    return t.type in _ACQUIRING_TYPES or (t.type == "trade" and t.direction == "in")
+
+
+def held_acquisition_ids(txs: list[Transaction]) -> set[int]:
+    """Ids of the acquisition rows (purchase, ripped, trade "in") whose copy
+    is still owned, judged against each card's current `qty`.
+
+    One transaction row is one copy (there's no quantity column). A card
+    owned `qty` times with N acquisition rows has min(qty, N) of them still
+    held; the newest rows (by date, then id) are the ones treated as held --
+    i.e. disposals are assumed oldest-first (FIFO). So a card bought twice and
+    later sold once leaves only the later order credited, and a qty=0 card
+    (sold/traded away) leaves none. `txs` must be every transaction, not one
+    order's, since a card's copies can be spread across several orders.
+    """
+    by_card: dict[int, list[Transaction]] = defaultdict(list)
+    for t in txs:
+        if _is_acquisition(t):
+            by_card[t.card_id].append(t)
+    held: set[int] = set()
+    for rows in by_card.values():
+        qty = max(rows[0].card.qty or 0, 0)
+        rows.sort(key=lambda t: (t.date, t.id), reverse=True)
+        held.update(t.id for t in rows[:qty])
+    return held
+
+
+def order_gain(
+    group_txs: list[Transaction], order_total: float, held_ids: set[int], trade: dict | None
+) -> dict:
+    """An order's paper gain/loss for Order history's Gain column (issue
+    #246): today's market value of the copies from this order that are still
+    owned, minus what the order cost (`order_total` -- its typed Total, else
+    the automatic Value + Shipping, i.e. exactly what the Total column shows).
+
+    Same idea as the headline "Paper gain/loss" (today's value of what you
+    own minus what you paid), scoped to one order:
+
+      - purchase / ripped rows: each still-held copy (see
+        `held_acquisition_ids`) adds its card's `display_price`. A copy that
+        has since been sold or traded away adds nothing, so its cost shows as
+        a loss here and its proceeds wherever it was sold.
+      - trade rows: the order's `trade_summary` gain_now (got - gave + cash),
+        the same figure the expanded order's "Trade gain" shows. Its rows
+        aren't valued again on top of that.
+      - sale rows: a pure sale order has nothing still held to value -- gain
+        is None ("—"). An order mixing sale rows with purchases is None too:
+        its Value/Total add sale proceeds and purchase prices together, so
+        there's no meaningful cost to subtract.
+
+    `gain` is None when nothing in the order can be valued: no held copy has
+    a market price and there's no trade figure, or the order has no
+    purchase/ripped rows and no trade with In/Out set. When only some held copies
+    lack a price they count as 0 (as in the headline) and `unpriced` says
+    how many, so the template can flag the figure as partial.
+    """
+    types = {t.type for t in group_txs}
+    if "sale" in types:
+        return {"gain": None, "unpriced": 0, "reason": "sale"}
+    held = [t for t in group_txs if t.type in _ACQUIRING_TYPES and t.id in held_ids]
+    priced = [t for t in held if t.card.display_price is not None]
+    unpriced = len(held) - len(priced)
+    # A trade whose rows all lack In/Out has no gain figure (trade_summary
+    # leaves them out rather than guessing) -- don't let its 0 pass as one.
+    trade_known = trade is not None and bool(trade["gave"] or trade["got"])
+    if not trade_known and held and not priced:
+        return {"gain": None, "unpriced": unpriced, "reason": "no_price"}
+    if not trade_known and not (types & set(_ACQUIRING_TYPES)):
+        return {"gain": None, "unpriced": 0, "reason": "empty"}
+    gain = sum(t.card.display_price for t in priced) - order_total
+    if trade_known:
+        gain += trade["gain_now"]
+    return {"gain": gain, "unpriced": unpriced, "reason": None}
+
+
 def shipping_shares(txs: list[Transaction]) -> dict[int, float]:
     """Each purchase row's share of its order's shipping, keyed by
     transaction id -- shipping is part of what a card actually cost.
