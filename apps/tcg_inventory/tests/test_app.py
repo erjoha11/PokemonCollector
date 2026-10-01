@@ -290,8 +290,50 @@ def test_market_value_chart_shows_price_vs_card_count_breakdown(client):
     html = client.get("/?metric=total").text
     assert "Price development" in html
     assert "More cards" in html and "(+1 card)" in html
-    assert "Card count changed that day" in html
     assert '"cardCounts": [1, 2]' in html
+    # Card count is its own line on a right-hand axis (issue #243), replacing
+    # the old orange "card count changed" dots.
+    assert "Card count changed that day" not in html
+    assert '{"axis": "count", "color": "#2a78d6", "data": [1, 2], "label": "Cards"}' in html
+    assert "mv-count-swatch" in html
+
+
+def test_market_value_card_count_line_follows_metric(client):
+    import datetime as dt
+
+    import db as db_module
+    import snapshots
+    from models import Card
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "a", "name": "Pikachu", "qty": 3, "price": "100"},
+            {"id": "b", "name": "Eevee", "qty": 1, "price": "50"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    snapshots.record_daily_snapshot(db, as_of=dt.date.today() - dt.timedelta(days=2))
+    db.query(Card).filter(Card.card_id == "b").one().qty = 2
+    db.commit()
+    db.close()
+
+    def page(metric):
+        return client.get(f"/?metric={metric}").text
+
+    toggle = "tcgToggleDataset('dashboard-market-value-card', {}, this)"
+    total = page("total")
+    assert '"data": [4, 5], "label": "Cards"' in total
+    # With a Net invested line (dataset 1), Cards is dataset 2.
+    assert toggle.format(2) in total and toggle.format(1) in total
+    assert '"data": [2, 2], "label": "Cards"' in page("unique")
+    duplicates = page("duplicates")
+    assert '"data": [2, 3], "label": "Cards"' in duplicates
+    # Duplicates has no Net invested line, so Cards is dataset 1.
+    assert toggle.format(1) in duplicates and toggle.format(2) not in duplicates
+    # The "View as table" Cards column follows the metric too.
+    assert '<td class="num">3 <span class="muted">(+1)</span></td>' in duplicates
 
 
 def test_market_value_period_pills_switch_and_keep_other_params(client):

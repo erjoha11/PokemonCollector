@@ -1075,9 +1075,19 @@ charts" section, as a portfolio-style chart:
   (cards already owned at the start: copies × price change) and *More /
   Fewer cards* (copies added or removed since, at today's prices, plus the
   net card delta). The two add up exactly to the change. Only the first
-  and last day's per-card rows are read. Days where the card count changed
-  get an orange marker, and the tooltip shows the count and its delta
-  ("no change — price only" otherwise).
+  and last day's per-card rows are read.
+- **Card count line** (issue #243): the number of cards per day for the
+  selected metric — unique cards owned (qty > 0) / extra copies
+  (qty − 1) / all copies — the same `card_count` `real_value_history`
+  returns alongside each day's value, so it follows the metric and period
+  pills. Drawn blue, dotted and stepped (a count holds until the next
+  snapshot day) on its own right-hand, whole-number axis fitted
+  separately from the kr axis; on by default and toggled with the
+  "Cards" pill (which doubles as its legend). It replaced the old orange
+  "card count changed that day" point markers. The tooltip shows the count
+  and its delta; with the line hidden, the value point's tooltip still
+  lists it ("no change — price only" otherwise). "View as table" has the
+  same count in its Cards column.
 - A dashed **Net invested** line (cumulative, `queries.net_invested_at_dates`)
   can be toggled on for Unique/Total — off by default, since showing it
   widens the y-axis.

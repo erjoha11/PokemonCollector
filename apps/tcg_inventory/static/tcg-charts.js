@@ -14,8 +14,12 @@
 //
 // Optional `sourceNotes` (either mode): one entry per point, a list of extra
 // tooltip lines (or null) -- used to mark price-source switches (issue #210).
+//
+// A dataset with `axis: "count"` (timeSeries only -- the Market Value card's
+// card-count line, issue #243) is drawn stepped and dotted on its own
+// right-hand axis ("y2", whole numbers), fitted separately from the kr axis
+// and hidden together with its dataset.
 var DAY_MS = 86400000;
-var CARD_CHANGE_COLOR = "#eb6834"; // the app's series-2 orange
 
 function tcgKr(v) {
   return Math.round(v).toLocaleString("nb-NO") + " kr";
@@ -48,10 +52,12 @@ function tcgNiceStep(span) {
   return 10 * mag;
 }
 
-function tcgFitY(chart) {
+function tcgFitAxis(chart, axisId, wholeNumbers) {
+  var scale = chart.options.scales[axisId];
+  if (!scale) return;
   var lo = Infinity, hi = -Infinity;
   chart.data.datasets.forEach(function (ds, i) {
-    if (!chart.isDatasetVisible(i)) return;
+    if (!chart.isDatasetVisible(i) || (ds.yAxisID || "y") !== axisId) return;
     ds.data.forEach(function (pt) {
       var y = typeof pt === "object" ? pt.y : pt;
       if (y < lo) lo = y;
@@ -61,11 +67,17 @@ function tcgFitY(chart) {
   if (!isFinite(lo)) return;
   var pad = Math.max((hi - lo) * 0.12, Math.abs(hi) * 0.005, 1);
   var step = tcgNiceStep(hi - lo + 2 * pad);
+  if (wholeNumbers) step = Math.max(1, Math.ceil(step));
   var min = Math.floor((lo - pad) / step) * step;
   if (lo >= 0 && min < 0) min = 0;
-  chart.options.scales.y.min = min;
-  chart.options.scales.y.max = Math.ceil((hi + pad) / step) * step;
-  chart.options.scales.y.ticks.stepSize = step;
+  scale.min = min;
+  scale.max = Math.ceil((hi + pad) / step) * step;
+  scale.ticks.stepSize = step;
+}
+
+function tcgFitY(chart) {
+  tcgFitAxis(chart, "y", false);
+  tcgFitAxis(chart, "y2", true);
 }
 
 // Day-aligned x ticks (~6 of them), so labels are always whole dates.
@@ -102,14 +114,36 @@ function initTcgChart(cardId) {
   var timeSeries = !!cfg.timeSeries;
   var xs = timeSeries ? cfg.labels.map(tcgParseDay) : null;
   var nPoints = cfg.labels.length;
-  // Days where the number of cards changed (bought/sold/ripped...), so a
-  // jump can be told apart from pure price movement -- marked in orange.
+  // Number of cards per day (bought/sold/ripped...), so a value jump can be
+  // told apart from pure price movement -- drawn as its own line (issue #243)
+  // and listed in the value point's tooltip when that line is hidden.
   var counts = timeSeries ? cfg.cardCounts : null;
-  var countChanged = counts
-    ? counts.map(function (c, j) { return j > 0 && c !== counts[j - 1]; })
-    : null;
+  var countIndex = -1;
+  var hasCountAxis = false;
 
   var datasets = cfg.datasets.map(function (ds, i) {
+    if (timeSeries && ds.axis === "count") {
+      countIndex = i;
+      hasCountAxis = true;
+      return {
+        label: ds.label,
+        data: ds.data.map(function (y, j) { return { x: xs[j], y: y }; }),
+        yAxisID: "y2",
+        hidden: !!ds.hidden,
+        borderColor: ds.color,
+        backgroundColor: ds.color,
+        borderWidth: 2,
+        borderDash: [2, 3], // dotted -- Net invested is dashed [6, 4]
+        // Horizontal, then vertical at the day it changed: a count holds
+        // until the next snapshot day (Chart.js calls that "before").
+        stepped: "before",
+        tension: 0,
+        pointRadius: 0,
+        pointHoverRadius: 4,
+        pointStyle: "rect",
+        fill: false,
+      };
+    }
     return {
       label: ds.label,
       data: timeSeries
@@ -122,15 +156,9 @@ function initTcgChart(cardId) {
       borderRadius: cfg.type === "bar" ? 4 : 0,
       borderDash: cfg.type === "line" && i > 0 ? [6, 4] : undefined,
       tension: timeSeries ? 0.15 : 0.25,
-      pointRadius: timeSeries && i === 0 && counts
-        ? xs.map(function (_, j) { return countChanged[j] ? 4 : (nPoints > 45 ? 0 : 2); })
-        : (timeSeries ? (nPoints > 45 ? 0 : 2) : 2),
-      pointBackgroundColor: timeSeries && i === 0 && counts
-        ? xs.map(function (_, j) { return countChanged[j] ? CARD_CHANGE_COLOR : ds.color; })
-        : ds.color,
-      pointBorderColor: timeSeries && i === 0 && counts
-        ? xs.map(function (_, j) { return countChanged[j] ? CARD_CHANGE_COLOR : ds.color; })
-        : ds.color,
+      pointRadius: timeSeries ? (nPoints > 45 ? 0 : 2) : 2,
+      pointBackgroundColor: ds.color,
+      pointBorderColor: ds.color,
       pointHoverRadius: 5,
       // Portfolio mode fills down to the (fitted) bottom of the axis, not 0.
       fill: cfg.type === "line" && i === 0 && (timeSeries ? "start" : cfg.datasets.length === 1),
@@ -156,6 +184,18 @@ function initTcgChart(cardId) {
       },
       y: { ticks: { callback: function (v) { return tcgKr(v); } } },
     };
+    if (hasCountAxis) {
+      scales.y2 = {
+        position: "right",
+        display: "auto", // only while the count line is shown
+        grid: { drawOnChartArea: false }, // keep the kr axis's gridlines only
+        ticks: {
+          precision: 0,
+          callback: function (v) { return v.toLocaleString("nb-NO"); },
+        },
+        title: { display: true, text: "Cards" },
+      };
+    }
   } else {
     scales = {
       y: { beginAtZero: true, ticks: { callback: function (v) { return v.toLocaleString("nb-NO") + " kr"; } } },
@@ -178,6 +218,15 @@ function initTcgChart(cardId) {
               return timeSeries ? tcgFormatDay(items[0].parsed.x, true) : items[0].label;
             },
             label: function (item) {
+              if (item.datasetIndex === countIndex) {
+                var c = item.parsed.y;
+                var line = item.dataset.label + ": " + c.toLocaleString("nb-NO");
+                if (item.dataIndex > 0) {
+                  var d = c - item.dataset.data[item.dataIndex - 1].y;
+                  line += d ? " (" + (d > 0 ? "+" : "") + d + ")" : " (no change)";
+                }
+                return line;
+              }
               return item.dataset.label + ": " + tcgKr(item.parsed.y);
             },
             afterLabel: function (item) {
@@ -191,7 +240,8 @@ function initTcgChart(cardId) {
               var diff = item.parsed.y - prev;
               var pct = prev > 0 ? " (" + (diff > 0 ? "+" : "") + (diff / prev * 100).toFixed(1) + " %)" : "";
               var lines = ["Change: " + tcgSignedKr(diff) + pct];
-              if (counts) {
+              // The count line's own tooltip row covers this while it's shown.
+              if (counts && (countIndex < 0 || !item.chart.isDatasetVisible(countIndex))) {
                 var dc = counts[item.dataIndex] - counts[item.dataIndex - 1];
                 lines.push("Cards: " + counts[item.dataIndex] + (dc ? " (" + (dc > 0 ? "+" : "") + dc + ")" : (notes.length ? " (no change)" : " (no change — price only)")));
               }

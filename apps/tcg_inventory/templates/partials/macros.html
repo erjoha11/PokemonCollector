@@ -170,11 +170,19 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
     {% else %}
     <span class="muted mv-change-period">Only one day of history in this period</span>
     {% endif %}
-    {% if market_value_invested %}
-    <button type="button" class="viz-filter-pill mv-invested-toggle" aria-pressed="false" onclick="tcgToggleDataset('{{ card_id }}', 1, this)">
-      <span class="mv-invested-swatch" aria-hidden="true"></span>Net invested
-    </button>
-    {% endif %}
+    {#- Series toggles double as the legend. Card count (issue #243) is the
+        last dataset and sits on its own right-hand axis, so its index is 1
+        without a Net invested line and 2 with one. #}
+    <span class="mv-series-toggles" aria-label="Chart series">
+      <button type="button" class="viz-filter-pill mv-series-toggle active" aria-pressed="true" onclick="tcgToggleDataset('{{ card_id }}', {{ 2 if market_value_invested else 1 }}, this)" title="Number of cards ({{ metric_label }}) per day, on the right-hand axis">
+        <span class="mv-count-swatch" aria-hidden="true"></span>Cards
+      </button>
+      {% if market_value_invested %}
+      <button type="button" class="viz-filter-pill mv-series-toggle" aria-pressed="false" onclick="tcgToggleDataset('{{ card_id }}', 1, this)">
+        <span class="mv-invested-swatch" aria-hidden="true"></span>Net invested
+      </button>
+      {% endif %}
+    </span>
   </div>
   {% set bd = market_value_breakdown %}
   {% if bd %}
@@ -188,15 +196,15 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
       <span class="{{ 'viz-delta-gain' if bd.cards >= 0 else 'viz-delta-loss' }}">{{ '+' if bd.cards > 0 }}{{ bd.cards | kr }}</span>
       <span class="muted">({{ '+' if bd.card_delta > 0 }}{{ bd.card_delta }} {{ 'card' if bd.card_delta in (1, -1) else 'cards' }})</span>
     </span>
-    {% set ns = namespace(changed=false) %}
-    {% for row in history[1:] %}{% if row.card_count != history[loop.index0].card_count %}{% set ns.changed = true %}{% endif %}{% endfor %}
-    {% if ns.changed %}<span class="mv-breakdown-legend muted"><i class="mv-card-dot" aria-hidden="true"></i>Card count changed that day</span>{% endif %}
   </div>
   {% endif %}
   {% set datasets = [{"label": metric_label, "data": history | map(attribute="cumulative_value") | list, "color": "#0ca30c" if up else "#d03b3b"}] %}
   {% if market_value_invested %}
   {% set datasets = datasets + [{"label": "Net invested", "data": market_value_invested, "color": "#898781", "hidden": true}] %}
   {% endif %}
+  {#- Card count for the same metric (unique cards / extra copies / all
+      copies), stepped + dotted on the right-hand axis (issue #243). #}
+  {% set datasets = datasets + [{"label": "Cards", "data": history | map(attribute="card_count") | list, "color": "#2a78d6", "axis": "count"}] %}
   <div class="viz-chart-wrap">
     <canvas id="{{ card_id }}-canvas" role="img" aria-label="{{ heading | striptags | trim }}"></canvas>
   </div>
