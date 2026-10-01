@@ -30,9 +30,9 @@ yet.
 - Mark sold and the New Order cart take optional order-level Fees (and
   Mark sold a "Shipping you paid" field); fees are split across rows by
   price in whole øre.
-- Behaviour change, decided by the user: historical Net invested and paper
-  gain shift upward for existing sales that already have fees/shipping
-  recorded. No database write.
+- Behaviour change, decided by the user: for existing sales that already
+  have fees/shipping recorded, historical Net invested shifts up and paper
+  gain shifts down by the same amount. No database write.
 
 **Order history: Gain column, Remaining moved into the order (#246)**
 - New **Gain** column right after Total: today's market value of the

@@ -1689,8 +1689,9 @@ user confirmed the prod Transactions page works.
 ## Decision recorded
 
 The user explicitly decided that sale fees and seller-paid shipping should
-count in the money figures, and accepted that **historical Net invested and
-paper gain shift upward** for existing sale rows that already have `fees`
+count in the money figures, and accepted that **historical Net invested
+shifts up and paper gain shifts down** (by the same amount: paper gain is
+value minus Net invested) for existing sale rows that already have `fees`
 or `purchase_shipping` recorded (previously those were ignored on sales).
 Nothing was rewritten: the shift comes purely from the new read-time rule.
 
