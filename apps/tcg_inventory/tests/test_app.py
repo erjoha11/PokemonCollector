@@ -368,7 +368,8 @@ def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
     assert "top-card-item-thumb-empty" in card  # Pikachu has no photo yet
     assert "×2" in card and "Ultra Rare" in card
     assert "top-card-item-bar" not in card  # no price bar (removed on request)
-    assert "tsort=name" in card  # sort pills
+    # No sort pills (issue #245): the list is always market price, highest first.
+    assert "tsort=" not in card and "viz-filter-pill" not in card
     # The photo opens the card viewer (details + Dex links); names link to /cards/{id}.
     assert card.count("data-card-view") == 1  # Charizard's photo; Pikachu has none
     assert 'data-detail="/cards/' in card

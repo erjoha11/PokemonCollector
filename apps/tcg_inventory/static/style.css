@@ -871,7 +871,6 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .top-card-item-figures { display: flex; flex-direction: column; align-items: flex-end; gap: 0.1rem; }
 .top-card-item-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .top-card-item-gain { font-size: 0.78rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.top-cards-sort { flex-wrap: wrap; margin-top: 0; }
 
 /* Every dashboard row is a pair (Inventory+Topp 10, Serie+Rarity) -- wrap
    each in its own auto-fit pair instead of the top-level grid, so exactly
