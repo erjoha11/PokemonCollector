@@ -440,3 +440,45 @@ from source only: `base.html` nav, `transactions.html`,
 
 **Status:** Addressed in #255 (PR "Orders shell: route-based tabs,
 redirects, single nav item"). Realized gain on Sold is #256.
+
+## 2026-10-01 — One error pattern for rejected form saves (#228 a)
+
+**Reviewed:** a `ux` review of how a server-side validation error should
+reach the user on the htmx forms (cart, Order history total/shipping, row
+edit, Edit order) and the plain listing forms. Before, htmx dropped any 4xx/5xx,
+so a rejected save looked like a button that did nothing. Only Edit order
+had its own inline `hx-on::response-error`.
+
+**Chosen pattern (built in #228 part a):**
+- One global `htmx:responseError` listener in `static/form-errors.js`
+  (loaded from `base.html`). It finds the slot with
+  `elt.closest('form').querySelector('[data-form-error]')`, or else the one in
+  the nearest `.card`. On a 422 it unhides the slot and sets
+  `textContent` to the server's plain-text message. Any other status gets
+  the generic "Could not save (error N), nothing was changed..." text. Then
+  `scrollIntoView({block: 'center'})`. The slot is cleared and re-hidden
+  on the next `htmx:beforeRequest`. GET requests inside the same form,
+  such as the cart's card search, are ignored so they neither wipe a shown
+  error nor report "Could not save".
+- Nothing is swapped, so the user's input is preserved (the row edit stays
+  in edit mode, and the cart keeps its rows).
+- Slot markup: `<p class="warnings" role="alert" hidden data-form-error></p>`.
+  It reuses `.warnings` with no new class. Inside a `form.filters` flex row
+  it gets an inline `flex-basis: 100%` so it takes its own line. Slots:
+  above Register in the cart, in the order total/shipping form, inside the
+  row-edit `<form>`, above Save changes on Edit order (replacing
+  `#save-order-error`), and in the ad builder and Mark as listed forms.
+- Server messages are short and English (the UI language) and name the
+  field and row, e.g. "Price on row 3 must be a number of 0 or more."
+  FastAPI's own JSON 422 is converted to plain text for HX requests, so the
+  slot never shows raw JSON.
+- Plain (non-htmx) forms keep their pattern: re-render with
+  `{% if error %}<p class="warnings" role="alert">`, status 422, every
+  submitted value filled back in.
+- Pitfall handled: `confirmRegisterOrder` turns the cart's beforeunload
+  guard off before the request. `static/orders-cart.js` turns it back on
+  after `htmx:responseError`/`htmx:sendError`, so a rejected Register
+  can't later lose the cart without a warning.
+
+**Status:** Addressed in #228 (part a). Not yet checked by hand in a
+browser, only through route and template tests.

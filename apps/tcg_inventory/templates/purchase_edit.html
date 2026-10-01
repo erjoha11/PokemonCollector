@@ -10,7 +10,6 @@
 </p>
 <h1>Edit Order #{{ purchase_id }}</h1>
 {% if saved %}<p class="saved-note" role="status">Saved ✓</p>{% endif %}
-<p id="save-order-error" class="warnings" role="alert" hidden></p>
 <p class="muted">
   Retype, relink, add a note, delete a row, or reassign a row's Order ID to move it to another order,
   merge it into one, or split it into a new one — reassigning Order ID is the one primitive behind all three.
@@ -19,8 +18,7 @@
 <form method="post" action="/transactions/purchase/{{ purchase_id }}/edit"
       hx-post="/transactions/purchase/{{ purchase_id }}/edit"
       hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
-      hx-indicator="#save-order-indicator"
-      hx-on::response-error="var e = document.getElementById('save-order-error'); e.textContent = 'Could not save (error ' + event.detail.xhr.status + ') -- nothing was changed. Try again, or reload the page.'; e.hidden = false; e.scrollIntoView({block: 'center'});">
+      hx-indicator="#save-order-indicator">
   <div class="table-scroll">
     <table class="tx-table mb-1">
       <thead>
@@ -93,6 +91,9 @@
     set the destination order's total/shipping afterward from the Orders page, it's never guessed or split automatically.
   </p>
 
+  {# A failed save -- a 422's own message, else the generic "Could not
+     save" -- shows here (static/form-errors.js, issue #228). #}
+  <p class="warnings" role="alert" hidden data-form-error></p>
   <button type="submit">Save changes</button>
   <span id="save-order-indicator" class="tx-search-spinner htmx-indicator">Saving…</span>
   {% if saved %}<span class="saved-note" role="status">Saved ✓</span>{% endif %}

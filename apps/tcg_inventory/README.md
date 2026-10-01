@@ -289,7 +289,8 @@ run).
   total/shipping afterward). Save keeps you on the edit page with a
   "Saved ✓" note and a "← Back to Transactions" link (unless every row
   was moved out, which lands on Transactions); a failed save shows an
-  error instead of silently doing nothing. Total defaults to shipping + the
+  error above Save changes instead of silently doing nothing (a rejected
+  value names the field and row, see "Form validation" below). Total defaults to shipping + the
   cards already priced (price 0 = not priced yet) when nothing's been
   saved yet, but a saved value is a real number the user typed and is
   never silently recalculated back to the sum. (Save changes submits
@@ -464,6 +465,39 @@ implementation detail.
 - **Duplicates** are `qty − 1` per physical card, keyed on (card id,
   variant): a card's "Normal" and "Poké Ball Holo" prints are two cards,
   not duplicates of each other.
+
+### Form validation (issue #228)
+
+Every route that writes a transaction type, a price/amount, or a date
+validates it at the boundary (`form_validation.py`) before anything is
+written:
+
+- **Type** must be one of `models.TRANSACTION_TYPES` (`purchase`, `sale`,
+  `trade`, `ripped`). The money queries only count `purchase`/`sale`, so a
+  typo would otherwise silently drop out of every figure.
+- **Prices and amounts** (card prices, Total, Shipping, Fees, asking and
+  suggested prices) must be finite and 0 or more. `nan`/`inf`, which a plain
+  `float` field accepts, are rejected, and so are negatives. A decimal comma
+  is accepted. Mark sold is stricter and requires each sold price to be above 0.
+- **Date** must be an ISO date (`YYYY-MM-DD`).
+- **Parallel row lists** (cart rows, Edit order rows, the ad builder's rows)
+  must line up one-to-one. Edit order only checks the rows being kept, so a
+  row ticked for deletion is never blocked by its own typo.
+
+A rejection is a **422** that the user can read:
+
+- **htmx forms** (New Order cart, Order history's total/shipping form, a
+  transaction row's inline edit, Edit order, the ad builder and Mark as
+  listed) get a short plain-text message naming the field, e.g. "Price on
+  row 2 must be a number of 0 or more." `static/form-errors.js` (one global
+  `htmx:responseError` listener) puts it into the form's
+  `<p class="warnings" role="alert" hidden data-form-error>` slot. Nothing
+  is swapped, so the input stays as typed. Any other error status shows the
+  generic "Could not save (error N)" text. FastAPI's own validation errors
+  (e.g. a non-numeric Order ID) are turned into plain text for htmx requests
+  too, and stay JSON for everything else.
+- **Plain-form pages** (Edit listing, Mark sold) re-render with the message
+  in a `role="alert"` box and every submitted value filled back in.
 
 ## Data model
 
@@ -1601,6 +1635,8 @@ file locally following the steps above and add a dated line here.
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
 - `queries.py` — dashboard aggregation queries.
+- `form_validation.py` — boundary validation of type/price/date/row-list
+  form inputs and the 422 messages (see "Form validation" above).
 - `masterdata.py` — canonical card identity + external ID mapping (see
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").

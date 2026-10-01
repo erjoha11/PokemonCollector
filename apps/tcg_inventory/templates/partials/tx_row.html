@@ -57,6 +57,9 @@
       <input type="number" step="0.01" name="fees" value="{{ tx.fees if tx.fees is not none else '' }}" placeholder="Fees" style="width: 100px;">
       <input type="text" name="platform" value="{{ tx.platform or '' }}" placeholder="Platform" style="width: 140px;">
       <input type="number" name="purchase_id" value="{{ tx.purchase_id if tx.purchase_id is not none else '' }}" placeholder="Order ID" title="Order ID (blank = not part of an order)" style="width: 100px;">
+      {# A rejected save (422, issue #228) shows here and the row stays in
+         edit mode with the input as typed -- static/form-errors.js. #}
+      <p class="warnings" role="alert" hidden data-form-error style="flex-basis: 100%; margin: 0;"></p>
       <button type="submit">Save</button>
       <button type="button" class="secondary" hx-get="/transactions/{{ tx.id }}/row" hx-target="#tx-row-{{ tx.id }}" hx-swap="outerHTML">Cancel</button>
     </form>

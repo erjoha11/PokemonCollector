@@ -216,8 +216,8 @@ def test_mark_sold_rejects_negative_fees_without_writing(client):
     listing_id = _listing(client, [ids["a"]])
     response = client.post(f"/listings/{listing_id}/mark-sold",
                            data={"date": "2026-02-01", "card_id": [str(ids["a"])], "price": ["10"], "fees": "-5"})
-    assert response.status_code == 200
-    assert "Fees and shipping" in response.text
+    assert response.status_code == 422
+    assert "Fees must be blank or a number of 0 or more" in response.text
     db = db_module.SessionLocal()
     try:
         assert db.query(Transaction).count() == 0

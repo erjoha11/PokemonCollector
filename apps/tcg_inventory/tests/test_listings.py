@@ -386,7 +386,7 @@ def test_edit_rejects_empty_card_set(client):
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 422
     assert "at least one card" in response.text.lower()
 
     import db as db_module
@@ -585,7 +585,7 @@ def test_mark_sold_rejects_missing_price_for_a_card_and_creates_no_transactions(
         },
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 422
 
     db = db_module.SessionLocal()
     try:
@@ -606,7 +606,7 @@ def test_mark_sold_rejects_invalid_price_and_creates_no_transactions(client):
 
     response = _mark_sold(client, listing_id, [ids["a"]], ["not-a-number"])
 
-    assert response.status_code == 200
+    assert response.status_code == 422
 
     db = db_module.SessionLocal()
     try:

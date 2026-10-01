@@ -12,7 +12,7 @@
 </p>
 
 {% if error %}
-<p class="warnings">{{ error }}</p>
+<p class="warnings" role="alert">{{ error }}</p>
 {% endif %}
 
 <form method="post" action="/listings/{{ listing.id }}/mark-sold">
@@ -20,7 +20,7 @@
   <input type="hidden" name="sold_only" value="{{ 'true' if sold_only else '' }}">
   <div class="filters" style="margin-bottom: 0.9rem;">
     <input type="date" name="date" value="{{ today }}" required>
-    <input type="text" name="platform" placeholder="Platform" value="{{ listing.platform }}">
+    <input type="text" name="platform" placeholder="Platform" value="{{ platform }}">
     {# Optional order-level amounts (issue #254): both come off what the
        sale brought in (net proceeds) in Net invested and Paper gain. #}
     <input type="number" step="0.01" min="0" name="fees" placeholder="Fees (optional)" value="{{ fees or '' }}"
