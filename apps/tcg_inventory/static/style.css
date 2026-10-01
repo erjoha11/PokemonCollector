@@ -1370,28 +1370,6 @@ button.secondary {
   background: repeating-linear-gradient(90deg, #2a78d6 0 2px, transparent 2px 4px) center / 100% 2px no-repeat, #fff;
 }
 
-.wiki-diagram {
-  overflow-x: auto;
-  margin: 0.8rem 0 1.1rem;
-  padding: 0.9rem;
-  background: var(--page);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-.wiki-diagram svg { display: block; margin: 0 auto; min-width: 560px; }
-.wiki-diagram text { font-family: inherit; fill: var(--ink); }
-.wiki-diagram .wd-muted { fill: var(--ink-secondary); }
-.wiki-diagram .wd-node-plain { fill: var(--surface); stroke: var(--border-strong); }
-.wiki-diagram .wd-node-accent { fill: var(--accent-wash); stroke: var(--accent); }
-.wiki-diagram .wd-node-highlight { fill: #fff8ea; stroke: #d9a83b; }
-.wiki-diagram .wd-conn { stroke: var(--border-strong); fill: none; }
-.wiki-diagram .wd-conn-accent { stroke: var(--accent); fill: none; }
-.wiki-figcaption {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin: 0.4rem 0 0;
-}
-
 /* --------------------------------------------------------------------
    Transactions: Order history
    --------------------------------------------------------------------
@@ -1844,3 +1822,23 @@ button.secondary {
 }
 .column-chooser-menu label { white-space: nowrap; }
 .inventory-table .col-hidden { display: none; }
+
+/* --------------------------------------------------------------------
+   Sync status (issue #264): one small card per background job, then the
+   run log. Status pills reuse .tx-badge's shape.
+   -------------------------------------------------------------------- */
+.sync-glance {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.sync-glance-item h2 { font-size: 1rem; margin: 0 0 0.5rem; }
+.sync-glance-item p { margin: 0.25rem 0; }
+.sync-glance-detail { font-size: 0.85rem; overflow-wrap: anywhere; }
+.sync-glance-problem { border-color: #f0d999; background: #fffcf3; }
+.status-ok { background: rgba(20, 150, 110, 0.14); color: #0d7a57; }
+.status-problem { background: rgba(235, 104, 52, 0.14); color: #b8501f; }
+.sync-log-details { min-width: 16rem; white-space: normal; font-size: 0.85rem; }
+.sync-warnings summary { cursor: pointer; }
+.sync-warnings ul { text-align: left; margin: 0.3rem 0 0; padding-left: 1.1rem; min-width: 18rem; white-space: normal; font-size: 0.85rem; }

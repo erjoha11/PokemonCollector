@@ -20,6 +20,24 @@ yet.
 
 ### tcg_inventory
 
+**Sync status page; Wiki, Release Notes and manual Dropbox picker removed (#264)**
+- The Activity Log is now **Sync status** (`/sync-status`): an at-a-glance
+  card per background job (last success, plus the last empty/aborted/failed
+  run if newer) and a slimmer run log without the dead "Deleted" column.
+- Newly recorded: empty-folder cron runs, circuit-breaker aborts (kept
+  through the import rollback), Dropbox errors, price-refresh / set-sync /
+  image-backfill runs, and the import warning text (shown in the log).
+- Schema: four nullable `import_log` columns (`job`, `status`, `message`,
+  `warnings_text`), older rows backfilled to a successful Dex sync;
+  `CURRENT_SCHEMA_VERSION` 11 -> 12. Additive only.
+- In-app Wiki removed (its money-figure definitions are in the README);
+  `/wiki` 308s to `/`.
+- Release Notes section and routes removed; this file is the record now.
+  The `releases` table stays, unused.
+- Manual Dropbox picker routes (`/import/dropbox/list|sync`) and partials
+  removed; the daily cron sync is unchanged.
+- `/releases` and `/import` 308 to `/sync-status`, keeping the query string.
+
 **init_db enables row level security on Postgres (#239)**
 - New `db._enable_row_level_security()` step in `init_db()`'s
   version-gated chain: `ALTER TABLE public."<name>" ENABLE ROW LEVEL

@@ -1,48 +1,70 @@
-{# Lives inside the merged /releases page (issue #159) at #sync-log. Sort
-   links swap this whole partial's outerHTML back into that same target
-   instead of doing a plain page navigation -- otherwise sorting would
-   reload the page and land at the top, above the Release Notes section
-   below it, forcing a scroll back down on every sort. #}
+{# The run log on /sync-status (issue #264). Sort links swap this whole
+   partial's outerHTML back into the same target (/sync-status/log) instead
+   of a plain page navigation, so sorting doesn't reload the page and jump
+   back above the at-a-glance block. The card counters only apply to Dex
+   syncs; other jobs show their one-line summary under Details. #}
 {% from "partials/macros.html" import sort_th with context %}
-{% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'lsort', 'ldir', lsort, ldir, path='/releases/sync-log', hx_target='#sync-log', hx_swap='outerHTML') }}{% endmacro %}
+{% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'lsort', 'ldir', lsort, ldir, path='/sync-status/log', hx_target='#sync-log', hx_swap='outerHTML') }}{% endmacro %}
 <div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;">
-  <h2>Sync Log</h2>
+  <h2>Run log</h2>
   {% if logs %}
   <div class="table-scroll">
-    <table>
+    <table class="sync-log-table">
       <thead>
         <tr>
           <th>{{ sort_th_hx('Timestamp', 'ran_at') }}</th>
+          <th>{{ sort_th_hx('Job', 'job') }}</th>
+          <th>{{ sort_th_hx('Status', 'status') }}</th>
           <th>{{ sort_th_hx('Source', 'source') }}</th>
           <th>{{ sort_th_hx('Files', 'files') }}</th>
           <th class="num">{{ sort_th_hx('Created', 'cards_created') }}</th>
           <th class="num">{{ sort_th_hx('Updated', 'cards_updated') }}</th>
           <th class="num">{{ sort_th_hx('Flagged', 'cards_flagged_missing') }}</th>
-          <th class="num">{{ sort_th_hx('Deleted', 'cards_deleted') }}</th>
           <th class="num">{{ sort_th_hx('Warnings', 'warnings_count') }}</th>
           <th>{{ sort_th_hx('Collections', 'collections_touched') }}</th>
           <th>{{ sort_th_hx('Binders', 'binders_touched') }}</th>
+          <th>Details</th>
         </tr>
       </thead>
       <tbody>
         {% for log in logs %}
+        {% set is_import = log.job_name == 'dex-sync' and log.status_name == 'ok' %}
         <tr>
           <td>{{ log.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+          <td>{{ job_labels.get(log.job_name, log.job_name) }}</td>
+          <td><span class="tx-badge {{ 'status-ok' if log.status_name == 'ok' else 'status-problem' }}">{{ log.status_name }}</span></td>
           <td>{{ log.source }}</td>
           <td>{{ log.files or '-' }}</td>
+          {% if is_import %}
           <td class="num">{{ log.cards_created }}</td>
           <td class="num">{{ log.cards_updated }}</td>
           <td class="num">{{ log.cards_flagged_missing }}</td>
-          <td class="num">{{ log.cards_deleted }}</td>
-          <td class="num">{{ log.warnings_count }}</td>
+          <td class="num">
+            {% set warnings = log.warnings_list %}
+            {% if warnings %}
+            <details class="sync-warnings">
+              <summary>{{ log.warnings_count }}</summary>
+              <ul>{% for w in warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+            </details>
+            {% else %}{{ log.warnings_count }}{% endif %}
+          </td>
           <td>{{ log.collections_touched or '-' }}</td>
           <td>{{ log.binders_touched or '-' }}</td>
+          {% else %}
+          <td class="num muted">–</td>
+          <td class="num muted">–</td>
+          <td class="num muted">–</td>
+          <td class="num muted">–</td>
+          <td class="muted">–</td>
+          <td class="muted">–</td>
+          {% endif %}
+          <td class="sync-log-details">{{ log.message or '' }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% else %}
-  <p class="muted">No syncs recorded yet.</p>
+  <p class="muted">No runs recorded yet.</p>
   {% endif %}
 </div>

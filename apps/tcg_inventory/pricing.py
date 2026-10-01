@@ -34,7 +34,7 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import Date, Float, String, and_, case, exists, func, insert, literal, select, update
+from sqlalchemy import Date, Float, String, and_, case, exists, func, insert, literal, or_, select, update
 from sqlalchemy.orm import Session
 
 from models import Card, CardPrice, ImportLog
@@ -383,7 +383,14 @@ def backfill_from_legacy(db: Session, today: dt.date | None = None) -> int:
     if db.execute(select(Card.id).where(_unresolved_filter()).limit(1)).first() is None:
         return 0
 
-    last_sync = db.execute(select(func.max(ImportLog.ran_at))).scalar()
+    # Successful Dex syncs only: since #264 import_log also records other
+    # jobs and failed/empty runs (NULL = a pre-#264 row, always a Dex sync).
+    last_sync = db.execute(
+        select(func.max(ImportLog.ran_at)).where(
+            or_(ImportLog.job.is_(None), ImportLog.job == "dex-sync"),
+            or_(ImportLog.status.is_(None), ImportLog.status == "ok"),
+        )
+    ).scalar()
     if isinstance(last_sync, str):  # SQLite without type processing, just in case
         last_sync = dt.datetime.fromisoformat(last_sync)
     sync_date = last_sync.date() if last_sync is not None else today

@@ -109,24 +109,33 @@ def test_dashboard_top_collection_ranks_and_shows_unique_value_not_total(client)
     assert "100 kr" in card  # the unique value shown, not 500 kr (its total_value)
 
 
-def test_import_page_shows_sync_log_history(client):
+def test_sync_status_page_shows_sync_log_history(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/import")
+    response = client.get("/sync-status")
     assert response.status_code == 200
-    assert "Sync Log" in response.text
+    assert "Run log" in response.text
     assert "main.csv" in response.text
     assert "manual" in response.text
 
 
-def test_import_sync_log_table_scrolls_instead_of_widening_the_page(client):
+def test_sync_log_table_scrolls_instead_of_widening_the_page(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
 
-    response = client.get("/import")
+    response = client.get("/sync-status")
     log_section = response.text.split('id="sync-log"', 1)[1]
     assert '<div class="table-scroll">' in log_section
+
+
+def test_sync_log_has_no_deleted_column(client):
+    main = make_csv("My Collection", [{"id": "a", "name": "Pikachu"}])
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    log_section = client.get("/sync-status").text.split('id="sync-log"', 1)[1]
+    assert "Deleted" not in log_section
+    assert "cards_deleted" not in log_section
 
 
 def test_import_log_table_can_be_sorted_by_column(client):
@@ -139,23 +148,44 @@ def test_import_log_table_can_be_sorted_by_column(client):
         section = html.split('id="sync-log"', 1)[1]
         return section.split("<tbody>", 1)[1].split("</tbody>", 1)[0]
 
-    asc = _log_body(client.get("/import?lsort=files&ldir=asc").text)
+    asc = _log_body(client.get("/sync-status?lsort=files&ldir=asc").text)
     assert asc.index("aaa.csv") < asc.index("zzz.csv")
 
-    desc = _log_body(client.get("/import?lsort=files&ldir=desc").text)
+    desc = _log_body(client.get("/sync-status?lsort=files&ldir=desc").text)
     assert desc.index("zzz.csv") < desc.index("aaa.csv")
 
 
-def test_import_redirects_to_releases_sync_log(client):
+def test_import_redirects_to_sync_status(client):
     response = client.get("/import", follow_redirects=False)
     assert response.status_code == 308
-    assert response.headers["location"] == "/releases#sync-log"
+    assert response.headers["location"] == "/sync-status"
 
 
 def test_import_redirect_preserves_sort_query_string(client):
     response = client.get("/import?lsort=files&ldir=asc", follow_redirects=False)
     assert response.status_code == 308
-    assert response.headers["location"] == "/releases?lsort=files&ldir=asc#sync-log"
+    assert response.headers["location"] == "/sync-status?lsort=files&ldir=asc"
+
+
+def test_releases_redirects_to_sync_status_keeping_query(client):
+    response = client.get("/releases", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/sync-status"
+
+    response = client.get("/releases?lsort=source&ldir=asc", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/sync-status?lsort=source&ldir=asc"
+
+
+def test_old_sync_log_partial_path_redirects_to_new_one(client):
+    response = client.get("/releases/sync-log?lsort=files&ldir=asc", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/sync-status/log?lsort=files&ldir=asc"
+
+
+def test_release_notes_write_routes_are_gone(client):
+    assert client.post("/releases", data={"date": "2026-09-19", "title": "t", "body": "b"}).status_code == 405
+    assert client.post("/releases/1/delete").status_code in (404, 405)
 
 
 def test_sync_log_sort_partial_swaps_just_that_section(client):
@@ -164,10 +194,11 @@ def test_sync_log_sort_partial_swaps_just_that_section(client):
     seed_import(client, [("files", ("zzz.csv", zebra, "text/csv"))])
     seed_import(client, [("files", ("aaa.csv", abra, "text/csv"))])
 
-    response = client.get("/releases/sync-log?lsort=files&ldir=asc")
+    response = client.get("/sync-status/log?lsort=files&ldir=asc")
     assert response.status_code == 200
     assert 'id="sync-log"' in response.text
-    assert "Release Notes" not in response.text
+    assert "sync-glance" not in response.text  # just the log, not the whole page
+    assert "<nav" not in response.text
     assert response.text.index("aaa.csv") < response.text.index("zzz.csv")
 
 
@@ -528,7 +559,7 @@ def test_image_backfill_route_is_secret_gated_and_reports_progress(client, monke
 
 
 def test_all_pages_render(client):
-    for path in ["/", "/inventory", "/transactions", "/import", "/wiki"]:
+    for path in ["/", "/inventory", "/transactions", "/import", "/sync-status"]:
         response = client.get(path)
         assert response.status_code == 200, path
 
@@ -639,13 +670,12 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     assert "Value (Total)" in fallback_page.text
 
 
-def test_wiki_page_documents_the_main_features(client):
-    response = client.get("/wiki")
-    assert response.status_code == 200
-    text = response.text
-    for heading in ["Dashboard", "Pokemon folders", "Sorting", "Inventory", "Transactions", "Sync Log"]:
-        assert heading in text
-    assert 'href="/wiki"' in text  # linked from the nav
+def test_wiki_redirects_to_dashboard(client):
+    # The in-app Wiki was removed (issue #264); old bookmarks land on /.
+    response = client.get("/wiki?x=1", follow_redirects=False)
+    assert response.status_code == 308
+    assert response.headers["location"] == "/"
+    assert 'href="/wiki"' not in client.get("/").text  # no nav link any more
 
 
 def test_transactions_page_shows_transaction_id(client):
@@ -1946,8 +1976,8 @@ def test_retired_usort_param_is_still_accepted(client):
 def test_import_then_dashboard_reflects_the_sync(client):
     main = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     seed_import(client, [("files", ("main.csv", main, "text/csv"))])
-    # The Sync Log page is log-only -- the sync shows up as a new row there.
-    log_page = client.get("/import")
+    # The Sync status page is log-only -- the sync shows up as a new row there.
+    log_page = client.get("/sync-status")
     assert log_page.status_code == 200
     assert "main.csv" in log_page.text
 

@@ -385,16 +385,85 @@ run).
   filters". Mark sold lands on `/orders/sold?open_order=N#order-N`; its
   Cancel (and edit/delist/delete without htmx) return to the Listings tab
   with `show_delisted`/`sold_only` kept.
-- **Activity Log** (`/releases`, merged with the former standalone Sync
-  Log page, issue #159) — two stacked sections: **Sync Log** first (a
-  read-only history of past syncs — daily cron or a manual Dropbox sync;
-  there is no manual CSV-upload page, see "Dropbox import setup" below for
-  the only way to sync outside the cron), then **Release Notes** (a small,
-  hand-authored log of user-facing changes, newest first, capped to the 15
-  most recent with older entries tucked into a "Show N older entries"
-  toggle — see "Release Notes" below). `GET /import` redirects here
-  (`#sync-log`, preserving any `lsort`/`ldir` query string) for old
-  bookmarks/links.
+- **Sync status** (`/sync-status`, issue #264; formerly the Activity Log
+  at `/releases`) — read-only, nothing runs from this page. First an
+  at-a-glance block with one card per background job (Dex sync, Price
+  refresh, Set sync, Image backfill): its last successful run (time,
+  trigger, and a one-line summary — the card counts for a Dex sync), plus
+  its last empty/aborted/failed run *only* when that is newer than the last
+  success. Then the **Run log**: the 30 most recent runs of any job,
+  sortable per column (`lsort`/`ldir`; sorting swaps just the log via
+  `GET /sync-status/log`). Dex-sync rows show files, created/updated/flagged
+  counts, warnings (click the count to see the warning text) and touched
+  collections/binders; other rows show their summary or error under
+  Details. See "Sync status" below for what gets recorded. `GET /releases`
+  and `GET /import` 308-redirect here and `GET /releases/sync-log` to
+  `/sync-status/log`, keeping any query string. There is no manual
+  CSV-upload page or Dropbox file picker; see "Dropbox import setup" below
+  for the only way to sync outside the cron.
+
+## Money figures (glossary)
+
+One place for what each money figure means. This used to live on the in-app
+Wiki page (removed in issue #264). The sections linked below have the
+implementation detail.
+
+- **Net invested**: everything paid for cards (card prices, shipping and
+  fees included) minus what sales brought in, counted at net proceeds
+  (`price − fees − its share of seller-paid shipping`, #254). One rule,
+  `queries.net_invested_amount`, feeds every Net invested figure (KPI band,
+  Orders caption, card page, cash-flow chart, the chart's Net invested
+  line). Trade and ripped rows carry no cash.
+- **Gain / loss** (also **Paper gain/loss** on Orders): total value,
+  duplicates included, minus Net invested. This is the one gain definition
+  app-wide: the Market Value hero, every table's Gain/loss column,
+  Inventory's per-card Gain, the card page and the Most valuable
+  collection/series cards all use it. The Market Value chart's stat row
+  only shows it on the Total metric.
+- **No purchase price**: an owned card with no registered transaction has
+  no known cost, so its whole value lands in the gain. The line under the
+  gain equation (and every bucket-level Gain) says how many such cards
+  there are and how much of the gain they make up
+  (`no_cost_count`/`no_cost_value`).
+- **Per-order Paper gain** (Orders → Purchased, `queries.order_gain`):
+  today's market value of the order's copies you still own, minus the
+  order's Total (typed, else auto). Copies sold or traded away count as 0;
+  when a card was bought in several orders, the newest orders are the ones
+  treated as still holding it. Trade orders add their trade gain. "—" when
+  none of the held cards has a market price (or the order mixes sale and
+  purchase rows). When only some lack a price, they count as 0 and the
+  figure gets a "*". Per-order gains don't add up to the headline Paper
+  gain/loss; see "Orders → Purchased" above for why.
+- **Above / below cost**: each owned card's value today (all copies) vs
+  what you paid for it, since purchase. Only cards with a registered cost
+  count; a ripped card counts as up by its full value.
+- **Price movers**: price per copy today vs the daily snapshot from the
+  start of the period (30 days back, or the earliest snapshot while history
+  is shorter). That's a different baseline from Above / below cost, so the
+  up/down counts differ. The % is hidden for moves under 10 kr.
+- **Market Value chart change**: first to last point of the chart
+  ("since first snapshot DATE" on All), not since you bought the cards.
+
+## Shared UI conventions
+
+- **Sorting**: every table sorts the same way. Click a header for
+  ascending, again for descending (▲/▼ shows the direction). In tables with
+  expandable rows (collections, series, rarity) a sort only reorders the
+  cards inside a row; the rows themselves keep their fixed order. Flat top
+  lists (Pokemon Top 10) reorder the rows. Most valuable cards has no sort:
+  always market price, highest first. A column whose value isn't
+  unambiguous per row (e.g. Set/Series on a Pokemon folder spanning several
+  sets, shown as "Multiple" with the list on hover) is plain text, not a
+  sort link.
+- **Pokemon folders** (Dashboard): the Pokemon breakdown groups cards by
+  Pokemon name, not by print. A starred favorite always shows in the
+  Favorites table, top 10 or not. "Put Pokemon in the same folder" merges
+  several names (alternate print names like Celebi / Dark Celebi, or a
+  whole evolution family) into one row. Merging only changes this display,
+  never cards, prices or exports, and every merge has an "Undo".
+- **Duplicates** are `qty − 1` per physical card, keyed on (card id,
+  variant): a card's "Normal" and "Poké Ball Holo" prints are two cards,
+  not duplicates of each other.
 
 ## Data model
 
@@ -404,7 +473,9 @@ run).
 below), `sets` (real Set entity, FK'd from `Card.set_id` — see
 "Chronological sorting" below), plus `set_release_order` (the older lookup
 table `sets` replaces — kept in place, unused going forward), `releases`
-(see "Release Notes" below), `master_cards`/`master_card_ids`
+(the removed in-app Release Notes page's table, unused since #264 and kept
+so its rows aren't lost — `notes/CHANGELOG.md` is the record of changes
+now), `import_log` (one row per background-job run, see "Sync status"), `master_cards`/`master_card_ids`
 (masterdata, see below), and `card_prices`/`fx_rates` (per-source prices
 and stored exchange rates, see "Pricing" below).
 
@@ -505,13 +576,15 @@ without updating both the code and this doc.
        file containing data, still runs as a category-only sync.
      - The sync would newly flag more than `MISSING_ABORT_FRACTION` (5%) of
        all cards as missing, and more than `MISSING_ABORT_MIN_CARDS` (10) —
-       almost always a truncated export. Flagging is non-destructive, so the
-       manual Dropbox sync offers "Sync anyway" after a genuine big
-       clear-out; the daily cron never overrides and instead returns
-       HTTP 409 with `"status": "aborted"` (see "Automatic daily sync").
+       almost always a truncated export. The daily cron never overrides: it
+       returns HTTP 409 with `"status": "aborted"` and records an `aborted`
+       row on Sync status (see "Automatic daily sync"). The importer's
+       `allow_mass_missing` override still exists for a deliberate big
+       clear-out, but no page offers it since the manual Dropbox picker was
+       removed (#264).
    - Every sync is expected to include both the main export and the
-     Vintage Collection export together — the Dropbox picker lets you
-     select multiple files at once for exactly this reason.
+     Vintage Collection export together — the cron sync takes every CSV
+     in the Dropbox folder at once for exactly this reason.
    - A collection's tag membership (e.g. Vintage Collection) is only
      touched for categories actually present in that sync's uploaded
      files. A category absent from the current batch is left completely
@@ -687,43 +760,44 @@ each row's `Category` value. `Type` is read but unused — every real Dex
 export sets it to the constant `Card` on every row, so it carries no
 per-card information.
 
-## Release Notes
+## Sync status
 
-`/releases` (issue #144) is a small in-app log of user-facing changes,
-backed by a `releases` table (`Release` in `models.py`), not a
-`CHANGELOG.md` file and not something generated from git/PR history at
-build/deploy time:
+`/sync-status` (issue #264) shows what every background job did, read from
+the `import_log` table (`ImportLog` in `models.py`; `sync_status.py` writes
+and reads it). Before #264 only a successful Dex sync left a row; now each
+of these does:
 
-- **Not a file** — `db.py` already treats "is this host's filesystem
-  writable" as a first-class distinction (its `DB_PATH.touch()` probe and
-  fail-fast error). A file works fine for reading on Vercel (baked into the
-  deploy), but an in-app authoring form could never write to it there —
-  only locally — forcing prod authoring back through a git commit +
-  redeploy, which is exactly the friction this feature removes for the rest
-  of the app's data.
-- **Not generated from git/PR history** — `templates`/`static` explicitly
-  ship with no build step (see repo `CLAUDE.md`), and `api/index.py` is a
-  bare re-export with no pipeline to hang generation off. Raw commit/PR
-  history also mixes internal refactors with user-facing changes, so it'd
-  need the same curation step anyway.
-- **A DB table** fits the existing data-model pattern, uses the same
-  additive-migration convention as everything else (`Base.metadata.create_all`
-  + `CURRENT_SCHEMA_VERSION` bump in `db.py`), and behaves identically on
-  local SQLite and prod Postgres.
+| Job (`job`) | Recorded outcomes (`status`) | Written by |
+|---|---|---|
+| `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error) | `importer._log_import` (ok), `/cron/dropbox-sync` (the rest) |
+| `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `failed` | `/cron/price-refresh` |
+| `set-sync` | `ok`, `failed` (API call failed, or an error) | `/cron/set-sync` |
+| `image-backfill` | `ok`, `failed` | `/cron/image-backfill` |
 
-`GET /releases` lists entries newest-first (by `date`, then `id`), with an
-inline form at the top (`POST /releases`: date, title, body) to add one and
-a "Delete" button per entry (`POST /releases/{id}/delete`) to remove a
-mistaken one — there is no edit-in-place for v1; delete and re-add instead.
-Both routes pass through the same `auth_guard` middleware as every other
-non-public route — no separate admin check. `body` is rendered as plain,
-Jinja-autoescaped text with `white-space: pre-wrap` (no Markdown parser) —
-one owner writing a few sentences per entry doesn't justify a templating
-dependency. Since issue #159, this section shares the page with Sync Log
-(see "Pages" above) — only the 15 most recent entries render directly, with
-anything older tucked into a collapsed "Show N older entries" `<details>`,
-so an ever-growing hand-written list doesn't push Sync Log further down the
-page over time.
+`source` is `cron` only for the real scheduled Vercel call (it carries
+`Authorization: Bearer <CRON_SECRET>`), else `manual` (a `?secret=` call, a
+local run). Older rows may say `dropbox` (the removed manual picker).
+
+**Schema (additive only).** No new table: `import_log` gained four nullable
+columns — `job`, `status`, `message` (summary or error/abort reason) and
+`warnings_text` (the import's warnings, one per line; only the count was
+kept before). `init_db()` adds them via its additive `ALTER TABLE` pass,
+and `db._backfill_import_log_defaults` (schema version 12) sets
+`job='dex-sync'`, `status='ok'` on older rows, since every pre-#264 row was
+a successful Dex sync. Readers still treat NULL as those defaults.
+`cards_deleted` stays in the table for old rows but is no longer shown (no
+sync deletes since #225). Being an existing table, `import_log` is already
+covered by `init_db()`'s RLS pass (#239).
+
+**Aborts survive the rollback.** `sync_status.record_run` runs after the
+caller has committed (success) or rolled back (abort/failure) and commits
+its row on its own, so an aborted import's rollback never takes the log row
+with it. It never raises: a failure to write the log is printed and rolled
+back rather than masking the job's real response.
+
+The in-app **Release Notes** section (`/releases`, #144) was removed in the
+same change: `notes/CHANGELOG.md` is the record of changes now. Its
+`releases` table and `Release` model are left in place, unused.
 
 ## Dropbox import setup
 
@@ -757,9 +831,9 @@ One-time setup:
    below) picks up every CSV currently in that folder automatically — for
    an immediate off-schedule sync instead of waiting for it, hit
    `GET /cron/dropbox-sync?secret=<CRON_SECRET>` directly. There is no
-   in-app file picker for this — `/import/dropbox/list` and
-   `/import/dropbox/sync` are backend routes with no page pointing at them
-   (the browser-based picker UI was removed, see HANDOFF.md #87).
+   in-app file picker: its UI was removed earlier (HANDOFF.md #87) and its
+   leftover `/import/dropbox/list` and `/import/dropbox/sync` routes in
+   #264 (#199's "Run now" is the planned replacement).
 
 The refresh token doesn't expire, so this is a one-time setup. Nothing is
 ever written back to Dropbox.
@@ -858,8 +932,7 @@ SQL is in `HANDOFF.md` (2026-09-30, prod RLS hardening).
 ### Automatic daily sync (Vercel Cron)
 
 Once Dropbox import is set up (see "Dropbox import setup" above), the
-deployed app can sync itself automatically instead of anyone clicking
-"Hent valgte filer og synk" — `vercel.json` schedules a
+deployed app syncs itself automatically — `vercel.json` schedules a
 [Vercel Cron Job](https://vercel.com/docs/cron-jobs) that hits
 `GET /cron/dropbox-sync` once a day (`0 5 * * *`, i.e. 05:00 UTC — edit
 the `crons` entry in `vercel.json` to change it). That route pulls every
@@ -869,7 +942,8 @@ import circuit breaker trips (empty/header-only My Collection, or a mass
 drop above 5%), nothing is written, no snapshot is taken, and the route
 returns HTTP 409 with `{"status": "aborted", "error": ...}` so the Vercel
 cron run shows as failed; fix the export and the next run (or a manual
-sync) picks up normally.
+sync) picks up normally. Every outcome (synced, empty folder, aborted,
+Dropbox error) also lands on the Sync status page (see "Sync status").
 
 To turn it on:
 
@@ -881,13 +955,12 @@ To turn it on:
    checks it). Without this set, the endpoint runs unauthenticated, which
    still works but means anyone who finds the URL could trigger a sync.
 3. Redeploy. Vercel's dashboard (Project → Cron Jobs) shows each run and
-   its response — `cards_created`/`cards_updated`/etc. and any warnings,
-   the same summary the manual sync page shows.
+   its response — `cards_created`/`cards_updated`/etc. and any warnings.
+   The in-app Sync status page (`/sync-status`) shows the same runs.
 
 Keep your Dropbox folder holding the *current* full set of exports (main
 collection + Vintage + whatever else you track) — each cron run syncs
-whatever's in there at the time, same as selecting every file on the
-Import page manually.
+whatever's in there at the time.
 
 ### Pricing
 
@@ -1511,6 +1584,8 @@ file locally following the steps above and add a dated line here.
 - `masterdata.py` — canonical card identity + external ID mapping (see
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
+- `sync_status.py` — records background-job runs in `import_log` and builds
+  the `/sync-status` at-a-glance block (see "Sync status").
 - `pricing.py` — per-source prices (`card_prices`) and the resolver that
   materializes `cards.market_price` (see "Pricing" above).
 - `price_refresh.py` — standalone TCGplayer price refresh, decoupled from Dex
@@ -1557,6 +1632,7 @@ network access or the app's real `tcg_inventory.db` involved.
   - `init_db()` gates its migration chain (`create_all()` →
     `_add_missing_columns()` → `_normalize_legacy_transaction_types()` →
     `_widen_card_snapshot_source_constraint()` →
+    `_backfill_import_log_defaults()` (#264) →
     `_enable_row_level_security()`) behind a single-row
     `schema_meta` table + `db.CURRENT_SCHEMA_VERSION` constant, so a
     serverless cold start against an already-migrated Supabase database

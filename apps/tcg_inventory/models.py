@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import DateTime, Date, Float, ForeignKey, Integer, String, Table, Column, UniqueConstraint
+from sqlalchemy import DateTime, Date, Float, ForeignKey, Integer, String, Table, Text, Column, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -653,18 +653,35 @@ class SetReleaseOrder(Base):
 
 
 class ImportLog(Base):
-    """One row per completed import/sync -- manual upload, a manual Dropbox
-    sync, or the scheduled cron job. Persisted (rather than only printed to
-    Vercel's runtime logs) so the app itself can show a history of what
-    happened on every sync, including the unattended cron runs nobody
-    watched live.
+    """One row per background-job run shown on the Sync status page
+    (`/sync-status`, issue #264). Persisted (rather than only printed to
+    Vercel's runtime logs) so the app itself can show what happened on every
+    run, including the unattended cron runs nobody watched live.
+
+    Originally Dex syncs only. Since #264 it also records the outcomes that
+    used to leave no trace -- an empty Dropbox folder, a circuit-breaker
+    abort (#225), a Dropbox error -- and the other cron jobs (price refresh,
+    set sync, image backfill). The table name and Dex-specific counters stay
+    as they were (`init_db()` is additive-only); `job`/`status`/`message`/
+    `warnings_text` were added as nullable columns, and
+    `db._backfill_import_log_defaults` fills `job="dex-sync"`/`status="ok"`
+    into rows written before them. Code reading these should still treat a
+    NULL as those defaults (see `sync_status`).
+
+    The card counters (`cards_created` etc.) only mean something on
+    `job == "dex-sync"` rows; other jobs put their summary in `message`.
+    `cards_deleted` is dead (no sync deletes since #225) and no longer shown,
+    but stays for the historical rows.
     """
 
     __tablename__ = "import_log"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     ran_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
-    source: Mapped[str] = mapped_column(String, nullable=False)  # "manual" | "dropbox" | "cron"
+    # How the run was triggered: "cron" (the real scheduled Vercel call) or
+    # "manual" (a ?secret= call, a local run, or a test seed). Older rows
+    # may also say "dropbox" (the manual Dropbox picker, removed in #264).
+    source: Mapped[str] = mapped_column(String, nullable=False)
     files: Mapped[str | None] = mapped_column(String, nullable=True)  # comma-joined filenames
     cards_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     cards_updated: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -673,6 +690,28 @@ class ImportLog(Base):
     collections_touched: Mapped[str | None] = mapped_column(String, nullable=True)
     binders_touched: Mapped[str | None] = mapped_column(String, nullable=True)
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # --- added in #264, all nullable (additive ALTER, no default on old rows) ---
+    # "dex-sync" | "price-refresh" | "set-sync" | "image-backfill"
+    job: Mapped[str | None] = mapped_column(String, nullable=True, default="dex-sync")
+    # "ok" | "empty" (no CSV files) | "aborted" (circuit breaker) | "failed"
+    status: Mapped[str | None] = mapped_column(String, nullable=True, default="ok")
+    # One-line summary (other jobs) or the error / abort reason.
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The import's warnings, one per line (only the count was kept before).
+    warnings_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # NULL job/status = a row from before #264, always a successful Dex sync.
+    @property
+    def job_name(self) -> str:
+        return self.job or "dex-sync"
+
+    @property
+    def status_name(self) -> str:
+        return self.status or "ok"
+
+    @property
+    def warnings_list(self) -> list[str]:
+        return (self.warnings_text or "").splitlines()
 
 
 class FavoritePokemon(Base):
@@ -687,7 +726,13 @@ class FavoritePokemon(Base):
 
 
 class Release(Base):
-    """One entry in the in-app "Release Notes" page (`/releases`, issue
+    """**Unused since issue #264.** The in-app Release Notes page and its
+    routes were removed; `notes/CHANGELOG.md` is the record of changes now.
+    The model and the `releases` table are left in place on purpose
+    (`init_db()` never drops a table) so existing rows aren't lost. Nothing
+    reads or writes it any more. Original description below.
+
+    One entry in the in-app "Release Notes" page (`/releases`, issue
     #144) -- a small, hand-authored log of user-facing changes, written
     directly to the database (not a `CHANGELOG.md` file, and not generated
     from git/PR history) so authoring works identically on local SQLite and
