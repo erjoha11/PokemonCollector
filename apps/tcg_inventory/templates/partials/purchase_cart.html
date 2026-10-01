@@ -5,12 +5,13 @@
    unacquired cards make no sense to sell). The cart JS reads the type via
    form.elements.type, which works for either. #}
 <div class="card mb-15">
-  <h2>{{ 'New sale' if type == 'sale' else 'New Order' }} <span class="muted">(Order ID {{ purchase_id }})</span></h2>
+  {# The Order ID is assigned when the cart is registered, not reserved
+     when it opens (issue #228 b), so another tab can't take the same one. #}
+  <h2>{{ 'New sale' if type == 'sale' else 'New Order' }} <span class="muted">(Order ID assigned on Register)</span></h2>
   <form method="post" action="/transactions/purchase" class="{{ 'cart-is-trade' if type == 'trade' }}{{ ' cart-is-ripped' if type == 'ripped' }}"
         hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
         hx-indicator="#register-order-indicator"
         onsubmit="return confirmRegisterOrder(this)" oninput="updateCartAutoTotal(this)">
-    <input type="hidden" name="purchase_id" value="{{ purchase_id }}">
 
     <div class="filters">
       {% if type == 'sale' %}

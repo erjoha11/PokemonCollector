@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import datetime as dt
 import os
-from contextlib import asynccontextmanager
+import threading
+from contextlib import asynccontextmanager, contextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
@@ -23,7 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session, selectinload
 
 APP_DIR = Path(__file__).resolve().parent
@@ -1644,24 +1645,24 @@ def listing_mark_sold_submit(
         except FormError as exc:
             return _rerender(str(exc))
 
-        new_purchase_id = _next_purchase_id(db)
         row_fees = _split_order_fees(fees_total, [parsed_prices[cid] for cid in submitted_ids])
-        for cid, fee in zip(submitted_ids, row_fees):
-            db.add(
-                Transaction(
-                    card_id=cid,
-                    type="sale",
-                    date=tx_date,
-                    price=parsed_prices[cid],
-                    fees=fee,
-                    platform=platform or listing.platform or None,
-                    purchase_id=new_purchase_id,
-                    purchase_shipping=shipping_total,
-                    listing_id=listing.id,
+        with _allocating_order_id(db) as new_purchase_id:
+            for cid, fee in zip(submitted_ids, row_fees):
+                db.add(
+                    Transaction(
+                        card_id=cid,
+                        type="sale",
+                        date=tx_date,
+                        price=parsed_prices[cid],
+                        fees=fee,
+                        platform=platform or listing.platform or None,
+                        purchase_id=new_purchase_id,
+                        purchase_shipping=shipping_total,
+                        listing_id=listing.id,
+                    )
                 )
-            )
-        listing.status = "sold"
-        db.commit()
+            listing.status = "sold"
+            db.commit()
         # Straight to the new sale order on the Sold tab, expanded (#255).
         return RedirectResponse(f"{_order_url(new_purchase_id, 'sold')}#order-{new_purchase_id}", status_code=303)
     finally:
@@ -2164,12 +2165,30 @@ def orders_sold(request: Request, tsort: str = "date", tdir: str = "desc", open_
         db.close()
 
 
-def _next_purchase_id(db: Session) -> int:
-    """The purchase_id a new cart will be registered under -- one past the
-    highest one in use, so cards bought/sold together always land in a
-    fresh, never-before-used group.
+# Serializes Order ID allocation within this process (issue #228 b). On
+# SQLite (local, one uvicorn process) this alone stops two request threads
+# from both reading the same max(purchase_id); on Postgres (Vercel, several
+# instances) a transaction-scoped advisory lock does the same across
+# processes. Both are held until the allocating transaction commits.
+_ORDER_ID_LOCK = threading.Lock()
+_ORDER_ID_ADVISORY_KEY = 228_000_001  # arbitrary, app-wide constant
+
+
+@contextmanager
+def _allocating_order_id(db: Session):
+    """Yields a fresh purchase_id (one past the highest in use) for a new
+    order, computed when the order is saved -- never when a form opens, so
+    two flows (the cart in one tab, Mark sold in another) can't both take
+    the same number and merge into one order (issue #228 b).
+
+    The caller adds its rows and calls `db.commit()` *inside* the `with`
+    block: the lock is only released after that, so a concurrent save
+    can't read the same max in between.
     """
-    return (db.query(func.max(Transaction.purchase_id)).scalar() or 0) + 1
+    with _ORDER_ID_LOCK:
+        if db.get_bind().dialect.name == "postgresql":
+            db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": _ORDER_ID_ADVISORY_KEY})
+        yield (db.query(func.max(Transaction.purchase_id)).scalar() or 0) + 1
 
 
 def _create_default_purchase_transaction(db: Session, purchase_id: int, card_id: int) -> Transaction:
@@ -2188,19 +2207,16 @@ def _create_default_purchase_transaction(db: Session, purchase_id: int, card_id:
 
 @app.get("/transactions/purchase/start")
 def purchase_cart_start(request: Request, type: str = "purchase"):
-    db = get_db_session()
-    try:
-        return templates.TemplateResponse(
-            request,
-            "partials/purchase_cart.html",
-            {
-                "type": type if type in ("purchase", "sale", "trade", "ripped") else "purchase",
-                "purchase_id": _next_purchase_id(db),
-                "today": dt.date.today().isoformat(),
-            },
-        )
-    finally:
-        db.close()
+    # No Order ID here: it's assigned when the cart is registered
+    # (create_purchase), not reserved when it opens (issue #228 b).
+    return templates.TemplateResponse(
+        request,
+        "partials/purchase_cart.html",
+        {
+            "type": type if type in ("purchase", "sale", "trade", "ripped") else "purchase",
+            "today": dt.date.today().isoformat(),
+        },
+    )
 
 
 @app.get("/transactions/purchase/search")
@@ -2306,7 +2322,6 @@ def create_purchase(
     type: str = Form(...),
     date: str = Form(...),
     platform: str = Form(""),
-    purchase_id: int = Form(...),
     purchase_total: str = Form(""),
     purchase_shipping: str = Form(""),
     fees: str = Form(""),
@@ -2321,6 +2336,11 @@ def create_purchase(
     (platform/payment fees), split across the rows' per-row `fees` by price
     (`_split_order_fees`); ignored for trade/ripped orders, which aren't
     cash orders and never count fees anywhere.
+
+    The order's `purchase_id` is assigned here, inside the save transaction
+    (`_allocating_order_id`); a `purchase_id` posted by the client (an old
+    cached cart form) is ignored, so a Mark sold in another tab can never
+    merge into this order (issue #228 b).
     """
     # Validate everything before touching the DB (issue #228): a rejected
     # value is a plain-text 422 shown in the cart's error slot, and the
@@ -2342,22 +2362,23 @@ def create_purchase(
         prices = [_price_for(type, p) for p in parsed]
         cash_order = type in ("purchase", "sale")
         row_fees = _split_order_fees(fees_value if cash_order and fees_value else None, prices)
-        for i, (cid, p) in enumerate(zip(card_id, prices)):
-            db.add(
-                Transaction(
-                    card_id=cid,
-                    type=type,
-                    direction=_trade_direction(type, direction, i),
-                    date=tx_date,
-                    price=p,
-                    fees=row_fees[i],
-                    platform=platform or None,
-                    purchase_id=purchase_id,
-                    purchase_total=total_value,
-                    purchase_shipping=shipping_value,
+        with _allocating_order_id(db) as purchase_id:
+            for i, (cid, p) in enumerate(zip(card_id, prices)):
+                db.add(
+                    Transaction(
+                        card_id=cid,
+                        type=type,
+                        direction=_trade_direction(type, direction, i),
+                        date=tx_date,
+                        price=p,
+                        fees=row_fees[i],
+                        platform=platform or None,
+                        purchase_id=purchase_id,
+                        purchase_total=total_value,
+                        purchase_shipping=shipping_value,
+                    )
                 )
-            )
-        db.commit()
+            db.commit()
         # Same open_order + hx-select/hx-target/hx-swap="outerHTML" pattern
         # as set_purchase_total below -- htmx swaps in just the newly
         # registered order's <details> (open, per open_order) instead of
@@ -2456,7 +2477,6 @@ def purchase_edit_form(request: Request, purchase_id: int, saved: bool = False):
                 "transactions": txs,
                 "purchase_total": purchase_total,
                 "purchase_shipping": purchase_shipping,
-                "next_purchase_id": _next_purchase_id(db),
                 "saved": saved,
                 "order_tab": tab,
                 "order_tab_label": ORDER_TABS[tab],
@@ -2543,10 +2563,61 @@ def purchase_edit_add_card(request: Request, purchase_id: int, card_id: int):
         return templates.TemplateResponse(
             request,
             "partials/purchase_edit_new_row.html",
-            {"purchase_id": purchase_id, "tx": tx, "next_purchase_id": _next_purchase_id(db)},
+            {"purchase_id": purchase_id, "tx": tx},
         )
     finally:
         db.close()
+
+
+def _parse_target_order_id(raw: str, row: int) -> int | None:
+    """An Edit order row's Order ID field: blank means "start a new order"
+    (ID assigned at save), otherwise a whole number."""
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        raise FormError(
+            f"Order ID on row {row} must be a whole number, or blank to start a new order."
+        ) from None
+
+
+def _apply_purchase_edits(
+    db, purchase_id, split_order_id, tx_id, delete_set, row_types, row_dates, row_prices,
+    row_targets, platform, note, card_id, direction, total_value, shipping_value,
+) -> None:
+    """update_purchase's write pass, every query scoped to `purchase_id`."""
+    for i, txid in enumerate(tx_id):
+        if txid in delete_set:
+            continue
+        tx = (
+            db.query(Transaction)
+            .filter(Transaction.id == txid, Transaction.purchase_id == purchase_id)
+            .one_or_none()
+        )
+        if tx is None:
+            continue
+        tx.card_id = card_id[i]
+        tx.type = row_types[i]
+        tx.direction = _trade_direction(row_types[i], direction, i)
+        tx.date = row_dates[i]
+        tx.price = _price_for(row_types[i], row_prices[i])
+        tx.platform = platform[i] or None
+        tx.note = note[i] or None
+        target_purchase_id = row_targets[i] if row_targets[i] is not None else split_order_id
+        if target_purchase_id != purchase_id:
+            tx.purchase_id = target_purchase_id
+            tx.purchase_total = None
+            tx.purchase_shipping = None
+        else:
+            tx.purchase_id = purchase_id
+            tx.purchase_total = total_value
+            tx.purchase_shipping = shipping_value
+    if delete_set:
+        db.query(Transaction).filter(
+            Transaction.id.in_(delete_set), Transaction.purchase_id == purchase_id
+        ).delete(synchronize_session=False)
 
 
 @app.post("/transactions/purchase/{purchase_id}/edit")
@@ -2560,7 +2631,7 @@ def update_purchase(
     platform: list[str] = Form(default=[]),
     note: list[str] = Form(default=[]),
     card_id: list[int] = Form(default=[]),
-    new_purchase_id: list[int] = Form(default=[]),
+    new_purchase_id: list[str] = Form(default=[]),
     delete_tx_id: list[int] = Form(default=[]),
     purchase_total: str = Form(""),
     purchase_shipping: str = Form(""),
@@ -2579,6 +2650,17 @@ def update_purchase(
     set_purchase_total form. Rows staying in this order get this form's
     purchase_total/purchase_shipping applied uniformly, same semantics as
     set_purchase_total.
+
+    A blank Order ID (what the row's "Start new order" button sets) splits
+    the row into one new order whose ID is assigned here, at save time --
+    every blank row in the same save lands in that same new order. The page
+    never pre-reserves a number (issue #228 b).
+
+    Every posted `tx_id`/`delete_tx_id` must belong to this order: one that
+    belongs to another order is rejected with a 422 and nothing is written
+    (issue #228 b), so a stale or crafted form can't edit or delete another
+    order's rows. An id that no longer exists at all is skipped, as before
+    (e.g. a row already deleted in another tab).
     """
     # Validate every row being kept before writing any (issue #228):
     # misaligned lists used to IndexError into a 500, and a bad
@@ -2590,6 +2672,7 @@ def update_purchase(
     row_types: dict[int, str] = {}
     row_dates: dict[int, dt.date] = {}
     row_prices: dict[int, float] = {}
+    row_targets: dict[int, int | None] = {}  # None = start a new order
     if kept:
         require_same_length(
             tx_id=tx_id, type=type, date=date, price=price, platform=platform,
@@ -2599,34 +2682,38 @@ def update_purchase(
             row_types[i] = parse_tx_type(type[i], row=i + 1)
             row_dates[i] = parse_date(date[i], row=i + 1)
             row_prices[i] = parse_amount(price[i], "Price", row=i + 1)
+            row_targets[i] = _parse_target_order_id(new_purchase_id[i], row=i + 1)
     total_value = parse_optional_amount(purchase_total, "Total")
     shipping_value = parse_optional_amount(purchase_shipping, "Shipping")
     db = get_db_session()
     try:
-        for i, txid in enumerate(tx_id):
-            if txid in delete_set:
-                db.query(Transaction).filter(Transaction.id == txid).delete()
-                continue
-            tx = db.query(Transaction).filter(Transaction.id == txid).one_or_none()
-            if tx is None:
-                continue
-            tx.card_id = card_id[i]
-            tx.type = row_types[i]
-            tx.direction = _trade_direction(row_types[i], direction, i)
-            tx.date = row_dates[i]
-            tx.price = _price_for(row_types[i], row_prices[i])
-            tx.platform = platform[i] or None
-            tx.note = note[i] or None
-            target_purchase_id = new_purchase_id[i]
-            if target_purchase_id != purchase_id:
-                tx.purchase_id = target_purchase_id
-                tx.purchase_total = None
-                tx.purchase_shipping = None
-            else:
-                tx.purchase_id = purchase_id
-                tx.purchase_total = total_value
-                tx.purchase_shipping = shipping_value
-        db.commit()
+        # Scope every edit/delete to this order (issue #228 b): reject, before
+        # any write, a posted id that belongs to a different order.
+        posted_ids = set(tx_id) | delete_set
+        foreign = (
+            db.query(Transaction.id, Transaction.purchase_id)
+            .filter(Transaction.id.in_(posted_ids))
+            .filter((Transaction.purchase_id != purchase_id) | Transaction.purchase_id.is_(None))
+            .order_by(Transaction.id)
+            .all()
+            if posted_ids
+            else []
+        )
+        if foreign:
+            fid, fpid = foreign[0]
+            where = f"order #{fpid}" if fpid is not None else "no order"
+            raise FormError(
+                f"Transaction {fid} belongs to {where}, not order #{purchase_id} -- nothing was saved. "
+                "Reload the page and try again."
+            )
+        # Only take the Order ID lock when a row is actually being split off.
+        needs_new_order = any(t is None for t in row_targets.values())
+        with _allocating_order_id(db) if needs_new_order else nullcontext(None) as split_order_id:
+            _apply_purchase_edits(
+                db, purchase_id, split_order_id, tx_id, delete_set, row_types, row_dates, row_prices,
+                row_targets, platform, note, card_id, direction, total_value, shipping_value,
+            )
+            db.commit()
         # Stay on the edit page (with a "Saved" confirmation and a Back
         # button) so the user can check the result or keep editing -- unless
         # every row was moved out/deleted, leaving nothing here to show.

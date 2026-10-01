@@ -232,14 +232,14 @@ def test_cart_sale_persists_fees_and_shipping(client):
     ids = _seed_client_cards(client)
     response = client.post(
         "/transactions/purchase",
-        data={"type": "sale", "date": "2026-03-01", "purchase_id": "11", "purchase_shipping": "15", "fees": "5",
+        data={"type": "sale", "date": "2026-03-01", "purchase_shipping": "15", "fees": "5",
               "card_id": [str(ids["a"]), str(ids["b"])], "price": ["25", "75"]},
         follow_redirects=True,
     )
     assert response.status_code == 200
     db = db_module.SessionLocal()
     try:
-        txs = {t.card_id: t for t in db.query(Transaction).filter(Transaction.purchase_id == 11).all()}
+        txs = {t.card_id: t for t in db.query(Transaction).filter(Transaction.purchase_id == 1).all()}
         assert txs[ids["a"]].fees == 1.25 and txs[ids["b"]].fees == 3.75
         assert all(t.purchase_shipping == 15 for t in txs.values())
         assert queries.economic_summary(db)["total_sold"] == pytest.approx(100 - 5 - 15)

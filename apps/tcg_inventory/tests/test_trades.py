@@ -145,14 +145,13 @@ def test_new_trade_order_stores_each_rows_direction(client):
         data={
             "type": "trade",
             "date": "2026-09-12",
-            "purchase_id": "13",
             "card_id": [str(ids["a"]), str(ids["b"])],
             "price": ["0", "0"],
             "direction": ["out", "in"],
         },
     )
 
-    assert _txs(13) == {ids["a"]: ("trade", "out"), ids["b"]: ("trade", "in")}
+    assert _txs(1) == {ids["a"]: ("trade", "out"), ids["b"]: ("trade", "in")}
 
 
 def test_new_purchase_order_ignores_direction(client):
@@ -163,14 +162,13 @@ def test_new_purchase_order_ignores_direction(client):
         data={
             "type": "purchase",
             "date": "2026-09-12",
-            "purchase_id": "3",
             "card_id": [str(ids["a"])],
             "price": ["10"],
             "direction": ["in"],
         },
     )
 
-    assert _txs(3) == {ids["a"]: ("purchase", None)}
+    assert _txs(1) == {ids["a"]: ("purchase", None)}
 
 
 def test_edit_order_sets_direction_on_trade_rows_only(client):
