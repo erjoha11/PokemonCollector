@@ -11,6 +11,9 @@ testable.
 | [`apps/finn_ad_scraper/`](apps/finn_ad_scraper) | In progress | Opens a finn.no ad, extracts its title/description/price/photos, and identifies the Pokemon cards visible in the photos (via Claude vision). |
 | [`apps/tcg_inventory/`](apps/tcg_inventory) | In progress | FastAPI webapp that replaces an Excel workbook for tracking a physical Pokémon card collection: dashboard, inventory table, transaction log, Dex CSV import/sync (manual or from Dropbox). Runs locally (`python app.py`, SQLite) or deployed (Vercel + Supabase, with login). |
 
+Notes and reports written by Claude agents (changelog, handoff log, UX
+notes, reviews) live in [`notes/`](notes).
+
 ## Setup
 
 ```bash

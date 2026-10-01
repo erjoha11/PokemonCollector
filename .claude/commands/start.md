@@ -17,7 +17,7 @@ Then present, short and scannable (tables/bullets, no long prose), in the langua
 3. **Agents** — table: agent, role, what it can/can't do (e.g. writes code or not, can merge or not, who it can spawn). Follow with a simple flow of how they hand off to each other, e.g. `/new_feature → architect (→ ux) → issue → project-manager → developer → PR`.
 4. **Slash commands** — table: command, what it does, which agent it spawns. Include `/start` itself.
 5. **Which to use when** — a short "I want to… → use…" list (new idea, bug/small change, status overview, quick untracked fix, UX review, architecture question, git housekeeping).
-6. **Things to know before touching code** — the handful of rules from `CLAUDE.md` that bite if missed (e.g. bump `CURRENT_SCHEMA_VERSION` when adding a column, computed-not-stored values, keep `card_ids.py` in sync with `masterdata.py`, read `HANDOFF.md` before trusting the DB matches the code, log `ux` findings to `UX_NOTES.md`).
+6. **Things to know before touching code** — the handful of rules from `CLAUDE.md` that bite if missed (e.g. bump `CURRENT_SCHEMA_VERSION` when adding a column, computed-not-stored values, keep `card_ids.py` in sync with `masterdata.py`, read `notes/<app>/HANDOFF.md` before trusting the DB matches the code, log `ux` findings to `notes/tcg_inventory/UX_NOTES.md`, agent-written files go in `notes/`).
 7. **Recent activity** — the last few commits in one line each.
 
 $ARGUMENTS
