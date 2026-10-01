@@ -266,3 +266,13 @@ def test_cart_ignores_fees_on_trade_orders(client):
 def test_cart_has_fees_field(client):
     text = client.get("/transactions/purchase/start?type=sale").text
     assert 'name="fees"' in text
+
+
+def test_order_gain_ignores_sale_orders_even_with_fees_and_shipping():
+    # #246's per-order Gain never values sale orders, so net proceeds don't
+    # feed into it -- sale fees/shipping only move the headline figures.
+    rows = [
+        Transaction(id=1, card_id=1, type="sale", date=dt.date(2026, 1, 1), price=50, fees=5,
+                    purchase_id=3, purchase_shipping=10),
+    ]
+    assert queries.order_gain(rows, 60, set(), None)["reason"] == "sale"
