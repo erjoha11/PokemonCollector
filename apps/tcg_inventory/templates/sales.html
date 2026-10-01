@@ -9,6 +9,13 @@
   No cards selected. Go to <a href="/inventory">Inventory</a>, check the cards you want to sell, then
   click "Generate finn.no ad".
 </p>
+{# Reached from the Orders page's "Sell on finn.no" button (issue #255),
+   which has no selection of its own: if Inventory still holds one in
+   sessionStorage (tcg-sale-list), sale-list.js reveals this link to it. #}
+<p id="sale-list-resume" hidden>
+  <a href="/sales">Continue with the <span id="sale-list-resume-count">0</span> cards selected on Inventory</a>
+</p>
+<script src="/static/sale-list.js"></script>
 {% else %}
 <p class="muted">Review quantity, condition, and asking price for each card, then generate the ad text.</p>
 {% set already_listed = cards | selectattr('id', 'in', listed_by_card) | list %}

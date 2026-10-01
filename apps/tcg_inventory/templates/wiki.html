@@ -12,7 +12,7 @@
     <li><a href="#pokemon-mapper">Pokemon folders (favorites and merging)</a></li>
     <li><a href="#sortering">Sorting</a></li>
     <li><a href="#inventory">Inventory</a></li>
-    <li><a href="#transactions">Transactions</a></li>
+    <li><a href="#transactions">Orders (transactions)</a></li>
     <li><a href="#import">Sync Log</a></li>
     <li><a href="/releases">Release Notes</a></li>
     <li><a href="#faq">Frequently asked questions</a></li>
@@ -168,7 +168,7 @@
   <p>The front page shows your collection broken down several ways at once:</p>
   <ul>
     <li><strong>Market Value</strong> — the same real-value-history chart shown in
-      <a href="/transactions">Transactions</a>'s "View charts" section, with Net invested /
+      the <a href="/orders/purchased">Orders</a> page's "View charts" section, with Net invested /
       Current value / Gain-loss built into the chart itself. Empty until at least one day of
       snapshots has accumulated.</li>
     <li><strong>Most valuable cards</strong> — your most expensive individual cards by market price,
@@ -293,10 +293,22 @@
 </div>
 
 <div class="result-box" style="margin-bottom: 1.5rem;">
-  <h2 id="transactions">Transactions</h2>
+  <h2 id="transactions">Orders (transactions)</h2>
   <p>
-    <strong>New Order:</strong> click the button to start, then pick Purchase or Sale from the
-    dropdown — the app reserves the next free Order ID automatically. Then search for each card
+    The <a href="/orders/purchased">Orders</a> page has three tabs.
+    <strong>Purchased</strong> lists purchases, trades and ripped packs, with the money summary,
+    "View charts" and the card list. <strong>Sold</strong> lists sale orders (an order shows here
+    only if every card in it is a sale; anything mixed stays on Purchased), with what you sold for
+    and received — card quantities only change at the next Dex sync, so a sold card still shows as
+    owned until then. <strong>Listings</strong> lists the finn.no ads made on Sell on finn.no;
+    "Mark sold" there records the sale on the Sold tab. The old Transactions and Listings
+    addresses still work and redirect here.
+  </p>
+  <p>
+    <strong>New Order:</strong> click the button to start, then pick Purchase, Trade or Ripped from
+    the dropdown — the app reserves the next free Order ID automatically. A sale without a listing
+    (in person, another platform) is recorded with "+ Record sale without listing" on the Sold
+    tab. Then search for each card
     that was part of the deal and add them one by one; each row can be priced individually, or
     left blank and use "Distribute evenly across empty prices" to split a remaining amount
     equally across the cards without a price yet. "Remove" takes a card back out of the order
@@ -310,11 +322,10 @@
     not priced individually yet), or ✓ when it all adds up.
   </p>
   <p>
-    <strong>Gain</strong> in Order history is the order's paper gain/loss: today's market value
+    <strong>Paper gain</strong> in Order history is the order's paper gain/loss: today's market value
     of the cards from that order you still own, minus the order's Total. Cards you've since sold
     or traded away count as 0 (if a card was bought in several orders, the newest ones keep it).
-    A trade order adds its trade gain; sale orders show "—", as do orders whose cards have no
-    market price. A "*" means some of the cards have no price and were counted as 0. The gains
+    A trade order adds its trade gain; orders whose cards have no market price show "—". A "*" means some of the cards have no price and were counted as 0. The gains
     don't add up exactly to the page's Paper gain/loss, which also includes cards without an
     order, sale proceeds and fees.
   </p>

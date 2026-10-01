@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}Orders · {{ 'Sold' if tab == 'sold' else 'Purchased' }} – TCG Inventory{% endblock %}
+{% block chart_scripts %}
+<script src="/static/chart.umd.js"></script>
+<script src="/static/tcg-charts.js"></script>
+{% endblock %}
+{% from "partials/macros.html" import sort_th with context %}
+{% from "partials/macros.html" import info %}
+{% from "partials/macros.html" import card_link %}
+{% from "partials/tx_row.html" import tx_row %}
+{% block content %}
+{# The Orders page's Purchased and Sold tabs (issue #255) -- one template,
+   since both list orders with the same <details id="order-N"> markup. What
+   differs per tab: the header (KPI module on Purchased; read-off-the-rows
+   sale figures on Sold, no gain until #256), the ?type= pills, the card
+   picker (Purchased only) and the cart's type control. Which orders show on
+   which tab is decided in one place, app.order_tab. #}
+{% include "partials/orders_tabs.html" %}
+
+{% if error %}<p class="warnings">{{ error }}</p>{% endif %}
+
+{# Defined before use: Jinja binds a macro where it appears, and the order
+   groups below call this. #}
+{% macro tx_table(rows, empty_message, sortable=True) %}
+<div class="table-scroll">
+  <table class="tx-table">
+    <thead>
+      <tr>
+        {% if sortable %}
+        <th>{{ sort_th('Date', 'date', 'tsort', 'tdir', tsort, tdir, page_path) }}</th>
+        <th>{{ sort_th('Card', 'name', 'tsort', 'tdir', tsort, tdir, page_path) }}</th>
+        <th>{{ sort_th('Type', 'type', 'tsort', 'tdir', tsort, tdir, page_path) }}</th>
+        <th class="num">{{ sort_th('Price', 'price', 'tsort', 'tdir', tsort, tdir, page_path) }}</th>
+        <th>{{ sort_th('Platform', 'platform', 'tsort', 'tdir', tsort, tdir, page_path) }}</th>
+        <th></th>
+        {% else %}
+        <th>Date</th>
+        <th>Card</th>
+        <th>Type</th>
+        <th class="num">Price ▼</th>
+        <th>Platform</th>
+        <th></th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in rows %}
+      {{ tx_row(tx, (shipping_by_tx or {}).get(tx.id)) }}
+      {% else %}
+      <tr><td colspan="6" class="muted">{{ empty_message }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{# Gave vs. got for an order's trade rows, with the trade's gain -- see
+   queries.trade_summary for the math. "Then" is each card's price on the
+   trade date (from card_snapshots), shown only when every card has one. #}
+{% macro trade_side(title, rows, now, then, prices_then) %}
+<div class="trade-side">
+  <h4>{{ title }}</h4>
+  {% if rows %}
+  <ul>
+    {% for tx in rows %}
+    <li>
+      <span>{{ tx.card.name }} <span class="muted">{{ tx.card.set }}{% if tx.card.number %} #{{ tx.card.number }}{% endif %}{% if tx.card.variant %} · {{ tx.card.variant }}{% endif %}</span></span>
+      <span class="num">{{ tx.card.display_price | kr }}{% if prices_then[tx.id] is not none %} <span class="muted" title="Price on the trade date">({{ prices_then[tx.id] | kr }})</span>{% endif %}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <div class="trade-side-total"><span>Total</span><span class="num">{{ now | kr }}{% if then is not none %} <span class="muted">({{ then | kr }})</span>{% endif %}</span></div>
+  {% else %}
+  <p class="muted">None</p>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro trade_block(t) %}
+<div class="trade-summary">
+  {{ trade_side('Gave', t.gave, t.value_out_now, t.value_out_then, t.prices_then) }}
+  {{ trade_side('Got', t.got, t.value_in_now, t.value_in_then, t.prices_then) }}
+  <div class="trade-result">
+    {% if t.cash_paid or t.cash_received %}
+    <div class="muted">Cash: received {{ t.cash_received | kr }}, paid {{ t.cash_paid | kr }}</div>
+    {% endif %}
+    <div>
+      <span class="tx-kpi-label">Trade gain {{ info("Value of the cards you got minus the cards you gave, plus any cash received and minus any cash paid. Today uses current prices; the figure in brackets uses each card's price on the trade date, when price history goes back that far.") }}</span>
+      <span class="tx-kpi-value {{ 'viz-delta-gain' if t.gain_now >= 0 else 'viz-delta-loss' }}">{{ t.gain_now | kr }}</span>
+      <span class="muted">today</span>
+      {% if t.gain_then is not none %}
+      <span class="{{ 'viz-delta-gain' if t.gain_then >= 0 else 'viz-delta-loss' }}">{{ t.gain_then | kr }}</span> <span class="muted">at trade date</span>
+      {% else %}
+      <span class="muted">· no price history for the trade date</span>
+      {% endif %}
+    </div>
+    {% if t.unknown %}
+    <p class="tx-diff-flag">{{ t.unknown | length }} trade card{{ 's' if t.unknown | length != 1 }} without In/Out ({{ t.unknown | map(attribute='card.name') | join(', ') }}) — not counted. Set it with “Edit order”.</p>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% if tab == 'purchased' %}
+{% include "partials/kpi_module.html" %}
+{% endif %}
+
+{# ---------------------------------------------------------------------
+   Order history -- the page's primary content, first thing under the KPI
+   cards. One row per order with the numbers that describe the deal;
+   expanding a row reveals that order's cards and its total/shipping form.
+
+   Each order stays a <details id="order-N">, which is load-bearing rather
+   than stylistic: ?open_order=N deep-links by rendering `open` on it, and
+   the total/shipping form swaps itself with hx-select/hx-target="#order-N"
+   + outerHTML -- the <details> element *is* the swap target. Column
+   alignment comes from a CSS grid on the <summary>, not from a <table>.
+   --------------------------------------------------------------------- #}
+<section class="orders-section">
+  <div class="section-head">
+    {% if tab == 'sold' %}
+    <h2>Sales {{ info("Each sale order groups the cards sold together under one Order ID. Value is the sum of the recorded sale prices; Total is the amount received for the whole order — until you type one it shows Value + Shipping, marked auto.") }}</h2>
+    {% else %}
+    <h2>Order history {{ info("Each order groups the cards bought together under one Order ID. Value is the sum of what you recorded paying per card (trades excluded); Total is the amount for the whole order — until you type one it shows Value + Shipping, marked auto. Paper gain is today's market value of the order's cards you still own minus its Total (a trade order adds its trade gain). Order paper gains don't add up exactly to Paper gain/loss: that figure also counts copies with no order, individually registered cards and sale proceeds, and uses recorded card prices rather than a typed Total.") }}</h2>
+    {% endif %}
+    <div class="section-actions">
+      {% if tab == 'sold' %}
+      {# Sold tab header (issue #255): only figures read straight off the
+         sale rows, and no gain number -- Paper gain jumps right after Mark
+         sold (qty only drops at the next Dex sync, while net invested
+         already subtracts the proceeds), which on a tab called "Sold" reads
+         as realized profit. Realized gain is #256. #}
+      <span class="section-summary">
+        <span class="tx-kpi-label">Sold for {{ info("Sum of the recorded sale prices.") }}</span> <span class="tx-kpi-value">{{ sold.sold_for | kr }}</span>
+        <span class="tx-kpi-label">Fees &amp; shipping {{ info("Sale fees plus the shipping you paid as seller.") }}</span> <span class="tx-kpi-value">{{ sold.fees_and_shipping | kr }}</span>
+        <span class="tx-kpi-label">Net received {{ info("Sold for minus fees and seller-paid shipping — what the sales actually brought in, the same amount Net invested subtracts.") }}</span> <span class="tx-kpi-value">{{ sold.net_received | kr }}</span>
+        <span class="muted">{{ sold.sales }} sale{{ 's' if sold.sales != 1 }} / {{ sold.cards }} card{{ 's' if sold.cards != 1 }}</span>
+      </span>
+      <a class="button" href="/sales">Sell on finn.no</a>
+      {# In-person / other-platform sales have no listing to Mark sold. #}
+      <button type="button" class="secondary" hx-get="/transactions/purchase/start?type=sale" hx-target="#purchase-cart-container" hx-swap="innerHTML"
+              hx-trigger="click[confirmDiscardCart()]" hx-indicator="#new-order-indicator">+ Record sale without listing</button>
+      <span id="new-order-indicator" class="tx-search-spinner htmx-indicator">Loading…</span>
+      {% else %}
+      {# What's left of the old standalone .tx-kpi-bar. Its "Current value"
+         was `headline.unique_value`, which the Market Value card above
+         already shows as its "Unique value" row -- two differently-named
+         numbers for the same thing, next to a third ("Market Value",
+         which counts duplicates), was the page's worst bit of number
+         confusion. So only the two figures that appear nowhere else
+         survive, as a caption rather than a second KPI block. #}
+      <span class="section-summary">
+        <span class="tx-kpi-label">Net invested {{ info("What you've paid for cards (shipping included), minus sales received.") }}</span> <span class="tx-kpi-value">{{ kpi.net_invested | kr }}</span>
+        <span class="tx-kpi-label">Paper gain/loss {{ info("Today's price of everything you own (duplicates included), minus what you actually paid. Not realized — nothing has been sold.") }}</span>
+        <span class="tx-kpi-value {{ 'viz-delta-gain' if kpi.delta >= 0 else 'viz-delta-loss' }}">{{ kpi.delta | kr }}</span>
+      </span>
+      <button type="button" hx-get="/transactions/purchase/start" hx-target="#purchase-cart-container" hx-swap="innerHTML"
+              hx-trigger="click[confirmDiscardCart()]" hx-indicator="#new-order-indicator">+ New Order</button>
+      <span id="new-order-indicator" class="tx-search-spinner htmx-indicator">Loading…</span>
+      {% endif %}
+    </div>
+  </div>
+  {% if tab == 'sold' %}
+  <p class="muted sold-caveat">Card quantities update at the next Dex sync.</p>
+  {% endif %}
+
+  {% if tab == 'purchased' %}
+  {# ?type= pills (issue #255): plain links keeping every other param, same
+     as the card picker's filter below. Counted per order (order_kind), so
+     they add up to All. #}
+  <div class="viz-filter" role="group" aria-label="Filter orders by type">
+    {% for key, label in [('all', 'All'), ('purchase', 'Purchases'), ('trade', 'Trades'), ('ripped', 'Ripped')] %}
+    <a class="viz-filter-pill {{ 'active' if type_filter == key }}" href="{{ type_filter_url(request, page_path, key) }}"{% if type_filter == key %} aria-current="true"{% endif %}>{{ label }} ({{ type_counts[key] }})</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div id="purchase-cart-container"></div>
+
+  {% if purchase_groups %}
+  <div class="orders-list{{ ' orders-list-sold' if tab == 'sold' }}">
+    <div class="orders-row orders-head">
+      <span class="oc-order">Order</span>
+      <span class="oc-date">Date</span>
+      <span class="oc-qty num">Qty</span>
+      <span class="oc-value num">Value</span>
+      <span class="oc-shipping num">Shipping</span>
+      <span class="oc-total num">Total</span>
+      {% if tab != 'sold' %}<span class="oc-gain num">Paper gain</span>{% endif %}
+      <span class="oc-platform">Platform</span>
+    </div>
+
+    {% for group in purchase_groups %}
+    <details class="order-item" id="order-{{ group.purchase_id }}"{% if open_order == group.purchase_id %} open{% endif %}>
+      <summary class="orders-row order-summary">
+        <span class="oc-order">#{{ group.purchase_id }}</span>
+        <span class="oc-date muted">{{ group.min_date }}</span>
+        <span class="oc-qty num">{{ group.transactions | length }}</span>
+        <span class="oc-value num">{{ group.total_price | kr }}</span>
+        <span class="oc-shipping num">{% if group.purchase_shipping %}{{ group.purchase_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        {# No typed Total yet: show Value + Shipping, visibly marked as
+           automatic (muted + an "auto" text marker, not colour alone). It's
+           display-only -- the order body's Remaining isn't shown for it
+           (issue #202). #}
+        <span class="oc-total num">
+          {%- if group.purchase_total is not none -%}{{ group.purchase_total | kr }}
+          {%- else -%}<span class="muted oc-total-auto" title="Automatic: Value + Shipping. Type a Total in the order to override it.">{{ group.auto_total | kr }} <small class="auto-marker">auto</small></span>
+          {%- endif -%}
+        </span>
+        {# Paper gain/loss for this order (issue #246, queries.order_gain):
+           today's value of its still-owned copies minus the Total shown
+           left of it. Replaces the Remaining column in the summary row --
+           Remaining (group.diff) is still computed and shown in the
+           expanded order body next to the Total it depends on. #}
+        {# Left out on the Sold tab entirely (issue #255) rather than a
+           column of dashes -- #256 adds Realized gain there. #}
+        {% if tab != 'sold' %}
+        <span class="oc-gain num">
+          {%- set g = group.gain -%}
+          {%- if g.gain is none -%}<span class="muted" title="{{ 'None of the cards in this order has a market price.' if g.reason == 'no_price' else 'Nothing in this order to value.' }}">—</span>
+          {%- else -%}<span class="{{ 'viz-delta-gain' if g.gain >= 0 else 'viz-delta-loss' }}"{% if g.unpriced %} title="{{ g.unpriced }} card{{ 's' if g.unpriced != 1 }} without a market price counted as 0."{% endif %}>{{ '+' if g.gain > 0 }}{{ g.gain | kr }}{% if g.unpriced %} *{% endif %}</span>
+          {%- endif -%}
+        </span>
+        {% endif %}
+        <span class="oc-platform">
+          {%- if group.summary_platform -%}
+            <span class="tx-platform-badge"{% if group.platform is none %} title="This order's rows don't all share one platform."{% endif %}>{{ group.summary_platform }}{% if group.platform is none %} *{% endif %}</span>
+          {%- endif -%}
+        </span>
+      </summary>
+
+      <div class="order-body">
+        <form method="post" action="/transactions/purchase/{{ group.purchase_id }}/total" class="filters mb-05"
+              hx-post="/transactions/purchase/{{ group.purchase_id }}/total" hx-select="#order-{{ group.purchase_id }}"
+              hx-target="#order-{{ group.purchase_id }}" hx-swap="outerHTML"
+              hx-indicator="#order-total-indicator-{{ group.purchase_id }}">
+          {# Stays empty when nothing is saved -- the auto sum is only a
+             placeholder, so "Set total/shipping" never persists it unless
+             the user actually types it. #}
+          {# On a sale order the Total is what you received, not paid. #}
+          {% set total_word = 'Received' if tab == 'sold' else 'Total' %}
+          <input type="number" step="0.01" name="purchase_total" aria-label="{{ 'Total received' if tab == 'sold' else 'Total' }}"
+                 placeholder="{{ total_word if group.purchase_total is not none else total_word ~ ' (auto ' ~ (group.auto_total | kr) ~ ')' }}"
+                 value="{{ group.purchase_total if group.purchase_total is not none else '' }}" class="tx-input-lg"
+                 title="{{ 'The full amount received for the whole sale.' if tab == 'sold' else 'The full amount paid for the whole order.' }} Leave blank to use the automatic Value + Shipping (no Remaining is shown then).">
+          <input type="number" step="0.01" name="purchase_shipping" placeholder="Shipping"
+                 value="{{ group.purchase_shipping if group.purchase_shipping is not none else '' }}" class="tx-input-md"
+                 title="Shipping for the whole order. Leaving it blank keeps what's saved; enter 0 to clear it.">
+          {# Blank Shipping/Platform leave the rows as they are (issue #202,
+             see set_purchase_total) -- only a typed value overwrites every
+             row. A group whose rows disagree on platform prefills blank on
+             purpose (see _group_transactions_by_purchase), so saving a
+             Total no longer wipes those per-card platforms; the field says
+             so rather than looking innocently empty. #}
+          <input type="text" name="platform"
+                 placeholder="{{ 'Mixed — blank keeps per-card' if group.platform is none and group.summary_platform else 'Platform' }}"
+                 value="{{ group.platform if group.platform is not none else '' }}"
+                 class="{{ 'tx-input-lg' if group.platform is none and group.summary_platform else 'tx-input-md' }}"
+                 title="{{ 'This order\'s rows don\'t all share one platform, so this starts blank. Left blank, each card keeps its own platform; typing one sets it on every row — use Edit order for per-card platforms.' if group.platform is none and group.summary_platform else 'Platform for the whole order. Leaving it blank keeps what\'s saved; typing one sets it on every row.' }}">
+          <button type="submit">{{ 'Update' if group.purchase_total is not none or group.purchase_shipping is not none else 'Set' }} total/shipping</button>
+          <span id="order-total-indicator-{{ group.purchase_id }}" class="tx-search-spinner htmx-indicator">Saving…</span>
+          <button type="button" class="secondary" hx-get="/transactions/purchase/{{ group.purchase_id }}/edit"
+                  hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML">Edit order</button>
+          {% if group.total_fees %}<span class="muted">Fees {{ group.total_fees | kr }}</span>{% endif %}
+          {# What used to be Order history's Remaining column (hidden from
+             the summary row in issue #246): only once a Total is typed --
+             the auto Total is fully accounted for by definition. ✓ when card
+             prices + shipping add up to it, else the flagged difference
+             (usually cards not priced individually yet). #}
+          {% if group.purchase_total is not none %}
+          <span class="order-remaining">Remaining
+            {%- if group.diff | round(2) != 0 %} <span class="tx-diff-flag">{{ group.diff | kr }}</span>
+            {%- else %} <span class="oc-settled" title="Recorded card prices and shipping add up to the Total.">✓</span>
+            {%- endif -%}
+          </span>
+          {% endif %}
+        </form>
+
+        {% if group.trade %}{{ trade_block(group.trade) }}{% endif %}
+
+        {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
+
+        {# Points the page's single card picker at this order and scrolls to
+           it, rather than rendering a second copy of that whole table here
+           (which would duplicate its element ids for every expanded order). #}
+        {# Purchased tab only: the picker records purchases, so it never
+           targets a sale order (see add_cards_to_existing_order). #}
+        {% if tab == 'purchased' %}
+        <div class="order-add-cards">
+          <button type="button" onclick="pickCardsFor({{ group.purchase_id }})">+ Add cards to this order</button>
+          <span class="muted">Opens the card list below, set to add to order #{{ group.purchase_id }}.</span>
+        </div>
+        {% endif %}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% elif tab == 'sold' %}
+  <p class="muted">No sales yet. Record one with <strong>Mark sold</strong> on a listing (<a href="/orders/listings">Listings</a> tab) or <strong>+ Record sale without listing</strong>.</p>
+  {% elif type_filter != 'all' and type_counts.all %}
+  <p class="muted">No {{ {'purchase': 'purchase', 'trade': 'trade', 'ripped': 'ripped'}[type_filter] }} orders. <a href="{{ type_filter_url(request, page_path, 'all') }}">Show all</a></p>
+  {% else %}
+  <p class="muted">No orders registered yet — “+ New Order” records the first one.</p>
+  {% endif %}
+</section>
+
+{# Hidden on Sold when empty -- an empty table there is just noise. #}
+{% if tab == 'purchased' or ungrouped_transactions %}
+<section class="ungrouped-section">
+  <h3 class="mt-15">Individually registered <span class="muted">(without an Order ID)</span></h3>
+  {{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
+</section>
+{% endif %}
+
+{% if tab == 'purchased' %}
+{% include "partials/card_picker.html" %}
+
+<details class="collapsible mt-2" hx-get="/orders/charts" hx-trigger="toggle once" hx-target="#tx-charts" hx-swap="innerHTML">
+  <summary>View charts</summary>
+  <div id="tx-charts"><p class="muted">Loading charts…</p></div>
+</details>
+{% endif %}
+
+<script src="/static/orders-cart.js"></script>
+{% endblock %}

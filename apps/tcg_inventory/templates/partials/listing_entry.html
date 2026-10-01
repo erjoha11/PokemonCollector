@@ -9,7 +9,11 @@
     <span class="tx-platform-badge">{{ entry.listing.platform }}</span>
     <span class="listing-actions">
       {% if entry.listing.status != 'sold' %}
-      <a href="/listings/{{ entry.listing.id }}/mark-sold"><button type="button">Mark sold</button></a>
+      {# Carries the tab's filters so mark-sold's Cancel comes back to them. #}
+      {%- set filter_qs = [] -%}
+      {%- if show_delisted %}{% set _ = filter_qs.append('show_delisted=true') %}{% endif -%}
+      {%- if sold_only %}{% set _ = filter_qs.append('sold_only=true') %}{% endif %}
+      <a href="/listings/{{ entry.listing.id }}/mark-sold{{ '?' ~ filter_qs | join('&') if filter_qs }}"><button type="button">Mark sold</button></a>
       {% endif %}
       <a href="/listings/{{ entry.listing.id }}/edit"><button type="button" class="secondary">Edit</button></a>
       {% if entry.listing.status == 'active' %}
@@ -21,6 +25,8 @@
       {% endif %}
       <form hx-post="/listings/{{ entry.listing.id }}/delete" hx-target="#listing-{{ entry.listing.id }}"
             hx-swap="outerHTML" hx-confirm="Delete this listing permanently? This cannot be undone.">
+        <input type="hidden" name="show_delisted" value="{{ 'true' if show_delisted else '' }}">
+        <input type="hidden" name="sold_only" value="{{ 'true' if sold_only else '' }}">
         <button type="submit" class="secondary">Delete</button>
       </form>
     </span>

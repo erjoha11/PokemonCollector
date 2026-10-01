@@ -41,10 +41,26 @@
     });
   }
 
+  // /sales with no card_ids (e.g. the Orders page's "Sell on finn.no"
+  // button): offer the selection still held from Inventory, if any.
+  function salesUrl(ids) {
+    return "/sales?" + ids.map((id) => "card_ids=" + encodeURIComponent(id)).join("&");
+  }
+
+  function offerResume(set) {
+    const resume = document.getElementById("sale-list-resume");
+    if (!resume || set.size === 0) return;
+    resume.querySelector("a").href = salesUrl(Array.from(set));
+    const count = document.getElementById("sale-list-resume-count");
+    if (count) count.textContent = set.size;
+    resume.hidden = false;
+  }
+
   function init() {
     const selection = readSelection();
     rehydrateCheckboxes(selection);
     updateBar(selection);
+    offerResume(selection);
 
     document.body.addEventListener("change", (evt) => {
       if (!evt.target.matches("input.sale-select")) return;
@@ -70,8 +86,7 @@
       generateBtn.addEventListener("click", () => {
         const ids = Array.from(readSelection());
         if (ids.length === 0) return;
-        const params = ids.map((id) => "card_ids=" + encodeURIComponent(id)).join("&");
-        window.location.href = "/sales?" + params;
+        window.location.href = salesUrl(ids);
       });
     }
 

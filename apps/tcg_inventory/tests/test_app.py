@@ -34,7 +34,7 @@ def order_summary(text: str, purchase_id: int) -> str:
 def summary_cell(text: str, purchase_id: int, column: str) -> str:
     """Visible text of one summary column, tags stripped and whitespace
     collapsed, e.g. summary_cell(text, 4, "value") -> '60 kr'. `column` is
-    the oc-* class suffix used in transactions.html (order/date/qty/value/
+    the oc-* class suffix used in orders.html (order/date/qty/value/
     shipping/total/gain/platform). Handles the columns that wrap their
     value in a nested <span> (Gain's colour span, Platform's badge)."""
     summary = order_summary(text, purchase_id)
@@ -536,7 +536,7 @@ def test_all_pages_render(client):
 def test_analyse_redirects_to_transactions(client):
     response = client.get("/analyse", follow_redirects=False)
     assert response.status_code == 308
-    assert response.headers["location"] == "/transactions"
+    assert response.headers["location"] == "/orders/purchased"
 
 
 def test_transactions_page_shows_economic_kpi_strip(client):
@@ -616,17 +616,17 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     snapshots.record_daily_snapshot(db, as_of=dt.date(2026, 1, 10))
     db.close()
 
-    default_page = client.get("/transactions/charts")
+    default_page = client.get("/orders/charts")
     assert "Unique collection" in default_page.text
     assert "Duplicates" in default_page.text
     assert "Total" in default_page.text
-    assert 'href="/transactions/charts?metric=unique"' in default_page.text
-    assert 'href="/transactions/charts?metric=duplicates"' in default_page.text
-    assert 'href="/transactions/charts?metric=total"' in default_page.text
+    assert 'href="/orders/charts?metric=unique"' in default_page.text
+    assert 'href="/orders/charts?metric=duplicates"' in default_page.text
+    assert 'href="/orders/charts?metric=total"' in default_page.text
     assert 'class="viz-filter-pill active">Total</a>' in default_page.text  # total selected by default
     assert "Value (Total)" in default_page.text
 
-    total_page = client.get("/transactions/charts?metric=total")
+    total_page = client.get("/orders/charts?metric=total")
     assert total_page.status_code == 200
     assert "Value (Total)" in total_page.text
     # unique_value=10, total_value=30 for this card -- the chosen metric
@@ -634,7 +634,7 @@ def test_transactions_charts_endpoint_has_a_metric_filter_that_switches_the_char
     assert "30 kr" in total_page.text
 
     # An unknown metric falls back to the default instead of erroring.
-    fallback_page = client.get("/transactions/charts?metric=not-a-real-metric")
+    fallback_page = client.get("/orders/charts?metric=not-a-real-metric")
     assert fallback_page.status_code == 200
     assert "Value (Total)" in fallback_page.text
 
@@ -1359,9 +1359,12 @@ def test_purchase_cart_start_shows_the_next_free_purchase_id(client):
 
     # One purchase already on record at id 7 -- the next cart reserves 8,
     # not 1, so it never collides with an existing group.
+    # The Sold tab's "+ Record sale without listing" cart (issue #255): a
+    # hidden type=sale input instead of the type select.
     response = client.get("/transactions/purchase/start?type=sale")
     assert "Order ID 8" in response.text
-    assert '<option value="sale" selected>' in response.text
+    assert '<input type="hidden" name="type" value="sale">' in response.text
+    assert 'select name="type"' not in response.text
 
 
 def test_purchase_cart_search_box_guards_against_enter_submitting_the_form(client):
@@ -1392,7 +1395,9 @@ def test_recently_added_add_to_order_button_warns_instead_of_silently_doing_noth
     assert response.status_code == 200
     # Was hx-get targeting #cart-body directly (silently no-op'd if no cart
     # was open); now routes through addCardToCart(), which alerts instead.
-    assert "addCardToCart(" in response.text
+    # The cart JS lives in static/orders-cart.js since issue #255.
+    assert 'src="/static/orders-cart.js"' in response.text
+    assert "function addCardToCart(" in client.get("/static/orders-cart.js").text
     assert 'hx-get="/transactions/purchase/add-row?card_id=' not in response.text
 
 
@@ -1583,7 +1588,7 @@ def test_card_picker_without_an_order_filter_hides_cards_that_have_one(client):
     # The order it's already on is named, so merging the two tables doesn't
     # lose the "does this card still need an order?" signal that used to be
     # encoded by which table the row appeared in.
-    assert 'href="/transactions?open_order=1#order-1"' in picker_all
+    assert 'href="/orders/purchased?open_order=1#order-1"' in picker_all
 
 
 def test_card_picker_offers_one_target_selector_covering_new_and_existing_orders(client):
@@ -1641,7 +1646,7 @@ def test_add_cards_to_existing_order_creates_rows_and_redirects(client):
         follow_redirects=False,
     )
     assert response.status_code == 303
-    assert response.headers["location"] == "/transactions?open_order=3"
+    assert response.headers["location"] == "/orders/purchased?open_order=3"
 
     db = db_module.SessionLocal()
     try:

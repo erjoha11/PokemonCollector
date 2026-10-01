@@ -29,11 +29,11 @@
        preserve-every-other-param contract keeps a sort click from resetting
        the filter and vice versa. Counts live in the labels because the
        count is the thing that says whether there's work left to do. #}
-    <a class="viz-filter-pill {{ 'active' if pick == 'unordered' }}" href="{{ pick_url(request, 'unordered') }}"
+    <a class="viz-filter-pill {{ 'active' if pick == 'unordered' }}" href="{{ pick_url(request, 'unordered', page_path) }}"
        title="Cards not registered yet — no purchase, trade or ripped row. What you'd normally be filling an order with.">Without an order ({{ pick_counts.unordered }})</a>
-    <a class="viz-filter-pill {{ 'active' if pick == 'recent' }}" href="{{ pick_url(request, 'recent') }}"
+    <a class="viz-filter-pill {{ 'active' if pick == 'recent' }}" href="{{ pick_url(request, 'recent', page_path) }}"
        title="Cards with a known added date, set the first time the card was imported.">Recently added ({{ pick_counts.recent }})</a>
-    <a class="viz-filter-pill {{ 'active' if pick == 'all' }}" href="{{ pick_url(request, 'all') }}"
+    <a class="viz-filter-pill {{ 'active' if pick == 'all' }}" href="{{ pick_url(request, 'all', page_path) }}"
        title="Every card in the collection.">All ({{ pick_counts.all }})</a>
   </div>
 
@@ -47,14 +47,14 @@
         <thead>
           <tr>
             <th class="picker-check"><input type="checkbox" id="picker-select-all" onclick="toggleAllCardCheckboxes(this)" title="Select all"></th>
-            <th>{{ sort_th('Added', 'date', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th>{{ sort_th('Name', 'name', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th>{{ sort_th('Series', 'series', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th>{{ sort_th('Set', 'set', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th class="num">{{ sort_th('Market price', 'market_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th class="num">{{ sort_th('Paid', 'registered_price', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
-            <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, '/transactions') }}</th>
+            <th>{{ sort_th('Added', 'date', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th>{{ sort_th('Name', 'name', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th>{{ sort_th('Variant', 'variant', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th>{{ sort_th('Series', 'series', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th>{{ sort_th('Set', 'set', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th class="num">{{ sort_th('Market price', 'market_price', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th class="num">{{ sort_th('Paid', 'registered_price', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
+            <th>{{ sort_th('Card ID', 'card_id', 'gsort', 'gdir', gsort, gdir, page_path) }}</th>
             <th>Order</th>
           </tr>
         </thead>
@@ -79,7 +79,7 @@
             <td>
               {%- set order_ids = purchase_ids_by_card.get(card.id, []) -%}
               {%- if order_ids -%}
-                {%- for oid in order_ids %}<a class="picker-order-link" href="/transactions?open_order={{ oid }}#order-{{ oid }}">#{{ oid }}</a>{% if not loop.last %} {% endif %}{% endfor -%}
+                {%- for oid in order_ids %}<a class="picker-order-link" href="/orders/{{ order_tab_by_id.get(oid, 'purchased') }}?open_order={{ oid }}#order-{{ oid }}">#{{ oid }}</a>{% if not loop.last %} {% endif %}{% endfor -%}
               {%- else -%}<span class="muted">—</span>{%- endif -%}
             </td>
           </tr>
@@ -102,7 +102,7 @@
         Adding to
         <select id="picker-target" onchange="updatePickerSelection()">
           <option value="new">New order</option>
-          {% for group in purchase_groups %}
+          {% for group in picker_orders %}
           <option value="{{ group.purchase_id }}">Order #{{ group.purchase_id }} — {{ group.transactions | length }} card{{ '' if group.transactions | length == 1 else 's' }}, {{ group.total_price | kr }}</option>
           {% endfor %}
         </select>

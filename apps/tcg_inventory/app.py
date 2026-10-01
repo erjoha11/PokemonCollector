@@ -13,11 +13,11 @@ import datetime as dt
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -163,18 +163,37 @@ def _sort_url(
 templates.env.globals["sort_url"] = _sort_url
 
 
-def _pick_url(request: Request, value: str, path: str = "/transactions") -> str:
+def _pick_url(request: Request, value: str, path: str | None = None) -> str:
     """Link that switches the card picker's "without an order / all cards"
     filter, preserving every other query param (the picker's own sort state,
     and which order is expanded) -- same idiom as `_sort_url` above, so a
     filter click never silently resets a sort and vice versa.
+
+    `path` defaults to the current request's own path, so the link stays on
+    whichever Orders tab rendered it (issue #255) -- a hardcoded path here
+    used to bounce a click on one tab through a redirect to another.
     """
+    path = path or request.url.path
     params = dict(request.query_params)
     params["pick"] = value
     return path + "?" + urlencode(params)
 
 
 templates.env.globals["pick_url"] = _pick_url
+
+
+def _type_filter_url(request: Request, path: str, value: str) -> str:
+    """Link for one of the Purchased tab's ?type= pills (issue #255), keeping
+    every other query param (sorts, picker filter) -- same idiom as
+    `_pick_url`. "all" drops the param rather than spelling it out."""
+    params = dict(request.query_params)
+    params.pop("type", None)
+    if value != "all":
+        params["type"] = value
+    return path + ("?" + urlencode(params) if params else "")
+
+
+templates.env.globals["type_filter_url"] = _type_filter_url
 
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
@@ -310,10 +329,79 @@ def _query_url(request: Request, path: str, **overrides) -> str:
 def _metric_url(request: Request, metric_key: str, path: str = "/") -> str:
     """A link that switches a shared value-growth chart's metric (see
     `chart_card` in macros.html), preserving every other query param. `path`
-    is the page/endpoint the chart lives on (Dashboard vs Transactions'
-    `/transactions/charts`).
+    is the page/endpoint the chart lives on (Dashboard vs the Orders page's
+    `/orders/charts`).
     """
     return _query_url(request, path, metric=metric_key)
+
+
+# --------------------------------------------------------------------------
+# Orders page (issue #255) -- one nav item, three route-based tabs:
+# /orders/purchased, /orders/sold, /orders/listings. These helpers are the
+# single place that decides which tab an order lives on, so the tab lists
+# and every post-write redirect can never disagree (if they did, an htmx
+# swap with hx-select="#order-N" would find nothing and the order would
+# silently vanish from the page).
+# --------------------------------------------------------------------------
+ORDER_TABS = {"purchased": "Purchased", "sold": "Sold", "listings": "Listings"}
+
+
+def order_tab(types) -> str:
+    """The Orders tab for an order (or a single ungrouped row) with these
+    transaction types: Sold only if *every* row is a sale, Purchased for
+    anything else -- mixed orders included, so an order that picked up a
+    sale row via Edit order (or a purchase row) never drops off both tabs.
+    """
+    types = list(types)
+    return "sold" if types and all(t == "sale" for t in types) else "purchased"
+
+
+def _order_tab_for(db: Session, purchase_id: int | None) -> str | None:
+    """`order_tab` for an order already in the DB, or None if it has no rows."""
+    if purchase_id is None:
+        return None
+    types = [t for (t,) in db.query(Transaction.type).filter(Transaction.purchase_id == purchase_id).all()]
+    return order_tab(types) if types else None
+
+
+def _order_url(purchase_id: int | None = None, tab: str = "purchased") -> str:
+    """Link to an Orders tab, optionally with one order expanded."""
+    url = f"/orders/{tab}"
+    return f"{url}?open_order={purchase_id}" if purchase_id is not None else url
+
+
+def _redirect_keeping_query(request: Request, path: str, status_code: int = 308) -> RedirectResponse:
+    """Redirect an old URL to its new home with the full query string intact
+    (e.g. /transactions?open_order=5 -> /orders/purchased?open_order=5)."""
+    query = request.url.query
+    return RedirectResponse(path + (f"?{query}" if query else ""), status_code=status_code)
+
+
+def _current_orders_tab(request: Request) -> str | None:
+    """Which Orders tab the browser is showing, from htmx's HX-Current-URL
+    header -- None for a non-htmx request or a page that isn't a tab."""
+    current = request.headers.get("HX-Current-URL")
+    if not current:
+        return None
+    path = urlsplit(current).path
+    return next((tab for tab in ORDER_TABS if path == f"/orders/{tab}"), None)
+
+
+def _order_redirect(request: Request, db: Session, purchase_id: int, fallback_tab: str = "purchased"):
+    """Post-write redirect to the tab `purchase_id` now lives on, expanded.
+
+    A normal 303 for a plain form post, and for an htmx request whose page
+    is already on that tab (htmx follows it and hx-selects #order-N or
+    #main-content out of the result as before). When an htmx request comes
+    from a *different* tab (e.g. a cart registered or an order edited into
+    the other tab), swapping would show Sold content under a /orders/purchased
+    URL -- so answer with HX-Redirect instead and let the browser navigate.
+    """
+    tab = _order_tab_for(db, purchase_id) or fallback_tab
+    url = _order_url(purchase_id, tab)
+    if request.headers.get("HX-Request") and _current_orders_tab(request) != tab:
+        return Response(status_code=200, headers={"HX-Redirect": url})
+    return RedirectResponse(url, status_code=303)
 
 
 # Per metric: (headline_summary key for today's value, headline key for the
@@ -506,7 +594,7 @@ def dashboard(
             "dashboard.html",
             {
                 # Renders via the shared chart_card macro (macros.html), the
-                # same module Transactions uses -- see /transactions for the
+                # same module Transactions uses -- see /orders/purchased for the
                 # full economic breakdown this is a compact preview of.
                 **_market_value_context(request, db, headline, economic, txs, metric, period),
                 "headline": headline,
@@ -1086,14 +1174,53 @@ def sales_mark_listed(
 # see queries.listing_overview's docstring and README's "Sales listings
 # (finn.no)" business rule.
 # --------------------------------------------------------------------------
+def _flag(value) -> bool:
+    """A checkbox/hidden-input flag as the listings forms send it."""
+    return value in (True, "true", "1", "on")
+
+
+def _listings_url(show_delisted=False, sold_only=False) -> str:
+    """The Listings tab, keeping its two filters (issue #255) -- every
+    listing action that lands back on the tab (edit, mark-sold cancel, a
+    non-htmx delist/delete) should come back to the same filtered view."""
+    params = {}
+    if _flag(show_delisted):
+        params["show_delisted"] = "true"
+    if _flag(sold_only):
+        params["sold_only"] = "true"
+    return "/orders/listings" + ("?" + urlencode(params) if params else "")
+
+
 @app.get("/listings")
-def listings_page(request: Request, show_delisted: bool = False, sold_only: bool = False):
+def listings_redirect(request: Request):
+    """Old Listings page -- now the Orders page's Listings tab (issue #255).
+    308 keeps the full query string (show_delisted, sold_only) for
+    bookmarks and old links."""
+    return _redirect_keeping_query(request, "/orders/listings")
+
+
+@app.get("/orders/listings")
+def orders_listings(request: Request, show_delisted: bool = False, sold_only: bool = False):
     db = get_db_session()
     try:
         overview = queries.listing_overview(db, include_delisted=show_delisted, sold_only=sold_only)
-        context = {"overview": overview, "show_delisted": show_delisted, "sold_only": sold_only}
-        is_htmx = bool(request.headers.get("HX-Request"))
-        template = "partials/listings_results.html" if is_htmx else "listings.html"
+        context = {
+            "tab": "listings",
+            "overview": overview,
+            "show_delisted": show_delisted,
+            "sold_only": sold_only,
+            # Tells "no listings at all" apart from "nothing matches these
+            # filters" in the empty state.
+            "has_any_listings": db.query(Listing.id).first() is not None,
+            "active_count": db.query(func.count(Listing.id)).filter(Listing.status == "active").scalar() or 0,
+        }
+        # Only the filter form's own hx-gets (which target #listings-results)
+        # get the bare fragment. Keying this on any HX-Request, as the old
+        # /listings did, would hand a fragment with no #main-content to any
+        # hx-select="#main-content" swap of this tab -- which then swaps in
+        # nothing (issue #255).
+        is_results_swap = request.headers.get("HX-Target") == "listings-results"
+        template = "partials/listings_results.html" if is_results_swap else "listings.html"
         return templates.TemplateResponse(request, template, context)
     finally:
         db.close()
@@ -1111,8 +1238,11 @@ def listings_delist(
         listing.status = "delisted"
         db.commit()
 
-        show_delisted_flag = show_delisted in ("true", "1", "on")
-        sold_only_flag = sold_only in ("true", "1", "on")
+        show_delisted_flag = _flag(show_delisted)
+        sold_only_flag = _flag(sold_only)
+        if not request.headers.get("HX-Request"):
+            # Plain form post (no htmx): back to the same filtered tab.
+            return RedirectResponse(_listings_url(show_delisted_flag, sold_only_flag), status_code=303)
         if not show_delisted_flag or sold_only_flag:
             # Default view excludes delisted listings, and "Sold only" now
             # excludes this (just-delisted) row either way -- an empty
@@ -1130,7 +1260,7 @@ def listings_delist(
 
 
 @app.post("/listings/{listing_id}/delete")
-def listings_delete(request: Request, listing_id: int):
+def listings_delete(request: Request, listing_id: int, show_delisted: str = Form(""), sold_only: str = Form("")):
     """Hard-deletes the `Listing` row itself (issue #126) -- distinct from
     delist above, which only flips status and keeps history. The client is
     required to confirm first (`hx-confirm` on the "Delete" button in
@@ -1150,6 +1280,8 @@ def listings_delete(request: Request, listing_id: int):
             raise HTTPException(status_code=404, detail="Listing not found")
         db.delete(listing)
         db.commit()
+        if not request.headers.get("HX-Request"):
+            return RedirectResponse(_listings_url(show_delisted, sold_only), status_code=303)
         # Row removed outright regardless of the "Show delisted" toggle --
         # unlike delist, there's no state where a deleted listing reappears.
         return HTMLResponse("")
@@ -1186,7 +1318,7 @@ def listing_edit_form(request: Request, listing_id: int):
     try:
         listing = db.query(Listing).options(selectinload(Listing.cards)).filter(Listing.id == listing_id).first()
         if listing is None:
-            return RedirectResponse("/listings", status_code=303)
+            return RedirectResponse("/orders/listings", status_code=303)
         context = _listing_edit_context(
             listing_id,
             listing.title,
@@ -1290,7 +1422,7 @@ def listing_edit_submit(
     try:
         listing = db.query(Listing).filter(Listing.id == listing_id).first()
         if listing is None:
-            return RedirectResponse("/listings", status_code=303)
+            return RedirectResponse("/orders/listings", status_code=303)
 
         unique_ids = list(dict.fromkeys(card_id))
         cards = db.query(Card).filter(Card.id.in_(unique_ids)).all() if unique_ids else []
@@ -1318,7 +1450,7 @@ def listing_edit_submit(
         listing.suggested_price = price
         listing.cards = cards
         db.commit()
-        return RedirectResponse("/listings", status_code=303)
+        return RedirectResponse("/orders/listings", status_code=303)
     finally:
         db.close()
 
@@ -1373,7 +1505,7 @@ def _mark_sold_rows(listing: Listing) -> list[dict]:
 
 
 @app.get("/listings/{listing_id}/mark-sold")
-def listing_mark_sold_form(request: Request, listing_id: int):
+def listing_mark_sold_form(request: Request, listing_id: int, show_delisted: bool = False, sold_only: bool = False):
     """Mark-sold form (issue #127) -- reuses the purchase-cart UI/route
     pattern (`/transactions/purchase/start` + `.../add-row`) rather than a
     single-click status flip: every card's real sale price must be
@@ -1387,7 +1519,7 @@ def listing_mark_sold_form(request: Request, listing_id: int):
             # No form to fill in for a missing listing, an already-sold one
             # (re-running mark-sold must be a no-op, not a second round of
             # Transactions -- see acceptance criteria), or an empty lot.
-            return RedirectResponse("/listings", status_code=303)
+            return RedirectResponse(_listings_url(show_delisted, sold_only), status_code=303)
         return templates.TemplateResponse(
             request,
             "listing_mark_sold.html",
@@ -1398,6 +1530,10 @@ def listing_mark_sold_form(request: Request, listing_id: int):
                 "error": None,
                 "fees": "",
                 "shipping": "",
+                # Cancel returns to the Listings tab as it was filtered (#255).
+                "show_delisted": show_delisted,
+                "sold_only": sold_only,
+                "cancel_url": _listings_url(show_delisted, sold_only),
             },
         )
     finally:
@@ -1414,6 +1550,8 @@ def listing_mark_sold_submit(
     price: list[str] = Form(default=[]),
     fees: str = Form(""),
     shipping: str = Form(""),
+    show_delisted: str = Form(""),
+    sold_only: str = Form(""),
 ):
     """Creates one `Transaction(type="sale", listing_id=<this listing>.id)`
     per card in the lot, all sharing one fresh `purchase_id` (same grouping
@@ -1438,7 +1576,7 @@ def listing_mark_sold_submit(
         if listing.status == "sold":
             # Re-running mark-sold on an already-sold listing is a no-op --
             # no duplicate Transactions (acceptance criteria).
-            return RedirectResponse("/listings", status_code=303)
+            return RedirectResponse(_listings_url(show_delisted, sold_only), status_code=303)
 
         def _rerender(error: str) -> HTMLResponse:
             return templates.TemplateResponse(
@@ -1451,6 +1589,9 @@ def listing_mark_sold_submit(
                     "error": error,
                     "fees": fees,
                     "shipping": shipping,
+                    "show_delisted": _flag(show_delisted),
+                    "sold_only": _flag(sold_only),
+                    "cancel_url": _listings_url(show_delisted, sold_only),
                 },
             )
 
@@ -1501,7 +1642,8 @@ def listing_mark_sold_submit(
             )
         listing.status = "sold"
         db.commit()
-        return RedirectResponse("/listings", status_code=303)
+        # Straight to the new sale order on the Sold tab, expanded (#255).
+        return RedirectResponse(f"{_order_url(new_purchase_id, 'sold')}#order-{new_purchase_id}", status_code=303)
     finally:
         db.close()
 
@@ -1733,7 +1875,17 @@ def _transactions_context(
     error: str | None = None,
     open_order: int | None = None,
     pick: str = "unordered",
+    tab: str = "purchased",
+    type_filter: str = "all",
 ) -> dict:
+    """Context for the Orders page's Purchased or Sold tab (issue #255).
+
+    Both tabs group every transaction the same way, then keep only the
+    orders (and ungrouped rows) whose `order_tab` is this tab -- the same
+    function every post-write redirect uses. The Purchased tab adds the KPI
+    header, the `?type=` pills and the card picker; the Sold tab gets its
+    own read-straight-off-the-rows summary instead (see `_sold_summary`).
+    """
     txs = (
         db.query(Transaction)
         .options(selectinload(Transaction.card))
@@ -1742,7 +1894,51 @@ def _transactions_context(
     )
     txs = _sorted_rows(txs, tsort, tdir, TRANSACTION_SORT_KEYS)
     trade_prices_then = queries.trade_prices_at(db, [t for t in txs if t.type == "trade"])
-    purchase_groups, ungrouped_transactions = _group_transactions_by_purchase(txs, trade_prices_then)
+    all_groups, all_ungrouped = _group_transactions_by_purchase(txs, trade_prices_then)
+    purchase_groups = [g for g in all_groups if order_tab(t.type for t in g["transactions"]) == tab]
+    ungrouped_transactions = [t for t in all_ungrouped if order_tab([t.type]) == tab]
+    page_path = _order_url(None, tab)
+    base = {
+        "tab": tab,
+        "page_path": page_path,
+        "error": error,
+        "today": dt.date.today().isoformat(),
+        "tsort": tsort,
+        "tdir": tdir,
+        "open_order": open_order,
+        # Every order's tab, for links that point at an order from elsewhere
+        # on the page (the card picker's Order column).
+        "order_tab_by_id": {
+            g["purchase_id"]: order_tab(t.type for t in g["transactions"]) for g in all_groups
+        },
+        # Each purchase row's share of its order's shipping -- shown under
+        # the row's price, since it's part of what the card really cost.
+        "shipping_by_tx": queries.shipping_shares(txs),
+    }
+
+    if tab == "sold":
+        return {
+            **base,
+            "purchase_groups": purchase_groups,
+            "ungrouped_transactions": ungrouped_transactions,
+            "sold": _sold_summary(purchase_groups, ungrouped_transactions, base["shipping_by_tx"]),
+        }
+
+    # Purchased tab: the ?type= pills. Counted over this tab's orders before
+    # filtering, so each pill says how many orders it would show.
+    type_filter = type_filter if type_filter in ORDER_TYPE_FILTERS else "all"
+    type_counts = {key: 0 for key in ORDER_TYPE_FILTERS}
+    type_counts["all"] = len(purchase_groups)
+    for g in purchase_groups:
+        type_counts[order_kind(t.type for t in g["transactions"])] += 1
+    # The card picker's "Adding to" list: every Purchased-tab order, whatever
+    # the pills show -- never a sale order (add-existing-cards writes
+    # purchase rows, see add_cards_to_existing_order's guard).
+    picker_orders = list(purchase_groups)
+    if type_filter != "all":
+        purchase_groups = [g for g in purchase_groups if order_kind(t.type for t in g["transactions"]) == type_filter]
+        ungrouped_transactions = [t for t in ungrouped_transactions if t.type == type_filter]
+
     known_cards, unknown_cards = _cards_with_known_added_date(db)
     purchase_prices_by_card = _registered_purchase_prices_by_card(txs)
     card_keys = _card_field_sort_keys(purchase_prices_by_card)
@@ -1795,7 +1991,7 @@ def _transactions_context(
     # Compact economic snapshot, folded in from the former standalone
     # Analyse page -- cheap enough (in-memory sums over already-fetched
     # rows) to compute on every load, unlike the value-growth/cash-flow
-    # charts below it, which are lazy-loaded via /transactions/charts
+    # charts below it, which are lazy-loaded via /orders/charts
     # instead so they aren't rebuilt on every column-sort click.
     economic = queries.economic_summary(db)
     cards = queries.all_cards_with_collections(db)
@@ -1815,6 +2011,10 @@ def _transactions_context(
     }
 
     return {
+        **base,
+        "type_filter": type_filter,
+        "type_counts": type_counts,
+        "picker_orders": picker_orders,
         "transactions": txs,
         "headline": headline,
         # No "top_cards" here on purpose: kpi_module.html only renders its
@@ -1827,19 +2027,11 @@ def _transactions_context(
         "kpi": kpi,
         "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
         "purchase_groups": purchase_groups,
-        # Each purchase row's share of its order's shipping -- shown under
-        # the row's price, since it's part of what the card really cost.
-        "shipping_by_tx": queries.shipping_shares(txs),
         "ungrouped_transactions": ungrouped_transactions,
-        "error": error,
-        "today": dt.date.today().isoformat(),
-        "tsort": tsort,
-        "tdir": tdir,
         "gsort": gsort,
         "gdir": gdir,
         "usort": usort,
         "udir": udir,
-        "open_order": open_order,
         # known_cards/unknown_cards/known_count are gone with the two
         # tables that rendered them -- both are now `picker_cards` under a
         # `pick` filter.
@@ -1858,8 +2050,70 @@ def _transactions_context(
     }
 
 
+# Purchased tab's ?type= pills: key -> label. An order's key is its
+# `order_kind`; anything not in here (a typo, an old link) means "all".
+ORDER_TYPE_FILTERS = {"all": "All", "purchase": "Purchases", "trade": "Trades", "ripped": "Ripped"}
+
+
+def order_kind(types) -> str:
+    """Which Purchased-tab pill an order falls under: "trade" if it has any
+    trade row (trade orders are what the trade summary is for), "ripped" if
+    it's nothing but ripped rows, otherwise "purchase" -- including an order
+    mixing purchases with ripped or sale rows. Exactly one kind per order,
+    so the pill counts add up to All.
+    """
+    types = set(types)
+    if "trade" in types:
+        return "trade"
+    if types == {"ripped"}:
+        return "ripped"
+    return "purchase"
+
+
+def _sold_summary(groups: list[dict], ungrouped: list[Transaction], shipping_by_tx: dict[int, float]) -> dict:
+    """The Sold tab's header -- only figures read straight off the sale rows,
+    deliberately no gain (that's #256's realized gain; Paper gain would jump
+    on Mark sold until the next Dex sync lowers qty, which reads as realized
+    profit on a tab called Sold). Net received is each row's
+    `queries.net_proceeds` (price - fees - its share of seller-paid
+    shipping, issue #254) -- the same figure Net invested subtracts."""
+    rows = [t for g in groups for t in g["transactions"]] + list(ungrouped)
+    sold_for = sum(t.price for t in rows)
+    net_received = sum(queries.net_proceeds(t, shipping_by_tx) for t in rows)
+    return {
+        "sold_for": sold_for,
+        "fees_and_shipping": sold_for - net_received,
+        "net_received": net_received,
+        # One sale = one order, or one individually registered row.
+        "sales": len(groups) + len(ungrouped),
+        "cards": len(rows),
+    }
+
+
+def _render_orders(request: Request, db: Session, tab: str = "purchased", **kwargs):
+    """Render the Purchased or Sold tab -- also used by the POST routes that
+    re-render a tab with an error message."""
+    tsort = kwargs.pop("tsort", "date")
+    tdir = kwargs.pop("tdir", "desc")
+    return templates.TemplateResponse(
+        request, "orders.html", _transactions_context(db, request, tsort, tdir, tab=tab, **kwargs)
+    )
+
+
 @app.get("/transactions")
-def list_transactions(
+def transactions_redirect(request: Request):
+    """Old Transactions page -- now the Orders page's Purchased tab (#255).
+    308 with the full query string, so ?open_order=N deep links survive."""
+    return _redirect_keeping_query(request, "/orders/purchased")
+
+
+@app.get("/orders")
+def orders_index(request: Request):
+    return _redirect_keeping_query(request, "/orders/purchased")
+
+
+@app.get("/orders/purchased")
+def orders_purchased(
     request: Request,
     tsort: str = "date",
     tdir: str = "desc",
@@ -1869,16 +2123,23 @@ def list_transactions(
     udir: str = "asc",
     open_order: int | None = None,
     pick: str = "unordered",
+    type: str = "all",
 ):
     db = get_db_session()
     try:
-        return templates.TemplateResponse(
-            request,
-            "transactions.html",
-            _transactions_context(
-                db, request, tsort, tdir, gsort, gdir, usort, udir, open_order=open_order, pick=pick
-            ),
+        return _render_orders(
+            request, db, "purchased", tsort=tsort, tdir=tdir, gsort=gsort, gdir=gdir, usort=usort, udir=udir,
+            open_order=open_order, pick=pick, type_filter=type,
         )
+    finally:
+        db.close()
+
+
+@app.get("/orders/sold")
+def orders_sold(request: Request, tsort: str = "date", tdir: str = "desc", open_order: int | None = None):
+    db = get_db_session()
+    try:
+        return _render_orders(request, db, "sold", tsort=tsort, tdir=tdir, open_order=open_order)
     finally:
         db.close()
 
@@ -1995,19 +2256,26 @@ def add_cards_to_existing_order(request: Request, card_id: list[int] = Form(defa
     db = get_db_session()
     try:
         cards = db.query(Card).filter(Card.id.in_(card_id)).all() if card_id else []
-        order_exists = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).first() is not None
-        if not cards or not order_exists:
+        target_tab = _order_tab_for(db, purchase_id)
+        error = None
+        if not cards:
+            error = "Select at least one card first."
+        elif target_tab is None:
+            error = f"Order #{purchase_id} doesn't exist yet -- pick an existing Order ID from History above."
+        elif target_tab == "sold":
+            # This route writes type="purchase" rows, so adding to a sale
+            # order would silently turn it into a mixed purchase/sale order
+            # (and move it off the Sold tab). The picker only offers
+            # Purchased-tab orders; this guards a stale page or crafted post.
             error = (
-                "Select at least one card first."
-                if not cards
-                else f"Order #{purchase_id} doesn't exist yet -- pick an existing Order ID from History above."
+                f"Order #{purchase_id} is a sale order -- cards can't be added to it from the card list, "
+                "which records purchases. Use that order's Edit order on the Sold tab instead."
             )
-            return templates.TemplateResponse(
-                request, "transactions.html", _transactions_context(db, request, "date", "desc", error=error)
-            )
+        if error:
+            return _render_orders(request, db, "purchased", error=error)
         for card in cards:
             _create_default_purchase_transaction(db, purchase_id, card.id)
-        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
+        return _order_redirect(request, db, purchase_id)
     finally:
         db.close()
 
@@ -2037,12 +2305,9 @@ def create_purchase(
     db = get_db_session()
     try:
         if len(card_id) != len(price) or not card_id:
-            return templates.TemplateResponse(
-                request,
-                "transactions.html",
-                _transactions_context(
-                    db, request, "date", "desc", error="No cards added to the order yet — search for at least one card first."
-                ),
+            return _render_orders(
+                request, db, order_tab([type]),
+                error="No cards added to the order yet — search for at least one card first.",
             )
         tx_date = dt.date.fromisoformat(date)
         prices = [_price_for(type, p) for p in price]
@@ -2068,14 +2333,16 @@ def create_purchase(
         # as set_purchase_total below -- htmx swaps in just the newly
         # registered order's <details> (open, per open_order) instead of
         # navigating the whole page, so any other expanded groups / sort
-        # state on Transactions survive registering an order.
-        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
+        # state on Transactions survive registering an order. Lands on the
+        # order's own Orders tab (HX-Redirect if that's not the current one).
+        return _order_redirect(request, db, purchase_id)
     finally:
         db.close()
 
 
 @app.post("/transactions/purchase/{purchase_id}/total")
 def set_purchase_total(
+    request: Request,
     purchase_id: int,
     purchase_total: float | None = Form(None),
     purchase_shipping: float | None = Form(None),
@@ -2110,7 +2377,9 @@ def set_purchase_total(
             values["platform"] = platform.strip()
         db.query(Transaction).filter(Transaction.purchase_id == purchase_id).update(values)
         db.commit()
-        return RedirectResponse(f"/transactions?open_order={purchase_id}", status_code=303)
+        # The form swaps hx-select="#order-N" out of the redirect target, so
+        # the target must be the tab that order is actually listed on.
+        return _order_redirect(request, db, purchase_id)
     finally:
         db.close()
 
@@ -2133,7 +2402,10 @@ def purchase_edit_form(request: Request, purchase_id: int, saved: bool = False):
             .all()
         )
         if not txs:
-            return RedirectResponse("/transactions", status_code=303)
+            return RedirectResponse("/orders/purchased", status_code=303)
+        # Back/links go to the tab this order is on *now* -- after a save
+        # that retyped every row, that may not be the tab it came from.
+        tab = order_tab(t.type for t in txs)
         purchase_total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
         purchase_shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None)
         # No Total saved yet -- default the field to shipping + the
@@ -2155,6 +2427,9 @@ def purchase_edit_form(request: Request, purchase_id: int, saved: bool = False):
                 "purchase_shipping": purchase_shipping,
                 "next_purchase_id": _next_purchase_id(db),
                 "saved": saved,
+                "order_tab": tab,
+                "order_tab_label": ORDER_TABS[tab],
+                "back_url": _order_url(purchase_id, tab),
             },
         )
     finally:
@@ -2304,8 +2579,13 @@ def update_purchase(
         # Stay on the edit page (with a "Saved" confirmation and a Back
         # button) so the user can check the result or keep editing -- unless
         # every row was moved out/deleted, leaving nothing here to show.
+        # Nothing left: back to the tab the page is on (or Purchased).
         remaining = db.query(Transaction).filter(Transaction.purchase_id == purchase_id).count()
-        target = f"/transactions/purchase/{purchase_id}/edit?saved=1" if remaining else "/transactions"
+        target = (
+            f"/transactions/purchase/{purchase_id}/edit?saved=1"
+            if remaining
+            else _order_url(None, _current_orders_tab(request) or "purchased")
+        )
         return RedirectResponse(target, status_code=303)
     finally:
         db.close()
@@ -2327,12 +2607,8 @@ def create_transaction(
     try:
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
-            return templates.TemplateResponse(
-                request,
-                "transactions.html",
-                _transactions_context(
-                    db, request, "date", "desc", error="Card not found — pick one from the search results."
-                ),
+            return _render_orders(
+                request, db, order_tab([type]), error="Card not found — pick one from the search results."
             )
 
         # `upsert`: correct the one existing "purchase" for this card instead
@@ -2366,7 +2642,9 @@ def create_transaction(
             )
             db.add(tx)
         db.commit()
-        return RedirectResponse("/transactions", status_code=303)
+        if purchase_id is not None:
+            return _order_redirect(request, db, purchase_id)
+        return RedirectResponse(_order_url(None, order_tab([type])), status_code=303)
     finally:
         db.close()
 
@@ -2430,7 +2708,23 @@ def update_transaction(
         tx.purchase_id = purchase_id
         db.commit()
         db.refresh(tx)
-        return templates.TemplateResponse(request, "partials/tx_row_view.html", {"tx": tx})
+        # The row is swapped in place, so a type/Order ID edit that moves it
+        # (or its whole order) to the other tab would leave it on the wrong
+        # one until reload. Say so in the row rather than reshuffling the
+        # page under the user (issue #255).
+        new_tab = _order_tab_for(db, tx.purchase_id) or order_tab([tx.type])
+        current_tab = _current_orders_tab(request)
+        moved_to = new_tab if current_tab in ("purchased", "sold") and new_tab != current_tab else None
+        return templates.TemplateResponse(
+            request,
+            "partials/tx_row_view.html",
+            {
+                "tx": tx,
+                "moved_to": moved_to,
+                "moved_to_url": _order_url(tx.purchase_id, new_tab) if moved_to else None,
+                "moved_to_label": ORDER_TABS.get(new_tab),
+            },
+        )
     finally:
         db.close()
 
@@ -2829,20 +3123,26 @@ def cron_set_sync(request: Request, secret: str = ""):
 
 
 # --------------------------------------------------------------------------
-# Transactions charts -- the former standalone Analyse page's value-growth
-# and cash-flow charts, now a collapsible section on Transactions
-# (folded in since the two were always read together). Its own endpoint,
-# fetched lazily via hx-get on first expand, so the two SVG charts aren't
-# rebuilt on every /transactions page load or column-sort click while
-# collapsed -- see transactions.html's "Vis grafer" <details>.
+# Orders charts -- the former standalone Analyse page's value-growth and
+# cash-flow charts, now a collapsible "View charts" section on the Orders
+# page's Purchased tab (folded in since the two were always read together).
+# Its own endpoint, fetched lazily via hx-get on first expand, so the charts
+# aren't rebuilt on every page load or column-sort click while collapsed --
+# see orders.html's "View charts" <details>. Was /transactions/charts before
+# issue #255, which now 308s here.
 # --------------------------------------------------------------------------
 @app.get("/analyse")
 def analyse_redirect():
-    return RedirectResponse("/transactions", status_code=308)
+    return RedirectResponse("/orders/purchased", status_code=308)
 
 
 @app.get("/transactions/charts")
-def transactions_charts(request: Request, metric: str = "total", period: str = "all"):
+def transactions_charts_redirect(request: Request):
+    return _redirect_keeping_query(request, "/orders/charts")
+
+
+@app.get("/orders/charts")
+def orders_charts(request: Request, metric: str = "total", period: str = "all"):
     if metric not in queries.VALUE_GROWTH_METRICS:
         metric = "total"
     if period not in queries.VALUE_HISTORY_PERIODS:
@@ -2859,7 +3159,7 @@ def transactions_charts(request: Request, metric: str = "total", period: str = "
             "partials/transactions_charts.html",
             {
                 **_market_value_context(
-                    request, db, headline, economic, txs, metric, period, path="/transactions/charts"
+                    request, db, headline, economic, txs, metric, period, path="/orders/charts"
                 ),
                 "cash_flow": cash_flow,
             },

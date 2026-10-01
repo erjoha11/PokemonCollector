@@ -72,6 +72,46 @@ nav a {
 nav a:hover { background: var(--accent-wash); color: var(--ink); }
 nav a.active { color: var(--accent); background: var(--accent-wash); }
 
+/* Orders page tab strip (partials/orders_tabs.html, issue #255). Overrides
+   the site nav rules above, which match any <nav>. The active tab is shown
+   by weight + a bottom border, not colour alone. */
+nav.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0;
+  margin: 0 0 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+nav.tabs a {
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  padding: 0.5rem 0.9rem;
+  font-weight: 500;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+}
+nav.tabs a.active {
+  background: none;
+  color: var(--ink);
+  font-weight: 700;
+  border-bottom-color: var(--accent);
+}
+.tab-subtitle { margin: 0 0 1rem; font-size: 0.85rem; }
+.sold-caveat { margin: 0.2rem 0 0; font-size: 0.82rem; }
+.orders-tab-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
+/* A link styled as the primary button (e.g. "Sell on finn.no" on the Sold
+   and Listings tabs) -- same look as `button` below. */
+a.button {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+a.button:hover { filter: brightness(0.92); }
+
 h1 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -1403,6 +1443,19 @@ button.secondary {
   align-items: center;
   gap: 0.5rem 1rem;
   padding: 0.55rem 0.9rem 0.55rem 1.9rem;
+}
+
+/* Sold tab: no Gain column (realized gain is #256) -- the same columns
+   minus that one, header and summaries alike. */
+.orders-list-sold .orders-row {
+  grid-template-columns:
+    minmax(4.5rem, 0.7fr)   /* Order #   */
+    minmax(6rem, 1fr)       /* Date      */
+    minmax(3rem, 0.5fr)     /* Qty       */
+    minmax(6rem, 1fr)       /* Value     */
+    minmax(6rem, 1fr)       /* Shipping  */
+    minmax(7rem, 1fr)       /* Total     */
+    minmax(6rem, 1fr);      /* Platform  */
 }
 
 .orders-head {

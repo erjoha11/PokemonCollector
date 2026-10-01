@@ -45,7 +45,7 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
    `listing_ids` is one value of queries.active_listings_by_card (newest
    first); links to the newest listing's card on /listings, with a count
    when the card is in several. Renders nothing for an empty/None value. #}
-{% macro listed_badge(listing_ids) %}{% if listing_ids %}<a href="/listings#listing-{{ listing_ids[0] }}" class="tx-badge tx-badge-buy listed-badge" title="In {{ listing_ids | length }} active listing{{ '' if listing_ids | length == 1 else 's' }} -- open the newest">Listed{% if listing_ids | length > 1 %} &times;{{ listing_ids | length }}{% endif %}</a>{% endif %}{% endmacro %}
+{% macro listed_badge(listing_ids) %}{% if listing_ids %}<a href="/orders/listings#listing-{{ listing_ids[0] }}" class="tx-badge tx-badge-buy listed-badge" title="In {{ listing_ids | length }} active listing{{ '' if listing_ids | length == 1 else 's' }} -- open the newest">Listed{% if listing_ids | length > 1 %} &times;{{ listing_ids | length }}{% endif %}</a>{% endif %}{% endmacro %}
 
 {% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 

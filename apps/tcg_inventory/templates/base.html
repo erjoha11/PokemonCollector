@@ -19,9 +19,11 @@
     <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
     <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' }}">Inventory</a>
     <a href="/collections" class="{{ 'active' if request.url.path.startswith('/collections') }}">Collections</a>
-    <a href="/transactions" class="{{ 'active' if request.url.path == '/transactions' }}">Transactions</a>
-    <a href="/sales" class="{{ 'active' if request.url.path == '/sales' }}">Sell on finn.no</a>
-    <a href="/listings" class="{{ 'active' if request.url.path == '/listings' }}">Listings</a>
+    {# One item for the whole Orders area (issue #255): its three tabs, plus
+       the pages reached from them -- the /sales ad builder, listing
+       edit/mark-sold, Edit order -- which no longer have a nav item of
+       their own and would otherwise light up nothing. #}
+    <a href="/orders/purchased" class="{{ 'active' if request.url.path.startswith(('/orders', '/sales', '/listings', '/transactions')) }}">Orders</a>
     <a href="/wiki" class="{{ 'active' if request.url.path == '/wiki' }}">Wiki</a>
     <a href="/releases" class="{{ 'active' if request.url.path == '/releases' }}">Activity Log</a>
     {% if auth_enabled() %}<a href="/logout" style="margin-left:auto;">Log out</a>{% endif %}

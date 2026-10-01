@@ -126,7 +126,7 @@ def test_inventory_shows_listed_badge_linked_to_listing(client):
 
     pika_row = _row(html, "Pikachu")
     assert "listed-badge" in pika_row
-    assert f'href="/listings#listing-{listing_id}"' in pika_row
+    assert f'href="/orders/listings#listing-{listing_id}"' in pika_row
     assert "listed-badge" not in _row(html, "Charizard")
 
 
@@ -137,7 +137,7 @@ def test_inventory_badge_links_newest_and_shows_count_for_multiple(client):
 
     pika_row = _row(client.get("/inventory").text, "Pikachu")
 
-    assert f'href="/listings#listing-{newest}"' in pika_row
+    assert f'href="/orders/listings#listing-{newest}"' in pika_row
     assert "&times;2" in pika_row
 
 
@@ -170,7 +170,7 @@ def test_sales_review_badge_and_warning_only_for_listed_card(client):
     assert 'id="already-listed-warning"' in html
     assert "1 of the selected cards" in html
     pika_row = _row(html, "Pikachu")
-    assert f'href="/listings#listing-{listing_id}"' in pika_row
+    assert f'href="/orders/listings#listing-{listing_id}"' in pika_row
     assert "Already in an active listing" in pika_row
     zard_row = _row(html, "Charizard")
     assert "listed-badge" not in zard_row

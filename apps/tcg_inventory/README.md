@@ -29,7 +29,7 @@ run).
   (with completion, see below), most valuable cards (scrollable list), by
   rarity.
 - **Overview KPI band** — a full-width card at the top of the KPI row on
-  Dashboard, Inventory and Transactions, ordered by what a collector wants
+  Dashboard, Inventory and the Orders page's Purchased tab, ordered by what a collector wants
   to know first:
   1. **Market Value** (widest): the duplicate-inclusive total as the hero,
      with Gain / loss (`queries.gain_summary`, kr and %, colored by sign) as
@@ -85,7 +85,66 @@ run).
   checked (`?unowned=1`) — the search used to add a card to a sales listing
   (`/pokemon/search`) is a separate query and is unaffected, since re-buying
   a previously-traded-away card there is the intended path.
-- **Transactions** (`/transactions`) — laid out as **Order history first**,
+- **Orders** (`/orders/purchased`, `/orders/sold`, `/orders/listings`;
+  issue #255) — one nav item ("Orders") for what used to be three
+  (Transactions, Sell on finn.no, Listings). One h1 and a tab strip
+  (`partials/orders_tabs.html`: `<nav class="tabs" aria-label="Orders">`,
+  plain links so the in-progress-cart `beforeunload` guard fires, active
+  tab `aria-current="page"`, inside `#main-content` so swaps keep it). The
+  nav item is also active on the pages reached from the tabs (`/sales`,
+  `/listings/{id}/edit`, `/listings/{id}/mark-sold`,
+  `/transactions/purchase/{id}/edit`).
+
+  **Which tab an order is on** is decided by one function,
+  `app.order_tab`: **Sold** only if *every* row is a `sale`, otherwise
+  **Purchased** — mixed orders included, so nothing ever drops off both
+  tabs. An individually registered row follows the same rule by its own
+  type. The tab lists and every post-write redirect (total/shipping form,
+  cart Register, add-existing-cards, Edit order, `POST /transactions`,
+  mark-sold) use it via `_order_redirect`, which lands on
+  `/orders/<tab>?open_order=N`; when an htmx write comes from a different
+  tab than the order now lives on (`HX-Current-URL`), it answers
+  `HX-Redirect` instead of swapping Sold content into a Purchased URL. A
+  single-row edit (`POST /transactions/{id}`) that moves a row to the
+  other tab says "Moved to Sold/Purchased" in the row.
+
+  **Old URLs** 308 to the tabs with the full query string:
+  `/transactions` → `/orders/purchased` (`?open_order=N` survives),
+  `/listings` → `/orders/listings` (`show_delisted`/`sold_only` survive),
+  `/transactions/charts` → `/orders/charts`, `/analyse` and `/orders` →
+  `/orders/purchased`. The write routes (`/transactions/purchase/...`,
+  `/transactions/{id}`, `/listings/{id}/...`) keep their paths.
+
+  - **Purchased** — purchases, trades and ripped packs: the KPI band, the
+    Net invested ("paid minus sales received") / Paper gain caption, the
+    order list (its per-order Gain column is labelled **Paper gain**),
+    individually registered rows, the card picker (its "Adding to" list
+    offers only Purchased-tab orders) and "View charts". `?type=` pills
+    (All · Purchases · Trades · Ripped, each with its order count; an
+    order with any trade row is a trade, all-ripped is ripped, anything
+    else a purchase — `app.order_kind`); an unknown value means All. The
+    "+ New Order" cart offers Purchase (default), Trade and Ripped — no
+    Sale.
+  - **Sold** — sale orders only. Header: Sold for · Fees & shipping ·
+    Net received (`queries.net_proceeds`, #254: price − fees − seller-paid
+    shipping share) · N sales / N cards, plus "Card
+    quantities update at the next Dex sync." No gain figure and no
+    Gain column until #256 (realized gain) — Paper gain would jump right
+    after Mark sold, since net invested already subtracts the proceeds
+    while qty only drops at the next sync. "Sell on finn.no" (link to
+    `/sales`) and "+ Record sale without listing" (the cart with
+    `?type=sale`: hidden type input, no "Show cards without an order") for
+    in-person/other-platform sales. A sale order's Total field is the
+    amount received. The "Individually registered" section is hidden when
+    empty.
+  - **Listings** — see "Listings" below; no money header, a "Sell on
+    finn.no" button and an "N active" count.
+
+  The cart + card picker JS lives in `static/orders-cart.js` (shared by
+  both order tabs; reads the cart type with `form.elements.type`, which
+  works for the Purchased select and the Sold hidden input alike).
+
+- **Orders → Purchased** (`/orders/purchased`, was `/transactions`) — laid out as **Order history first**,
   then individually-registered rows, then one card picker, then a
   collapsible "View charts" section with the value-growth and cash-flow
   charts (formerly the standalone Analyse page).
@@ -93,7 +152,7 @@ run).
   **Order history** is the page's primary content, directly under the KPI
   cards: one row per order with the numbers that describe the deal — Order
   #, Date, Qty, Value (sum of recorded per-card prices, trades excluded),
-  Shipping, Total, Gain, Platform. **Total** is the amount paid for
+  Shipping, Total, Paper gain, Platform. **Total** is the amount paid for
   the whole order (`purchase_total`, stored on every row of the order).
   When none has been typed/saved, the column shows the automatic
   `Value + Shipping` (`auto_total` from `_group_transactions_by_purchase`),
@@ -115,9 +174,10 @@ run).
   treated as still held (`queries.held_acquisition_ids`, disposals assumed
   oldest-first), so a copy sold or traded away contributes no value and
   its order shows its cost as a loss. A trade order adds the expanded
-  order's "Trade gain" (got − gave + cash, today's prices). A sale order —
-  or one mixing sale and purchase rows — shows "—", as does an order
-  where none of the held cards has a market price; when only some lack
+  order's "Trade gain" (got − gave + cash, today's prices). An order
+  mixing sale and purchase rows (listed on Purchased) shows "—", as does an
+  order where none of the held cards has a market price; all-sale orders
+  are on the Sold tab, which has no gain column; when only some lack
   one they count as 0 and the figure gets a "*" with a tooltip. Gains
   don't sum exactly to the headline Paper gain/loss, which also counts
   copies with no order row (individually registered cards, qty beyond the
@@ -298,9 +358,12 @@ run).
   finn.no title + description (Norwegian ad copy — see "Sales listings"
   below). "Mark as listed" records the ad but never changes `qty`; a real
   sale is only ever recorded once the resulting `Listing` is marked sold
-  from `/listings` (see below), which is the only listing action that
-  writes `Transaction` rows.
-- **Listings** (`/listings`) — overview of every recorded `Listing`: its
+  from the Listings tab (see below), which is the only listing action that
+  writes `Transaction` rows. Reached from the Orders page's "Sell on
+  finn.no" buttons, which carry no selection of their own: if Inventory's
+  selection is still in sessionStorage (`tcg-sale-list`), `/sales` offers
+  a "Continue with the N cards selected on Inventory" link.
+- **Listings** (`/orders/listings`, was `/listings`) — overview of every recorded `Listing`: its
   card(s), status (active/delisted/sold), and prices side by side per card
   so a listing's margin is visible at a glance — cost
   (`queries.net_invested_by_card`, same figure used everywhere else),
@@ -315,6 +378,13 @@ run).
   excludes delisted listings by default, with a "Show delisted" toggle to
   reveal them, and a separate "Sold only" toggle to narrow to just sold
   listings. Delisting never changes `qty`/`card_collections`/`binder_id`.
+  Only a request with `HX-Target: listings-results` (the filter form's own
+  hx-gets) gets the bare results fragment — any other request, htmx or
+  not, gets the full tab, so an `hx-select="#main-content"` swap of it
+  works. Empty states tell "no listings yet" from "nothing matches these
+  filters". Mark sold lands on `/orders/sold?open_order=N#order-N`; its
+  Cancel (and edit/delist/delete without htmx) return to the Listings tab
+  with `show_delisted`/`sold_only` kept.
 - **Activity Log** (`/releases`, merged with the former standalone Sync
   Log page, issue #159) — two stacked sections: **Sync Log** first (a
   read-only history of past syncs — daily cron or a manual Dropbox sync;
@@ -592,7 +662,7 @@ without updating both the code and this doc.
 
    A card in an `"active"` listing shows a **Listed** badge after its name
    on Inventory and `/sales`, linking to the newest such listing on
-   `/listings` ("Listed ×N" if it's in several); delisted and sold listings
+   the Listings tab (`/orders/listings`) ("Listed ×N" if it's in several); delisted and sold listings
    don't count. `/sales` also warns, above the review table and again next
    to "Mark as listed", when selected cards are already in an active
    listing — a warning only, listing a card twice is still allowed. The

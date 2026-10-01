@@ -39,7 +39,7 @@ def test_header_shows_gain_after_total_and_no_remaining(client):
     _add(_tx(ids["a"], 1, 30))
     text = client.get("/transactions").text
     head = text.split('class="orders-row orders-head"', 1)[1].split("</div>", 1)[0]
-    assert '<span class="oc-total num">Total</span>\n      <span class="oc-gain num">Gain</span>' in head
+    assert '<span class="oc-total num">Total</span>\n      <span class="oc-gain num">Paper gain</span>' in head
     assert "Remaining" not in head
     assert "oc-remaining" not in order_summary(text, 1)
 
@@ -97,12 +97,16 @@ def test_partially_priced_order_counts_unpriced_as_zero_and_flags_it(client):
     assert "1 card without a market price counted as 0." in order_summary(text, 4)
 
 
-def test_sale_order_shows_a_dash(client):
+def test_sale_order_has_no_gain_column_on_the_sold_tab(client):
+    # Issue #255: a sale order lives on the Sold tab, which leaves the
+    # Paper gain column out entirely (realized gain is #256) instead of a
+    # column of dashes -- and it's no longer listed on Purchased at all.
     ids = _seed(client, [{"id": "a", "price": "100", "qty": 0}])
     _add(_tx(ids["a"], 5, 80, type="sale"))
-    text = client.get("/transactions").text
-    assert summary_cell(text, 5, "gain") == "—"
-    assert "Sale order" in order_summary(text, 5)
+    sold = client.get("/orders/sold").text
+    assert 'id="order-5"' in sold
+    assert "oc-gain" not in sold
+    assert 'id="order-5"' not in client.get("/orders/purchased").text
 
 
 def test_copy_no_longer_owned_contributes_no_value(client):

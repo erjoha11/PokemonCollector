@@ -1,2 +1,2 @@
 {% from "partials/tx_row.html" import tx_row %}
-{{ tx_row(tx) }}
+{{ tx_row(tx, moved={"label": moved_to_label, "url": moved_to_url} if moved_to else None) }}
