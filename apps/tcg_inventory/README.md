@@ -64,8 +64,8 @@ run).
   sync/import, the same added date the Orders card picker's
   `?pick=recent` filter uses. Cards with no known added date (from before
   that column existed) are left out; ties break on id, newest first. Each
-  row shows a thumbnail (opens the card viewer), name (links to the card
-  page) and language, set · number · variant · added date, and today's
+  row shows a thumbnail and name (both open the card modal, see Card
+  page below) and language, set · number · variant · added date, and today's
   price. Switch with the arrows or the dots under the tile (dots are a
   tablist: arrow keys/Home/End move between them); there's no
   auto-rotation. The chosen slide is remembered per browser in
@@ -77,8 +77,53 @@ run).
   variant, language, prices, gain, every transaction (with order links) and
   its price history (`queries.card_price_history`, one point per snapshot
   day). Every card name in the app links here (`card_link` in
-  `partials/macros.html`); Dex is a link on this page, and the photo viewer
-  has a "Card details" button. Replaced name → Dex links (24.09.2026).
+  `partials/macros.html`); Dex is a link on this page. Replaced name → Dex
+  links (24.09.2026).
+  **Opens as an in-page modal** (issue #280): a plain left click on a card
+  name or photo anywhere in the app opens the card in one shared native
+  `<dialog id="card-modal">` (in `base.html`) instead of navigating, so
+  closing it (X, Esc, a backdrop click, Android Back) leaves the page
+  exactly as it was — scroll, filters, open rows, an in-progress edit or
+  picker selection. `/cards/{id}` stays a real full page: ctrl/cmd/shift/
+  middle-click, bookmarks, the modal header's "Open full page" link and
+  no-JS all go there. How it fits together:
+  - `partials/card_body.html` is the one body both shells render.
+    `card_detail.html` adds the breadcrumb/`<h1>`; `partials/card_panel.html`
+    (`GET /cards/{id}/panel`) adds the modal's sticky header (title,
+    set · variant · language, Open full page, close X). Both share
+    `app._card_detail_context`. A separate URL rather than `/cards/{id}`
+    varied on `HX-Request`, so the browser cache can never serve the
+    fragment as the full page.
+  - `static/card-modal.js` intercepts clicks on `[data-card-modal]` only —
+    added by the `card_link` macro and `card_view_attrs` (photos, which also
+    carry name/meta/price/image for an instant placeholder). It never
+    matches `a[href^="/cards/"]`, which would also catch
+    `/cards/{id}/delete-missing`, so **every card link must go through
+    `card_link`** (a test scans the templates for hand-written ones). It
+    fetches the panel (an `AbortController` drops a stale response),
+    inserts it and runs `htmx.process()`; 404 shows "This card no longer
+    exists", a network error/5xx "Could not load the card" with Open full
+    page, and an expired session (the fetch followed `auth_guard`'s 303 to
+    `/login`) navigates to `/cards/{id}` instead.
+  - No `pushState`/`hx-push-url`: htmx 1.9's popstate handler would re-swap
+    Inventory's own history snapshot and lose the page state. Android Back
+    closes the dialog via `cancel`; iOS edge-swipe still navigates (accepted).
+  - Chart.js is loaded lazily after `showModal()` on pages that don't load
+    it (the inline `initTcgChart` in `chart_card` is guarded); charts are
+    destroyed and the body emptied on close.
+  - The delete-missing form (see Sync status → Missing from Dex) works in
+    the modal; a successful delete sends `HX-Trigger: {"cardDeleted":
+    {"id": N}}` and the script removes that card's row from `/sync-status`
+    underneath. The panel's success message is "Card deleted." with Close.
+  - **The old `#card-viewer` photo lightbox is removed**
+    (`partials/card_viewer.html`, `static/card-viewer.js`): a photo click
+    opens the card modal, and on the card page itself (full page and modal)
+    the photo zooms in place (`data-card-zoom`), so there's never a dialog
+    inside a dialog.
+  - Layout: about `min(1000px, 100vw - 32px)` wide and scrolling inside the
+    dialog on desktop; a full-screen sheet at 560px and below with the photo
+    capped so the KPIs show; tables scroll horizontally; `info()` tooltips
+    open downward inside the modal.
 - **Collection gallery** (`/collections/{id}`) — reached from the collection
   links in Inventory and on the Card page (the `/collections` index page and
   its nav item were removed in #252; the Dashboard's Inventory table shows

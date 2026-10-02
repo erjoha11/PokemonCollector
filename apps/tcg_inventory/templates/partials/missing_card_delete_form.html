@@ -2,18 +2,21 @@
    ("Missing from Dex", return_to='sync-status') and on the card page
    (return_to='card'). A required checkbox is the confirmation -- no native
    confirm(). The server re-checks every rule (missing_cards.py). Expects
-   `c` (the Card) and `return_to`. #}
+   `c` (the Card) and `return_to`; `in_panel` inside the card modal. #}
 <details class="missing-card-delete">
   <summary>Delete…</summary>
   <form hx-post="/cards/{{ c.id }}/delete-missing"
         hx-target="{{ '#missing-cards' if return_to == 'sync-status' else '#card-delete-missing' }}"
         hx-swap="outerHTML">
     <input type="hidden" name="return_to" value="{{ return_to }}">
+    {% if in_panel %}<input type="hidden" name="in_panel" value="1">{% endif %}
     <label>
       <input type="checkbox" name="confirm" value="1" required>
       Permanently delete {{ c.name }}{% if c.variant %} ({{ c.variant }}){% endif %}, with its collection tags,
       value-history snapshots and prices. This can't be undone.
     </label>
     <button type="submit" class="secondary">Delete card</button>
+    {#- A failed request (5xx, network) shows here -- form-errors.js (#228). #}
+    <p class="warnings" role="alert" hidden data-form-error></p>
   </form>
 </details>

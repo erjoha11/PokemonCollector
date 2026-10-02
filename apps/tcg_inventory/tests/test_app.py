@@ -457,11 +457,13 @@ def test_dashboard_most_valuable_cards_is_a_ranked_list_with_photos(client):
     assert "top-card-item-bar" not in card  # no price bar (removed on request)
     # No sort pills (issue #245): the list is always market price, highest first.
     assert "tsort=" not in card and "viz-filter-pill" not in card
-    # The photo opens the card viewer (details + Dex links); names link to /cards/{id}.
-    assert card.count("data-card-view") == 1  # Charizard's photo; Pikachu has none
-    assert 'data-detail="/cards/' in card
-    assert card.count('href="/cards/') == 2
-    assert 'id="card-viewer"' in html and "/static/card-viewer.js" in html
+    # The photo and both names open the card modal (issue #280); names still
+    # link to /cards/{id} for modified clicks and no-JS.
+    assert card.count("data-card-modal") == 3  # Charizard's photo + two names
+    assert 'data-href="/cards/' in card
+    assert card.count('<a href="/cards/') == 2
+    assert 'id="card-modal"' in html and "/static/card-modal.js" in html
+    assert "card-viewer" not in html
 
 
 def test_dashboard_most_valuable_cards_show_gain_when_cost_is_registered(client):
@@ -1984,7 +1986,7 @@ def test_card_names_link_to_the_card_page_and_it_links_on_to_dex(client):
 
     for path in ("/inventory", "/"):
         html = client.get(path).text
-        assert f'<a href="/cards/{card_pk}">Dark Celebi</a>' in html
+        assert f'<a href="/cards/{card_pk}" data-card-modal>Dark Celebi</a>' in html
         assert 'href="https://app.dextcg.com/cards/ex5-4" target="_blank"' not in html
 
     detail = client.get(f"/cards/{card_pk}").text

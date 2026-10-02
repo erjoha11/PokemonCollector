@@ -53,6 +53,26 @@ yet.
 
 ### tcg_inventory
 
+**Card page opens as an in-page modal; photo lightbox removed (#280)**
+- A plain left click on a card name or photo (Inventory, Dashboard incl.
+  Price movers / Recently added / Best card, collection gallery, Orders
+  rows, Sync status "Missing from Dex", the purchase card picker) opens the
+  card in a native `<dialog>` over the page; closing it (X, Esc, backdrop,
+  Android Back) leaves the page as it was. Ctrl/cmd/shift/middle-click and
+  no-JS still open `/cards/{id}` as a full page.
+- New `GET /cards/{id}/panel` renders a sticky modal header plus the same
+  body as the full page (`partials/card_body.html`, shared context builder
+  `app._card_detail_context`). `static/card-modal.js` replaces
+  `card-viewer.js`; hook is `data-card-modal` on the `card_link` macro and
+  `card_view_attrs`, and every hand-written card link now uses the macro.
+- **The `#card-viewer` photo lightbox is removed** (`partials/card_viewer.html`,
+  `static/card-viewer.js`): photo clicks open the card modal, and on the card
+  page (full or modal) the photo zooms in place.
+- Chart.js is lazy-loaded inside the modal on pages that don't load it;
+  `chart_card`'s inline init is guarded. Delete-missing works inside the
+  modal (`HX-Trigger: cardDeleted` removes the row on `/sync-status`), and
+  its form gained the `data-form-error` slot.
+
 **Sync status: "Missing from Dex" list and guarded delete**
 - New section on `/sync-status` listing every card a Dex sync flagged
   missing (`flagged_missing_since` set): name, set, number, variant, qty,

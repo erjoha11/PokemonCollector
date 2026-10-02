@@ -4,8 +4,9 @@
    form posts to /cards/{id}/delete-missing, which re-renders this whole
    section (200 for every handled outcome -- htmx 1.9 drops 4xx) with
    `result` shown at the top. See missing_cards.py for the guard rules. #}
+{% from "partials/macros.html" import card_link %}
 <div class="card" id="missing-cards" tabindex="-1" style="margin-top: 1.5rem;">
-  <h2>Missing from Dex{% if missing %} <span class="muted">({{ missing | length }})</span>{% endif %}</h2>
+  <h2>Missing from Dex{% if missing %} <span class="muted">(<span data-missing-count>{{ missing | length }}</span>)</span>{% endif %}</h2>
   {% if result %}
   <p class="{{ 'saved-note' if result.ok else 'warnings' }}" role="{{ 'status' if result.ok else 'alert' }}">{{ result.message }}</p>
   {% endif %}
@@ -35,7 +36,7 @@
         {% for m in missing %}
         {% set c = m.card %}
         <tr id="missing-card-{{ c.id }}">
-          <td><a href="/cards/{{ c.id }}">{{ c.name }}</a></td>
+          <td>{{ card_link(c) }}</td>
           <td>{{ c.set or '–' }}</td>
           <td>{{ c.number or '–' }}</td>
           <td>{{ c.variant or '–' }}</td>

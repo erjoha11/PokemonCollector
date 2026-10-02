@@ -482,3 +482,95 @@ had its own inline `hx-on::response-error`.
 
 **Status:** Addressed in #228 (part a). Not yet checked by hand in a
 browser, only through route and template tests.
+
+## 2026-10-02 — Card page as modal (#280)
+
+**Reviewed:** the `ux` input to the architect's design for issue #280
+(open the card page as a window over the current page instead of
+navigating away), covering templates/card_detail.html, partials/macros.html
+(`card_link`, `card_view_attrs`, `chart_card`), partials/card_viewer.html +
+static/card-viewer.js, partials/kpi_module.html, collection.html,
+partials/missing_cards.html, partials/card_delete_missing.html,
+partials/missing_card_delete_form.html and base.html.
+
+**Findings:**
+- **Native `<dialog>` with progressive enhancement.** Use `showModal()`
+  (focus trap, Esc, inert page for free) and keep `/cards/{id}` a real full
+  page. Intercept only a plain left click (button 0, no ctrl/meta/shift/alt):
+  ctrl/cmd-click, shift-click and middle-click must still open the full page
+  in a new tab/window, and links must work with JS off.
+- **One body partial, a separate `/panel` URL.** The modal shows the full
+  card content from the same partial as the page, so the two can't drift.
+  Serve it at `/cards/{id}/panel`, not `/cards/{id}` varied on
+  `HX-Request`: same-URL variants risk the browser cache serving the
+  fragment as the full page (Back/restore showing an unstyled fragment).
+- **Hook on `card_link`, not a generic selector.** Add `data-card-modal`
+  in the macro and convert the hand-written card links (collection gallery,
+  price movers, best card, Missing from Dex, Recently added). A generic
+  `a[href^="/cards/"]` would also match `/cards/{id}/delete-missing`.
+- **Fold the photo lightbox into the modal.** Photo clicks open the same
+  detail modal (their data attributes paint the placeholder); on the card
+  page the photo zooms in place. Never a dialog inside a dialog.
+- **No `pushState`.** htmx 1.9.12's popstate handler restores its own
+  snapshot for any `htmx:true` history entry, and Inventory's filters push
+  those, so popping a modal entry would re-swap the page and lose exactly
+  the state the feature exists to keep. Android Back already fires `cancel`
+  on a modal dialog and closes it; the iOS edge-swipe gap (it navigates) is
+  accepted. An "Open full page" link covers sharing/bookmarking.
+- **Charts.** `chart_card`'s inline `initTcgChart(...)` throws on pages
+  without Chart.js: guard it. Lazy-load Chart.js once, *after*
+  `showModal()` (a hidden canvas measures 0 wide), and destroy charts and
+  empty the body on close so stale ids/instances don't linger.
+- **Stale responses.** Quick successive clicks: an `AbortController` must
+  cancel the previous request so card A's late response can't overwrite
+  card B.
+- **Backdrop close.** Close only when both mousedown and click land on the
+  backdrop: a scrollbar click or a text selection dragged out of the dialog
+  must not close it.
+- **Focus and structure.** Focus moves in on open and returns to the
+  triggering link on close (explicitly, Safari doesn't); `aria-labelledby`
+  on the `<h2>` title; page scroll locked while open; sticky header with
+  title, set/variant/language, Open full page and close X.
+- **Small screens and overflow.** At 560px and below a full-screen sheet
+  (`100dvh`, no radius) with the image capped so the KPIs are visible
+  without scrolling; the transactions table scrolls horizontally; `info()`
+  tooltips open downward inside the modal so they aren't clipped.
+- **Loading and error states.** Instant placeholder (photo data or the link
+  text) with `aria-busy`. 404: "This card no longer exists" + Close.
+  Network/5xx: "Could not load the card" + Open full page + Close. Expired
+  session: the fetch follows `auth_guard`'s 303 to `/login`; detect it and
+  navigate to `/cards/{id}` rather than showing the login form in the modal.
+- **Delete-missing inside the modal.** A successful delete sends
+  `HX-Trigger: cardDeleted` so the row underneath on `/sync-status`
+  disappears; the panel's message is "Card deleted." with Close. The delete
+  form lacked a `data-form-error` slot (a gap in the #228 convention), so a
+  failed delete was silent on both page and modal.
+
+**Status:** Addressed in this PR (#280). Built as described; the photo
+lightbox was removed (product decision noted in the PR — can be brought
+back on request). Verified through route/template tests only; the
+browser-only behaviour (focus return, backdrop/scrollbar handling, Android
+Back, chart sizing, mobile sheet) has not been checked by hand.
+
+## 2026-10-02 — Sync connector / aborted-sync override UX (#277/#275)
+
+**Reviewed:** `ux` guidance for the Dropbox sync connector and the
+override path when a manual sync aborts on its safety check (issues #275
+and #277), against the existing htmx 1.9.12 setup on `/sync-status`.
+
+**Findings:**
+- **htmx 1.9.12 drops 4xx responses**, so a handled outcome (sync done,
+  aborted by the safety check, nothing to do) must come back as a 200 with
+  the rendered state, not an error status — otherwise the button looks like
+  it did nothing. Add a timeout/network-error fallback message for the
+  cases that really fail.
+- **The safety-check override appears only right after a manual run
+  aborts**, in that run's result, never as a standing control on the page.
+- **Confirmation is a required-checkbox form, not `confirm()`**, the same
+  pattern as the Missing from Dex delete.
+- **The override posts `expected_missing`** (the count the user approved),
+  and the server refuses if the export now would flag more cards than that,
+  so a changed export between abort and override can't flag more cards than
+  were approved.
+
+**Status:** Open (design guidance for #275/#277, not yet built).
