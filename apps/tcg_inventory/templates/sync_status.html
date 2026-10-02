@@ -3,7 +3,7 @@
 {% block content %}
 <h1>Sync status</h1>
 <p class="muted">
-  When each background job last ran, and what happened. Read-only: nothing runs from this page.
+  When each background job last ran, and what happened. Nothing runs from this page; the only action here is deleting a card flagged missing from Dex.
   Times are UTC.
 </p>
 
@@ -44,6 +44,8 @@
   Price refresh, set sync, image backfill, empty-folder runs and aborted or failed syncs have only been
   recorded since 2026-10-01 (issue #264); older runs of those left no row.
 </p>
+
+{% include "partials/missing_cards.html" %}
 
 {% include "partials/import_log.html" %}
 {% endblock %}

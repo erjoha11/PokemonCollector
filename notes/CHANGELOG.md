@@ -53,6 +53,20 @@ yet.
 
 ### tcg_inventory
 
+**Sync status: "Missing from Dex" list and guarded delete**
+- New section on `/sync-status` listing every card a Dex sync flagged
+  missing (`flagged_missing_since` set): name, set, number, variant, qty,
+  flagged since, order-row and listing counts, link to the card page.
+  Before this the flag was only visible on the card page.
+- `POST /cards/{id}/delete-missing` (new `missing_cards.py`) deletes a card
+  only when the confirmation checkbox is ticked, the card is flagged
+  missing, and it has no transactions and no listings. Otherwise nothing
+  changes and a 200 explains why. The delete also removes the card's
+  collection tags, snapshots and prices. The same form appears on a
+  flagged card's page. Cards with order history are listed without a
+  delete action.
+- Behind the normal login. No schema change. Syncs still never delete (#225).
+
 **Orders → Sold: realized gain per sale and per sold order (#256)**
 - New `queries.realized_gains` (FIFO, computed at page load, never
   stored): each sale row's net proceeds minus the cost of the oldest

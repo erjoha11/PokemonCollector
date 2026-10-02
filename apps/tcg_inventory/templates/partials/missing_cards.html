@@ -1,0 +1,61 @@
+{# "Missing from Dex" on /sync-status: every card a Dex sync has flagged
+   missing (flagged_missing_since set). A sync never deletes a card (#225);
+   this is where a card registered in error is removed by hand. The delete
+   form posts to /cards/{id}/delete-missing, which re-renders this whole
+   section (200 for every handled outcome -- htmx 1.9 drops 4xx) with
+   `result` shown at the top. See missing_cards.py for the guard rules. #}
+<div class="card" id="missing-cards" tabindex="-1" style="margin-top: 1.5rem;">
+  <h2>Missing from Dex{% if missing %} <span class="muted">({{ missing | length }})</span>{% endif %}</h2>
+  {% if result %}
+  <p class="{{ 'saved-note' if result.ok else 'warnings' }}" role="{{ 'status' if result.ok else 'alert' }}">{{ result.message }}</p>
+  {% endif %}
+  {% if missing %}
+  <p class="muted">
+    Cards the last Dex syncs didn't find any more. A sync never deletes a card, so these still count in
+    every total until removed. Delete one only if it was registered in error: it is removed permanently
+    together with its collection tags, value-history snapshots and prices. Cards with order rows or
+    listings can't be deleted here &mdash; that would destroy their order history.
+  </p>
+  <div class="table-scroll">
+    <table class="missing-cards-table">
+      <thead>
+        <tr>
+          <th>Card</th>
+          <th>Set</th>
+          <th>Number</th>
+          <th>Variant</th>
+          <th class="num">Qty</th>
+          <th>Flagged since</th>
+          <th class="num">Order rows</th>
+          <th class="num">Listings</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in missing %}
+        {% set c = m.card %}
+        <tr id="missing-card-{{ c.id }}">
+          <td><a href="/cards/{{ c.id }}">{{ c.name }}</a></td>
+          <td>{{ c.set or '–' }}</td>
+          <td>{{ c.number or '–' }}</td>
+          <td>{{ c.variant or '–' }}</td>
+          <td class="num">{{ c.qty }}</td>
+          <td>{{ c.flagged_missing_since.strftime('%d.%m.%Y') }}</td>
+          <td class="num">{{ m.tx_count }}</td>
+          <td class="num">{{ m.listing_count }}</td>
+          <td class="missing-card-action">
+            {% if m.deletable %}
+            {% with return_to='sync-status' %}{% include "partials/missing_card_delete_form.html" %}{% endwith %}
+            {% else %}
+            <span class="muted">Can't delete: has {% if m.tx_count %}order rows{% endif %}{% if m.tx_count and m.listing_count %} and {% endif %}{% if m.listing_count %}listings{% endif %}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No cards are flagged missing from Dex.</p>
+  {% endif %}
+</div>
