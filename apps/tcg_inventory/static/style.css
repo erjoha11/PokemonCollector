@@ -1731,8 +1731,17 @@ html.card-modal-open { overflow: hidden; }
    centered under the slide -- prev arrow, one dot (tab) per slide, next
    arrow -- so they never fight the heading's (i) tooltip for space. */
 .kpi-carousel { display: flex; flex-direction: column; }
-.kpi-carousel-slide { flex: 1; }
+.kpi-carousel-stage { flex: 1; }
 .kpi-carousel-slide[hidden] { display: none; }
+/* Stable tile height (issue #283): once the script has taken over, every
+   slide sits in the same grid cell and the inactive one is only made
+   invisible (visibility also drops it from the tab order and the
+   accessibility tree), so the tile always takes the taller slide's height
+   and switching slides never makes the KPI row jump. Without JS the
+   second slide stays display:none, as before. */
+.kpi-carousel[data-carousel-ready] .kpi-carousel-stage { display: grid; }
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide { grid-area: 1 / 1; min-width: 0; }
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide[hidden] { display: block; visibility: hidden; }
 .kpi-carousel-nav {
   display: flex;
   align-items: center;
@@ -1797,6 +1806,32 @@ html.card-modal-open { overflow: hidden; }
 .recent-main { display: flex; flex-direction: column; min-width: 0; }
 .recent-meta { font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+/* The Recently added list (10 rows) scrolls inside the slide instead of
+   setting the tile's height (issue #283). `contain: size` stops its rows
+   from counting toward the slide's height, so the tile is as tall as
+   Price movers or its row neighbours need (min-height keeps ~3 rows on
+   show when Price movers is short or empty), and the list fills the rest
+   of the slide. Scroll shadows (the "local" backgrounds cover the
+   "scroll" ones at either end) show there's more above/below. Focusable
+   (tabindex) so it scrolls with the keyboard; overscroll-behavior keeps a
+   touch flick at the list's end from scrolling the page. Without JS the
+   slide is never shown, so none of this applies. */
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide[data-slide="recent"] { display: flex; flex-direction: column; }
+.recent-scroll {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  contain: size;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  border-radius: 2px;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 1.5rem no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 1.5rem no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.14), transparent) top / 100% 0.5rem no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.14), transparent) bottom / 100% 0.5rem no-repeat scroll;
+}
+.recent-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- Card detail page (/cards/{id}) ---- */
 .breadcrumb { margin: 0 0 0.25rem; font-size: 0.85rem; }

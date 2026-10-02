@@ -146,8 +146,13 @@
       added. Only the active slide shows; static/kpi-carousel.js wires up
       the tabs/arrows, remembers the choice in localStorage and unhides the
       controls. Without JS the controls and the second slide stay hidden,
-      so the tile is just Price movers, as before. #}
+      so the tile is just Price movers, as before.
+      Both slides sit in one grid cell of .kpi-carousel-stage (issue #283),
+      so the tile is always as tall as the taller slide and switching never
+      changes its height; the Recently added list scrolls inside a capped
+      region instead of making the tile grow. #}
   <div class="kpi-card kpi-top-cards kpi-movers kpi-carousel" data-kpi-carousel="dashboard-movers">
+    <div class="kpi-carousel-stage">
     <section class="kpi-carousel-slide" id="kpi-slide-movers" data-slide="movers" aria-labelledby="kpi-slide-movers-title">
       {% set pm = price_movers %}
       <h3 id="kpi-slide-movers-title">Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go. Unlike Above / below cost, the baseline is that snapshot, not what you paid. % is left out for changes under 10 kr.') }}</h3>
@@ -167,13 +172,16 @@
       <h3 id="kpi-slide-recent-title">Recently added {{ info('The ' ~ recently_added_limit ~ ' owned cards added to the collection most recently, newest first. The added date is when the card first came in from a Dex sync or import -- the same date as Recently added in the Orders card picker. Cards from before the app recorded that date have none and are left out. The price is today\'s market price per copy.') }}</h3>
       {% if recently_added %}
       <div class="kpi-caption muted">Newest first · date first imported</div>
-      <ul class="mover-list">
-        {% for card in recently_added %}{{ recent_row(card) }}{% endfor %}
-      </ul>
+      <div class="recent-scroll" tabindex="0" role="region" aria-label="Recently added cards (scrollable)">
+        <ul class="mover-list">
+          {% for card in recently_added %}{{ recent_row(card) }}{% endfor %}
+        </ul>
+      </div>
       {% else %}
       <div class="kpi-caption muted">No owned cards with a known added date yet.</div>
       {% endif %}
     </section>
+    </div>
     <div class="kpi-carousel-nav" hidden>
       <button type="button" class="kpi-carousel-arrow" data-carousel-step="-1" aria-label="Previous slide">&lsaquo;</button>
       <div class="kpi-carousel-tabs" role="tablist" aria-label="Price movers or recently added">

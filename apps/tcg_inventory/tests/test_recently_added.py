@@ -75,3 +75,31 @@ def test_dashboard_renders_price_movers_and_recently_added_slides(client):
 def test_dashboard_recently_added_empty_state(client):
     text = client.get("/").text
     assert "No owned cards with a known added date yet." in text
+
+
+def test_dashboard_recently_added_list_scrolls_in_a_focusable_region(client):
+    """Issue #283: both slides share one grid cell (.kpi-carousel-stage) so the
+    tile keeps its height, and the 10-row list scrolls inside a keyboard-
+    focusable, labelled region instead of making the tile taller."""
+    import db as db_module
+
+    with db_module.SessionLocal() as db:
+        db.add_all(
+            Card(card_id=f"r{i}", name=f"Recent {i}", qty=1, created_at=dt.datetime(2026, 9, 1 + i))
+            for i in range(10)
+        )
+        db.commit()
+
+    text = client.get("/").text
+    tile = text[text.index('data-kpi-carousel="dashboard-movers"'):]
+    tile = tile[: tile.index('class="kpi-carousel-nav"')]
+
+    stage = tile[tile.index('<div class="kpi-carousel-stage">'):]
+    assert 'id="kpi-slide-movers"' in stage and 'id="kpi-slide-recent"' in stage
+
+    recent = tile[tile.index('id="kpi-slide-recent"'):]
+    assert '<div class="recent-scroll" tabindex="0" role="region" aria-label="Recently added cards (scrollable)">' in recent
+    scroll = recent[recent.index('class="recent-scroll"'):]
+    assert scroll.count('class="mover-row recent-row"') == 10
+    # Rows still go through card_link, which the card modal (#280) hooks.
+    assert scroll.count("data-card-modal") >= 10
