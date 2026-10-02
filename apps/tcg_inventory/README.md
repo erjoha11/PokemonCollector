@@ -57,6 +57,20 @@ run).
   30 days ago (or the earliest one, while history is shorter) with today's
   price. It says so in its caption ("price today vs. snapshot DATE"), and
   hides the % for moves under `queries.PRICE_MOVE_PCT_MIN_KR` (10 kr).
+  The Price movers tile is a **manual carousel** (issue #279,
+  `static/kpi-carousel.js`) with a second slide, **Recently added**
+  (`queries.recently_added`): the 10 owned cards (qty > 0) with the newest
+  `Card.created_at` — the date the card first came in from a Dex
+  sync/import, the same added date the Orders card picker's
+  `?pick=recent` filter uses. Cards with no known added date (from before
+  that column existed) are left out; ties break on id, newest first. Each
+  row shows a thumbnail (opens the card viewer), name (links to the card
+  page) and language, set · number · variant · added date, and today's
+  price. Switch with the arrows or the dots under the tile (dots are a
+  tablist: arrow keys/Home/End move between them); there's no
+  auto-rotation. The chosen slide is remembered per browser in
+  `localStorage` (default Price movers). Without JavaScript the tile is
+  just Price movers.
   The collection/series cards share one stat grid: Unique value |
   Unique Cards, Duplicate value | Total Duplicates, then Net invested and Gain.
 - **Card page** (`/cards/{id}`) — one card: image, collections, binder,
@@ -471,6 +485,8 @@ implementation detail.
   start of the period (30 days back, or the earliest snapshot while history
   is shorter). That's a different baseline from Above / below cost, so the
   up/down counts differ. The % is hidden for moves under 10 kr.
+- **Recently added** (Price movers tile's second slide): today's market
+  price per copy, not a change — no baseline.
 - **Market Value chart change**: first to last point of the chart
   ("since first snapshot DATE" on All), not since you bought the cards.
 

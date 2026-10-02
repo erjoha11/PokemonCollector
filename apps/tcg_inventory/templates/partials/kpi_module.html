@@ -12,6 +12,24 @@
 </li>
 {% endmacro %}
 
+{# One row in "Recently added" (issue #279): small photo (opens the card
+   viewer), name (links to the card's page) + language, then set / number /
+   variant / added date, and today's price per copy. #}
+{% macro recent_row(card) %}
+<li class="mover-row recent-row">
+  {% if card.image_url %}<button type="button" class="card-view-trigger" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }}"><img class="recent-thumb" src="{{ card.image_url }}" alt="" loading="lazy"></button>{% else %}<span class="recent-thumb recent-thumb-empty" aria-hidden="true"></span>{% endif %}
+  <span class="recent-main">
+    <span class="mover-name"><a href="/cards/{{ card.id }}" class="card-view-name" title="{{ card.name }}">{{ card.name }}</a>{% if card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ card.language | lang }}</span>{% endif %}</span>
+    {%- set meta = [] -%}
+    {%- if card.set %}{% set _ = meta.append(card.set) %}{% endif -%}
+    {%- if card.number %}{% set _ = meta.append('#' ~ card.number) %}{% endif -%}
+    {%- if card.variant %}{% set _ = meta.append(card.variant) %}{% endif %}
+    <span class="recent-meta muted">{% if meta %}{{ meta | join(' · ') }} · {% endif %}<span title="Added">{{ card.created_at.strftime('%d.%m.%Y') }}</span></span>
+  </span>
+  <span class="recent-price" title="Market price per copy{% if card.market_price_source %} · Source: {{ card.market_price_source | source_label }}{% endif %}">{{ card.display_price | kr }}</span>
+</li>
+{% endmacro %}
+
 {# The stat grid under "Most valuable collection" and "Most valuable series":
    the same six figures in the same places in both cards. Each value sits
    next to its count (Unique value | Unique Cards, Duplicate value | Total
@@ -124,20 +142,47 @@
   </div>
 
   {% if request.url.path == '/' %}
-  <div class="kpi-card kpi-top-cards kpi-movers">
-    {% set pm = price_movers %}
-    <h3>Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go. Unlike Above / below cost, the baseline is that snapshot, not what you paid. % is left out for changes under 10 kr.') }}</h3>
-    {% if pm and (pm.up or pm.down) %}
-    <div class="kpi-caption muted">Last {{ pm.days }} d · price today vs. snapshot {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down{% if pm.n_source_changes %} · <span title="Cards whose price now comes from a different source than in the snapshot -- a source switch, not a market move">{{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out</span>{% endif %}</div>
-    <ul class="mover-list">
-      {% for m in pm.up %}{{ mover_row(m, 'up') }}{% endfor %}
-      {% for m in pm.down %}{{ mover_row(m, 'down') }}{% endfor %}
-    </ul>
-    {% elif pm %}
-    <div class="kpi-caption muted">No price changes since {{ pm.since.strftime('%d.%m.%Y') }}.{% if pm.n_source_changes %} {{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out.{% endif %}</div>
-    {% else %}
-    <div class="kpi-caption muted">Needs at least one earlier daily snapshot.</div>
-    {% endif %}
+  {#- A manual two-slide carousel (issue #279): Price movers, then Recently
+      added. Only the active slide shows; static/kpi-carousel.js wires up
+      the tabs/arrows, remembers the choice in localStorage and unhides the
+      controls. Without JS the controls and the second slide stay hidden,
+      so the tile is just Price movers, as before. #}
+  <div class="kpi-card kpi-top-cards kpi-movers kpi-carousel" data-kpi-carousel="dashboard-movers">
+    <section class="kpi-carousel-slide" id="kpi-slide-movers" data-slide="movers" aria-labelledby="kpi-slide-movers-title">
+      {% set pm = price_movers %}
+      <h3 id="kpi-slide-movers-title">Price movers{% if pm %} <span class="kpi-movers-period">{{ pm.days }} d</span>{% endif %} {{ info('The owned cards whose price rose and fell the most, per copy, comparing the snapshot from the start of the period with today\'s price. Covers the last 30 days, or as far back as the daily snapshots go. Unlike Above / below cost, the baseline is that snapshot, not what you paid. % is left out for changes under 10 kr.') }}</h3>
+      {% if pm and (pm.up or pm.down) %}
+      <div class="kpi-caption muted">Last {{ pm.days }} d · price today vs. snapshot {{ pm.since.strftime('%d.%m.%Y') }} · {{ pm.n_up }} up, {{ pm.n_down }} down{% if pm.n_source_changes %} · <span title="Cards whose price now comes from a different source than in the snapshot -- a source switch, not a market move">{{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out</span>{% endif %}</div>
+      <ul class="mover-list">
+        {% for m in pm.up %}{{ mover_row(m, 'up') }}{% endfor %}
+        {% for m in pm.down %}{{ mover_row(m, 'down') }}{% endfor %}
+      </ul>
+      {% elif pm %}
+      <div class="kpi-caption muted">No price changes since {{ pm.since.strftime('%d.%m.%Y') }}.{% if pm.n_source_changes %} {{ pm.n_source_changes }} source change{{ 's' if pm.n_source_changes != 1 }} left out.{% endif %}</div>
+      {% else %}
+      <div class="kpi-caption muted">Needs at least one earlier daily snapshot.</div>
+      {% endif %}
+    </section>
+    <section class="kpi-carousel-slide" id="kpi-slide-recent" data-slide="recent" aria-labelledby="kpi-slide-recent-title" hidden>
+      <h3 id="kpi-slide-recent-title">Recently added {{ info('The ' ~ recently_added_limit ~ ' owned cards added to the collection most recently, newest first. The added date is when the card first came in from a Dex sync or import -- the same date as Recently added in the Orders card picker. Cards from before the app recorded that date have none and are left out. The price is today\'s market price per copy.') }}</h3>
+      {% if recently_added %}
+      <div class="kpi-caption muted">Newest first · date first imported</div>
+      <ul class="mover-list">
+        {% for card in recently_added %}{{ recent_row(card) }}{% endfor %}
+      </ul>
+      {% else %}
+      <div class="kpi-caption muted">No owned cards with a known added date yet.</div>
+      {% endif %}
+    </section>
+    <div class="kpi-carousel-nav" hidden>
+      <button type="button" class="kpi-carousel-arrow" data-carousel-step="-1" aria-label="Previous slide">&lsaquo;</button>
+      <div class="kpi-carousel-tabs" role="tablist" aria-label="Price movers or recently added">
+        <button type="button" role="tab" class="kpi-carousel-dot" id="kpi-tab-movers" aria-controls="kpi-slide-movers" aria-selected="true" aria-label="Price movers" title="Price movers" data-carousel-tab="movers"></button>
+        <button type="button" role="tab" class="kpi-carousel-dot" id="kpi-tab-recent" aria-controls="kpi-slide-recent" aria-selected="false" aria-label="Recently added" title="Recently added" data-carousel-tab="recent" tabindex="-1"></button>
+      </div>
+      <button type="button" class="kpi-carousel-arrow" data-carousel-step="1" aria-label="Next slide">&rsaquo;</button>
+      <span class="kpi-carousel-status" aria-live="polite"></span>
+    </div>
   </div>
   {% endif %}
 
