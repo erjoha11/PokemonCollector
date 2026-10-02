@@ -869,7 +869,7 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 }
 /* Ranked list, not a table: rank, card photo (placeholder when none yet --
    see backfill_images.py), name + set/number/rarity, price on the right.
-   Top 3 get an accent rank. Photo and name open the card viewer. */
+   Top 3 get an accent rank. Photo and name open the card modal. */
 .top-card-list { list-style: none; margin: 0; padding: 0; }
 .top-card-item {
   display: grid;
@@ -1587,9 +1587,9 @@ button.secondary {
   .orders-head { display: none; }
 }
 
-/* Card viewer (partials/card_viewer.html, static/card-viewer.js): a card's
-   photo or name opens it large, with a button out to Dex. The triggers are
-   <button>s for keyboard access, reset to look like the photo/text they wrap. */
+/* Card photo triggers: a card's photo (card_view_attrs) opens the card
+   modal (static/card-modal.js, issue #280). The triggers are <button>s for
+   keyboard access, reset to look like the photo/text they wrap. */
 .card-view-trigger {
   background: none;
   border: 0;
@@ -1598,7 +1598,7 @@ button.secondary {
   font: inherit;
   color: inherit;
   text-align: left;
-  cursor: zoom-in;
+  cursor: pointer;
   display: block;
   line-height: 0;
   border-radius: 4px;
@@ -1618,66 +1618,78 @@ button.secondary {
 .top-card-item-name .card-view-name { color: var(--accent); font-weight: 600; }
 .card-view-name:hover { text-decoration: underline; }
 
-.card-viewer {
+/* Card modal (base.html's <dialog id="card-modal">, static/card-modal.js,
+   issue #280): the card page over the current page. The dialog itself
+   scrolls; its header sticks. Full-screen sheet at 560px and below. */
+html.card-modal-open { overflow: hidden; }
+.card-modal {
   border: 0;
   border-radius: var(--radius);
   padding: 0;
-  max-width: min(760px, calc(100vw - 32px));
-  width: 100%;
-  background: var(--surface);
+  width: min(1000px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--page);
   color: var(--ink);
   box-shadow: 0 12px 40px rgba(20, 22, 26, 0.3);
 }
-.card-viewer::backdrop { background: rgba(20, 22, 26, 0.55); }
-.card-viewer-body {
-  display: grid;
-  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-  gap: 1.5rem;
-  padding: 1.5rem;
-  align-items: start;
-}
-.card-viewer-image {
-  width: 100%;
-  height: auto;
-  max-height: 70vh;
-  object-fit: contain;
-  border-radius: 12px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
-}
-.card-viewer-noimage {
-  aspect-ratio: 245 / 342;
+.card-modal::backdrop { background: rgba(20, 22, 26, 0.55); }
+.card-modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 1rem;
-  border: 1px dashed var(--border-strong);
-  border-radius: 12px;
-  background: var(--page);
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
-.card-viewer-noimage[hidden], .card-viewer-image[hidden] { display: none; }
-.card-viewer-info { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
-.card-viewer-name { margin: 0; padding: 0; border: 0; font-size: 1.3rem; overflow-wrap: anywhere; }
-.card-viewer-meta { margin: 0; font-size: 0.88rem; }
-.card-viewer-price { margin: 0; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.card-viewer-price:empty { display: none; }
-.card-viewer-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
-.card-viewer-detail, .card-viewer-dex {
-  display: inline-block;
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 1.1rem;
-  font-size: 0.9rem;
-  font-weight: 600;
-  text-decoration: none;
+.card-modal-titles { flex: 1; min-width: 0; }
+.card-modal-title { margin: 0; padding: 0; border: 0; font-size: 1.25rem; overflow-wrap: anywhere; }
+.card-modal-sub { margin: 0.15rem 0 0; font-size: 0.86rem; }
+.card-modal-sub:empty { display: none; }
+.card-modal-actions { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+.card-modal-full { font-size: 0.9rem; white-space: nowrap; }
+.card-modal-close {
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
 }
-/* Details is the primary action; Dex is the way out of the app. */
-.card-viewer-detail { background: var(--accent); color: #fff; }
-.card-viewer-detail[hidden] { display: none; }
-.card-viewer-dex { border: 1px solid var(--border-strong); color: var(--ink); background: var(--surface); }
-.card-viewer-detail:hover, .card-viewer-dex:hover { filter: brightness(0.92); }
+.card-modal-close:hover { background: var(--page); }
+.card-modal-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card-modal-body { padding: 1.25rem; }
+.card-modal-body > .card:last-child { margin-bottom: 0; }
+.card-modal-loading { display: flex; gap: 1.5rem; align-items: flex-start; }
+.card-modal-loading-img { width: min(240px, 40%); height: auto; border-radius: 12px; box-shadow: var(--shadow); }
+.card-modal-loading-price { margin: 0 0 0.4rem; font-size: 1.15rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.card-modal-error-actions { display: flex; align-items: center; gap: 1rem; }
+/* The dialog scrolls (overflow), so an upward info() tooltip near the top
+   of a section would be clipped under the sticky header: open downward. */
+.card-modal .info-icon .info-tooltip { bottom: auto; top: 130%; }
 @media (max-width: 560px) {
-  .card-viewer-body { grid-template-columns: 1fr; padding: 1rem; }
-  .card-viewer-image, .card-viewer-noimage { max-width: 260px; justify-self: center; }
+  .card-modal {
+    width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .card-modal-head { padding: 0.75rem 1rem; }
+  .card-modal-body { padding: 1rem; }
+  /* Image capped so the KPIs show without scrolling. */
+  .card-modal .card-detail-image img,
+  .card-modal-loading-img { max-height: 34dvh; width: auto; max-width: 100%; }
+  .card-modal .card-detail.is-zoomed .card-detail-image img { max-height: none; width: 100%; }
 }
 
 /* Net invested / Gain/loss cells in the dashboard tables (money_cells in
@@ -1719,8 +1731,17 @@ button.secondary {
    centered under the slide -- prev arrow, one dot (tab) per slide, next
    arrow -- so they never fight the heading's (i) tooltip for space. */
 .kpi-carousel { display: flex; flex-direction: column; }
-.kpi-carousel-slide { flex: 1; }
+.kpi-carousel-stage { flex: 1; }
 .kpi-carousel-slide[hidden] { display: none; }
+/* Stable tile height (issue #283): once the script has taken over, every
+   slide sits in the same grid cell and the inactive one is only made
+   invisible (visibility also drops it from the tab order and the
+   accessibility tree), so the tile always takes the taller slide's height
+   and switching slides never makes the KPI row jump. Without JS the
+   second slide stays display:none, as before. */
+.kpi-carousel[data-carousel-ready] .kpi-carousel-stage { display: grid; }
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide { grid-area: 1 / 1; min-width: 0; }
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide[hidden] { display: block; visibility: hidden; }
 .kpi-carousel-nav {
   display: flex;
   align-items: center;
@@ -1785,6 +1806,32 @@ button.secondary {
 .recent-main { display: flex; flex-direction: column; min-width: 0; }
 .recent-meta { font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+/* The Recently added list (10 rows) scrolls inside the slide instead of
+   setting the tile's height (issue #283). `contain: size` stops its rows
+   from counting toward the slide's height, so the tile is as tall as
+   Price movers or its row neighbours need (min-height keeps ~3 rows on
+   show when Price movers is short or empty), and the list fills the rest
+   of the slide. Scroll shadows (the "local" backgrounds cover the
+   "scroll" ones at either end) show there's more above/below. Focusable
+   (tabindex) so it scrolls with the keyboard; overscroll-behavior keeps a
+   touch flick at the list's end from scrolling the page. Without JS the
+   slide is never shown, so none of this applies. */
+.kpi-carousel[data-carousel-ready] .kpi-carousel-slide[data-slide="recent"] { display: flex; flex-direction: column; }
+.recent-scroll {
+  flex: 1 1 auto;
+  min-height: 8rem;
+  contain: size;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
+  border-radius: 2px;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) top / 100% 1.5rem no-repeat local,
+    linear-gradient(transparent, var(--surface) 70%) bottom / 100% 1.5rem no-repeat local,
+    radial-gradient(farthest-side at 50% 0, rgba(0, 0, 0, 0.14), transparent) top / 100% 0.5rem no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(0, 0, 0, 0.14), transparent) bottom / 100% 0.5rem no-repeat scroll;
+}
+.recent-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---- Card detail page (/cards/{id}) ---- */
 .breadcrumb { margin: 0 0 0.25rem; font-size: 0.85rem; }
@@ -1796,7 +1843,13 @@ button.secondary {
 }
 .card-detail-image { display: flex; flex-direction: column; gap: 0.6rem; }
 .card-detail-image img { width: 100%; border-radius: 12px; box-shadow: var(--shadow); }
-.card-detail-image .card-view-trigger { padding: 0; border: 0; background: none; cursor: zoom-in; }
+/* The card page's photo zooms in place (data-card-zoom, card-modal.js) --
+   full page and card modal alike; replaced the #card-viewer lightbox. */
+.card-zoom-trigger { display: block; padding: 0; border: 0; background: none; line-height: 0; cursor: zoom-in; }
+.card-zoom-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.card-detail.is-zoomed { grid-template-columns: 1fr; }
+.card-detail.is-zoomed .card-detail-image { max-width: min(560px, 100%); justify-self: center; }
+.card-detail.is-zoomed .card-zoom-trigger { cursor: zoom-out; }
 .card-detail-noimage {
   aspect-ratio: 63 / 88;
   display: grid;

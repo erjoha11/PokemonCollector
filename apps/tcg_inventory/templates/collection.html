@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ collection.name }} – TCG Inventory{% endblock %}
-{% from "partials/macros.html" import info, card_view_attrs %}
+{% from "partials/macros.html" import info, card_view_attrs, card_link %}
 {% block content %}
 <p class="muted breadcrumb"><a href="/inventory">Inventory</a></p>
 <h1>{{ collection.name }}</h1>
@@ -36,7 +36,7 @@
     {% for card in shown %}
     <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">
       {% if card.image_url %}<button type="button" class="card-view-trigger gallery-card-image" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }}"><img src="{{ card.image_url }}" alt="" loading="lazy"></button>{% else %}<div class="gallery-card-image gallery-card-noimage muted">No picture</div>{% endif %}
-      <a class="gallery-card-name" href="/cards/{{ card.id }}">{{ card.name }}</a>
+      {{ card_link(card, css_class='gallery-card-name') }}
       <div class="gallery-card-meta muted">{% if card.number %}#{{ card.number }}{% endif %}{% if card.variant and card.variant != 'Normal' %} · {{ card.variant }}{% endif %}{% if card.language %} · {{ card.language | lang }}{% endif %}</div>
       <div class="gallery-card-figures">
         <span>{{ card.display_price | kr }}</span>

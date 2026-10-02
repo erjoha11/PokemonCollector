@@ -10,6 +10,7 @@ external services, no build step (server-rendered HTML + HTMX).
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import threading
 from contextlib import asynccontextmanager, contextmanager, nullcontext
@@ -150,10 +151,10 @@ templates.env.filters["flag_title"] = pricing.flag_title
 
 
 def _card_image_large(url: str | None) -> str | None:
-    """The bigger version of a stored card thumbnail, for the card viewer
-    (partials/card_viewer.html). Each image host serves its sizes under a
+    """The bigger version of a stored card thumbnail, for the card page
+    and the card modal (partials/card_body.html). Each image host serves its sizes under a
     fixed naming scheme; an unknown host just gets the same URL back. The
-    viewer falls back to the thumbnail itself if the large one fails to load.
+    page falls back to the thumbnail itself if the large one fails to load.
     """
     if not url:
         return url
@@ -988,51 +989,66 @@ def inventory(
 # collection. Card names across the app link to /cards/{id}; Dex is one
 # link on that page, not where a name click goes.
 # --------------------------------------------------------------------------
+def _card_detail_context(db: Session, card_pk: int) -> dict:
+    """Everything partials/card_body.html needs -- shared by the full card
+    page (/cards/{id}) and the in-page modal's panel (/cards/{id}/panel,
+    issue #280), so the two can never drift. 404s for an unknown card."""
+    card = (
+        db.query(Card)
+        .options(
+            selectinload(Card.collections),
+            selectinload(Card.binder),
+            selectinload(Card.linked_set),
+            selectinload(Card.transactions),
+            selectinload(Card.prices),
+        )
+        .filter(Card.id == card_pk)
+        .one_or_none()
+    )
+    if card is None:
+        raise HTTPException(status_code=404, detail="Card not found")
+    txs = sorted(card.transactions, key=lambda t: (t.date, t.id))
+    # Net invested by the app-wide rules (shipping shares included), so
+    # this page's Gain matches Inventory's and the Dashboard's.
+    order_ids = {t.purchase_id for t in txs if t.purchase_id is not None}
+    order_txs = db.query(Transaction).filter(Transaction.purchase_id.in_(order_ids)).all() if order_ids else []
+    all_txs = {t.id: t for t in order_txs + txs}.values()
+    invested = queries.net_invested_by_card(db, list(all_txs)).get(card.id)
+    shipping = queries.shipping_shares(list(all_txs))
+    history = queries.card_price_history(db, card.id)
+    return {
+        "card": card,
+        "transactions": txs,
+        "shipping_by_tx": shipping,
+        "invested": invested,
+        "gain": (card.total_value - invested) if invested is not None else None,
+        "price_history": history,
+        # Per-source table, display-priority order (pricing.CHAIN).
+        "price_rows": sorted(card.prices, key=lambda p: pricing.chain_rank(p.source)),
+        "fresh_days": pricing.FRESH_DAYS,
+        "missing_entry": _missing_entry(db, card),
+    }
+
+
 @app.get("/cards/{card_pk}")
 def card_detail(request: Request, card_pk: int):
     db = get_db_session()
     try:
-        card = (
-            db.query(Card)
-            .options(
-                selectinload(Card.collections),
-                selectinload(Card.binder),
-                selectinload(Card.linked_set),
-                selectinload(Card.transactions),
-                selectinload(Card.prices),
-            )
-            .filter(Card.id == card_pk)
-            .one_or_none()
-        )
-        if card is None:
-            raise HTTPException(status_code=404, detail="Card not found")
-        txs = sorted(card.transactions, key=lambda t: (t.date, t.id))
-        # Net invested by the app-wide rules (shipping shares included), so
-        # this page's Gain matches Inventory's and the Dashboard's.
-        order_ids = {t.purchase_id for t in txs if t.purchase_id is not None}
-        order_txs = (
-            db.query(Transaction).filter(Transaction.purchase_id.in_(order_ids)).all() if order_ids else []
-        )
-        all_txs = {t.id: t for t in order_txs + txs}.values()
-        invested = queries.net_invested_by_card(db, list(all_txs)).get(card.id)
-        shipping = queries.shipping_shares(list(all_txs))
-        history = queries.card_price_history(db, card.id)
-        return templates.TemplateResponse(
-            request,
-            "card_detail.html",
-            {
-                "card": card,
-                "transactions": txs,
-                "shipping_by_tx": shipping,
-                "invested": invested,
-                "gain": (card.total_value - invested) if invested is not None else None,
-                "price_history": history,
-                # Per-source table, display-priority order (pricing.CHAIN).
-                "price_rows": sorted(card.prices, key=lambda p: pricing.chain_rank(p.source)),
-                "fresh_days": pricing.FRESH_DAYS,
-                "missing_entry": _missing_entry(db, card),
-            },
-        )
+        return templates.TemplateResponse(request, "card_detail.html", _card_detail_context(db, card_pk))
+    finally:
+        db.close()
+
+
+@app.get("/cards/{card_pk}/panel")
+def card_panel(request: Request, card_pk: int):
+    """The card page's body as a fragment (no <html> shell) for the in-page
+    card modal (static/card-modal.js, issue #280). A separate URL on
+    purpose rather than /cards/{id} varied on HX-Request: the browser cache
+    can then never serve the fragment as the full page."""
+    db = get_db_session()
+    try:
+        context = _card_detail_context(db, card_pk)
+        return templates.TemplateResponse(request, "partials/card_panel.html", {**context, "in_panel": True})
     finally:
         db.close()
 
@@ -1047,7 +1063,11 @@ def _missing_entry(db: Session, card: Card | None) -> "missing_cards.MissingCard
 
 @app.post("/cards/{card_pk}/delete-missing")
 def delete_missing_card(
-    request: Request, card_pk: int, confirm: str = Form(""), return_to: str = Form("sync-status")
+    request: Request,
+    card_pk: int,
+    confirm: str = Form(""),
+    return_to: str = Form("sync-status"),
+    in_panel: str = Form(""),
 ):
     """Delete a card a Dex sync flagged missing, registered in error.
 
@@ -1056,17 +1076,31 @@ def delete_missing_card(
     missing, zero transactions, zero listings -- otherwise nothing changes.
     Each handled outcome (deleted or refused) is a 200 with the re-rendered
     block and its message, since htmx 1.9 doesn't swap a 4xx.
+
+    With return_to=card a successful delete also sends
+    `HX-Trigger: {"cardDeleted": {"id": N}}`, so the card modal
+    (static/card-modal.js, issue #280) can drop the card's row from
+    /sync-status underneath. `in_panel` marks a form rendered inside that
+    modal (its success message then offers Close, not "Back to Sync status").
     """
     db = get_db_session()
     try:
         result = missing_cards.delete_missing_card(db, card_pk, confirmed=bool(confirm))
         if return_to == "card":
             card = None if result.ok else db.get(Card, card_pk)
-            return templates.TemplateResponse(
+            response = templates.TemplateResponse(
                 request,
                 "partials/card_delete_missing.html",
-                {"card": card, "missing_entry": _missing_entry(db, card), "result": result},
+                {
+                    "card": card,
+                    "missing_entry": _missing_entry(db, card),
+                    "result": result,
+                    "in_panel": bool(in_panel),
+                },
             )
+            if result.ok:
+                response.headers["HX-Trigger"] = json.dumps({"cardDeleted": {"id": card_pk}})
+            return response
         return templates.TemplateResponse(
             request,
             "partials/missing_cards.html",

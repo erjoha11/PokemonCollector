@@ -1,12 +1,20 @@
 {# Card page: the delete action for a card flagged missing from Dex (same
    rules as /sync-status's "Missing from Dex"; see missing_cards.py). The
    delete route swaps this block's outerHTML with the outcome. Expects
-   `card`, `missing_entry` (MissingCard or None) and optional `result`. #}
+   `card`, `missing_entry` (MissingCard or None) and optional `result`;
+   `in_panel` when rendered inside the card modal (issue #280). #}
 <div id="card-delete-missing" class="card-delete-missing">
   {% if result %}
+  {% if result.ok and in_panel %}
+  {#- Inside the card modal (issue #280): the card is gone, so the only
+      sensible next step is closing; the row underneath on /sync-status is
+      removed by card-modal.js on the cardDeleted HX-Trigger. #}
+  <p class="saved-note" role="status">Card deleted. <button type="button" class="secondary" data-card-modal-close>Close</button></p>
+  {% else %}
   <p class="{{ 'saved-note' if result.ok else 'warnings' }}" role="{{ 'status' if result.ok else 'alert' }}">
     {{ result.message }}{% if result.ok %} <a href="/sync-status">Back to Sync status</a>{% endif %}
   </p>
+  {% endif %}
   {% endif %}
   {% if card and missing_entry %}
   {% if missing_entry.deletable %}

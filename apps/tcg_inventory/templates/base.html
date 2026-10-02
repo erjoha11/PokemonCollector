@@ -6,7 +6,7 @@
   <title>{% block title %}TCG Inventory{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/card-viewer.js" defer></script>
+  <script src="/static/card-modal.js" defer></script>
   <script src="/static/form-errors.js" defer></script>
   {# Chart.js (204KB) + its renderer are only needed by pages that actually
      render a chart_card (Dashboard, Transactions) -- see macros.html's
@@ -33,6 +33,9 @@
   <main id="main-content">
     {% block content %}{% endblock %}
   </main>
-  {% include "partials/card_viewer.html" %}
+  {#- The one shared card modal (issue #280): a plain click on any
+      [data-card-modal] element (card_link / card_view_attrs in macros.html)
+      loads /cards/{id}/panel into it -- see static/card-modal.js. #}
+  <dialog id="card-modal" class="card-modal" aria-labelledby="card-modal-title"><div class="card-modal-content"></div></dialog>
 </body>
 </html>

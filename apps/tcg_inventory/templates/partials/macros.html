@@ -21,12 +21,14 @@
    picture on whichever one row happens to have one reads as broken/random
    rather than a real feature. Shared by every card-listing table (Dashboard,
    Inventory, Transactions) so a card only ever needs one place to look right. #}
-{# Data attributes that make an element open the card viewer (a click on a
-   card's photo or name shows the card large, with a button out to Dex --
-   see partials/card_viewer.html + static/card-viewer.js). Put it on a
+{# Data attributes that make a card's photo open the card modal (issue
+   #280 -- replaced the old #card-viewer photo lightbox): a click loads the
+   card page's panel into base.html's shared <dialog id="card-modal">, see
+   static/card-modal.js. The name/meta/price/image attributes paint an
+   instant placeholder while the panel loads. Put it on a
    <button type="button" class="card-view-trigger">. #}
 {% macro card_view_attrs(card) -%}
-data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-detail="/cards/{{ card.id }}"
+data-card-modal data-href="/cards/{{ card.id }}" data-name="{{ card.name }}"
 {%- if card.image_url %} data-img="{{ card.image_url | card_image_large }}" data-img-fallback="{{ card.image_url }}"{% endif %}
 {%- set meta = [] -%}
 {%- if card.set %}{% set _ = meta.append(card.set) %}{% endif -%}
@@ -37,9 +39,16 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
 {%- endmacro %}
 
 {# A card's name everywhere in the app links to its own detail page
-   (/cards/{id}); Dex is one link on that page. `new_tab` for places where
-   leaving would lose unsaved state (e.g. the purchase card picker). #}
-{% macro card_link(card, new_tab=false, css_class='') %}<a href="/cards/{{ card.id }}"{% if css_class %} class="{{ css_class }}"{% endif %}{% if new_tab %} target="_blank" rel="noopener"{% endif %}>{{ card.name }}</a>{% endmacro %}
+   (/cards/{id}); Dex is one link on that page. `data-card-modal` is the
+   hook static/card-modal.js listens for (issue #280): a plain left click
+   opens the card in the in-page modal instead of navigating, while
+   ctrl/cmd/shift/middle-click and no-JS still open the full page. Every
+   card link should go through this macro -- the script deliberately does
+   not match a[href^="/cards/"], which would also catch
+   /cards/{id}/delete-missing. `new_tab` only matters without JS (e.g. the
+   purchase card picker, where leaving would lose unsaved state);
+   `with_title` adds the name as a tooltip, for truncated names. #}
+{% macro card_link(card, new_tab=false, css_class='', with_title=false) %}<a href="/cards/{{ card.id }}" data-card-modal{% if css_class %} class="{{ css_class }}"{% endif %}{% if with_title %} title="{{ card.name }}"{% endif %}{% if new_tab %} target="_blank" rel="noopener"{% endif %}>{{ card.name }}</a>{% endmacro %}
 
 {# "Listed" pill for a card in one or more active listings (issue #257).
    `listing_ids` is one value of queries.active_listings_by_card (newest
@@ -82,6 +91,10 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
    underlying data shape differs (real history and cash flow have their own
    columns), so that detail table is left to the caller rather than
    parameterized here. #}
+{#- The inline init is guarded: a page that doesn't load Chart.js (Inventory,
+    collection, Sync status) can still contain a chart card inside the card
+    modal, where static/card-modal.js lazy-loads Chart.js and starts it
+    after the dialog is visible (issue #280). #}
 {#- `source_notes`: optional, one entry per label -- a list of extra tooltip
     lines (or none) for that point, e.g. a price-source switch (issue #210). #}
 {% macro chart_card(card_id, heading, chart_type, labels, datasets, metric_options=none, metric=none, extra_class='', stats=none, source_notes=none) %}
@@ -121,7 +134,7 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
   {% set chart_cfg = {"type": chart_type, "labels": labels, "datasets": datasets} %}
   {% if source_notes and source_notes | select | list %}{% set _ = chart_cfg.update({"sourceNotes": source_notes}) %}{% endif %}
   <script type="application/json" id="{{ card_id }}-data">{{ chart_cfg | tojson }}</script>
-  <script>initTcgChart("{{ card_id }}");</script>
+  <script>window.initTcgChart && initTcgChart("{{ card_id }}");</script>
   {{ caller() if caller is defined }}
   {% else %}
   <p class="muted">No data yet.</p>
@@ -217,7 +230,7 @@ data-card-view data-name="{{ card.name }}" data-dex="{{ dex_url(card) }}" data-d
   {% set chart_cfg = {"type": "line", "timeSeries": true, "labels": history | map(attribute="label") | list, "cardCounts": history | map(attribute="card_count") | list, "datasets": datasets} %}
   {% if market_value_source_notes and market_value_source_notes | select | list %}{% set _ = chart_cfg.update({"sourceNotes": market_value_source_notes}) %}{% endif %}
   <script type="application/json" id="{{ card_id }}-data">{{ chart_cfg | tojson }}</script>
-  <script>initTcgChart("{{ card_id }}");</script>
+  <script>window.initTcgChart && initTcgChart("{{ card_id }}");</script>
   <details>
     <summary>View as table</summary>
     <table style="margin-top: 0.6rem;">

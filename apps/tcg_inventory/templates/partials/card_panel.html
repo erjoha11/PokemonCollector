@@ -1,0 +1,23 @@
+{#- The in-page card modal's content (GET /cards/{id}/panel, issue #280):
+    a sticky header plus the same body as the full card page
+    (partials/card_body.html). No <html> shell -- static/card-modal.js puts
+    this into base.html's shared <dialog id="card-modal">. The header's
+    markup matches the loading/error header card-modal.js paints itself, so
+    the swap doesn't jump. #}
+{%- set sub = [] -%}
+{%- if card.set %}{% set _ = sub.append(card.set) %}{% endif -%}
+{%- if card.variant %}{% set _ = sub.append(card.variant) %}{% endif -%}
+{%- if card.language %}{% set _ = sub.append(card.language | lang) %}{% endif %}
+<header class="card-modal-head">
+  <div class="card-modal-titles">
+    <h2 id="card-modal-title" class="card-modal-title">{{ card.name }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}</h2>
+    <p class="card-modal-sub muted">{{ sub | join(' · ') }}</p>
+  </div>
+  <div class="card-modal-actions">
+    <a class="card-modal-full" href="/cards/{{ card.id }}">Open full page</a>
+    <button type="button" class="card-modal-close" data-card-modal-close aria-label="Close">&times;</button>
+  </div>
+</header>
+<div class="card-modal-body">
+{% include "partials/card_body.html" %}
+</div>
