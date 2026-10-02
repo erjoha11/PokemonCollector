@@ -1407,6 +1407,95 @@ def net_invested_amount(tx: Transaction, shares: dict[int, float]) -> float:
     return 0.0
 
 
+@dataclass
+class RealizedGain:
+    """One sale row's realized gain (issue #256), from `realized_gains`.
+
+    `proceeds` is the row's `net_proceeds`. `source` is the acquisition row
+    whose copy this sale used up (None when there was none to match).
+    `cost` is what that copy cost, None when unknown -- `reason` then says
+    why: "no_acquisition" (no recorded copy bought on or before the sale
+    date), "unpriced" (a purchase still at price 0, i.e. not priced yet) or
+    "trade" (traded in: it cost the cards given away, not a cash price).
+    `gain` is proceeds - cost, None whenever cost is.
+    """
+
+    proceeds: float
+    source: Transaction | None
+    cost: float | None
+    reason: str | None
+
+    @property
+    def gain(self) -> float | None:
+        return None if self.cost is None else self.proceeds - self.cost
+
+
+def _acquisition_cost(t: Transaction, shares: dict[int, float]) -> tuple[float | None, str | None]:
+    """What one acquired copy cost, as `(cost, reason-if-unknown)`. A
+    purchase costs what it adds to Net invested (price + fees + its shipping
+    share, `net_invested_amount`); a ripped card costs 0 (the pack isn't a
+    card row); a traded-in card has no cash cost to use."""
+    if t.type == "ripped":
+        return 0.0, None
+    if t.type == "purchase":
+        if not t.price:
+            return None, "unpriced"
+        return net_invested_amount(t, shares), None
+    return None, "trade"
+
+
+def realized_gains(txs: list[Transaction], shares: dict[int, float]) -> dict[int, RealizedGain]:
+    """Realized gain per sale row, keyed by sale transaction id (issue #256).
+    Computed on every page load from the rows, never stored.
+
+    Each disposal (a sale, or a trade "out") uses up the oldest acquired
+    copy of that card (purchase, ripped, trade "in"; by date, then id) that
+    no earlier disposal has used and that was acquired on or before the
+    disposal's date -- FIFO, the same convention as `held_acquisition_ids`,
+    which treats the newest copies as the ones still owned. So the copy a
+    sale is costed against here is the one its purchase order no longer
+    counts as held. Trade "out" rows consume a copy too (they dispose of
+    one) but get no entry, since only sales realize cash.
+
+    `txs` must be every transaction (a card's copies can sit in several
+    orders); `shares` is `shipping_shares(txs)`.
+    """
+    by_card: dict[int, list[Transaction]] = defaultdict(list)
+    for t in txs:
+        if _is_acquisition(t) or t.type == "sale" or (t.type == "trade" and t.direction == "out"):
+            by_card[t.card_id].append(t)
+    result: dict[int, RealizedGain] = {}
+    for rows in by_card.values():
+        rows.sort(key=lambda t: (t.date, t.id))
+        acquisitions = [t for t in rows if _is_acquisition(t)]
+        next_free = 0
+        for t in rows:
+            if _is_acquisition(t):
+                continue
+            source = None
+            if next_free < len(acquisitions) and acquisitions[next_free].date <= t.date:
+                source = acquisitions[next_free]
+                next_free += 1
+            if t.type != "sale":
+                continue
+            cost, reason = _acquisition_cost(source, shares) if source else (None, "no_acquisition")
+            result[t.id] = RealizedGain(net_proceeds(t, shares), source, cost, reason)
+    return result
+
+
+def sum_realized(gains: list[RealizedGain]) -> dict:
+    """Totals over some sale rows' `RealizedGain`s: the known cost basis and
+    gain, plus how many rows have an unknown cost (left out of both rather
+    than counting their full proceeds as gain). `gain` is None when no row
+    has a known cost."""
+    known = [g for g in gains if g.cost is not None]
+    return {
+        "cost": sum(g.cost for g in known),
+        "gain": sum(g.gain for g in known) if known else None,
+        "unknown": len(gains) - len(known),
+    }
+
+
 def net_invested_by_card(db: Session, txs: list[Transaction] | None = None) -> dict[int, float]:
     """Return actual net investment per card using economic-summary rules.
 

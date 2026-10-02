@@ -1938,11 +1938,18 @@ def _transactions_context(
     }
 
     if tab == "sold":
+        # Realized gain per sale row (issue #256): FIFO over every
+        # transaction, since the copy a sale used up can sit in any order.
+        realized = queries.realized_gains(txs, base["shipping_by_tx"])
+        for g in purchase_groups:
+            g["realized"] = queries.sum_realized([realized[t.id] for t in g["transactions"]])
+            g["listing"] = next((t.listing for t in g["transactions"] if t.listing_id), None)
         return {
             **base,
             "purchase_groups": purchase_groups,
             "ungrouped_transactions": ungrouped_transactions,
-            "sold": _sold_summary(purchase_groups, ungrouped_transactions, base["shipping_by_tx"]),
+            "realized": realized,
+            "sold": _sold_summary(purchase_groups, ungrouped_transactions, base["shipping_by_tx"], realized),
         }
 
     # Purchased tab: the ?type= pills. Counted over this tab's orders before
@@ -2091,13 +2098,16 @@ def order_kind(types) -> str:
     return "purchase"
 
 
-def _sold_summary(groups: list[dict], ungrouped: list[Transaction], shipping_by_tx: dict[int, float]) -> dict:
-    """The Sold tab's header -- only figures read straight off the sale rows,
-    deliberately no gain (that's #256's realized gain; Paper gain would jump
-    on Mark sold until the next Dex sync lowers qty, which reads as realized
-    profit on a tab called Sold). Net received is each row's
+def _sold_summary(
+    groups: list[dict], ungrouped: list[Transaction], shipping_by_tx: dict[int, float], realized: dict
+) -> dict:
+    """The Sold tab's header. Net received is each row's
     `queries.net_proceeds` (price - fees - its share of seller-paid
-    shipping, issue #254) -- the same figure Net invested subtracts."""
+    shipping, issue #254) -- the same figure Net invested subtracts.
+    Realized gain (issue #256) is net received minus the FIFO cost of each
+    copy sold (`queries.realized_gains`), over the rows with a known cost.
+    Not Paper gain: that would jump on Mark sold until the next Dex sync
+    lowers qty, which reads as realized profit on a tab called Sold."""
     rows = [t for g in groups for t in g["transactions"]] + list(ungrouped)
     sold_for = sum(t.price for t in rows)
     net_received = sum(queries.net_proceeds(t, shipping_by_tx) for t in rows)
@@ -2105,6 +2115,7 @@ def _sold_summary(groups: list[dict], ungrouped: list[Transaction], shipping_by_
         "sold_for": sold_for,
         "fees_and_shipping": sold_for - net_received,
         "net_received": net_received,
+        "realized": queries.sum_realized([realized[t.id] for t in rows]),
         # One sale = one order, or one individually registered row.
         "sales": len(groups) + len(ungrouped),
         "cards": len(rows),

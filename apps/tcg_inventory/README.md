@@ -129,11 +129,34 @@ run).
     Sale.
   - **Sold** — sale orders only. Header: Sold for · Fees & shipping ·
     Net received (`queries.net_proceeds`, #254: price − fees − seller-paid
-    shipping share) · N sales / N cards, plus "Card
-    quantities update at the next Dex sync." No gain figure and no
-    Gain column until #256 (realized gain) — Paper gain would jump right
-    after Mark sold, since net invested already subtracts the proceeds
-    while qty only drops at the next sync. "Sell on finn.no" (link to
+    shipping share) · Realized gain · N sales / N cards, plus "Card
+    quantities update at the next Dex sync." Never Paper gain — it would
+    jump right after Mark sold, since net invested already subtracts the
+    proceeds while qty only drops at the next sync.
+
+    **Realized gain** (#256, `queries.realized_gains`, computed at page
+    load, never stored) is per sale row: net proceeds minus the cost of the
+    copy sold. The copy sold is the oldest acquisition of that card
+    (purchase, ripped, trade "in"; by date, then id) acquired on or before
+    the sale date and not already used by an earlier disposal — sales and
+    trade "out" rows both use one up (FIFO). That is the same convention
+    as `held_acquisition_ids`, which treats the newest copies as held, so
+    a copy that shows as sold on its purchase order is the one costed
+    here. A purchase copy costs price + fees + its shipping share (what it
+    added to Net invested); a ripped copy costs 0. Unknown cost — no
+    matching acquisition, a purchase still at price 0, or a traded-in copy
+    (its cost was cards, not cash) — shows "unknown cost" and is left out
+    of every sum rather than counting full proceeds as gain; a sum that
+    left rows out is marked "*" with a tooltip. Choosing a specific copy
+    per sale is out of scope (a later additive `cost_basis_tx_id` column
+    could do it).
+
+    Sold rows: Order, Date, Listing (title linked to the Listings tab,
+    "—" for sales without one), Qty, Sold for, Fees & shipping, Cost
+    basis, Realized gain (sign spelled out, not colour alone), Platform.
+    Expanded orders (and the individually registered section) add a
+    per-card table: sold for, fees & shipping, which copy was used (type,
+    date, linked order) and its cost and gain. "Sell on finn.no" (link to
     `/sales`) and "+ Record sale without listing" (the cart with
     `?type=sale`: hidden type input, no "Show cards without an order") for
     in-person/other-platform sales. A sale order's Total field is the
@@ -179,7 +202,7 @@ run).
   order's "Trade gain" (got − gave + cash, today's prices). An order
   mixing sale and purchase rows (listed on Purchased) shows "—", as does an
   order where none of the held cards has a market price; all-sale orders
-  are on the Sold tab, which has no gain column; when only some lack
+  are on the Sold tab, which shows realized gain instead; when only some lack
   one they count as 0 and the figure gets a "*" with a tooltip. Gains
   don't sum exactly to the headline Paper gain/loss, which also counts
   copies with no order row (individually registered cards, qty beyond the

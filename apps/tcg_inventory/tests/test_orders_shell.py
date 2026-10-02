@@ -427,7 +427,7 @@ def test_sold_tab_header_and_contents(client):
     assert "Net received" in head and "164 kr" in head
     assert "2 sales / 3 cards" in text
     assert "Card quantities update at the next Dex sync." in text
-    assert "oc-gain" not in text  # no gain column until #256
+    assert "Realized gain" in head  # #256; never Paper gain on Sold
     assert "Paper gain" not in text
     assert '<span class="tx-kpi-label">Net invested' not in text  # no Purchased header here
     assert 'id="card-picker"' not in text

@@ -54,6 +54,57 @@
 </div>
 {% endmacro %}
 
+{# A realized gain with its sign spelled out (not colour alone), or the
+   reason it's unknown -- see queries.RealizedGain. #}
+{% macro realized_value(gain, unknown=0) -%}
+{%- if gain is none -%}<span class="muted" title="No sold card here has a known cost.">unknown cost</span>
+{%- else -%}<span class="{{ 'viz-delta-gain' if gain >= 0 else 'viz-delta-loss' }}"{% if unknown %} title="{{ unknown }} card{{ 's' if unknown != 1 }} with unknown cost left out."{% endif %}>{{ '+' if gain > 0 }}{{ gain | kr }}{% if unknown %} *{% endif %}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# Per-card realized gain for some sale rows (issue #256): what each card
+   brought in, which acquired copy it used up (FIFO, queries.realized_gains)
+   and what that copy cost. #}
+{% macro realized_table(rows) %}
+{% set unknown_reasons = {
+  'no_acquisition': 'No recorded purchase on or before the sale date.',
+  'unpriced': 'The purchase that copy came from has no price yet.',
+  'trade': 'Traded in — it cost the cards given away, not a cash price.',
+} %}
+<div class="table-scroll">
+  <table class="tx-table realized-table">
+    <thead>
+      <tr>
+        <th>Card</th>
+        <th class="num">Sold for</th>
+        <th class="num">Fees &amp; shipping</th>
+        <th>Copy sold {{ info("The oldest copy of the card you acquired on or before the sale date that no earlier sale or trade has used (first in, first out).") }}</th>
+        <th class="num">Cost basis {{ info("What that copy cost: purchase price plus fees and its share of the order's shipping. Ripped cards cost 0.") }}</th>
+        <th class="num">Realized gain</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for tx in rows %}
+      {% set r = realized[tx.id] %}
+      <tr>
+        <td>{{ tx.card.name }} <span class="muted">{{ tx.card.set }}{% if tx.card.number %} #{{ tx.card.number }}{% endif %}{% if tx.card.variant %} · {{ tx.card.variant }}{% endif %}</span></td>
+        <td class="num">{{ tx.price | kr }}</td>
+        <td class="num">{% if (tx.price - r.proceeds) | round(2) != 0 %}{{ (tx.price - r.proceeds) | kr }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>
+          {%- if r.source -%}
+            {{ r.source.type | capitalize }} {{ r.source.date }}
+            {%- if r.source.purchase_id %} · {% set src_tab = order_tab_by_id.get(r.source.purchase_id, 'purchased') %}<a href="/orders/{{ src_tab }}?open_order={{ r.source.purchase_id }}#order-{{ r.source.purchase_id }}">#{{ r.source.purchase_id }}</a>{% endif %}
+          {%- else -%}<span class="muted">none recorded</span>{%- endif -%}
+        </td>
+        <td class="num">{% if r.cost is none %}<span class="muted" title="{{ unknown_reasons[r.reason] }}">unknown cost</span>{% else %}{{ r.cost | kr }}{% endif %}</td>
+        <td class="num">{% if r.cost is none %}<span class="muted">—</span>{% else %}{{ realized_value(r.gain) }}{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
 {# Gave vs. got for an order's trade rows, with the trade's gain -- see
    queries.trade_summary for the math. "Then" is each card's price on the
    trade date (from card_snapshots), shown only when every card has one. #}
@@ -125,15 +176,16 @@
     {% endif %}
     <div class="section-actions">
       {% if tab == 'sold' %}
-      {# Sold tab header (issue #255): only figures read straight off the
-         sale rows, and no gain number -- Paper gain jumps right after Mark
-         sold (qty only drops at the next Dex sync, while net invested
-         already subtracts the proceeds), which on a tab called "Sold" reads
-         as realized profit. Realized gain is #256. #}
+      {# Sold tab header (issue #255): figures read straight off the sale
+         rows plus Realized gain (#256, FIFO cost per copy sold). Never
+         Paper gain -- it jumps right after Mark sold (qty only drops at the
+         next Dex sync, while net invested already subtracts the proceeds),
+         which on a tab called "Sold" reads as realized profit. #}
       <span class="section-summary">
         <span class="tx-kpi-label">Sold for {{ info("Sum of the recorded sale prices.") }}</span> <span class="tx-kpi-value">{{ sold.sold_for | kr }}</span>
         <span class="tx-kpi-label">Fees &amp; shipping {{ info("Sale fees plus the shipping you paid as seller.") }}</span> <span class="tx-kpi-value">{{ sold.fees_and_shipping | kr }}</span>
         <span class="tx-kpi-label">Net received {{ info("Sold for minus fees and seller-paid shipping — what the sales actually brought in, the same amount Net invested subtracts.") }}</span> <span class="tx-kpi-value">{{ sold.net_received | kr }}</span>
+        <span class="tx-kpi-label">Realized gain {{ info("Net received minus what each sold copy cost, taking the oldest copy you acquired first (first in, first out). Cards whose copy has no known cost are left out (marked *) rather than counted as pure profit.") }}</span> <span class="tx-kpi-value">{{ realized_value(sold.realized.gain, sold.realized.unknown) }}</span>
         <span class="muted">{{ sold.sales }} sale{{ 's' if sold.sales != 1 }} / {{ sold.cards }} card{{ 's' if sold.cards != 1 }}</span>
       </span>
       <a class="button" href="/sales">Sell on finn.no</a>
@@ -182,11 +234,20 @@
     <div class="orders-row orders-head">
       <span class="oc-order">Order</span>
       <span class="oc-date">Date</span>
+      {% if tab == 'sold' %}
+      <span class="oc-listing">Listing</span>
+      <span class="oc-qty num">Qty</span>
+      <span class="oc-value num">Sold for</span>
+      <span class="oc-fees num">Fees &amp; shipping</span>
+      <span class="oc-cost num">Cost basis</span>
+      <span class="oc-gain num">Realized gain</span>
+      {% else %}
       <span class="oc-qty num">Qty</span>
       <span class="oc-value num">Value</span>
       <span class="oc-shipping num">Shipping</span>
       <span class="oc-total num">Total</span>
-      {% if tab != 'sold' %}<span class="oc-gain num">Paper gain</span>{% endif %}
+      <span class="oc-gain num">Paper gain</span>
+      {% endif %}
       <span class="oc-platform">Platform</span>
     </div>
 
@@ -195,6 +256,21 @@
       <summary class="orders-row order-summary">
         <span class="oc-order">#{{ group.purchase_id }}</span>
         <span class="oc-date muted">{{ group.min_date }}</span>
+        {% if tab == 'sold' %}
+        {# Sold row (issue #256): the listing it came from, what it sold
+           for, fees + seller-paid shipping, the FIFO cost of the copies
+           sold and the difference. #}
+        <span class="oc-listing">
+          {%- if group.listing -%}<a href="/orders/listings?sold_only=true#listing-{{ group.listing.id }}">{{ group.listing.title }}</a>
+          {%- else -%}<span class="muted">—</span>{%- endif -%}
+        </span>
+        <span class="oc-qty num">{{ group.transactions | length }}</span>
+        <span class="oc-value num">{{ group.total_price | kr }}</span>
+        {% set fees_shipping = group.total_fees + (group.purchase_shipping or 0) %}
+        <span class="oc-fees num">{% if fees_shipping %}{{ fees_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
+        <span class="oc-cost num">{% if group.realized.gain is none %}<span class="muted">—</span>{% else %}{{ group.realized.cost | kr }}{% if group.realized.unknown %} *{% endif %}{% endif %}</span>
+        <span class="oc-gain num">{{ realized_value(group.realized.gain, group.realized.unknown) }}</span>
+        {% else %}
         <span class="oc-qty num">{{ group.transactions | length }}</span>
         <span class="oc-value num">{{ group.total_price | kr }}</span>
         <span class="oc-shipping num">{% if group.purchase_shipping %}{{ group.purchase_shipping | kr }}{% else %}<span class="muted">—</span>{% endif %}</span>
@@ -212,9 +288,6 @@
            left of it. Replaces the Remaining column in the summary row --
            Remaining (group.diff) is still computed and shown in the
            expanded order body next to the Total it depends on. #}
-        {# Left out on the Sold tab entirely (issue #255) rather than a
-           column of dashes -- #256 adds Realized gain there. #}
-        {% if tab != 'sold' %}
         <span class="oc-gain num">
           {%- set g = group.gain -%}
           {%- if g.gain is none -%}<span class="muted" title="{{ 'None of the cards in this order has a market price.' if g.reason == 'no_price' else 'Nothing in this order to value.' }}">—</span>
@@ -280,6 +353,8 @@
 
         {% if group.trade %}{{ trade_block(group.trade) }}{% endif %}
 
+        {% if tab == 'sold' %}{{ realized_table(group.transactions) }}{% endif %}
+
         {{ tx_table(group.transactions, 'No transactions in this order.', sortable=False) }}
 
         {# Points the page's single card picker at this order and scrolls to
@@ -310,6 +385,7 @@
 {% if tab == 'purchased' or ungrouped_transactions %}
 <section class="ungrouped-section">
   <h3 class="mt-15">Individually registered <span class="muted">(without an Order ID)</span></h3>
+  {% if tab == 'sold' %}{{ realized_table(ungrouped_transactions) }}{% endif %}
   {{ tx_table(ungrouped_transactions, 'No transactions recorded yet.' if not purchase_groups else 'No individually registered transactions.') }}
 </section>
 {% endif %}

@@ -1392,6 +1392,7 @@ button.secondary {
 .section-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
 .section-summary {
   display: inline-flex;
+  flex-wrap: wrap;  /* the Sold tab's four figures don't fit a phone line */
   align-items: baseline;
   gap: 0.4rem;
   margin-right: 0.6rem;
@@ -1423,18 +1424,27 @@ button.secondary {
   padding: 0.55rem 0.9rem 0.55rem 1.9rem;
 }
 
-/* Sold tab: no Gain column (realized gain is #256) -- the same columns
-   minus that one, header and summaries alike. */
+/* Sold tab (issue #256): Listing, Sold for, Fees & shipping, Cost basis
+   and Realized gain instead of Value/Shipping/Total/Paper gain. */
 .orders-list-sold .orders-row {
   grid-template-columns:
-    minmax(4.5rem, 0.7fr)   /* Order #   */
-    minmax(6rem, 1fr)       /* Date      */
-    minmax(3rem, 0.5fr)     /* Qty       */
-    minmax(6rem, 1fr)       /* Value     */
-    minmax(6rem, 1fr)       /* Shipping  */
-    minmax(7rem, 1fr)       /* Total     */
-    minmax(6rem, 1fr);      /* Platform  */
+    minmax(4.5rem, 0.6fr)   /* Order #         */
+    minmax(6rem, 0.9fr)     /* Date            */
+    minmax(8rem, 1.6fr)     /* Listing         */
+    minmax(3rem, 0.4fr)     /* Qty             */
+    minmax(5.5rem, 0.9fr)   /* Sold for        */
+    minmax(5.5rem, 0.9fr)   /* Fees & shipping */
+    minmax(5.5rem, 0.9fr)   /* Cost basis      */
+    minmax(6.5rem, 1fr)     /* Realized gain   */
+    minmax(5.5rem, 0.9fr);  /* Platform        */
 }
+.orders-row .oc-listing {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.realized-table { margin-bottom: 0.8rem; }
 
 .orders-head {
   font-size: 0.7rem;

@@ -53,6 +53,19 @@ yet.
 
 ### tcg_inventory
 
+**Orders → Sold: realized gain per sale and per sold order (#256)**
+- New `queries.realized_gains` (FIFO, computed at page load, never
+  stored): each sale row's net proceeds minus the cost of the oldest
+  copy of that card acquired on or before the sale date and not used by
+  an earlier sale or trade "out" — same convention as
+  `held_acquisition_ids`. Ripped copies cost 0; no matching copy, an
+  unpriced purchase or a traded-in copy show "unknown cost" and are left
+  out of sums (marked "*").
+- Sold tab header adds Realized gain; Sold rows now show Listing (linked),
+  Qty, Sold for, Fees & shipping, Cost basis, Realized gain, Platform;
+  expanded orders and individually registered sales get a per-card
+  breakdown.
+
 **Order IDs assigned on save; Edit order scoped to its own rows (#228 b)**
 - A new order's `purchase_id` is computed inside the save transaction (cart
   Register, Mark sold, Edit order's "Start new order") under a lock held
