@@ -414,12 +414,14 @@ run).
   Cancel (and edit/delist/delete without htmx) return to the Listings tab
   with `show_delisted`/`sold_only` kept.
 - **Sync status** (`/sync-status`, issue #264; formerly the Activity Log
-  at `/releases`) — read-only, nothing runs from this page. First an
+  at `/releases`) — nothing runs from this page. First an
   at-a-glance block with one card per background job (Dex sync, Price
   refresh, Set sync, Image backfill): its last successful run (time,
   trigger, and a one-line summary — the card counts for a Dex sync), plus
   its last empty/aborted/failed run *only* when that is newer than the last
-  success. Then the **Run log**: the 30 most recent runs of any job,
+  success. Then **Missing from Dex**: every card a sync has flagged
+  missing, with a guarded delete for one registered in error (see "Sync
+  status" below). Then the **Run log**: the 30 most recent runs of any job,
   sortable per column (`lsort`/`ldir`; sorting swaps just the log via
   `GET /sync-status/log`). Dex-sync rows show files, created/updated/flagged
   counts, warnings (click the count to see the warning text) and touched
@@ -654,6 +656,11 @@ without updating both the code and this doc.
      rename was enough to trigger it. A card that's genuinely gone just
      stays flagged. (`Card.transactions` also no longer has an ORM delete
      cascade, so deleting a card with transactions fails loudly instead.)
+   - Flagged cards still count everywhere. They are listed under
+     **Missing from Dex** on `/sync-status`, where one with no order rows
+     and no listings can be deleted by hand (e.g. a card registered in
+     error and then removed from Dex) — the only way the app deletes a
+     card. See "Sync status" → "Missing from Dex".
    - **Circuit breaker** (`importer._check_circuit_breaker`, runs before
      anything is written; the whole sync aborts with no changes and a
      readable error):
@@ -881,6 +888,37 @@ caller has committed (success) or rolled back (abort/failure) and commits
 its row on its own, so an aborted import's rollback never takes the log row
 with it. It never raises: a failure to write the log is printed and rolled
 back rather than masking the job's real response.
+
+### Missing from Dex
+
+The section between the at-a-glance block and the Run log lists every card
+with `flagged_missing_since` set (`missing_cards.flagged_cards`, oldest flag
+first): name (linked to the card page), set, number, variant, qty, flagged
+since, and how many order rows (`transactions`) and listings
+(`listing_cards`) reference it. Empty state when none.
+
+A card with zero order rows and zero listings gets a **Delete…** action
+(`POST /cards/{id}/delete-missing`); the card page shows the same form
+when the card is flagged. The confirmation is a required checkbox in the
+form (no native `confirm()`). `missing_cards.delete_missing_card` deletes
+only when **all** of these hold, re-checked in the same transaction:
+
+1. the confirmation checkbox was ticked (`confirm` posted non-empty);
+2. the card exists;
+3. it is flagged missing (`flagged_missing_since` is set);
+4. it has zero `transactions` rows;
+5. it is in zero listings (`listing_cards`).
+
+Otherwise nothing changes and the reason is shown. Every handled outcome
+(deleted or refused) is a 200 re-rendering the section (or, from the card
+page, its delete block), since htmx 1.9 doesn't swap a 4xx. A delete also
+removes the card's `card_collections` tags, `card_snapshots` rows and
+`card_prices` rows — intended for a card that should never have been
+registered. Snapshots are deleted explicitly, since SQLite only honours
+`ON DELETE CASCADE` with `PRAGMA foreign_keys` on. A flagged card with
+orders or listings stays listed without a delete action: deleting it would
+destroy its order history. The route is behind the normal login (not in
+`_PUBLIC_PATHS`). No schema change.
 
 The in-app **Release Notes** section (`/releases`, #144) was removed in the
 same change: `notes/CHANGELOG.md` is the record of changes now. Its

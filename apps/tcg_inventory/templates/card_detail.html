@@ -58,6 +58,7 @@
       <dt>Dex card ID</dt><dd><code>{{ card.card_id }}</code></dd>
       {% if card.flagged_missing_since %}<dt>Missing from Dex</dt><dd>since {{ card.flagged_missing_since.strftime('%d.%m.%Y') }}</dd>{% endif %}
     </dl>
+    {% if missing_entry %}{% include "partials/card_delete_missing.html" %}{% endif %}
 
     {#- Every source's latest price (card_prices), in display-priority order.
         Open by default only when the price is flagged. #}

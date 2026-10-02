@@ -34,6 +34,7 @@ import ads
 import auth
 import backfill_images
 import dropbox_client
+import missing_cards
 import price_refresh
 import pricing
 import set_sync
@@ -1027,7 +1028,47 @@ def card_detail(request: Request, card_pk: int):
                 # Per-source table, display-priority order (pricing.CHAIN).
                 "price_rows": sorted(card.prices, key=lambda p: pricing.chain_rank(p.source)),
                 "fresh_days": pricing.FRESH_DAYS,
+                "missing_entry": _missing_entry(db, card),
             },
+        )
+    finally:
+        db.close()
+
+
+def _missing_entry(db: Session, card: Card | None) -> "missing_cards.MissingCard | None":
+    """The card's "Missing from Dex" row (counts + deletable), or None when
+    it isn't flagged missing."""
+    if card is None or card.flagged_missing_since is None:
+        return None
+    return next((m for m in missing_cards.flagged_cards(db) if m.card.id == card.id), None)
+
+
+@app.post("/cards/{card_pk}/delete-missing")
+def delete_missing_card(
+    request: Request, card_pk: int, confirm: str = Form(""), return_to: str = Form("sync-status")
+):
+    """Delete a card a Dex sync flagged missing, registered in error.
+
+    Behind the normal login (not in _PUBLIC_PATHS). Every guard lives in
+    missing_cards.delete_missing_card: confirmation ticked, card flagged
+    missing, zero transactions, zero listings -- otherwise nothing changes.
+    Each handled outcome (deleted or refused) is a 200 with the re-rendered
+    block and its message, since htmx 1.9 doesn't swap a 4xx.
+    """
+    db = get_db_session()
+    try:
+        result = missing_cards.delete_missing_card(db, card_pk, confirmed=bool(confirm))
+        if return_to == "card":
+            card = None if result.ok else db.get(Card, card_pk)
+            return templates.TemplateResponse(
+                request,
+                "partials/card_delete_missing.html",
+                {"card": card, "missing_entry": _missing_entry(db, card), "result": result},
+            )
+        return templates.TemplateResponse(
+            request,
+            "partials/missing_cards.html",
+            {"missing": missing_cards.flagged_cards(db), "result": result},
         )
     finally:
         db.close()
@@ -2918,7 +2959,8 @@ def _recent_import_logs(
 
 # --------------------------------------------------------------------------
 # Sync status (issue #264) -- the slimmed-down former Activity Log: an
-# at-a-glance block per background job, then the run log. Read-only.
+# at-a-glance block per background job, "Missing from Dex" (the one write:
+# deleting a flagged card, see missing_cards.py), then the run log.
 # --------------------------------------------------------------------------
 @app.get("/sync-status")
 def sync_status_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
@@ -2926,6 +2968,7 @@ def sync_status_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"
     try:
         context = {
             "overview": sync_status.overview(db),
+            "missing": missing_cards.flagged_cards(db),
             "logs": _recent_import_logs(db, lsort, ldir),
             "lsort": lsort,
             "ldir": ldir,

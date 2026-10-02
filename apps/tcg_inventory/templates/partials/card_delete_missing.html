@@ -1,0 +1,22 @@
+{# Card page: the delete action for a card flagged missing from Dex (same
+   rules as /sync-status's "Missing from Dex"; see missing_cards.py). The
+   delete route swaps this block's outerHTML with the outcome. Expects
+   `card`, `missing_entry` (MissingCard or None) and optional `result`. #}
+<div id="card-delete-missing" class="card-delete-missing">
+  {% if result %}
+  <p class="{{ 'saved-note' if result.ok else 'warnings' }}" role="{{ 'status' if result.ok else 'alert' }}">
+    {{ result.message }}{% if result.ok %} <a href="/sync-status">Back to Sync status</a>{% endif %}
+  </p>
+  {% endif %}
+  {% if card and missing_entry %}
+  {% if missing_entry.deletable %}
+  {% set c = card %}{% set return_to = 'card' %}
+  {% include "partials/missing_card_delete_form.html" %}
+  {% else %}
+  <p class="muted">
+    Flagged missing from Dex, but it has {% if missing_entry.tx_count %}order rows{% endif %}{% if missing_entry.tx_count and missing_entry.listing_count %} and {% endif %}{% if missing_entry.listing_count %}listings{% endif %},
+    so it can't be deleted &mdash; that would destroy its order history.
+  </p>
+  {% endif %}
+  {% endif %}
+</div>
