@@ -1714,6 +1714,78 @@ button.secondary {
 .mover-change { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .mover-pct { text-align: right; font-size: 0.72rem; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
+/* The Price movers tile is a manual two-slide carousel (issue #279, see
+   static/kpi-carousel.js): Price movers, then Recently added. Controls sit
+   centered under the slide -- prev arrow, one dot (tab) per slide, next
+   arrow -- so they never fight the heading's (i) tooltip for space. */
+.kpi-carousel { display: flex; flex-direction: column; }
+.kpi-carousel-slide { flex: 1; }
+.kpi-carousel-slide[hidden] { display: none; }
+.kpi-carousel-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--border);
+}
+.kpi-carousel-nav[hidden] { display: none; }
+.kpi-carousel-tabs { display: flex; gap: 0.15rem; }
+.kpi-carousel-arrow,
+.kpi-carousel-dot {
+  border: 0;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--muted);
+  border-radius: 999px;
+}
+.kpi-carousel-arrow {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.kpi-carousel-arrow:hover { color: var(--ink); background: var(--page); }
+/* The visible dot is small; the button around it is a comfortable tap target. */
+.kpi-carousel-dot {
+  width: 1.5rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.kpi-carousel-dot::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.15s;
+}
+.kpi-carousel-dot:hover::before { background: var(--muted); }
+.kpi-carousel-dot[aria-selected="true"]::before { background: var(--kpi-accent, var(--accent)); }
+.kpi-carousel-arrow:focus-visible,
+.kpi-carousel-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.kpi-carousel-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+/* Recently added rows: thumbnail, name over set/number/variant/added date,
+   price -- same row rhythm as the Price movers rows above. */
+.recent-row { grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; }
+.recent-row .card-view-trigger { display: block; padding: 0; border: 0; background: none; line-height: 0; }
+.recent-thumb { display: block; width: 20px; height: 28px; object-fit: cover; border-radius: 2px; }
+.recent-thumb-empty { background: var(--page); border: 1px solid var(--border); }
+.recent-main { display: flex; flex-direction: column; min-width: 0; }
+.recent-meta { font-size: 0.7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-price { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--ink); }
+
 /* ---- Card detail page (/cards/{id}) ---- */
 .breadcrumb { margin: 0 0 0.25rem; font-size: 0.85rem; }
 .card-detail {

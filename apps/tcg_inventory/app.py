@@ -638,6 +638,8 @@ def dashboard(
                 "series_breakdown": series_breakdown,
                 "top_cards": top_cards,
                 "price_movers": queries.price_movers(db, cards),
+                "recently_added": queries.recently_added(cards),
+                "recently_added_limit": queries.RECENTLY_ADDED_LIMIT,
                 "invested_by_card": invested_by_card,
                 "rarity_breakdown": rarity_breakdown,
                 "pokemon_top": pokemon_top,

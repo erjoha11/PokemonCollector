@@ -967,6 +967,24 @@ def price_movers(
     }
 
 
+RECENTLY_ADDED_LIMIT = 10
+
+
+def recently_added(cards: list[Card], limit: int = RECENTLY_ADDED_LIMIT) -> list[Card]:
+    """The owned cards (qty > 0, same rule as price_movers) added most
+    recently, newest first -- the Dashboard "Recently added" slide (issue
+    #279). "Added" is `Card.created_at`, the same known added date the
+    Orders card picker's `?pick=recent` filter uses: set once when the
+    card is first imported. Cards from before that column existed
+    (`created_at` is None) have no real added date and are left out rather
+    than sorted to either end. Ties (one import adds many cards at the same
+    instant) break on id, highest first, like the picker.
+    """
+    dated = [c for c in cards if c.qty > 0 and c.created_at is not None]
+    dated.sort(key=lambda c: (c.created_at, c.id), reverse=True)
+    return dated[:limit]
+
+
 def value_change_breakdown(
     db: Session, metric: str, history: list[dict], live_cards: list[Card] | None = None
 ) -> dict | None:
