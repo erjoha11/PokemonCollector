@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "FB Auction Watcher",
+  "short_name": "Auction Watcher",
+  "version": "0.1.0",
+  "description": "Read-only overview of auctions in a Facebook buy/sell group.",
+  "action": {
+    "default_title": "FB Auction Watcher: read this post"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.facebook.com/*"],
+      "js": ["content-post.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

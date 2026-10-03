@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository structure
 
-This is a monorepo of small, independent Python apps for buying and collecting Pokemon cards, each under `apps/`. Apps do not import from each other. Each has its own `requirements.txt` and README with app-specific detail — read the relevant app's README before making non-trivial changes there.
+This is a monorepo of small, independent apps for buying and collecting Pokemon cards, each under `apps/`. Apps do not import from each other. The Python apps each have their own `requirements.txt`; every app has a README with app-specific detail — read the relevant app's README (and its own `CLAUDE.md`, if it has one) before making non-trivial changes there.
 
 - `apps/finn_ad_scraper/` — scrapes a finn.no ad (title/description/price/photos) and identifies Pokemon cards in the photos via Claude vision.
 - `apps/tcg_inventory/` — FastAPI + Jinja2/HTMX webapp tracking a physical card collection (replaces an Excel workbook). Runs locally on SQLite or deployed on Vercel + Supabase.
+- `apps/fb_auction_watcher/` — read-only Chrome extension (MV3, TypeScript) that tracks auctions in a Facebook buy/sell group, sorted by end time. Not Python: outside root `pytest`/`ruff`, with its own npm build/test and CI job. Module 1 (read one post) built; see its `CLAUDE.md` and `docs/spec.md`.
 - `notes/` — agent/skill-written notes and reports, not code: `CHANGELOG.md`, `REVIEW.md`, and per-app `notes/<app>/HANDOFF.md` / `UX_NOTES.md`. See "Where agent- and skill-written files go" below.
 
 ## Setup and common commands
