@@ -1,0 +1,19 @@
+/* The toolbar icon's menu. Tokens as in dashboard.css. */
+:root {
+  --lead: #2457D6; --text: #1b1f24; --muted: #59636e; --border: #d0d7de; --bg: #ffffff; --soft: #f6f8fa;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --lead: #6d9bff; --text: #e6edf3; --muted: #9198a1; --border: #30363d; --bg: #161b22; --soft: #21262d; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; width: 260px; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.4 "IBM Plex Sans", system-ui, -apple-system, sans-serif; }
+h1 { font-size: 14px; margin: 0 0 4px; }
+.muted { color: var(--muted); margin: 0 0 8px; }
+.small { font-size: 12px; }
+.actions { display: grid; gap: 6px; margin-bottom: 8px; }
+button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--soft); color: var(--text); cursor: pointer; text-align: left; }
+button:hover { border-color: var(--lead); }
+.actions button:first-child:not([hidden]), #scan:not([hidden]) { background: var(--lead); border-color: var(--lead); color: #fff; }
+.dev { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
+button.quiet { font-size: 12px; padding: 4px 6px; text-align: center; }

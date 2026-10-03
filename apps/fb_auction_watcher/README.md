@@ -22,7 +22,14 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-After every `npm run build`, **right-click the extension icon → "Reload extension and Facebook tabs"**. It reloads the extension from `dist/` and then every open Facebook tab, which needs the new content script. (The manual way: the reload icon on the extension's card in `chrome://extensions`, then reload the Facebook tabs.) A tab opened before the extension was (re)loaded has no content script; the icon then shows a `!` badge.
+**Clicking the icon opens a small menu**; nothing starts until you choose it there: **Read this post** (on a
+post), **Scan the feed** (on the group feed), **Open overview**, and at the bottom **Reload extension** and
+**Reload Facebook tabs**. The right-click menu has **Open overview**, **Reload extension** and **Reload
+Facebook tabs** too.
+
+After every `npm run build`: **Reload extension**, then **Reload Facebook tabs** (open tabs need the new
+content script). A new permission in the manifest needs the reload icon on the extension's card in
+`chrome://extensions` once instead. A tab opened before the extension was (re)loaded has no content script; the icon then shows a `!` badge.
 
 ## Test module 1: read one post
 

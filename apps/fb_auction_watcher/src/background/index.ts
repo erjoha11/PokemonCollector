@@ -2,6 +2,8 @@ import { capturePostId } from "../domain/bids";
 import {
   isAutoScanDoneMessage,
   isGetKnownPostsMessage,
+  isReloadFbTabsMessage,
+  isStartMessage,
   isQueueReadMessage,
   isReadDoneMessage,
   isOpenOverviewMessage,
@@ -33,42 +35,42 @@ function broadcastUpdate(added = 0, updated = 0) {
 }
 const askClaudeSoon = () => scheduleClaude(store, () => broadcastUpdate());
 
-// Toolbar icon: read the open post, or scan the feed (the content script decides which).
-chrome.action.onClicked.addListener(async (tab) => {
-  if (tab.id === undefined) return;
-  const tabId = tab.id;
-  // On the group feed: always scan it sorted by "New posts", so "caught up" means caught up.
-  if (isGroupFeedUrl(tab.url) && tab.url !== newPostsUrl(tab.url!)) {
+// Toolbar menu (popup.html): reading a post or scanning the feed starts only when chosen there.
+async function startInTab(tabId: number, kind: "read" | "scan") {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab) return;
+  // The feed scan always runs on "New posts", so "caught up" means caught up.
+  if (kind === "scan" && isGroupFeedUrl(tab.url) && tab.url !== newPostsUrl(tab.url!)) {
     await chrome.tabs.update(tabId, { url: newPostsUrl(tab.url!) });
     await new Promise((r) => setTimeout(r, 500)); // Let the load start, so "complete" is the new page.
     await waitForTabLoad(tabId, 30_000);
     await new Promise((r) => setTimeout(r, 1500)); // Let the feed render its first posts.
   }
   const msg: ReadPostMessage = { type: MSG_READ_POST };
-  chrome.tabs.sendMessage(tabId, msg).catch(() => {
-    // Not a Facebook tab, or the tab was open before the extension was (re)loaded and
-    // has no content script yet. A badge is the only feedback we can give from here.
+  await chrome.tabs.sendMessage(tabId, msg).catch(() => {
+    // The tab was open before the extension was (re)loaded: no content script yet.
     void chrome.action.setBadgeText({ tabId, text: "!" });
-    void chrome.action.setTitle({ tabId, title: "Open a Facebook post and reload the tab, then try again." });
+    void chrome.action.setTitle({ tabId, title: "Reload this Facebook tab, then try again." });
   });
-});
+}
 
-// Right-click menu on the icon: the overview, and (dev) reload extension + Facebook tabs.
-// Reloading the extension orphans the content script in open tabs, so after the reload the
-// new service worker reloads every Facebook tab. A flag in storage carries that intent
-// across the reload (the old worker is gone by then).
-const RELOAD_MENU_ID = "fbaw-reload";
+async function reloadFacebookTabs() {
+  const tabs = await chrome.tabs.query({ url: "https://www.facebook.com/*" });
+  for (const tab of tabs) if (tab.id !== undefined) void chrome.tabs.reload(tab.id);
+}
+
+// Right-click menu on the icon: the overview, and (separately) reload the extension or the
+// Facebook tabs. After reloading the extension, open Facebook tabs need a reload too to get the
+// new content script; that's its own item, so either can be done alone.
 const OVERVIEW_MENU_ID = "fbaw-overview";
-const RELOAD_TABS_FLAG = "fbaw-reload-tabs-pending";
+const RELOAD_EXT_MENU_ID = "fbaw-reload-extension";
+const RELOAD_FB_MENU_ID = "fbaw-reload-facebook";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: OVERVIEW_MENU_ID, title: "Open overview", contexts: ["action"] });
-    chrome.contextMenus.create({
-      id: RELOAD_MENU_ID,
-      title: "Reload extension and Facebook tabs",
-      contexts: ["action"],
-    });
+    chrome.contextMenus.create({ id: RELOAD_EXT_MENU_ID, title: "Reload extension", contexts: ["action"] });
+    chrome.contextMenus.create({ id: RELOAD_FB_MENU_ID, title: "Reload Facebook tabs", contexts: ["action"] });
   });
   void scheduleAutoScan();
 });
@@ -76,17 +78,9 @@ chrome.runtime.onStartup.addListener(() => void scheduleAutoScan());
 
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === OVERVIEW_MENU_ID) void openOverview();
-  if (info.menuItemId !== RELOAD_MENU_ID) return;
-  void chrome.storage.local.set({ [RELOAD_TABS_FLAG]: true }).then(() => chrome.runtime.reload());
+  if (info.menuItemId === RELOAD_EXT_MENU_ID) chrome.runtime.reload();
+  if (info.menuItemId === RELOAD_FB_MENU_ID) void reloadFacebookTabs();
 });
-
-void (async () => {
-  const stored = await chrome.storage.local.get(RELOAD_TABS_FLAG);
-  if (!stored[RELOAD_TABS_FLAG]) return;
-  await chrome.storage.local.remove(RELOAD_TABS_FLAG);
-  const tabs = await chrome.tabs.query({ url: "https://www.facebook.com/*" });
-  for (const tab of tabs) if (tab.id !== undefined) void chrome.tabs.reload(tab.id);
-})();
 
 // Each time the worker starts: finish or time out reads left over from before (and go on with the queue).
 void kickReader();
@@ -125,6 +119,14 @@ async function openOverview() {
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (isOpenOverviewMessage(msg)) {
     void openOverview();
+    return;
+  }
+  if (isStartMessage(msg)) {
+    void startInTab(msg.tabId, msg.kind);
+    return;
+  }
+  if (isReloadFbTabsMessage(msg)) {
+    void reloadFacebookTabs();
     return;
   }
   if (isQueueReadMessage(msg)) {

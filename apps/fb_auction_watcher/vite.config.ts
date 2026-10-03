@@ -24,7 +24,11 @@ export default defineConfig(({ mode }) => {
             fileName: () => "content-post.js",
           }
         : {
-            entry: { background: src("background/index.ts"), dashboard: src("pages/dashboard/main.ts") },
+            entry: {
+              background: src("background/index.ts"),
+              dashboard: src("pages/dashboard/main.ts"),
+              popup: src("pages/popup/main.ts"),
+            },
             formats: ["es"],
             fileName: (_format, name) => `${name}.js`,
           },

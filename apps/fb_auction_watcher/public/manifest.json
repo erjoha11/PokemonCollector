@@ -15,7 +15,8 @@
     "https://www.facebook.com/*"
   ],
   "action": {
-    "default_title": "FB Auction Watcher: read this post"
+    "default_title": "FB Auction Watcher",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js",

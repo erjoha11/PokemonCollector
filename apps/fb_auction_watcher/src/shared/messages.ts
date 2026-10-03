@@ -65,3 +65,12 @@ export const isReadDoneMessage = (m: unknown): m is ReadDoneMessage => hasType(m
 export const MSG_QUEUE_READ = "fbaw/queue-read" as const;
 export type QueueReadMessage = { type: typeof MSG_QUEUE_READ; postId: string; url: string };
 export const isQueueReadMessage = (m: unknown): m is QueueReadMessage => hasType(m, MSG_QUEUE_READ);
+
+/** Toolbar menu → service worker: start reading the post, or scanning the feed, in this tab. */
+export const MSG_START = "fbaw/start" as const;
+export type StartMessage = { type: typeof MSG_START; tabId: number; kind: "read" | "scan" };
+export const isStartMessage = (m: unknown): m is StartMessage => hasType(m, MSG_START);
+
+/** Toolbar menu → service worker: reload every Facebook tab (e.g. after reloading the extension). */
+export const MSG_RELOAD_FB_TABS = "fbaw/reload-fb-tabs" as const;
+export const isReloadFbTabsMessage = (m: unknown): m is { type: typeof MSG_RELOAD_FB_TABS } => hasType(m, MSG_RELOAD_FB_TABS);
