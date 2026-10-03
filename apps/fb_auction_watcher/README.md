@@ -49,9 +49,12 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
 and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
 the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
-Claude filled in. Click a title to open the post. **My bids** filters to sales you're bidding in.
+Claude filled in. Click a title to open the post **and read it** (comments, replies, bids) straight away; the row then
+updates with lots and your status. Ctrl/Cmd-click just opens it. **My bids** filters to sales you're
+bidding in.
 
-**Bids and your status:** open a post on Facebook and click the icon (it reads every comment and reply).
+**Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the
+icon (it reads every comment and reply).
 The overview then shows its lots and bids, and **Leading / Outbid** per lot (blue / orange edge on the
 row; **Your lots** expands them). Rules: a lot is a comment with a photo from the seller; bids are replies
 to it, in the order they were placed; the seller's own replies never count; a bid has to beat the highest

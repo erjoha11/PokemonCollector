@@ -2,6 +2,7 @@ import { capturePostId } from "../domain/bids";
 import {
   isAutoScanDoneMessage,
   isGetKnownPostsMessage,
+  isOpenAndReadMessage,
   isOpenOverviewMessage,
   isSaveFeedPostsMessage,
   isSavePostCaptureMessage,
@@ -101,9 +102,36 @@ async function openOverview() {
   await chrome.tabs.create({ url });
 }
 
+/** Opens a post from the overview and reads it right away (the same read as the toolbar icon). */
+async function openAndRead(url: string) {
+  if (!/^https:\/\/www\.facebook\.com\//.test(url)) return;
+  const tab = await chrome.tabs.create({ url, active: true });
+  if (tab.id === undefined) return;
+  const tabId = tab.id;
+  const loaded = await new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => done(false), 30_000);
+    const listener = (id: number, info: { status?: string }) => {
+      if (id === tabId && info.status === "complete") done(true);
+    };
+    function done(ok: boolean) {
+      clearTimeout(timer);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve(ok);
+    }
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+  if (!loaded) return;
+  const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true };
+  await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (isOpenOverviewMessage(msg)) {
     void openOverview();
+    return;
+  }
+  if (isOpenAndReadMessage(msg)) {
+    void openAndRead(msg.url);
     return;
   }
   if (isGetKnownPostsMessage(msg)) {

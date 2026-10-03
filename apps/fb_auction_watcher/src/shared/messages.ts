@@ -4,7 +4,11 @@ import type { FeedPost } from "./feed";
 
 export const MSG_READ_POST = "fbaw/read-post" as const;
 
-export type ReadPostMessage = { type: typeof MSG_READ_POST };
+export type ReadPostMessage = {
+  type: typeof MSG_READ_POST;
+  /** Opened from the overview: the page just loaded, so wait for the post to render first. */
+  waitForPost?: boolean;
+};
 
 export function isReadPostMessage(msg: unknown): msg is ReadPostMessage {
   return typeof msg === "object" && msg !== null && (msg as { type?: unknown }).type === MSG_READ_POST;
@@ -49,3 +53,8 @@ export const isAutoScanDoneMessage = (m: unknown): m is AutoScanDoneMessage => h
 export const MSG_SAVE_POST_CAPTURE = "fbaw/save-post-capture" as const;
 export type SavePostCaptureMessage = { type: typeof MSG_SAVE_POST_CAPTURE; capture: PostCapture };
 export const isSavePostCaptureMessage = (m: unknown): m is SavePostCaptureMessage => hasType(m, MSG_SAVE_POST_CAPTURE);
+
+/** Overview → service worker: open this post in a tab and read it (as if the icon was clicked). */
+export const MSG_OPEN_AND_READ = "fbaw/open-and-read" as const;
+export type OpenAndReadMessage = { type: typeof MSG_OPEN_AND_READ; url: string };
+export const isOpenAndReadMessage = (m: unknown): m is OpenAndReadMessage => hasType(m, MSG_OPEN_AND_READ);

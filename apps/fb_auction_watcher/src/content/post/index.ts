@@ -67,13 +67,19 @@ async function runFeedScan(feed: Element, options: ScanOptions & { panel?: Panel
   }
 }
 
-async function readOpenPost() {
+async function readOpenPost(waitForPost = false) {
   if (running) return;
   running = true;
   activeRecorder?.stop();
   activeRecorder = null;
   const panel = showPanel();
   try {
+    // Opened from the overview: Facebook renders the post a moment after the page loads.
+    if (waitForPost) {
+      panel.setStatus("Waiting for the post to load…");
+      for (let i = 0; i < 30 && !findPostRoot(document)?.querySelector("[role='article']"); i++) await sleep(500);
+      await sleep(1000); // Let the comment area settle before switching sort / expanding.
+    }
     const root = findPostRoot(document);
     if (!root) {
       const feed = document.querySelector("[role='feed']");
@@ -143,6 +149,6 @@ async function autoScan() {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (isReadPostMessage(msg)) void readOpenPost();
+  if (isReadPostMessage(msg)) void readOpenPost(msg.waitForPost ?? false);
   if (isAutoScanMessage(msg)) void autoScan();
 });

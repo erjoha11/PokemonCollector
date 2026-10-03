@@ -1,6 +1,6 @@
 import type { Lot } from "../../domain/bids";
 import type { PostCapture } from "../../shared/capture";
-import { isStoreUpdatedMessage } from "../../shared/messages";
+import { isStoreUpdatedMessage, MSG_OPEN_AND_READ, type OpenAndReadMessage } from "../../shared/messages";
 import {
   getAutoScanState,
   getClaudeState,
@@ -150,6 +150,14 @@ function saleCell(r: Row): HTMLTableCellElement {
   a.href = r.url;
   a.target = "_blank";
   a.rel = "noopener";
+  a.title = "Open the post and read its bids (Ctrl/Cmd-click: just open it)";
+  // A plain click opens the post and reads it right away, so bids and your status update.
+  a.addEventListener("click", (e) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const msg: OpenAndReadMessage = { type: MSG_OPEN_AND_READ, url: r.url };
+    void chrome.runtime.sendMessage(msg).catch(() => window.open(r.url, "_blank", "noopener"));
+  });
   box.append(a);
   if (r.description && r.description !== r.title) box.append(el("div", "desc", r.description));
   const meta = el("div", "seller", r.sellerName ?? "Unknown seller");
@@ -166,7 +174,7 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   if (!r.summary) {
     lotsTd.append(el("span", "muted", "–"));
     if (r.type === "auction" && !r.ended) {
-      const hint = el("span", "muted small", "Open the post and click the icon to read bids");
+      const hint = el("span", "muted small", "Click the title to read bids");
       youTd.append(hint);
     }
     return [lotsTd, youTd];
