@@ -1,5 +1,6 @@
 import { MSG_AUTO_SCAN, type AutoScanMessage } from "../shared/messages";
 import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
+import { getReaderState } from "./reader";
 
 // The automatic feed scan (docs/spec.md "Slow pacing"):
 // - every 10-15 min ±20 % jitter, one-shot alarms rescheduled after each run;
@@ -72,6 +73,9 @@ export async function runAutoScan(): Promise<void> {
 
     const idle = await chrome.idle.queryState(120);
     if (idle !== "active") return await skip(idle === "locked" ? "Skipped: screen locked" : "Skipped: you're away (idle)");
+
+    // One tab talking to Facebook at a time: not while a post is being read in the background.
+    if ((await getReaderState()).current) return await skip("Skipped: a post was being read");
 
     const tab = await findFeedTab();
     if (!tab?.id) return await skip("Skipped: no pinned tab with the group feed");

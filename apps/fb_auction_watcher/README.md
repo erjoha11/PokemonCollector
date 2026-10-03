@@ -49,8 +49,8 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
 and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
 the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
-Claude filled in. Click a title to open the post **and read it** (comments, replies, bids) straight away; the row then
-updates with lots and your status. Ctrl/Cmd-click just opens it. **My bids** filters to sales you're
+Claude filled in. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids; no
+panel) and the row updates with lots and your status. Ctrl/Cmd-click just opens it. **My bids** filters to sales you're
 bidding in.
 
 **Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the
@@ -69,7 +69,9 @@ it every time it loads, so improved rules apply to old posts too.
 Under **Settings** in the overview: **Scan the feed automatically every 10–15 min**. It needs a **pinned**
 tab with the group's feed (right-click the tab → Pin). Every 10–15 min (±20 %) it reloads that tab in
 the background, saves the newest posts and opens their "Se mer", and stops once it reaches posts it already
-has. It never opens tabs or uses more than that one, skips a round while your screen is locked, you're
+has. While it's on, auctions you're bidding in are also re-read every 15 min in a background tab that
+opens and closes by itself, one at a time and never during a feed scan. It never uses more than one tab
+at a time, skips a round while your screen is locked, you're
 away, or you're looking at that tab, and is off until you switch it on. A background tab only shows the
 first few posts, so if more were posted than that since the last round, the status says so: open the
 feed tab and click the icon to catch up.

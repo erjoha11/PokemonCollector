@@ -2,7 +2,8 @@ import { capturePostId } from "../domain/bids";
 import {
   isAutoScanDoneMessage,
   isGetKnownPostsMessage,
-  isOpenAndReadMessage,
+  isQueueReadMessage,
+  isReadDoneMessage,
   isOpenOverviewMessage,
   isSaveFeedPostsMessage,
   isSavePostCaptureMessage,
@@ -17,6 +18,7 @@ import { getAutoScanState, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
 import { AUTO_SCAN_ALARM, describeAutoScan, runAutoScan, scheduleAutoScan } from "./autoScan";
 import { scheduleClaude } from "./claude";
+import { finishRead, getReaderState, kickReader, openAndReadVisible, queueMyAuctionRereads, READER_ALARM } from "./reader";
 
 // Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
 // between the toolbar icon, the content script and the overview page.
@@ -81,6 +83,13 @@ void (async () => {
 // The automatic scan: alarm → run; switching it on/off in the overview reschedules.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
+  if (alarm.name === READER_ALARM) void kickReader();
+});
+// You closed the background reader's tab: count that read as done and go on.
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void getReaderState().then((s) => {
+    if (s.current?.tabId === tabId || s.visible[tabId] !== undefined) void finishRead(tabId, false, "its tab was closed");
+  });
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.settings) return;
@@ -102,36 +111,17 @@ async function openOverview() {
   await chrome.tabs.create({ url });
 }
 
-/** Opens a post from the overview and reads it right away (the same read as the toolbar icon). */
-async function openAndRead(url: string) {
-  if (!/^https:\/\/www\.facebook\.com\//.test(url)) return;
-  const tab = await chrome.tabs.create({ url, active: true });
-  if (tab.id === undefined) return;
-  const tabId = tab.id;
-  const loaded = await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => done(false), 30_000);
-    const listener = (id: number, info: { status?: string }) => {
-      if (id === tabId && info.status === "complete") done(true);
-    };
-    function done(ok: boolean) {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve(ok);
-    }
-    chrome.tabs.onUpdated.addListener(listener);
-  });
-  if (!loaded) return;
-  const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true };
-  await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
-}
-
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (isOpenOverviewMessage(msg)) {
     void openOverview();
     return;
   }
-  if (isOpenAndReadMessage(msg)) {
-    void openAndRead(msg.url);
+  if (isQueueReadMessage(msg)) {
+    void openAndReadVisible(msg.url, msg.postId);
+    return;
+  }
+  if (isReadDoneMessage(msg)) {
+    if (sender.tab?.id !== undefined) void finishRead(sender.tab.id, msg.ok, msg.outcome);
     return;
   }
   if (isGetKnownPostsMessage(msg)) {
@@ -187,6 +177,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const added = (await store.allPosts()).filter((p) => Date.parse(p.firstSeenAt) >= since).length;
       await updateAutoScanState({ running: false, lastOutcome: describeAutoScan(msg.stoppedBecause, msg.posts, added) });
       broadcastUpdate(added);
+      // While auto-scan is on, keep your auctions fresh: re-read the ones you're bidding in.
+      await queueMyAuctionRereads(store);
     })();
     return;
   }

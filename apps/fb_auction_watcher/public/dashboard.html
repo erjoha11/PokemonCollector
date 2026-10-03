@@ -33,7 +33,12 @@
       <div class="setting">
         <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
         <div id="auto-scan-status" class="muted small"></div>
-        <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab.</div>
+        <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab. While it's on, auctions you're bidding in are also re-read in the background every 15 min.</div>
+      </div>
+      <div class="setting">
+        <label>Post reads</label>
+        <div id="reader-status" class="muted small"></div>
+        <div class="muted small">Clicking a sale's title opens the post and reads its bids quietly in that tab (no panel). Automatic re-reads use a background tab that opens and closes by itself, one post at a time.</div>
       </div>
       <div class="setting">
         <label><input id="use-claude" type="checkbox"> Ask Claude about what the rules can't read</label>

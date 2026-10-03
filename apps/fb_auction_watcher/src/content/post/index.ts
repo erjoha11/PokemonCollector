@@ -4,11 +4,13 @@ import {
   isReadPostMessage,
   MSG_AUTO_SCAN_DONE,
   MSG_GET_KNOWN_POSTS,
+  MSG_READ_DONE,
   MSG_OPEN_OVERVIEW,
   MSG_SAVE_FEED_POSTS,
   MSG_SAVE_POST_CAPTURE,
   type AutoScanDoneMessage,
   type KnownPosts,
+  type ReadDoneMessage,
   type SaveFeedPostsMessage,
   type SavePostCaptureMessage,
 } from "../../shared/messages";
@@ -17,7 +19,7 @@ import { feedPosts, feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
 import { expandAll } from "./expand";
 import { extractCapture, findPostRoot } from "./extract";
-import { showPanel, type Panel } from "./panel";
+import { showPanel, silentPanel, type Panel } from "./panel";
 import { ensureAllComments } from "./sort";
 
 // Content script on facebook.com. Two jobs, both read-only:
@@ -67,12 +69,18 @@ async function runFeedScan(feed: Element, options: ScanOptions & { panel?: Panel
   }
 }
 
-async function readOpenPost(waitForPost = false) {
-  if (running) return;
+async function readOpenPost({ waitForPost = false, silent = false } = {}) {
+  // A background read always reports back, so the reader queue can close the tab and move on.
+  const report = (ok: boolean, outcome: string) => {
+    if (!silent) return;
+    const msg: ReadDoneMessage = { type: MSG_READ_DONE, ok, outcome };
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  };
+  if (running) return report(false, "busy");
   running = true;
   activeRecorder?.stop();
   activeRecorder = null;
-  const panel = showPanel();
+  const panel = silent ? silentPanel() : showPanel();
   try {
     // Opened from the overview: Facebook renders the post a moment after the page loads.
     if (waitForPost) {
@@ -81,6 +89,7 @@ async function readOpenPost(waitForPost = false) {
       await sleep(1000); // Let the comment area settle before switching sort / expanding.
     }
     const root = findPostRoot(document);
+    if (!root && silent) return report(false, "the post didn't load");
     if (!root) {
       const feed = document.querySelector("[role='feed']");
       if (feed) {
@@ -114,10 +123,12 @@ async function readOpenPost(waitForPost = false) {
     // Save it for the overview (lots, bids, your status), unless reading was cut short.
     if (result.stoppedBecause !== "aborted") {
       const msg: SavePostCaptureMessage = { type: MSG_SAVE_POST_CAPTURE, capture };
-      chrome.runtime.sendMessage(msg).catch(() => {});
+      await chrome.runtime.sendMessage(msg).catch(() => {});
     }
+    report(true, `${capture.stats.topLevelComments} comments, ${capture.stats.replies} replies`);
     panel.showResult(capture, `<!doctype html>\n<!-- ${location.href} -->\n${root.outerHTML}`);
   } catch (err) {
+    report(false, err instanceof Error ? err.message : String(err));
     panel.showError(`Failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
@@ -149,6 +160,6 @@ async function autoScan() {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (isReadPostMessage(msg)) void readOpenPost(msg.waitForPost ?? false);
+  if (isReadPostMessage(msg)) void readOpenPost({ waitForPost: msg.waitForPost, silent: msg.silent });
   if (isAutoScanMessage(msg)) void autoScan();
 });

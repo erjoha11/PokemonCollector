@@ -8,6 +8,8 @@ export type ReadPostMessage = {
   type: typeof MSG_READ_POST;
   /** Opened from the overview: the page just loaded, so wait for the post to render first. */
   waitForPost?: boolean;
+  /** A background read: no panel, report back with MSG_READ_DONE. */
+  silent?: boolean;
 };
 
 export function isReadPostMessage(msg: unknown): msg is ReadPostMessage {
@@ -54,7 +56,12 @@ export const MSG_SAVE_POST_CAPTURE = "fbaw/save-post-capture" as const;
 export type SavePostCaptureMessage = { type: typeof MSG_SAVE_POST_CAPTURE; capture: PostCapture };
 export const isSavePostCaptureMessage = (m: unknown): m is SavePostCaptureMessage => hasType(m, MSG_SAVE_POST_CAPTURE);
 
-/** Overview → service worker: open this post in a tab and read it (as if the icon was clicked). */
-export const MSG_OPEN_AND_READ = "fbaw/open-and-read" as const;
-export type OpenAndReadMessage = { type: typeof MSG_OPEN_AND_READ; url: string };
-export const isOpenAndReadMessage = (m: unknown): m is OpenAndReadMessage => hasType(m, MSG_OPEN_AND_READ);
+/** Content script → service worker: a background read (from the reader queue) finished. */
+export const MSG_READ_DONE = "fbaw/read-done" as const;
+export type ReadDoneMessage = { type: typeof MSG_READ_DONE; ok: boolean; outcome: string };
+export const isReadDoneMessage = (m: unknown): m is ReadDoneMessage => hasType(m, MSG_READ_DONE);
+
+/** Overview → service worker: open this post in a tab and read it silently there. */
+export const MSG_QUEUE_READ = "fbaw/queue-read" as const;
+export type QueueReadMessage = { type: typeof MSG_QUEUE_READ; postId: string; url: string };
+export const isQueueReadMessage = (m: unknown): m is QueueReadMessage => hasType(m, MSG_QUEUE_READ);

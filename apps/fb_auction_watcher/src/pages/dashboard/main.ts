@@ -1,6 +1,7 @@
 import type { Lot } from "../../domain/bids";
 import type { PostCapture } from "../../shared/capture";
-import { isStoreUpdatedMessage, MSG_OPEN_AND_READ, type OpenAndReadMessage } from "../../shared/messages";
+import { isStoreUpdatedMessage, MSG_QUEUE_READ, type QueueReadMessage } from "../../shared/messages";
+import type { ReaderState } from "../../background/reader";
 import {
   getAutoScanState,
   getClaudeState,
@@ -59,7 +60,9 @@ let lastFeedReadAt: string | null = null;
 let settings: Settings;
 let autoScan: AutoScanState;
 let claude: ClaudeState;
+let reader: ReaderState = { visible: {}, queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
+const justClicked = new Set<string>();
 let source: { posts: Awaited<ReturnType<typeof store.allPosts>>; captures: Map<string, PostCapture>; answers: Map<string, unknown> } = {
   posts: [],
   captures: new Map(),
@@ -78,6 +81,8 @@ async function load() {
     store.getMeta("lastFeedReadAt"),
   ]);
   [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
+  reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
+  for (const id of justClicked) if (Object.values(reader.visible ?? {}).includes(id)) justClicked.delete(id);
   source = {
     posts,
     captures: new Map(captures.map((c) => [c.postId, c.capture])),
@@ -150,21 +155,34 @@ function saleCell(r: Row): HTMLTableCellElement {
   a.href = r.url;
   a.target = "_blank";
   a.rel = "noopener";
-  a.title = "Open the post and read its bids (Ctrl/Cmd-click: just open it)";
-  // A plain click opens the post and reads it right away, so bids and your status update.
+  a.title = "Open the post and read its bids quietly (Ctrl/Cmd-click: just open it)";
+  // A plain click opens the post and reads it silently in that tab; the row updates when done.
   a.addEventListener("click", (e) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    const msg: OpenAndReadMessage = { type: MSG_OPEN_AND_READ, url: r.url };
-    void chrome.runtime.sendMessage(msg).catch(() => window.open(r.url, "_blank", "noopener"));
+    const msg: QueueReadMessage = { type: MSG_QUEUE_READ, postId: r.id, url: r.url };
+    justClicked.add(r.id); // Shows "Reading…" until the worker's state catches up.
+    render();
+    void chrome.runtime.sendMessage(msg).catch(() => {});
   });
-  box.append(a);
+  const titleLine = el("div", "title-line");
+  titleLine.append(a);
+  const state = readState(r.id);
+  if (state) titleLine.append(" ", el("span", "badge reading", state));
+  box.append(titleLine);
   if (r.description && r.description !== r.title) box.append(el("div", "desc", r.description));
   const meta = el("div", "seller", r.sellerName ?? "Unknown seller");
   if (r.isNew) meta.append(" ", el("span", "badge new", "New"));
   box.append(meta);
   wrap.append(box);
   return td;
+}
+
+/** "Reading…" / "Queued" while the background reader has this post. */
+function readState(postId: string): string | null {
+  if (reader.current?.postId === postId || Object.values(reader.visible ?? {}).includes(postId) || justClicked.has(postId)) return "Reading…";
+  if (reader.queue.some((j) => j.postId === postId)) return "Queued";
+  return null;
 }
 
 /** Lots · bids, and your status, from the latest post read; a nudge to read it otherwise. */
@@ -175,6 +193,7 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
     lotsTd.append(el("span", "muted", "–"));
     if (r.type === "auction" && !r.ended) {
       const hint = el("span", "muted small", "Click the title to read bids");
+      if (readState(r.id)) hint.textContent = "Reading in the background…";
       youTd.append(hint);
     }
     return [lotsTd, youTd];
@@ -261,6 +280,11 @@ function renderSettings(now: Date) {
     : claude.lastAt && claude.lastOutcome
       ? `Last ${ago(claude.lastAt, now)}: ${claude.lastOutcome}`
       : "Asks Claude Code (claude -p, your login) only about what the rules can't read.";
+
+  $("#reader-status").textContent =
+    (reader.current || Object.keys(reader.visible ?? {}).length ? "Reading a post now. " : "") +
+    (reader.queue.length ? `${reader.queue.length} queued. ` : "") +
+    (reader.lastAt && reader.lastOutcome ? `Last ${ago(reader.lastAt, now)}: ${reader.lastOutcome}` : "No background reads yet.");
 
   const name = $<HTMLInputElement>("#my-name");
   if (document.activeElement !== name) name.value = settings.myName;
