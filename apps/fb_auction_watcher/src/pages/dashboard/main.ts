@@ -321,6 +321,10 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       list.append(item);
       continue;
     }
+    // The lot's start bid (minimum price) and minimum raise, from the lot's own text or the post's.
+    const start = l.startBid !== null ? `Start bid ${l.startBid} kr` : "Start bid not stated";
+    const raise = l.increment !== null ? ` · min. raise +${l.increment} kr` : "";
+    body.append(el("div", "lot-terms", start + raise));
     const hi =
       l.highestBid === null
         ? "No bids yet"

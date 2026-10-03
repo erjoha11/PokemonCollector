@@ -130,3 +130,4 @@ img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px
 #photo img { display: block; max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 6px; background: var(--surface); }
 .photo-caption { color: #fff; font-size: 13px; margin-top: 6px; text-align: center; }
 .photo-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #1b1f24; font-size: 20px; line-height: 1; cursor: pointer; }
+.lot-terms { font-size: 12px; color: var(--muted); }
