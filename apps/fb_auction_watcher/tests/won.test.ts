@@ -54,6 +54,18 @@ describe("wonBySeller", () => {
   });
 });
 
+describe("won claim lots priced from the lot's text", () => {
+  it("before Claude has read the photo: per-card price times the cards you named", () => {
+    const r = auction("Selger D", [
+      { myClaim: "claimed", textPrice: { kr: 5, perCard: true }, claims: [{ isMe: true, all: false, items: ["pikachu", "eevee"] } as never] },
+      { myClaim: "claimed", textPrice: { kr: 1200, perCard: false }, claims: [{ isMe: true, all: false, items: [] } as never] },
+    ], { type: "claim", ended: false });
+    const [g] = wonBySeller([r]);
+    expect(g.items.map((i) => i.kr)).toEqual([10, 1200]);
+    expect(g).toMatchObject({ kr: 1210, unknown: 0 });
+  });
+});
+
 describe("shipping and payment lines", () => {
   it("reads them as written", () => {
     const i = interpretListing("AUKSJON\nSender med post (pris m/emballasje): Kjøper betaler frakt\nBetalingsalternativ: Vipps/Bankoverføring", new Date());

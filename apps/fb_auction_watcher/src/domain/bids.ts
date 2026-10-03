@@ -82,6 +82,11 @@ export type Lot = {
   claimCards: ClaimCards | null;
   /** Cards still for sale (from claimCards), or null when Claude hasn't read the lot yet. */
   available: number | null;
+  /**
+   * Claim/fixed-price lots: the price written in the lot's own text ("5kr per stk", "NM - 1200kr"),
+   * per card when it says so (`perCard`). Null when the text has none (it's on the photo, if anywhere).
+   */
+  textPrice: { kr: number; perCard: boolean } | null;
   /** The lot's text didn't name it (only a price, or nothing): `title` is "Lot N" or Claude's name for the photo. */
   untitled: boolean;
   /** `title` came from Claude reading the photo. */
@@ -129,6 +134,22 @@ function compareIds(a: string | null, b: string | null): number {
   if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
   if (a.length !== b.length) return a.length - b.length;
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * A claim/fixed-price lot's price from its own text (sellers who write "Fastpris: Blir oppgitt
+ * over hvert bilde" put it there): "Holo/rev.holo 5kr per stk", "EX/V/IR10kr per stk",
+ * "10 kr pr kort" (per card), or "NM - 1200kr" / "200kr" (the lot, usually one card).
+ */
+export function lotTextPrice(text: string): { kr: number; perCard: boolean } | null {
+  const perCard = text.match(/(?<!\d)(\d[\d .]*?)\s*(?:kr|,-)\.?\s*(?:per|pr\.?|\/)\s*(?:stk|stykk|kort|card)/i);
+  if (perCard) {
+    const kr = parseAmount(perCard[1]);
+    if (kr !== null) return { kr, perCard: true };
+  }
+  const amount = text.match(/(?<!\d)(\d[\d .]*?)\s*(?:kr|,-)(?![\p{L}])/iu);
+  const kr = amount ? parseAmount(amount[1]) : null;
+  return kr !== null ? { kr, perCard: false } : null;
 }
 
 /** "MP: 1400", "Mp 10kr", "Holo, mp 30kr", "Minstepris 500", or a bare "700kr" on its own line. */
@@ -223,8 +244,15 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     let claimCards: ClaimCards | null = null;
     const lotInput = options.claims ? claimLotInput(c, seller) : null;
     const answer = lotInput ? options.claimAnswer?.(lotInput) : undefined;
+    const textPrice = options.claims ? lotTextPrice(c.text) : null;
     if (answer?.cards) {
-      claimCards = answer.cards.map((x) => ({ ...x, isMe: !!me && !!x.claimedBy && normalizeName(x.claimedBy) === me }));
+      // A card whose price Claude couldn't read from the photo takes the lot's per-card text price.
+      const fallback = textPrice?.perCard || answer.cards.length === 1 ? (textPrice?.kr ?? null) : null;
+      claimCards = answer.cards.map((x) => ({
+        ...x,
+        price: x.price ?? fallback,
+        isMe: !!me && !!x.claimedBy && normalizeName(x.claimedBy) === me,
+      }));
       if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
     }
     for (const r of options.claims ? [] : replies) {
@@ -289,6 +317,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       myClaim,
       claimCards,
       available: claimCards ? claimCards.filter((x) => !x.claimedBy).length : null,
+      textPrice,
     });
   }
   return lots;
@@ -310,7 +339,13 @@ export function claimItems(text: string, seller: string | null): { items: string
   return { items, all: false };
 }
 
-export type ClaimLotInput = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[] };
+export type ClaimLotInput = {
+  seller: string | null;
+  imageUrl: string;
+  replies: { author: string; text: string }[];
+  /** The lot comment's own text: some sellers write the price there ("10kr per stk"). */
+  lotText?: string;
+};
 
 /** The full-size version of a Facebook CDN photo: the `ctp` parameter asks for a small crop. */
 export const fullSizePhoto = (url: string) => url.replace(/([?&])ctp=[^&]*&?/, "$1").replace(/[?&]$/, "");
@@ -323,7 +358,7 @@ export function claimLotInput(c: CapturedComment, seller: string | null): ClaimL
     .sort((a, b) => compareIds(a.id, b.id))
     .filter((r) => !seller || normalizeName(r.author) !== normalizeName(seller))
     .map((r) => ({ author: r.author ?? "", text: r.text }));
-  return { seller, imageUrl: fullSizePhoto(photo), replies };
+  return { seller, imageUrl: fullSizePhoto(photo), replies, lotText: c.text };
 }
 
 /** Claim lots you've claimed on (photo prices, who got what). */

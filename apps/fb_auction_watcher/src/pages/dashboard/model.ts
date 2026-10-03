@@ -265,7 +265,14 @@ export function wonBySeller(rows: Row[]): WonSeller[] {
         const mine = l.claimCards?.filter((x) => x.isMe) ?? [];
         const named = l.claims.filter((x) => x.isMe).flatMap((x) => (x.all ? ["everything"] : x.items));
         label = `${l.position}. ${mine.length ? mine.map((x) => x.card).join(", ") : named.join(", ") || l.title}`;
-        kr = mine.length && mine.every((x) => x.price !== null) ? mine.reduce((n, x) => n + x.price!, 0) : null;
+        if (mine.length) {
+          kr = mine.every((x) => x.price !== null) ? mine.reduce((n, x) => n + x.price!, 0) : null;
+        } else if (l.textPrice) {
+          // Claude hasn't read the photo yet: the lot's text price, per card you named if it's per card.
+          kr = l.textPrice.perCard ? (named.length && !named.includes("everything") ? l.textPrice.kr * named.length : null) : l.textPrice.kr;
+        } else {
+          kr = null;
+        }
       } else {
         label = `${l.position}. ${l.title}`;
         kr = l.highestBid;
