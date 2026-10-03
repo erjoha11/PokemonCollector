@@ -1,26 +1,42 @@
 // Records group-feed posts as they render. Facebook virtualizes the feed: posts that scroll
 // out of view are emptied to placeholders (data-virtualized="true"), so a one-off snapshot
 // only ever holds the 2-3 posts near the screen. The recorder watches the feed and keeps a
-// copy of each post the first time it has content, while the user scrolls.
+// copy of each post while it has content (the fullest version seen), while the user scrolls.
 // Read-only: it observes the DOM, never clicks or scrolls.
-
-const ARTICLE = "[role='article']";
 
 export type RecordedPost = { key: string; html: string; text: string };
 
-/** Top-level posts in the feed (articles not nested in another article, i.e. not comments). */
+/** Marks the post's own parts (author, message, full text); comments under a post don't have it. */
+const POST_PART = "[data-ad-rendering-role]";
+
+/**
+ * Posts currently rendered in the feed: direct children of the feed that hold a post's own
+ * parts. In the feed the post itself has no role="article"; only the preview comments under
+ * it do, so articles can't be used to find posts. Emptied (virtualized) posts are skipped.
+ */
 export function feedPosts(feed: Element): Element[] {
-  return Array.from(feed.querySelectorAll(ARTICLE)).filter((a) => !a.parentElement?.closest(ARTICLE));
+  return Array.from(feed.children).filter((c) => c.querySelector(POST_PART));
 }
 
-/** A stable key for a post: its numeric post ID if a link carries one, else author + start of text. */
-export function postKey(post: Element): string {
+/** The post's ID: from a /posts/<id> link (comment permalinks), else a photo link's set=gm.<id>. */
+export function postId(post: Element): string | null {
   for (const a of Array.from(post.querySelectorAll("a[href]"))) {
-    const id = a.getAttribute("href")!.match(/\/(?:posts|permalink)\/(\d+)/)?.[1];
-    if (id) return `post:${id}`;
+    const href = a.getAttribute("href")!;
+    const id = href.match(/\/(?:posts|permalink)\/(\d+)/)?.[1] ?? href.match(/[?&]set=gm\.(\d+)/)?.[1];
+    if (id) return id;
   }
-  const text = (post.textContent ?? "").replace(/\s+/g, " ").trim();
-  return `text:${text.slice(0, 160)}`;
+  return null;
+}
+
+const squash = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, " ").trim();
+
+/** A stable key for a post: its ID if found, else author + start of the full text. */
+export function postKey(post: Element): string {
+  const id = postId(post);
+  if (id) return `post:${id}`;
+  const author = squash(post.querySelector("[data-ad-rendering-role='profile_name']")?.textContent);
+  const text = squash(post.querySelector("[data-ad-rendering-role='description']")?.textContent);
+  return `text:${author}|${text.slice(0, 120)}`;
 }
 
 export type FeedRecorder = {
@@ -34,8 +50,7 @@ export function recordFeed(feed: Element, onChange: (count: number) => void): Fe
   const scan = () => {
     let changed = false;
     for (const post of feedPosts(feed)) {
-      const text = (post.textContent ?? "").replace(/\s+/g, " ").trim();
-      if (text.length < 40) continue; // Placeholder or still loading.
+      const text = squash(post.textContent);
       const key = postKey(post);
       const prev = byKey.get(key);
       // Keep the fullest version: posts fill in progressively (images, comment counts).

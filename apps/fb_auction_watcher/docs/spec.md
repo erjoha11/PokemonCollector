@@ -223,7 +223,15 @@ DOM findings from the real run (2026-10-03):
   `data-virtualized="true"` placeholders, so the DOM only ever holds the 2–3 posts near the
   viewport. The feed reader has to record each post when it renders (MutationObserver), never
   read the feed in one pass. The full post text is in the DOM even while Facebook shows
-  "… Se mer", so the feed reader doesn't need to click it.
+  "… Se mer" (in `data-ad-rendering-role="description"`), so the feed reader doesn't need
+  to click it.
+- **A feed post has no `role="article"`;** only the preview comments under it do. A post is a
+  direct child of the feed holding `data-ad-rendering-role` parts (`profile_name`,
+  `story_message`, `description`, `title`, `meta`). Its ID is in comment permalinks
+  (`/posts/<id>/?comment_id=…`) or photo links (`set=gm.<id>`).
+- Saved snapshots don't round-trip through an HTML5 parser (happy-dom, browsers): Facebook
+  nests links inside links, and re-parsing moves content around. Check feed structure on
+  the saved file with a non-fixing parser (Python `html.parser`), not by re-loading it.
 
 Findings from a busy live auction (36 lots, 264 replies) and a second claim sale, 2026-10-03:
 

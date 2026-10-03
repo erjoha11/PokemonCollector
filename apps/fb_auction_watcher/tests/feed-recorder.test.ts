@@ -4,20 +4,24 @@ import { feedPosts, feedSampleHtml, postKey, recordFeed } from "../src/content/f
 // Synthetic feed: invented names. Mimics the virtualization seen on real Facebook, where a
 // post scrolled out of view is replaced by an empty data-virtualized="true" placeholder.
 
+// A feed post as Facebook renders it: no role="article" on the post itself, its parts marked
+// with data-ad-rendering-role, the ID only in a photo link (set=gm.<id>), and one preview
+// comment (role="article") underneath.
 const post = (id: string, text: string) =>
-  `<div data-virtualized="false"><div role="article">
-     <a href="/groups/123/user/9${id}/">Selger ${id}</a>
-     <a href="https://www.facebook.com/groups/123/posts/${id}/">5 min</a>
-     <div dir="auto">${text}</div>
+  `<div data-virtualized="false">
+     <div data-ad-rendering-role="profile_name"><a href="/groups/123/user/9${id}/">Selger ${id}</a></div>
+     <div data-ad-rendering-role="story_message">${text.slice(0, 12)} … <div role="button">Se mer</div></div>
+     <a href="https://www.facebook.com/photo/?fbid=5${id}&set=gm.${id}&idorvanity=123"><img src="x.jpg" width="500"></a>
+     <span data-ad-rendering-role="description">${text}</span>
      <div role="article" aria-label="Kommentar fra Noen"><div dir="auto">.</div></div>
-   </div></div>`;
+   </div>`;
 const placeholder = `<div data-virtualized="true" style="min-height: 900px"><div hidden></div></div>`;
 
 const flush = () => new Promise((r) => setTimeout(r, 350));
 
 let feed: HTMLElement;
 beforeEach(() => {
-  document.body.innerHTML = `<div role="feed"><div class="slot1">${post("111", "AUKSJON Sluttid: 04.10 kl 22:00 Antisnipe 5 min: Ja")}</div><div class="slot2"></div></div>`;
+  document.body.innerHTML = `<div role="feed"><div class="slot1">${post("111", "AUKSJON Sluttid: 04.10 kl 22:00 Antisnipe 5 min: Ja")}</div><div class="slot2"></div><div class="loading"><div role="article">loading</div></div></div>`;
   feed = document.querySelector("[role='feed']")!;
 });
 afterEach(() => {
@@ -25,11 +29,11 @@ afterEach(() => {
 });
 
 describe("feed recorder", () => {
-  it("counts only top-level posts, not comments inside them", () => {
+  it("finds posts by their marked parts, not by articles (those are comments)", () => {
     expect(feedPosts(feed)).toHaveLength(1);
   });
 
-  it("keys a post by its numeric post ID", () => {
+  it("keys a post by the post ID in its photo link", () => {
     expect(postKey(feedPosts(feed)[0])).toBe("post:111");
   });
 
