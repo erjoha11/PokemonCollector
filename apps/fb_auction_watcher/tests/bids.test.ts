@@ -113,6 +113,13 @@ describe("interpretLots", () => {
     expect(interpretLots(old, OPTS)).toHaveLength(3);
   });
 
+  it("reads a start bid mid-line, and titles a price-only lot by its number", () => {
+    const c2 = capture([lot(0, "Holo, mp 30kr", []), lot(1, "Mp 15kr", []), lot(2, "Holo ( promo) mp 40", [])]);
+    expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid])).toEqual([
+      ["Holo, mp 30kr", 30], ["Lot 2", 15], ["Holo ( promo) mp 40", 40],
+    ]);
+  });
+
   it("knows which post a capture belongs to", () => {
     expect(capturePostId(c)).toBe("555");
   });

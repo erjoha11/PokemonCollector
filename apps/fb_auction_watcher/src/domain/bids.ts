@@ -95,12 +95,19 @@ function compareIds(a: string | null, b: string | null): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** "MP: 1400", "Mp 10kr", "Minstepris 500", or a bare "700kr" on its own line. */
+/** "MP: 1400", "Mp 10kr", "Holo, mp 30kr", "Minstepris 500", or a bare "700kr" on its own line. */
 function lotStartBid(text: string): number | null {
-  const m = text.match(/(?:^|\n)\s*(?:mp|minstepris|startbud|start)\s*:?\s*([^\n]+)/i);
+  const m = text.match(/(?<![\p{L}\d])(?:mp|minstepris|startbud)\s*:?\s*(\d[^\n]*)/iu);
   if (m) return parseAmount(m[1]);
   const bare = text.match(/(?:^|\n)\s*(\d[\d .]*)\s*(?:kr|,-)\s*(?:\n|$)/i);
   return bare ? parseAmount(bare[1]) : null;
+}
+
+/** The lot's first line, unless it's only a price ("Mp 15kr"); then "Lot N". */
+function lotTitle(text: string, position: number): string {
+  const first = text.split("\n")[0]?.trim() ?? "";
+  const onlyPrice = /^(?:mp|mb|minstepris)?\s*:?\s*\d[\d .,]*\s*(?:kr|,-|&)?\.?$/i.test(first);
+  return first && !onlyPrice ? first : `Lot ${position}`;
 }
 
 /** "MB: 10" (minimum increment for this lot). */
@@ -188,7 +195,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     lots.push({
       commentId: c.id,
       position: lots.length + 1,
-      title: c.text.split("\n")[0]?.trim() || `Lot ${lots.length + 1}`,
+      title: lotTitle(c.text, lots.length + 1),
       rawText: c.text,
       imageUrl: c.images[0]?.src ?? null,
       startBid,
