@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, claimLotInput, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
+import { capturePostId, claimItems, claimLotInput, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
 import { lotNameAnswerKey } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
@@ -275,5 +275,32 @@ describe("naming lots from their photo", () => {
 
   it("caches by the photo's path (its query string changes per read)", () => {
     expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8"));
+  });
+});
+
+describe("claim lots priced in the lot's own text (\"Fastpris: Blir oppgitt over hvert bilde\")", () => {
+  it.each([
+    ["Holo/rev.holo\n5kr per stk", { kr: 5, perCard: true }],
+    ["Ulike språk . Ulike varianter. EX/V/IR10kr per stk", { kr: 10, perCard: true }],
+    ["Alle kortene 10 kr pr kort", { kr: 10, perCard: true }],
+    ["NM/LP+ - 1200kr", { kr: 1200, perCard: false }],
+    ["MP - 250kr", { kr: 250, perCard: false }],
+    ["Kanda-lot, se bilder", null],
+  ])("%s", (text, want) => expect(lotTextPrice(text)).toEqual(want));
+
+  const c = capture([
+    lot(0, "Holo/rev.holo\n5kr per stk", [reply(ME, `${SELLER} claim pikachu og eevee`, { id: 10 })]),
+  ]);
+
+  it("cards Claude found without a price take the lot's per-card price", () => {
+    const [l] = interpretLots(c, {
+      ...OPTS, claims: true,
+      claimAnswer: () => ({ cards: [
+        { card: "Pikachu", price: null, claimedBy: ME }, { card: "Eevee", price: null, claimedBy: ME },
+        { card: "Ditto", price: 20, claimedBy: null }, // A price on the photo wins.
+      ] }),
+    });
+    expect(l.claimCards!.map((x) => [x.card, x.price])).toEqual([["Pikachu", 5], ["Eevee", 5], ["Ditto", 20]]);
+    expect(l.textPrice).toEqual({ kr: 5, perCard: true });
   });
 });

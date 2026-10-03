@@ -86,7 +86,7 @@ export const endTimeAnswerKey = (text: string) => `end-time:${hashText(text)}`;
 export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hashText(`${seller ?? ""}\n${text}`)}`;
 
 /** One claim-sale lot: its full-size photo and the replies under it, oldest first. */
-export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[] };
+export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[]; lotText?: string };
 /** Every card in the photo: its price, and who claimed it first (null = still for sale). */
 export type ClaimLotAnswer = { cards: { card: string; price: number | null; claimedBy: string | null }[] };
 
@@ -97,9 +97,9 @@ export function claimLotRequest(item: ClaimLotItem): ClaudeRequest {
     task: "claim-lot",
     model: "sonnet",
     images: [item.imageUrl],
-    system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards with each price written on a note, and the replies under it, oldest first. Replies claim cards by name (often tagging the seller first, sometimes misspelled, e.g. "feraligator"), or "alle" for everything.
-First to claim a card gets it. List every card in the photo, left to right, top to bottom: its name as printed on the card, the price written next to it on the photo, and who claimed it first, or null if nobody has (it's still for sale). Use null for a price you can't read. Two copies of the same card are two entries.`,
-    input: `Seller: ${item.seller ?? "unknown"}\nReplies (oldest first):\n${item.replies.length ? item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n") : "(none yet)"}`,
+    system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards, the seller's text with the photo, and the replies under it, oldest first. Prices are written on the photo (a note by each card) or in the seller's text, sometimes per card for a kind of card ("Holo/rev.holo 5kr per stk", "EX/V/IR 10kr per stk": each such card costs that). Replies claim cards by name (often tagging the seller first, sometimes misspelled, e.g. "feraligator"), or "alle" for everything.
+First to claim a card gets it. List every card in the photo, left to right, top to bottom: its name as printed on the card, its price (from the photo or the seller's text), and who claimed it first, or null if nobody has (it's still for sale). Use null for a price you can't tell. Two copies of the same card are two entries.`,
+    input: `Seller: ${item.seller ?? "unknown"}\n${item.lotText ? `The seller's text with the photo: ${JSON.stringify(item.lotText)}\n` : ""}Replies (oldest first):\n${item.replies.length ? item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n") : "(none yet)"}`,
     schema: {
       type: "object",
       properties: {
