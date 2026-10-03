@@ -36,7 +36,7 @@ export type Panel = {
   showResult(capture: PostCapture, snapshotHtml: string): void;
   showError(text: string): void;
   /** Feed recording mode; `sampleHtml` builds the download from everything recorded so far. */
-  showFeedRecorder(sampleHtml: () => string): void;
+  showFeedRecorder(sampleHtml: () => string, openOverview: () => void): void;
   setScanProgress(progress: ScanProgress): void;
   showScanDone(result: ScanResult): void;
 };
@@ -134,13 +134,13 @@ export function showPanel(): Panel {
       html.addEventListener("click", () => download(`${stem}.html`, snapshotHtml, "text/html"));
       buttons.prepend(json, html);
     },
-    showFeedRecorder(sampleHtml) {
+    showFeedRecorder(sampleHtml, openOverview) {
       shadow.querySelector("h1")!.textContent = "FB Auction Watcher: scan feed";
       stop.textContent = "Stop scan";
       status.textContent = "Scanning…";
       const hint = document.createElement("p");
       hint.textContent =
-        "Scrolling the feed slowly and saving each post. Clicks only \"Se mer\" on auction and claim-sale posts. Leave this tab alone until it's done, or press Stop. The download contains other people's names: keep it in samples/, never commit it.";
+        "Scrolling the feed slowly and saving each post to the overview. Clicks only \"Se mer\" on auction and claim-sale posts. Leave this tab alone until it's done, or press Stop. The download contains other people's names: keep it in samples/, never commit it.";
       body.replaceChildren(hint);
       const html = document.createElement("button");
       html.type = "button";
@@ -150,7 +150,13 @@ export function showPanel(): Panel {
         const stamp = new Date().toISOString().replace(/[:.]/g, "-");
         download(`fbaw-feed-${stamp}.html`, sampleHtml(), "text/html");
       });
-      buttons.prepend(html);
+      const overview = document.createElement("button");
+      overview.type = "button";
+      overview.className = "primary";
+      overview.textContent = "Open overview";
+      overview.addEventListener("click", openOverview);
+      html.className = "";
+      buttons.prepend(overview, html);
     },
     setScanProgress({ posts, scrolls, seeMoreClicks }) {
       status.textContent = `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;

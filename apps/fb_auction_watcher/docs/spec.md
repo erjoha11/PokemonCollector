@@ -3,7 +3,9 @@
 - **Id:** `fb-auction-watcher`
 - **Type:** Chrome extension (Manifest V3)
 - **Owner/user:** Erik Johansen
-- **Status:** module 1 (spike) built, untested against real Facebook
+- **Status:** module 1 (spike) built and run on real posts; overview v1 built (feed scan by hand,
+  rule-based listing interpretation, IndexedDB store of raw posts, table page). See
+  `notes/fb_auction_watcher/overview-plan.md`.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).

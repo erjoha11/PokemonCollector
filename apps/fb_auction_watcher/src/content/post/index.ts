@@ -1,4 +1,6 @@
-import { isReadPostMessage } from "../../shared/messages";
+import type { FeedPost } from "../../shared/feed";
+import { isReadPostMessage, MSG_OPEN_OVERVIEW, MSG_SAVE_FEED_POSTS, type SaveFeedPostsMessage } from "../../shared/messages";
+import { extractFeedPost } from "../feed/extract";
 import { feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed } from "../feed/scan";
 import { expandAll } from "./expand";
@@ -28,14 +30,29 @@ async function readOpenPost() {
         // it renders (Facebook empties posts that leave the screen), and clicks "Se mer" on
         // auction and claim-sale posts for their full text. No other clicks.
         const controller = new AbortController();
-        const recorder = recordFeed(feed, () => {});
+        const recorder = recordFeed<FeedPost>(feed, () => {}, (el) => extractFeedPost(el, location.href));
         activeRecorder = recorder;
+        // Save as we go, so nothing is lost if the tab is closed mid-scan.
+        const saveChanged = () => {
+          const posts = recorder.takeChanged().flatMap((r) => (r.data ? [r.data] : []));
+          if (posts.length === 0) return;
+          const msg: SaveFeedPostsMessage = { type: MSG_SAVE_FEED_POSTS, posts, seenAt: new Date().toISOString() };
+          chrome.runtime.sendMessage(msg).catch(() => {});
+        };
         panel.onStop(() => controller.abort());
-        panel.showFeedRecorder(() => feedSampleHtml(location.href, recorder.posts()));
+        panel.showFeedRecorder(
+          () => feedSampleHtml(location.href, recorder.posts()),
+          () => void chrome.runtime.sendMessage({ type: MSG_OPEN_OVERVIEW }).catch(() => {}),
+        );
         const result = await scanFeed(feed, recorder, {
           signal: controller.signal,
-          onProgress: (p) => panel.setScanProgress(p),
+          onProgress: (p) => {
+            panel.setScanProgress(p);
+            saveChanged();
+          },
         });
+        recorder.flush();
+        saveChanged();
         recorder.stop();
         panel.showScanDone(result);
         return;

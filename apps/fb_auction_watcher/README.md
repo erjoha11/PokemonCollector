@@ -43,6 +43,17 @@ Check against what you see on Facebook:
 
 Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/samples/` (gitignored). **Never commit them**: they contain other people's names and comments.
 
+## The overview
+
+**Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
+auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
+and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
+the seller's original text next to it; a "?" means the rules weren't sure. Click a title to open the post.
+
+Posts are saved while a scan runs (IndexedDB, in the extension). Only raw text is stored; the overview
+interprets it every time it loads, so improved rules apply to old posts too. Bids and your Leading/Outbid
+status are not in it yet.
+
 ## Scan the feed
 
 Open the group's feed (no post open) and click the extension icon. The extension then scrolls the

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auction overview</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header>
+    <div class="top">
+      <h1>Auction overview</h1>
+      <span id="last-read" class="muted"></span>
+    </div>
+    <div class="counters">
+      <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
+      <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
+      <div class="counter outbid" title="Comes with post reads (your bids)"><span class="num">–</span><span class="label">Outbid</span></div>
+      <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
+    </div>
+    <div class="controls">
+      <div class="filters" role="group" aria-label="Filter by type">
+        <button type="button" data-filter="all">All</button>
+        <button type="button" data-filter="auction">Auction</button>
+        <button type="button" data-filter="claim">Claim</button>
+        <button type="button" data-filter="fixed">Fixed price</button>
+      </div>
+      <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
+    </div>
+  </header>
+  <main id="groups"></main>
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

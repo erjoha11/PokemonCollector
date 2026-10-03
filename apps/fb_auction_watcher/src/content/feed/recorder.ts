@@ -4,7 +4,7 @@
 // copy of each post while it has content (the latest rendering seen), while the feed scrolls.
 // Read-only: it observes the DOM, never clicks or scrolls.
 
-export type RecordedPost = { key: string; html: string; text: string };
+export type RecordedPost<T = unknown> = { key: string; html: string; text: string; data: T | null };
 
 /** Marks the post's own parts (author, message, full text); comments under a post don't have it. */
 const POST_PART = "[data-ad-rendering-role]";
@@ -39,15 +39,23 @@ export function postKey(post: Element): string {
   return `text:${author}|${text.slice(0, 120)}`;
 }
 
-export type FeedRecorder = {
-  posts(): RecordedPost[];
+export type FeedRecorder<T = unknown> = {
+  posts(): RecordedPost<T>[];
+  /** Posts recorded or updated since the last call. */
+  takeChanged(): RecordedPost<T>[];
   /** Record what's rendered right now, without waiting for the observer's batching. */
   flush(): void;
   stop(): void;
 };
 
-export function recordFeed(feed: Element, onChange: (count: number) => void): FeedRecorder {
-  const byKey = new Map<string, RecordedPost>();
+export function recordFeed<T = unknown>(
+  feed: Element,
+  onChange: (count: number) => void,
+  /** Reads a post into structured data while it's rendered (e.g. extractFeedPost). */
+  extract: (post: Element) => T | null = () => null,
+): FeedRecorder<T> {
+  const byKey = new Map<string, RecordedPost<T>>();
+  const changedKeys = new Set<string>();
 
   const scan = () => {
     let changed = false;
@@ -59,7 +67,8 @@ export function recordFeed(feed: Element, onChange: (count: number) => void): Fe
       // text (while removing the button, so it isn't necessarily longer). Emptied posts never
       // get here, since feedPosts skips them.
       if (prev && prev.html === post.outerHTML) continue;
-      byKey.set(key, { key, html: post.outerHTML, text });
+      byKey.set(key, { key, html: post.outerHTML, text, data: extract(post) });
+      changedKeys.add(key);
       changed = true;
     }
     if (changed) onChange(byKey.size);
@@ -80,6 +89,11 @@ export function recordFeed(feed: Element, onChange: (count: number) => void): Fe
 
   return {
     posts: () => Array.from(byKey.values()),
+    takeChanged: () => {
+      const out = Array.from(changedKeys, (k) => byKey.get(k)!);
+      changedKeys.clear();
+      return out;
+    },
     flush: scan,
     stop: () => observer.disconnect(),
   };
