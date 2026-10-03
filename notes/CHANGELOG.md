@@ -76,6 +76,26 @@ yet.
 - Review fixes H1-H6, M1, M3, M5, M6 (partly), M7, L1, L3, L10-L12, L14,
   L16-L18. Still open: M2, M6 (retention), M8 (service worker/store tests).
 
+**Review M2, M6, M8; Won section and lot names (#286-#289)**
+- M2 (#287): Claude failures are tracked per item (retried after 15 min,
+  then 1 h, skipped after 3 tries) so one expired lot photo no longer stops
+  every run; sales that ended over 6 h ago (or unseen for 3 days) aren't
+  sent; Sonnet photos are capped at 20 per rolling hour. What to ask lives
+  in `src/background/claudeQueue.ts`; the overview shows a Claude status line.
+- M6 (#286): retention for stored data (post reads 7 days after the end,
+  30 if yours; unused Claude answers dropped) in a daily cleanup alarm, and
+  "Clear stored data" in the overview. `claudeEndsAt` now lives only in
+  `src/domain/endTime.ts`.
+- M8 (#288): tests for the reader, the IndexedDB store (`fake-indexeddb`),
+  worker message routing and what goes to Claude, with shared fakes in
+  `tests/fakes/`.
+- #289: a Won section (everything you won, per seller, with what you owe,
+  marked paid/received), foldable table groups and cards, a more compact
+  table, "Within 1 hour" + "Later today" merged into Today, and lots named
+  from their photo (Sonnet, up to 12 photos per call) when the text is only
+  a price, under M2's failure tracking and photo cap and kept by M6's
+  retention.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
