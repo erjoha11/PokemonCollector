@@ -83,7 +83,98 @@ Innlegg = listing: oversiktsbilder av hele auksjonen, regler, sluttid
 
 **lot:** `id`, `listingId`, `position`, `fbCommentUrl`, `kind` (`single`|`bundle`), `title`,
 `cards[{name, set, number, condition}]`, `imageUrl`, `startBid`, `highestBid`,
-`highestBidder`, `bidCount`, `myStatus`, …
+`highestBidder`, `bidCount`, `myStatus`, `myHighestBid`
 
-> **TODO – ufullstendig:** forarbeidet ble kuttet her. Resten av `lot`, samt `bid`,
-> `capture` (råtekst) og eventuelle seksjoner etter datamodellen mangler.
+**bid:** `id`, `lotId`, `bidderName`, `amount`, `bidAt`, `rawText`, `isMe`, `valid`, `note`
+
+**capture:** `id`, `listingId`, `kind` (`feed`|`detail`), `rawText`, `capturedAt`,
+`parseStatus`, `parseError`
+
+**settings:** `groupUrl`, `myFbName`, `scanIntervalMin` (12), `backfillDays` (3),
+`captureEnabled`, `apiKey`
+
+**userState:** `lastDashboardVisitAt`, `seenListingIds`
+
+## Statuser
+
+Per listing:
+
+| Status | Betydning |
+|---|---|
+| Ny | Sett første gang etter siste besøk på tabellsiden |
+| Aktivitet | Flere kommentarer enn sist (`commentCount` > `commentCountPrev`) |
+| Slutter snart | Under 1 time igjen |
+| Ukjent sluttid | Sluttid kunne ikke tolkes |
+| Avsluttet? | Sluttid passert, men soft close-vinduet er ikke over |
+| Avsluttet | Sluttid (og eventuelt soft close-vindu) passert |
+| Solgt/trukket | Selger har markert salget som solgt eller trukket |
+
+Per lot: **Leder** / **Overbudt**. En listing viser oppsummert, f.eks. "Leder 2 · overbudt 1".
+
+## Design
+
+- **Farger:** blå `#2457D6` = Leder, oransje `#C2570C` = Overbudt, rød `#B42318` = under 1 t.
+- **Skrift:** IBM Plex Sans / IBM Plex Mono.
+- **Språk:** norsk UI.
+
+### Tabellside (`dashboard.html`)
+
+- Fire tall øverst: aktive, innen 1 t, overbudt, nye.
+- Grupper: innen 1 t · i dag · i morgen og senere · claim/fastpris · avsluttet.
+- Kolonner: Slutter · Salg (tittel, selger, Ny, +N kommentarer) · Type · Lots · Bud ·
+  Din status · Oppdatert.
+- Filtre: Alle / Auksjon / Claim / Fastpris / Mine bud / Nye + søk.
+- Rader jeg er aktiv i har farget venstrekant og kan foldes ut til "Dine lots i denne
+  auksjonen" (bilde, høyeste bud, mitt bud, status).
+- Klikk på tittel åpner Facebook-posten.
+
+### Sidepanel
+
+- Bryter Fanger / Pauset.
+- Tellere: innen 1 t, overbudt, nye.
+- Filtre: Alle / Mine bud / Innen 1 t.
+- Kompakt liste + lenke til full tabell.
+
+### Overlegg på posten
+
+- Toppfelt: selger, tittel, stor nedtelling, close-regel, selgerens regler ordrett +
+  tolkning, frakt, "Les på nytt".
+- Velger: "Alle lots" / "Bare mine".
+- "Dine lots" først (overbudt først, blå/oransje ramme, mitt bud vist), deretter "Andre lots".
+- Valgt lot: budliste, høyeste og neste gyldige bud, knapp "By på Facebook" som skjuler
+  overlegget og scroller til svarfeltet under lotet (skriver aldri).
+- "Vis Facebook-siden".
+
+## Plan
+
+Én modul om gangen; jeg tester mellom hver.
+
+| # | Modul | Innhold |
+|---|---|---|
+| 0 | Eksempler | 3–5 ekte auksjonsposter lagret i `samples/` (gitignored) |
+| 1 | Spike | Content script som utvider kommentarer/svar og lager rå JSON for én post |
+| 2 | Lagring | `Store`-grensesnitt på IndexedDB med tester |
+| 3 | Tolkning | Claude API + zod + etterbehandling, testet mot samples |
+| 4 | Feed-skann | Backfill + inkrementelt + idle-pause |
+| 5 | Tabellside | |
+| 6 | Overlegg | Inkl. automatisk gjenlesing hvert 15. min av auksjoner jeg har budt på |
+| 7 | Sidepanel | |
+| 8 | Senere | Prising, varsler, Supabase, lot-visning |
+
+Byggerekkefølge i praksis: 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7 (tolkning testes mot
+spike-JSON før lagringen kobles på).
+
+## Risiko
+
+| Risiko | Tiltak |
+|---|---|
+| Metas vilkår forbyr automatisert innhenting | Reglene over: kun lesing, egen Chrome, rolig tempo, av-bryter |
+| Facebook endrer HTML | `samples/` som regresjonstest; ingen CSS-klasse-selektorer |
+| Selgere skriver ulikt | Vis alltid originaltekst ved siden av tolkning; lagre råtekst |
+| Ikke sanntid | Vis "sist lest" på alt |
+
+## Arbeidsform
+
+- Vis plan før kode for hver modul.
+- Kode og commits på engelsk, UI på norsk.
+- Etter hver økt: oppdater denne spec-en med det vi har lært, og commit.

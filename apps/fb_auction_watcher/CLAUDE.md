@@ -14,7 +14,7 @@ It is independent of the other apps in `apps/`: no imports to or from them, no s
 
 These override convenience. Don't relax any of them without the user's explicit say-so:
 
-- **Read-only.** Never bid, claim, comment, react, or post. The only clicks allowed are "Vis flere kommentarer" / "View more comments", "Vis N svar" / "View N replies", and switching the feed sort order. The highest bid is binding, so a stray click costs real money.
+- **Read-only.** Never bid, claim, comment, react, or post. The only clicks allowed are "Vis flere kommentarer" / "View more comments", "Vis N svar" / "View N replies", and switching the feed sort order. The highest bid is binding, so a stray click costs real money. The overlay's "By på Facebook" button only hides the overlay and scrolls to the reply field — it never focuses, types, or submits.
 - **No headless or server-side scraping.** Everything runs in the user's own logged-in Chrome.
 - **Slow pacing.** Feed scan every 10–15 min ±20 % jitter, pause while the machine is locked/idle (`chrome.idle`), never more than one tab talking to Facebook at a time, and a user-facing off switch.
 - **Never use CSS class names as selectors** — Facebook obfuscates them. Use `role`, `aria-label`, DOM structure, and text patterns. Expect virtualized lists and SPA navigation (no full page loads).
@@ -36,8 +36,15 @@ These override convenience. Don't relax any of them without the user's explicit 
 
 Stack: TypeScript, Vite, Preact, idb, zod. The Anthropic API key lives in `chrome.storage.local`, never in the repo.
 
+## Working style
+
+- **Show a plan before writing code for each module**, and wait for the go-ahead. One module at a time; the user tests between modules. Module order and scope: `docs/spec.md` "Plan" (in practice 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7).
+- Code, identifiers, comments, and commit messages in English; all UI text in Norwegian.
+- Design tokens (colors, fonts) and page layouts are specified in `docs/spec.md` "Design" — follow them, don't invent new ones.
+- After each session: update `docs/spec.md` with what was learned (e.g. DOM findings, parsing edge cases) and commit.
+
 ## Repo conventions that apply here
 
 - This is the repo's first non-Python app. Root `python -m pytest` and `ruff` don't cover it; its own build/test commands go here once `package.json` exists.
-- `samples/` (captured Facebook HTML/text) is gitignored — it contains other people's names and comments. Never commit it, and test fixtures derived from it must be anonymized.
+- `samples/` (saved Facebook posts — "Webpage, complete" + screenshots — at `apps/fb_auction_watcher/samples/`) is gitignored — it contains other people's names and comments. Never commit it, and test fixtures derived from it must be anonymized.
 - Notes, handoff logs, and plans go in `notes/fb_auction_watcher/`, not in this folder (see root `CLAUDE.md`).
