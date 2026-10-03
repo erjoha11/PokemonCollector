@@ -198,8 +198,11 @@ warnings, no orphan replies.
 - Trigger: toolbar icon → service worker → content script in the active tab.
 - Order: switch comment sort to "All comments" (sort control → menu item, `sort.ts`), then
   expand "View more comments" / "View N replies" / "See more" until none are left (`expand.ts`).
-- Post root: the topmost `role="dialog"` holding a `role="article"`, else `role="main"` on a
-  `/groups/<g>/posts/<id>` or `/permalink/<id>` URL.
+- Post root: the topmost `role="dialog"` holding the post's own parts
+  (`data-ad-rendering-role="story_message"` / `data-ad-preview="message"`), else `role="main"`
+  on a `/groups/<g>/posts/<id>` or `/permalink/<id>` URL. Facebook opens posts in a dialog even
+  from a direct link; finding it by `role="article"` (comments) missed posts with no comments
+  and read the feed behind instead (fixed 2026-10-03).
 - Comment vs. reply: the timestamp link's `comment_id` / `reply_comment_id` query params
   (language-independent), falling back to the article's aria-label ("Comment by" / "Kommentar
   fra", "Reply by" / "Svar fra"). Replies attach to their parent by `comment_id`.

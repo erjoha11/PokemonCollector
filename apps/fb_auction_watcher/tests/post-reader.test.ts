@@ -20,6 +20,18 @@ describe("findPostRoot", () => {
     expect(root().getAttribute("role")).toBe("dialog");
   });
 
+  it("finds a post's dialog even when the post has no comments yet", () => {
+    document.body.innerHTML = `<div role="main"><div role="feed"><div role="article">a feed comment</div></div></div>
+      <div role="dialog"><div data-ad-rendering-role="story_message">AUKSJON ingen bud ennå</div></div>`;
+    expect(findPostRoot(document)?.getAttribute("role")).toBe("dialog");
+    const capture = extractCapture(findPostRoot(document)!, {
+      pageUrl: "https://www.facebook.com/groups/123/posts/555/", pageLang: "nb", expandClicks: 0,
+      expandStoppedBecause: "done", commentSortAction: "not-found",
+    });
+    expect(capture.comments).toEqual([]);
+    expect(capture.post.text).toContain("AUKSJON");
+  });
+
   it("returns null on a page with no open post", () => {
     document.body.innerHTML = "<div role='main'><div role='feed'></div></div>";
     expect(findPostRoot(document)).toBeNull();

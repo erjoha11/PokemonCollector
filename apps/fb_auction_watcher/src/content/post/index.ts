@@ -18,7 +18,7 @@ import { extractFeedPost } from "../feed/extract";
 import { feedPosts, feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
 import { expandAll } from "./expand";
-import { extractCapture, findPostRoot } from "./extract";
+import { extractCapture, findPostDialog, findPostRoot } from "./extract";
 import { showPanel, type Panel } from "./panel";
 import { showStatusPill } from "./pill";
 import { ensureAllComments } from "./sort";
@@ -87,7 +87,8 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     // Opened from the overview: Facebook renders the post a moment after the page loads.
     if (waitForPost) {
       panel.setStatus("Waiting for the post to load…");
-      for (let i = 0; i < 30 && !findPostRoot(document)?.querySelector("[role='article']"); i++) await sleep(500);
+      // Wait for the post's dialog (not just any article: a post may have no comments yet).
+      for (let i = 0; i < 30 && !findPostDialog(document); i++) await sleep(500);
       await sleep(1000); // Let the comment area settle before switching sort / expanding.
     }
     const root = findPostRoot(document);
