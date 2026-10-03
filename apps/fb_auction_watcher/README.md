@@ -63,6 +63,11 @@ to it, in the order they were placed; the seller's own replies never count; a bi
 by the increment; bids placed under another reply (e.g. under the seller's photo) are shown but not
 counted, since sellers reject them. Set your Facebook name under **Settings** if it isn't Erik Johansen.
 
+**Claim sales and fixed price:** replies are read as claims ("claim Persian og Clefairy", "<seller>
+marowak og feraligatr", "claim alle"). You get **Claimed** when nobody claimed the same card (or
+everything) before you, and **Check** when someone was earlier: first come wins, so you may not get it.
+A "." is someone following the lot, not a claim. Click any photo for a bigger picture.
+
 Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
 it every time it loads, so improved rules apply to old posts too.
 

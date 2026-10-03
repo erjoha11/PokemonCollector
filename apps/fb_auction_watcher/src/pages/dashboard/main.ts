@@ -95,7 +95,7 @@ async function load() {
 
 function matches(r: Row): boolean {
   if (filter === "mine") {
-    if (!r.summary || r.summary.lead + r.summary.outbid === 0) return false;
+    if (!r.summary || r.summary.lead + r.summary.outbid + r.summary.claimed + r.summary.check === 0) return false;
   } else if (filter !== "all" && r.type !== filter) return false;
   if (!query) return true;
   const q = query.toLowerCase();
@@ -148,6 +148,7 @@ function saleCell(r: Row): HTMLTableCellElement {
     img.alt = "";
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";
+    zoomable(img, r.title);
     wrap.append(img);
   }
   const box = el("div", "sale-text");
@@ -189,6 +190,29 @@ function visiblePostIds(): string[] {
     .map((v) => v.postId);
 }
 
+/** A bigger view of a photo: click a thumbnail or a lot image; Esc, click or × closes it. */
+function showPhoto(src: string, caption: string) {
+  const dialog = $<HTMLDialogElement>("#photo");
+  const img = dialog.querySelector("img")!;
+  img.src = src;
+  img.alt = caption;
+  dialog.querySelector(".photo-caption")!.textContent = caption;
+  dialog.showModal();
+}
+
+function zoomable(img: HTMLImageElement, caption: string) {
+  img.classList.add("zoomable");
+  img.tabIndex = 0;
+  img.title = "Click for a bigger picture";
+  img.addEventListener("click", () => showPhoto(img.src, caption));
+  img.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      showPhoto(img.src, caption);
+    }
+  });
+}
+
 /** "Reading…" / "Queued" while the reader has this post. */
 function readState(postId: string): string | null {
   if (reader.current?.postId === postId || visiblePostIds().includes(postId) || justClicked.has(postId)) return "Reading…";
@@ -210,15 +234,24 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
     return [lotsTd, youTd];
   }
   const s = r.summary;
-  lotsTd.append(el("div", undefined, `${s.lots} lot${s.lots === 1 ? "" : "s"} · ${s.bids} bid${s.bids === 1 ? "" : "s"}`));
+  const isClaims = r.type === "claim" || r.type === "fixed";
+  const count = isClaims ? `${s.claims} claim${s.claims === 1 ? "" : "s"}` : `${s.bids} bid${s.bids === 1 ? "" : "s"}`;
+  lotsTd.append(el("div", undefined, `${s.lots} lot${s.lots === 1 ? "" : "s"} · ${count}`));
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
-  if (s.lead + s.outbid === 0) youTd.append(el("span", "muted", "No bids"));
+  const mineCount = s.lead + s.outbid + s.claimed + s.check;
+  if (mineCount === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
   if (s.lead) youTd.append(el("span", "status lead", `Leading ${s.lead}`));
   if (s.outbid) youTd.append(el("span", "status outbid", `Outbid ${s.outbid}`));
+  if (s.claimed) youTd.append(el("span", "status lead", `Claimed ${s.claimed}`));
+  if (s.check) {
+    const check = el("span", "status outbid", `Check ${s.check}`);
+    check.title = "Someone claimed the same before you: first come wins";
+    youTd.append(check);
+  }
   const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
   youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
-  if (s.lead + s.outbid > 0 || s.lots > 0) {
-    const toggle = el("button", "linkish", expanded.has(r.id) ? "Hide lots" : s.lead + s.outbid > 0 ? "Your lots" : "Lots");
+  if (mineCount > 0 || s.lots > 0) {
+    const toggle = el("button", "linkish", expanded.has(r.id) ? "Hide lots" : mineCount > 0 ? "Your lots" : "Lots");
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", String(expanded.has(r.id)));
     toggle.addEventListener("click", () => {
@@ -236,22 +269,37 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   const tr = el("tr", "lots-row");
   const td = el("td");
   td.colSpan = columns;
-  const mine = (r.lots ?? []).filter((l) => l.myStatus !== "none");
+  const mine = (r.lots ?? []).filter((l) => l.myStatus !== "none" || l.myClaim !== "none");
   const lots: Lot[] = mine.length ? mine : r.lots ?? [];
   const list = el("div", "lot-list");
   for (const l of lots) {
-    const item = el("div", `lot lot-${l.myStatus}`);
+    const isClaims = r.type === "claim" || r.type === "fixed";
+    const item = el("div", `lot lot-${isClaims ? { none: "none", claimed: "lead", check: "outbid" }[l.myClaim] : l.myStatus}`);
     if (l.imageUrl) {
       const img = el("img", "lot-img");
       img.src = l.imageUrl;
       img.alt = "";
       img.loading = "lazy";
       img.referrerPolicy = "no-referrer";
+      zoomable(img, `${l.position}. ${l.title}`);
       item.append(img);
     }
     const body = el("div", "lot-body");
     body.append(el("div", "lot-title", `${l.position}. ${l.title}`));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
+    if (isClaims) {
+      if (l.myClaim !== "none") {
+        body.append(el("div", `status ${l.myClaim === "claimed" ? "lead" : "outbid"}`, l.myClaim === "claimed" ? "You claimed first" : "Someone claimed the same before you"));
+      }
+      if (l.claims.length === 0) body.append(el("div", "muted small", "No claims"));
+      for (const c of l.claims) {
+        const what = c.all ? "everything" : c.items.length ? c.items.join(", ") : "the lot";
+        body.append(el("div", `small ${c.isMe ? "" : "muted"}`, `${c.isMe ? "You" : c.claimer}: ${what}${c.contested ? " (someone was earlier)" : ""}`));
+      }
+      item.append(body);
+      list.append(item);
+      continue;
+    }
     const hi =
       l.highestBid === null
         ? "No bids yet"
@@ -311,7 +359,12 @@ function render() {
   $("#count-outbid").textContent = String(counts.outbid);
   $("#count-new").textContent = String(counts.isNew);
   $("#last-read").textContent = lastFeedReadAt ? `Feed last read ${ago(lastFeedReadAt, now)}` : "Feed not read yet";
-  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
+  {
+  const dialog = $<HTMLDialogElement>("#photo");
+  // A click anywhere (on the backdrop, the photo or ×) closes it; Esc is built in.
+  dialog.addEventListener("click", () => dialog.close());
+}
+document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
   renderSettings(now);
 
   const main = $<HTMLElement>("#groups");
@@ -335,8 +388,8 @@ function render() {
     table.tHead!.append(head);
     for (const r of g.rows) {
       const tr = el("tr");
-      if (r.summary?.outbid) tr.classList.add("mine-outbid");
-      else if (r.summary?.lead) tr.classList.add("mine-lead");
+      if (r.summary?.outbid || r.summary?.check) tr.classList.add("mine-outbid");
+      else if (r.summary?.lead || r.summary?.claimed) tr.classList.add("mine-lead");
       tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), el("td", "price", priceText(r)), ...statusCells(r, now));
       const seen = el("td", "seen", ago(r.lastSeenAt, now));
       seen.title = `First seen ${new Date(r.firstSeenAt).toLocaleString("en-GB")}`;
@@ -361,6 +414,11 @@ function tick() {
   });
 }
 
+{
+  const dialog = $<HTMLDialogElement>("#photo");
+  // A click anywhere (on the backdrop, the photo or ×) closes it; Esc is built in.
+  dialog.addEventListener("click", () => dialog.close());
+}
 document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) =>
   b.addEventListener("click", () => {
     filter = b.dataset.filter as Filter;

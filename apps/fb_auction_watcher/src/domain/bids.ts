@@ -33,6 +33,24 @@ export type Bid = {
 
 export type MyStatus = "none" | "lead" | "outbid";
 
+/** A claim on a claim-sale or fixed-price lot: "claim Persian og Clefairy", "<Seller> marowak". */
+export type Claim = {
+  replyId: string | null;
+  claimer: string;
+  rawText: string;
+  /** Item names claimed, lower case ("persian", "clefairy"); empty = the lot as a whole. */
+  items: string[];
+  /** "alle" / "all": everything in the photo. */
+  all: boolean;
+  isMe: boolean;
+  /** Someone else claimed the same thing (or everything) before this claim. */
+  contested: boolean;
+  underReply: boolean;
+};
+
+/** Your claim on a lot: first on what you named, someone was earlier, or no claim. */
+export type MyClaim = "none" | "claimed" | "check";
+
 export type Lot = {
   commentId: string | null;
   position: number;
@@ -50,6 +68,9 @@ export type Lot = {
   unsureCount: number;
   /** No bid reached the start bid; the highest is shown anyway (sellers sometimes accept it). */
   belowStart: boolean;
+  /** Claim-sale and fixed-price lots: claims instead of bids. */
+  claims: Claim[];
+  myClaim: MyClaim;
 };
 
 export const normalizeName = (s: string | null | undefined) =>
@@ -118,6 +139,8 @@ function lotIncrement(text: string): number | null {
 
 export type LotOptions = {
   myName: string;
+  /** Claim sales and fixed-price posts: replies are claims, not bids. */
+  claims?: boolean;
   /** From the post: used when a lot doesn't state its own. */
   listingIncrement: number | null;
   listingMinPrice: number | null;
@@ -154,7 +177,10 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     const replies = [...c.replies].sort((a, b) => compareIds(a.id, b.id));
     const bids: Bid[] = [];
     let unsureCount = 0;
-    for (const r of replies) {
+    const claims = options.claims ? readClaims(replies, seller, me) : [];
+    const mineClaims = claims.filter((x) => x.isMe);
+    const myClaim: MyClaim = mineClaims.length === 0 ? "none" : mineClaims.some((x) => !x.contested) ? "claimed" : "check";
+    for (const r of options.claims ? [] : replies) {
       const bid = toBid(r, seller, me, options);
       if (bid === "unsure") unsureCount++;
       else if (bid) bids.push(bid);
@@ -207,9 +233,58 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       myStatus: mine.length === 0 ? "none" : highest?.isMe ? "lead" : "outbid",
       unsureCount,
       belowStart,
+      claims,
+      myClaim,
     });
   }
   return lots;
+}
+
+const CLAIM_WORDS = /^(?:claim(?:er)?|clame|claimer|tar|kjøper|vil\s+ha|ønsker)\b[\s:,-]*/i;
+
+/** The items a claim names: "claim Persian og Clefairy" → ["persian", "clefairy"]; "alle" → all. */
+export function claimItems(text: string, seller: string | null): { items: string[]; all: boolean } | null {
+  let t = stripSellerTag(text, seller).trim();
+  if (!t || /^[.\s]+$/.test(t)) return null; // "." = following, not a claim.
+  if (/\?\s*$/.test(t)) return null; // A question.
+  t = t.replace(CLAIM_WORDS, "").replace(/[.!]+$/, "").trim();
+  if (/^(alle|all|hele|everything)\b/i.test(t) || t === "") return { items: [], all: /^(alle|all|hele|everything)\b/i.test(t) };
+  const items = t
+    .split(/\s*(?:,|&|\+|\/|\bog\b|\band\b)\s*/i)
+    .map((x) => x.trim().toLowerCase())
+    .filter(Boolean);
+  return { items, all: false };
+}
+
+const sameItem = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);
+
+/**
+ * Claims in the order they were placed. A claim is contested when someone else claimed earlier
+ * the same item, everything ("alle"), or the lot without naming items.
+ */
+function readClaims(replies: CapturedReply[], seller: string | null, me: string): Claim[] {
+  const claims: Claim[] = [];
+  for (const r of replies) {
+    const claimer = r.author ?? "";
+    if (seller && normalizeName(claimer) === normalizeName(seller)) continue;
+    const parsed = claimItems(r.text, seller);
+    if (!parsed) continue;
+    const earlier = claims.filter((x) => normalizeName(x.claimer) !== normalizeName(claimer) && !x.underReply);
+    const contested = earlier.some(
+      (x) => x.all || x.items.length === 0 || parsed.all || parsed.items.length === 0 || x.items.some((i) => parsed.items.some((j) => sameItem(i, j))),
+    );
+    claims.push({
+      replyId: r.id,
+      claimer,
+      rawText: r.text,
+      items: parsed.items,
+      all: parsed.all,
+      isMe: !!me && normalizeName(claimer) === me,
+      contested,
+      underReply: /\bsitt svar\b|'s reply\b/i.test(r.ariaLabel ?? ""),
+    });
+  }
+  return claims;
 }
 
 function toBid(r: CapturedReply, seller: string | null, me: string, options: LotOptions): Bid | "unsure" | null {
@@ -256,7 +331,18 @@ export function unsureReplies(capture: PostCapture): { seller: string | null; te
   return out;
 }
 
-export type LotSummary = { lots: number; bids: number; lead: number; outbid: number; unsure: number };
+export type LotSummary = {
+  lots: number;
+  bids: number;
+  lead: number;
+  outbid: number;
+  unsure: number;
+  claims: number;
+  /** Lots where your claim was first. */
+  claimed: number;
+  /** Lots where someone claimed the same before you. */
+  check: number;
+};
 
 export function summarizeLots(lots: Lot[]): LotSummary {
   return {
@@ -265,6 +351,9 @@ export function summarizeLots(lots: Lot[]): LotSummary {
     lead: lots.filter((l) => l.myStatus === "lead").length,
     outbid: lots.filter((l) => l.myStatus === "outbid").length,
     unsure: lots.reduce((n, l) => n + l.unsureCount, 0),
+    claims: lots.reduce((n, l) => n + l.claims.length, 0),
+    claimed: lots.filter((l) => l.myClaim === "claimed").length,
+    check: lots.filter((l) => l.myClaim === "check").length,
   };
 }
 

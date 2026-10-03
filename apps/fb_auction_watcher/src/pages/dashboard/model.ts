@@ -63,6 +63,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const lots = capture
       ? interpretLots(capture, {
           myName,
+          claims: i.type === "claim" || i.type === "fixed",
           listingIncrement: i.increment,
           listingMinPrice: i.minPrice,
           answer: (seller, text) => {
@@ -135,7 +136,7 @@ export function countRows(rows: Row[], now: Date): Counts {
   return {
     active: active.length,
     withinHour: active.filter((r) => r.endsAtMs !== null && (r.maybeEnded || r.endsAtMs - t < HOUR)).length,
-    outbid: active.filter((r) => (r.summary?.outbid ?? 0) > 0).length,
+    outbid: active.filter((r) => (r.summary?.outbid ?? 0) + (r.summary?.check ?? 0) > 0).length,
     isNew: rows.filter((r) => r.isNew && !r.ended).length,
   };
 }

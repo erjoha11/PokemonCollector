@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, interpretLots, readBid, summarizeLots, unsureReplies } from "../src/domain/bids";
+import { capturePostId, claimItems, interpretLots, readBid, summarizeLots, unsureReplies } from "../src/domain/bids";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
 // Synthetic capture shaped like the real Gengar auction in samples/ (all names invented):
@@ -104,7 +104,7 @@ describe("interpretLots", () => {
   });
 
   it("summarizes and lists unsure replies for Claude", () => {
-    expect(summarizeLots(interpretLots(c, OPTS))).toEqual({ lots: 3, bids: 9, lead: 2, outbid: 0, unsure: 1 });
+    expect(summarizeLots(interpretLots(c, OPTS))).toEqual({ lots: 3, bids: 9, lead: 2, outbid: 0, unsure: 1, claims: 0, claimed: 0, check: 0 });
     expect(unsureReplies(c)).toEqual([{ seller: SELLER, text: `${SELLER} 580?` }]);
   });
 
@@ -122,5 +122,56 @@ describe("interpretLots", () => {
 
   it("knows which post a capture belongs to", () => {
     expect(capturePostId(c)).toBe("555");
+  });
+});
+
+describe("claims (claim sales and fixed price)", () => {
+  it.each([
+    [`${SELLER} claim morpeko`, { items: ["morpeko"], all: false }],
+    [`${SELLER} claim Persian og Clefairy`, { items: ["persian", "clefairy"], all: false }],
+    [`${SELLER} clame salazzle`, { items: ["salazzle"], all: false }],
+    [`${SELLER} claim alle`, { items: [], all: true }],
+    [`${SELLER} eevee, slowbro og slowpoke`, { items: ["eevee", "slowbro", "slowpoke"], all: false }],
+    [`${SELLER} marowak og feraligatr`, { items: ["marowak", "feraligatr"], all: false }],
+    [`${SELLER} claim`, { items: [], all: false }],
+    [`${SELLER} .`, null],
+    [`${SELLER} er denne fortsatt ledig?`, null],
+  ])("%s", (text, want) => expect(claimItems(text, SELLER)).toEqual(want));
+
+  const c = capture([
+    // One photo, several cards: different people claim different cards.
+    lot(0, "", [
+      reply("Bidder A", `${SELLER} claim Persian og Clefairy`, { id: 10 }),
+      reply(ME, `${SELLER} marowak og feraligatr`, { id: 11 }),
+      reply(SELLER, "Bidder A sendt PM", { id: 12 }),
+    ]),
+    // Someone was earlier on the same card.
+    lot(1, "", [reply("Bidder B", `${SELLER} claim feraligatr`, { id: 20 }), reply(ME, `${SELLER} claim Feraligatr`, { id: 21 })]),
+    // "claim alle" first: everything in the photo is taken.
+    lot(2, "", [reply("Bidder C", `${SELLER} claim alle`, { id: 30 }), reply(ME, `${SELLER} claim marowak`, { id: 31 })]),
+    lot(3, "", [reply("Bidder D", `${SELLER} .`, { id: 40 })]),
+  ]);
+  const lots = interpretLots(c, { ...OPTS, claims: true });
+
+  it("reads claims, in order, never the seller's own replies", () => {
+    expect(lots[0].claims.map((x) => [x.claimer, x.items])).toEqual([
+      ["Bidder A", ["persian", "clefairy"]],
+      [ME, ["marowak", "feraligatr"]],
+    ]);
+    expect(lots[0].bids).toEqual([]);
+  });
+
+  it("you're first on what you named, even if others claimed other cards in the same photo", () => {
+    expect(lots[0].myClaim).toBe("claimed");
+  });
+
+  it("flags a claim where someone was earlier on the same card, or claimed everything", () => {
+    expect(lots[1].myClaim).toBe("check");
+    expect(lots[2].myClaim).toBe("check");
+    expect(lots[3]).toMatchObject({ myClaim: "none", claims: [] });
+  });
+
+  it("summarizes claims", () => {
+    expect(summarizeLots(lots)).toMatchObject({ lots: 4, claims: 6, claimed: 1, check: 2, bids: 0 });
   });
 });

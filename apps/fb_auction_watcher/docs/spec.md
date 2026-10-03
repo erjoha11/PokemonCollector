@@ -264,6 +264,11 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   hovedbildet"), so the overview shows them but leaves them out of the highest bid. When no
   bid reaches a lot's start bid, the highest is still shown, flagged: a seller accepted one
   ("den er grei").
+- **Claims** (claim sales, fixed price): every reply from someone other than the seller that
+  isn't "." or a question is a claim; it names cards ("claim Persian og Clefairy", "<seller>
+  eevee, slowbro og slowpoke"), "alle", or nothing (the lot). One photo often holds several
+  cards claimed by different people, so a claim is only contested by an earlier claim of the
+  same card, of "alle", or of the unnamed lot.
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.

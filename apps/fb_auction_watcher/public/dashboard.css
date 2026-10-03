@@ -121,3 +121,12 @@ tr.lots-row > td { background: var(--bg); }
 .open-link:hover { color: var(--lead); text-decoration: underline; }
 .badge.reading { color: var(--lead); border: 1px solid var(--lead); }
 .badge.just-read { display: inline-block; margin-top: 2px; color: #fff; background: var(--new); }
+
+/* Photo lightbox */
+img.zoomable { cursor: zoom-in; }
+img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; }
+#photo { border: none; padding: 0; background: transparent; max-width: 92vw; max-height: 92vh; overflow: visible; cursor: zoom-out; }
+#photo::backdrop { background: rgba(0, 0, 0, .8); }
+#photo img { display: block; max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 6px; background: var(--surface); }
+.photo-caption { color: #fff; font-size: 13px; margin-top: 6px; text-align: center; }
+.photo-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #1b1f24; font-size: 20px; line-height: 1; cursor: pointer; }

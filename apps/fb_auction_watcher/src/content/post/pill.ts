@@ -43,13 +43,17 @@ button:hover { color: #1b1f24; text-decoration: underline; }
 }
 `;
 
-/** "100 lots · 13 bids · Leading 1 · Outbid 2", from a capture and your name. */
-async function summary(capture: PostCapture): Promise<{ text: string; lead: number; outbid: number }> {
+/** "100 lots · 13 bids · Leading 1 · Outbid 2" (or claims: "18 lots · 3 claims · Claimed 1"). */
+async function summary(capture: PostCapture): Promise<{ text: string; lead: number; outbid: number; labels: [string, string] }> {
   const listing = interpretListing(capture.post.text, new Date(capture.capturedAt));
   const { myName } = await getSettings();
-  const s = summarizeLots(interpretLots(capture, { myName, listingIncrement: listing.increment, listingMinPrice: listing.minPrice }));
-  const parts = [`${s.lots} lot${s.lots === 1 ? "" : "s"}`, `${s.bids} bid${s.bids === 1 ? "" : "s"}`];
-  return { text: parts.join(" · "), lead: s.lead, outbid: s.outbid };
+  const claims = listing.type === "claim" || listing.type === "fixed";
+  const s = summarizeLots(interpretLots(capture, { myName, claims, listingIncrement: listing.increment, listingMinPrice: listing.minPrice }));
+  const count = claims ? `${s.claims} claim${s.claims === 1 ? "" : "s"}` : `${s.bids} bid${s.bids === 1 ? "" : "s"}`;
+  const parts = [`${s.lots} lot${s.lots === 1 ? "" : "s"}`, count];
+  return claims
+    ? { text: parts.join(" · "), lead: s.claimed, outbid: s.check, labels: ["Claimed", "Check"] }
+    : { text: parts.join(" · "), lead: s.lead, outbid: s.outbid, labels: ["Leading", "Outbid"] };
 }
 
 export function showStatusPill(): Panel {
@@ -104,10 +108,10 @@ export function showStatusPill(): Panel {
       pill.classList.add("done");
       const s = capture.stats;
       line.textContent = `Read ${s.topLevelComments} comments, ${s.replies} replies`;
-      void summary(capture).then(({ text, lead, outbid }) => {
+      void summary(capture).then(({ text, lead, outbid, labels }) => {
         line.textContent = `Saved · ${text}`;
-        if (lead) line.append(" · ", Object.assign(document.createElement("span"), { className: "lead", textContent: `Leading ${lead}` }));
-        if (outbid) line.append(" · ", Object.assign(document.createElement("span"), { className: "outbid", textContent: `Outbid ${outbid}` }));
+        if (lead) line.append(" · ", Object.assign(document.createElement("span"), { className: "lead", textContent: `${labels[0]} ${lead}` }));
+        if (outbid) line.append(" · ", Object.assign(document.createElement("span"), { className: "outbid", textContent: `${labels[1]} ${outbid}` }));
       });
       fadeSoon(10_000);
     },

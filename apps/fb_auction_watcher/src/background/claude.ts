@@ -66,6 +66,8 @@ export async function pendingItems(store: Store) {
   }
   const bids: (BidItem & { key: string })[] = [];
   for (const { capture } of captures) {
+    // Only auctions have bids to read; claim and fixed-price replies are claims.
+    if (interpretListing(capture.post.text, new Date(capture.capturedAt)).type !== "auction") continue;
     for (const u of unsureReplies(capture)) {
       const key = bidAnswerKey(u.seller, u.text);
       if (answered.has(key) || bids.some((b) => b.key === key)) continue;
