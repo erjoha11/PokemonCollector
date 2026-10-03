@@ -1,5 +1,7 @@
-// Test cases for the on-device model, from real posts in samples/ with names replaced
-// ("Selger Testesen" is the seller). Each has the answer a careful human would give.
+// Evaluation cases for Claude (claude -p through the native bridge), from real posts in samples/
+// with names replaced ("Selger Testesen" is the seller). Each has the answer a careful human
+// would give. Run them with `npm run eval:claude` (opt-in: uses your Claude plan, needs
+// native/install.sh); tests/claude-eval.test.ts is skipped otherwise. 23/23 on 2026-10-03 (Haiku).
 // The reference "today" for relative dates is Saturday 3 October 2026, Europe/Oslo.
 
 export const TODAY = "Saturday 2026-10-03";

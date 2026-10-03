@@ -1,5 +1,6 @@
 import { MSG_AUTO_SCAN, type AutoScanMessage } from "../shared/messages";
 import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
+import { isGroupFeedUrl, newPostsUrl } from "../shared/urls";
 import { getReaderState } from "./reader";
 import { waitForTabLoad } from "./tabs";
 
@@ -11,6 +12,8 @@ import { waitForTabLoad } from "./tabs";
 // - off unless switched on in the overview (Settings.autoScan), the off switch.
 // The run itself: load the tab's group feed sorted by "New posts" (the newest posts render at
 // the top), then ask its content script to scan in background mode. It reports back with MSG_AUTO_SCAN_DONE.
+
+export { isGroupFeedUrl, newPostsUrl } from "../shared/urls";
 
 export const AUTO_SCAN_ALARM = "fbaw-auto-scan";
 /** A run that hasn't reported back after this long is considered dead. */
@@ -31,22 +34,6 @@ export async function scheduleAutoScan(): Promise<void> {
   const when = Date.now() + nextDelayMinutes() * 60_000;
   await chrome.alarms.create(AUTO_SCAN_ALARM, { when });
   await updateAutoScanState({ nextAt: new Date(when).toISOString() });
-}
-
-/** The group feed itself, not a post, photo or profile inside the group. */
-export function isGroupFeedUrl(url: string | undefined): boolean {
-  if (!url) return false;
-  const m = url.match(/^https:\/\/www\.facebook\.com\/groups\/[^/?#]+\/?(\?[^#]*)?(#.*)?$/);
-  return !!m;
-}
-
-/** The group's feed sorted by "New posts": its URL with sorting_setting=CHRONOLOGICAL. */
-export function newPostsUrl(feedUrl: string): string {
-  const url = new URL(feedUrl);
-  url.search = "";
-  url.hash = "";
-  url.searchParams.set("sorting_setting", "CHRONOLOGICAL");
-  return url.toString();
 }
 
 async function findFeedTab(): Promise<chrome.tabs.Tab | null> {

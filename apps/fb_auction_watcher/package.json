@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build && vite build --mode content",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "eval:claude": "FBAW_EVAL=1 vitest run tests/claude-eval.test.ts"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.4",

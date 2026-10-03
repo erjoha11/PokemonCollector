@@ -1,4 +1,4 @@
-import { isGroupFeedUrl } from "../../background/autoScan";
+import { isGroupFeedUrl } from "../../shared/urls";
 import { MSG_OPEN_OVERVIEW, MSG_RELOAD_FB_TABS, MSG_START, type StartMessage } from "../../shared/messages";
 import { getAutoScanState, getSettings } from "../../shared/settings";
 

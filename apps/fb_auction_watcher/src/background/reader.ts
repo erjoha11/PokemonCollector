@@ -3,6 +3,7 @@ import { interpretListing } from "../domain/listing";
 import { bidAnswerKey } from "../llm/prompts";
 import { MSG_READ_POST, type ReadPostMessage } from "../shared/messages";
 import { getAutoScanState, getSettings } from "../shared/settings";
+import type { ReaderState, ReadJob } from "../shared/reader";
 import type { Store } from "../store";
 import { waitForTabLoad } from "./tabs";
 
@@ -12,6 +13,8 @@ import { waitForTabLoad } from "./tabs";
 // read, closed. Paced like the feed
 // scan: one at a time, a pause between reads, never while the automatic feed scan runs (one tab
 // talking to Facebook), automatic re-reads skipped while the screen is locked or you're away.
+
+export type { ReaderState, ReadJob } from "../shared/reader";
 
 export const READER_ALARM = "fbaw-reader";
 /** Alarms for the reader: the queue's own, and per-tab timeouts for visible reads. */
@@ -26,15 +29,6 @@ const FINAL_READ_WITHIN_MS = 2 * 60 * 60_000;
 /** A visible read that hasn't reported back by then has failed (its tab stays open). */
 const VISIBLE_TIMEOUT_MS = 5 * 60_000;
 
-export type ReadJob = { postId: string; url: string; reason: "click" | "auto" };
-export type ReaderState = {
-  /** Posts you opened from the overview, being read silently in their (visible) tab, by tab ID. */
-  visible: Record<string, { postId: string; startedAt: string }>;
-  queue: ReadJob[];
-  current: (ReadJob & { tabId: number; startedAt: string }) | null;
-  lastAt: string | null;
-  lastOutcome: string | null;
-};
 const DEFAULT_STATE: ReaderState = { visible: {}, queue: [], current: null, lastAt: null, lastOutcome: null };
 
 export async function getReaderState(): Promise<ReaderState> {

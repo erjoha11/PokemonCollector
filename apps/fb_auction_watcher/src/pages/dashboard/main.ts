@@ -1,7 +1,7 @@
 import { fullSizePhoto, type Lot } from "../../domain/bids";
 import type { PostCapture } from "../../shared/capture";
 import { isStoreUpdatedMessage, MSG_QUEUE_READ, type QueueReadMessage } from "../../shared/messages";
-import type { ReaderState } from "../../background/reader";
+import type { ReaderState } from "../../shared/reader";
 import {
   getAutoScanState,
   getClaudeState,
