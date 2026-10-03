@@ -25,6 +25,7 @@ import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
 import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, queueMyAuctionRereads } from "./reader";
 import { facebookSlot } from "./slot";
+import { CLEANUP_ALARM, runCleanup, scheduleCleanup } from "./cleanup";
 
 // Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
 // between the toolbar icon, the content script and the overview page.
@@ -97,11 +98,14 @@ chrome.contextMenus.onClicked.addListener((info) => {
 
 // Each time the worker starts: finish or time out reads left over from before (and go on with the queue).
 void kickReader();
+// The daily cleanup of old stored data (review M6): make sure its alarm exists.
+void scheduleCleanup();
 
 // The automatic scan: alarm → run; switching it on/off in the overview reschedules.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
   if (isReaderAlarm(alarm.name)) void kickReader();
+  if (alarm.name === CLEANUP_ALARM) void runCleanup(store, () => broadcastUpdate());
 });
 // A tab was closed: if a read was running there, count it as done and go on; if it held the
 // Facebook slot (a scan from the menu, say), free it.

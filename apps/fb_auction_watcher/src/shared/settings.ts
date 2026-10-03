@@ -35,6 +35,10 @@ export type ClaudeState = {
 };
 export const DEFAULT_CLAUDE_STATE: ClaudeState = { lastAt: null, lastOutcome: null, error: null, photoLimitUntil: null, photoCalls: [] };
 
+/** The daily cleanup of old stored data (src/store/retention.ts): when it last ran, and what it removed. */
+export type CleanupState = { lastAt: string | null; lastOutcome: string | null };
+export const DEFAULT_CLEANUP_STATE: CleanupState = { lastAt: null, lastOutcome: null };
+
 async function read<T extends object>(key: string, defaults: T): Promise<T> {
   const stored = await chrome.storage.local.get(key);
   return { ...defaults, ...(stored[key] as Partial<T> | undefined) };
@@ -51,3 +55,5 @@ export const getAutoScanState = () => read("autoScanState", DEFAULT_AUTO_SCAN_ST
 export const updateAutoScanState = (change: Partial<AutoScanState>) => patch("autoScanState", DEFAULT_AUTO_SCAN_STATE, change);
 export const getClaudeState = () => read("claudeState", DEFAULT_CLAUDE_STATE);
 export const updateClaudeState = (change: Partial<ClaudeState>) => patch("claudeState", DEFAULT_CLAUDE_STATE, change);
+export const getCleanupState = () => read("cleanupState", DEFAULT_CLEANUP_STATE);
+export const updateCleanupState = (change: Partial<CleanupState>) => patch("cleanupState", DEFAULT_CLEANUP_STATE, change);

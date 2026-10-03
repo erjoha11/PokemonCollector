@@ -5,10 +5,12 @@ import type { ReaderState } from "../../shared/reader";
 import {
   getAutoScanState,
   getClaudeState,
+  getCleanupState,
   getSettings,
   updateSettings,
   type AutoScanState,
   type ClaudeState,
+  type CleanupState,
   type Settings,
 } from "../../shared/settings";
 import { idbStore } from "../../store";
@@ -69,6 +71,7 @@ let lastFeedReadAt: string | null = null;
 let settings: Settings;
 let autoScan: AutoScanState;
 let claude: ClaudeState;
+let cleanup: CleanupState;
 let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
 const justClicked = new Set<string>();
@@ -82,9 +85,9 @@ function rebuild() {
   rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName });
 }
 
-/** The small status objects: auto-scan, Claude, the reader. */
+/** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
+  [settings, autoScan, claude, cleanup] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState(), getCleanupState()]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
   for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
 }
@@ -610,6 +613,9 @@ function renderSettings(now: Date) {
 
   const name = $<HTMLInputElement>("#my-name");
   if (document.activeElement !== name) name.value = settings.myName;
+
+  $("#cleanup-status").textContent =
+    cleanup.lastAt && cleanup.lastOutcome ? `Last cleanup ${ago(cleanup.lastAt, now)}: ${cleanup.lastOutcome}` : "No cleanup has run yet.";
 }
 
 function render() {
@@ -712,6 +718,38 @@ $<HTMLInputElement>("#my-name").addEventListener("change", (e) => {
   const name = (e.target as HTMLInputElement).value.trim();
   if (name) void updateSettings({ myName: name });
 });
+// "Clear stored data" (review M6): asks first, inline, then empties the store (posts, post
+// reads, Claude's answers, meta) and shows the empty overview. Settings are in chrome.storage
+// and stay. A scan or read still running will store what it finds after this, as usual.
+{
+  const start = $<HTMLButtonElement>("#clear-data");
+  const confirmBox = $<HTMLElement>("#clear-confirm");
+  const done = $<HTMLElement>("#clear-done");
+  const ask = (open: boolean) => {
+    confirmBox.hidden = !open;
+    start.hidden = open;
+    if (open) $<HTMLButtonElement>("#clear-no").focus();
+  };
+  start.addEventListener("click", () => {
+    done.textContent = "";
+    ask(true);
+  });
+  $<HTMLButtonElement>("#clear-no").addEventListener("click", () => {
+    ask(false);
+    start.focus();
+  });
+  $<HTMLButtonElement>("#clear-yes").addEventListener("click", async () => {
+    ask(false);
+    try {
+      await store.clearAll();
+      expanded.clear();
+      done.textContent = "Cleared.";
+    } catch (err) {
+      done.textContent = `Couldn't clear: ${err instanceof Error ? err.message : String(err)}`;
+    }
+    await load();
+  });
+}
 chrome.runtime.onMessage.addListener((msg) => {
   if (isStoreUpdatedMessage(msg)) void load();
 });
@@ -722,7 +760,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // need their own small state, not a reload of every post from the database (review M6).
   if ("settings" in changes) {
     void load();
-  } else if (["autoScanState", "claudeState", "readerState"].some((k) => k in changes)) {
+  } else if (["autoScanState", "claudeState", "readerState", "cleanupState"].some((k) => k in changes)) {
     void loadStatus().then(render);
   }
 });

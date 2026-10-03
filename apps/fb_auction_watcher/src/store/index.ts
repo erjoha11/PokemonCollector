@@ -23,6 +23,12 @@ export interface Store {
   allAnswers(): Promise<StoredAnswer[]>;
   getMeta(key: string): Promise<string | null>;
   setMeta(key: string, value: string): Promise<void>;
+  // Retention (review M6): the daily cleanup (src/store/retention.ts) and "Clear stored data".
+  deletePosts(ids: string[]): Promise<void>;
+  deleteCaptures(postIds: string[]): Promise<void>;
+  deleteAnswers(keys: string[]): Promise<void>;
+  /** Empties everything stored here: posts, post reads, answers, meta. Settings live elsewhere (chrome.storage) and stay. */
+  clearAll(): Promise<void>;
 }
 
 interface Schema extends DBSchema {
@@ -107,5 +113,28 @@ export function idbStore(): Store {
     async setMeta(key, value) {
       await (await open()).put("meta", value, key);
     },
+    async deletePosts(ids) {
+      await deleteKeys("posts", ids);
+    },
+    async deleteCaptures(postIds) {
+      await deleteKeys("captures", postIds);
+    },
+    async deleteAnswers(keys) {
+      await deleteKeys("answers", keys);
+    },
+    async clearAll() {
+      const names = ["posts", "captures", "answers", "meta"] as const;
+      const tx = (await open()).transaction(names, "readwrite");
+      await Promise.all(names.map((n) => tx.objectStore(n).clear()));
+      await tx.done;
+    },
   };
+
+  /** Deletes these keys from one object store, in one transaction (missing keys are fine). */
+  async function deleteKeys(name: "posts" | "captures" | "answers", keys: string[]) {
+    if (keys.length === 0) return;
+    const tx = (await open()).transaction(name, "readwrite");
+    for (const key of keys) await tx.store.delete(key);
+    await tx.done;
+  }
 }

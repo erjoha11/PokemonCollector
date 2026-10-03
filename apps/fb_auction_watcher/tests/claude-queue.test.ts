@@ -51,6 +51,10 @@ function memoryStore(): Store & { posts: Map<string, StoredPost>; captures: Map<
     allAnswers: async () => [...answers.values()],
     getMeta: async (key) => meta.get(key) ?? null,
     setMeta: async (key, value) => void meta.set(key, value),
+    deletePosts: async (ids) => ids.forEach((id) => posts.delete(id)),
+    deleteCaptures: async (ids) => ids.forEach((id) => captures.delete(id)),
+    deleteAnswers: async (keys) => keys.forEach((k) => answers.delete(k)),
+    clearAll: async () => [posts, captures, answers, meta].forEach((m) => m.clear()),
   };
 }
 

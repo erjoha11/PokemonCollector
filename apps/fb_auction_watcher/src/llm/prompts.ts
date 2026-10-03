@@ -2,8 +2,6 @@
 // bridge (native/fbaw_claude_host.py). No API key: it runs on the user's own Claude login.
 // Tried on src/llm/cases.ts (23 cases, Haiku, batched): 23/23 on 2026-10-03.
 
-import { osloToUtc } from "../domain/endTime";
-
 export type ClaudeRequest = {
   /** A short name for logs. */
   task: "end-time" | "bid" | "claim-lot";
@@ -85,11 +83,6 @@ export function hashText(s: string): string {
 
 export const endTimeAnswerKey = (text: string) => `end-time:${hashText(text)}`;
 
-/** Claude's end-time answer, "YYYY-MM-DD HH:mm" (Oslo), as an ISO timestamp, or null. */
-export function claudeEndsAt(value: unknown): string | null {
-  const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/) : null;
-  return m ? osloToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]).toISOString() : null;
-}
 export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hashText(`${seller ?? ""}\n${text}`)}`;
 
 /** One claim-sale lot: its full-size photo and the replies under it, oldest first. */

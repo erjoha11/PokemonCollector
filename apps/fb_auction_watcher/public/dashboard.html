@@ -59,6 +59,20 @@
         <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
         <input id="my-name" type="text" autocomplete="off">
       </div>
+      <div class="setting">
+        <label>Stored data</label>
+        <div id="cleanup-status" class="muted small"></div>
+        <div class="muted small">Kept on this computer only, and only as long as it's useful: a sale's post read (names, comments, bids) is deleted 7 days after it ends (30 days if you bid or claimed in it), posts not seen in the feed for 14 days go too, and so do Claude's answers nothing uses any more. Checked once a day. Running sales are never touched.</div>
+        <div class="clear-data">
+          <button type="button" id="clear-data">Clear stored data</button>
+          <span id="clear-confirm" hidden>
+            Delete every stored post, post read and Claude answer? Your settings are kept.
+            <button type="button" id="clear-yes" class="danger">Delete all</button>
+            <button type="button" id="clear-no">Cancel</button>
+          </span>
+          <span id="clear-done" class="muted small" role="status"></span>
+        </div>
+      </div>
     </details>
   </header>
   <main id="groups"></main>
