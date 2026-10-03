@@ -86,34 +86,36 @@ export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hash
 
 /** One claim-sale lot: its full-size photo and the replies under it, oldest first. */
 export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[] };
-export type ClaimLotAnswer = { claimed: { card: string; price: number | null; claimedBy: string }[] };
+/** Every card in the photo: its price, and who claimed it first (null = still for sale). */
+export type ClaimLotAnswer = { cards: { card: string; price: number | null; claimedBy: string | null }[] };
 
-// Tried 2026-10-03 on a real lot (8 cards, prices on notes, 2 claimers): Sonnet 4/4, Haiku 3/4.
+// Tried 2026-10-03 on a real lot (8 cards, prices on notes, 2 claimers): Sonnet listed all 8 with the
+// right prices and claims in 9 s; with only the claimed cards asked for, Haiku misread a price.
 export function claimLotRequest(item: ClaimLotItem): ClaudeRequest {
   return {
     task: "claim-lot",
     model: "sonnet",
     images: [item.imageUrl],
     system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards with each price written on a note, and the replies under it, oldest first. Replies claim cards by name (often tagging the seller first, sometimes misspelled, e.g. "feraligator"), or "alle" for everything.
-First to claim a card gets it. Only consider cards someone claimed. For each claimed card, give its name as printed on the card, the price written next to it on the photo, and who claimed it first. Use null for a price you can't read.`,
-    input: `Seller: ${item.seller ?? "unknown"}\nReplies (oldest first):\n${item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n")}`,
+First to claim a card gets it. List every card in the photo, left to right, top to bottom: its name as printed on the card, the price written next to it on the photo, and who claimed it first, or null if nobody has (it's still for sale). Use null for a price you can't read. Two copies of the same card are two entries.`,
+    input: `Seller: ${item.seller ?? "unknown"}\nReplies (oldest first):\n${item.replies.length ? item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n") : "(none yet)"}`,
     schema: {
       type: "object",
       properties: {
-        claimed: {
+        cards: {
           type: "array",
           items: {
             type: "object",
-            properties: { card: { type: "string" }, price: { type: ["integer", "null"] }, claimedBy: { type: "string" } },
+            properties: { card: { type: "string" }, price: { type: ["integer", "null"] }, claimedBy: { type: ["string", "null"] } },
             required: ["card", "price", "claimedBy"],
           },
         },
       },
-      required: ["claimed"],
+      required: ["cards"],
     },
   };
 }
 
 /** Same photo and same replies → same answer; a new reply asks again. The URL's query changes per read, so only its path counts. */
 export const claimLotAnswerKey = (item: ClaimLotItem) =>
-  `claim-lot:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;
+  `claim-lot-cards:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;

@@ -299,6 +299,12 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   const isClaims = r.type === "claim" || r.type === "fixed";
   const count = isClaims ? `${s.claims} claim${s.claims === 1 ? "" : "s"}` : `${s.bids} bid${s.bids === 1 ? "" : "s"}`;
   lotsTd.append(el("div", undefined, `${s.lots} lot${s.lots === 1 ? "" : "s"} · ${count}`));
+  const read = (r.lots ?? []).filter((l) => l.available !== null);
+  if (isClaims && read.length) {
+    const open = read.reduce((n, l) => n + (l.available ?? 0), 0);
+    const note = read.length < (r.lots?.length ?? 0) ? ` (${read.length} of ${r.lots!.length} lots read)` : "";
+    lotsTd.append(el("div", open ? "avail-sum" : "muted small", open ? `${open} card${open === 1 ? "" : "s"} available${note}` : `Sold out${note}`));
+  }
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
   const mineTotal = s.lead + s.outbid + s.claimed + s.check;
   if (mineTotal === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
@@ -340,7 +346,13 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   const td = el("td");
   td.colSpan = columns;
   const mine = (r.lots ?? []).filter((l) => l.myStatus !== "none" || l.myClaim !== "none");
-  const lots: Lot[] = mine.length ? mine : r.lots ?? [];
+  // Claim sales: every lot (yours first), to see what's still for sale. Auctions: yours, or all.
+  const lots: Lot[] =
+    r.type === "claim" || r.type === "fixed"
+      ? [...mine, ...(r.lots ?? []).filter((l) => !mine.includes(l))]
+      : mine.length
+        ? mine
+        : (r.lots ?? []);
   const list = el("div", "lot-list");
   for (const l of lots) {
     const isClaims = r.type === "claim" || r.type === "fixed";
@@ -360,17 +372,24 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
       if (l.claimCards) {
-        // Claude read the photo and the replies: who got which card, at what price.
+        // Claude read the photo and the replies: every card, its price, taken or still for sale.
         const mine = l.claimCards.filter((x) => x.isMe);
         const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
-        if (mine.length) {
-          body.append(el("div", "status won", `You won ${mine.length} · ${total} kr`));
-          for (const x of mine) body.append(line("div", `${x.card}: `, kr(x.price)));
-        } else if (l.myClaim !== "none") {
-          body.append(el("div", "status outbid", "Someone claimed it before you"));
+        const open = l.available ?? 0;
+        body.append(
+          el("div", `availability ${open ? "open" : "sold-out"}`, open ? `${open} of ${l.claimCards.length} available` : "Sold out"),
+        );
+        if (mine.length) body.append(line("div", el("span", "status won", "You won"), " ", kr(total)));
+        else if (l.myClaim !== "none") body.append(el("div", "status outbid", "Someone claimed it before you"));
+        const cards = el("ul", "card-list");
+        for (const x of l.claimCards) {
+          const li = el("li", x.isMe ? "card mine" : x.claimedBy ? "card taken" : "card available");
+          li.append(el("span", "card-name", x.card), " ", kr(x.price));
+          li.append(" ", el("span", "card-state", x.isMe ? "yours" : x.claimedBy ? `taken · ${x.claimedBy}` : "available"));
+          cards.append(li);
         }
-        for (const x of l.claimCards.filter((y) => !y.isMe)) body.append(el("div", "small muted", `${x.claimedBy}: ${x.card} ${x.price ?? "?"} kr`));
-        body.append(el("div", "via", "Cards and prices read by Claude from the photo"));
+        body.append(cards);
+        body.append(el("div", "via", "Cards, prices and claims read by Claude from the photo"));
         item.append(body);
         list.append(item);
         continue;

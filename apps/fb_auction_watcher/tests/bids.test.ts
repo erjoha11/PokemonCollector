@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, claimLotInput, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, unsureReplies } from "../src/domain/bids";
+import { capturePostId, claimItems, claimLotInput, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, unsureReplies } from "../src/domain/bids";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
 // Synthetic capture shaped like the real Gengar auction in samples/ (all names invented):
@@ -203,19 +203,33 @@ describe("claim lots read by Claude (photo prices, who got what)", () => {
   });
 
   it("uses Claude's answer: the cards you won and their prices", () => {
-    const answer = { claimed: [
-      { card: "Kingler", price: 250, claimedBy: "Bidder A" }, { card: "Rapidash", price: 250, claimedBy: "Bidder A" },
-      { card: "Marowak", price: 200, claimedBy: ME }, { card: "Feraligatr", price: 200, claimedBy: ME },
+    // As Claude answered for a real lot: every card, taken or still for sale.
+    const answer = { cards: [
+      { card: "Kadabra", price: 250, claimedBy: null }, { card: "Rapidash", price: 250, claimedBy: "Bidder A" },
+      { card: "Marowak", price: 200, claimedBy: ME }, { card: "Castform", price: 200, claimedBy: null },
+      { card: "Castform", price: 200, claimedBy: null }, { card: "Feraligatr", price: 200, claimedBy: ME },
+      { card: "Pidgeot", price: 200, claimedBy: null }, { card: "Kingler", price: 250, claimedBy: "Bidder A" },
     ] };
     const [l0, l1] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: (input) => (input.imageUrl === "lot0.jpg" ? answer : undefined) });
     expect(l0.myClaim).toBe("claimed");
     expect(l0.claimCards!.filter((x) => x.isMe).map((x) => [x.card, x.price])).toEqual([["Marowak", 200], ["Feraligatr", 200]]);
+    expect(l0.available).toBe(4); // Still for sale: the lot stays open.
     expect(l1.claimCards).toBeNull();
+    expect(l1.available).toBeNull(); // Not read by Claude yet.
+  });
+
+  it("a lot with every card claimed is sold out", () => {
+    const [l0] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: () => ({ cards: [{ card: "Marowak", price: 200, claimedBy: ME }] }) });
+    expect(l0.available).toBe(0);
   });
 
   it("you claimed, but Claude says someone else got it: check", () => {
-    const [l0] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: () => ({ claimed: [{ card: "Marowak", price: 200, claimedBy: "Bidder A" }] }) });
+    const [l0] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: () => ({ cards: [{ card: "Marowak", price: 200, claimedBy: "Bidder A" }] }) });
     expect(l0.myClaim).toBe("check");
+  });
+
+  it("reads every lot of a claim sale, yours first", () => {
+    expect(claimLotsToRead(c, ME).map((x) => x.imageUrl)).toEqual(["lot0.jpg", "lot1.jpg"]);
   });
 
   it("knows a lot's input even with no replies", () => {

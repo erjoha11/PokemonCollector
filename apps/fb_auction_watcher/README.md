@@ -73,8 +73,10 @@ counted, since sellers reject them. Set your Facebook name under **Settings** if
 **Claim sales and fixed price:** replies are read as claims ("claim Persian og Clefairy", "<seller>
 marowak og feraligatr", "claim alle"). First to claim a card gets it: you get **Won** when nobody claimed
 the same card (or everything) before you, and **Check** when someone was earlier. For lots you've claimed
-on, Claude also reads the photo (prices are usually written on it) and the replies, and the overview
-shows what you won and for how much ("You won 2 · 400 kr: Marowak 200, Feraligatr 200").
+on, and then every other lot in the sale, Claude reads the photo (prices are usually written on it) and
+the replies: every card, its price, and who claimed it first. The overview shows what you won and for how
+much ("You won 2 · 400 kr"), and per lot which cards are taken (crossed out) and which are still for sale
+("4 of 8 available"); a lot stays open until every card is claimed ("Sold out").
 A "." is someone following the lot, not a claim. Click any photo for a bigger picture.
 
 Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets

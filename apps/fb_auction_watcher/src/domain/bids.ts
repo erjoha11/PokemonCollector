@@ -51,8 +51,8 @@ export type Claim = {
 /** Your claim on a lot: first on what you named (you won it), someone was earlier, or no claim. */
 export type MyClaim = "none" | "claimed" | "check";
 
-/** Claude's reading of a claim lot (photo + replies): who got which card, at what price. */
-export type ClaimCards = { card: string; price: number | null; claimedBy: string; isMe: boolean }[];
+/** Claude's reading of a claim lot (photo + replies): every card, its price, who got it (null = for sale). */
+export type ClaimCards = { card: string; price: number | null; claimedBy: string | null; isMe: boolean }[];
 
 export type Lot = {
   commentId: string | null;
@@ -74,8 +74,10 @@ export type Lot = {
   /** Claim-sale and fixed-price lots: claims instead of bids. */
   claims: Claim[];
   myClaim: MyClaim;
-  /** From Claude, when asked: every claimed card with its price from the photo and who got it. */
+  /** From Claude, when asked: every card in the photo, its price, and who got it (null = still for sale). */
   claimCards: ClaimCards | null;
+  /** Cards still for sale (from claimCards), or null when Claude hasn't read the lot yet. */
+  available: number | null;
 };
 
 export const normalizeName = (s: string | null | undefined) =>
@@ -150,7 +152,7 @@ export type LotOptions = {
   listingIncrement: number | null;
   listingMinPrice: number | null;
   /** Claude's reading of a claim lot (see claimLotInput), or undefined when not asked yet. */
-  claimAnswer?: (input: ClaimLotInput) => { claimed: { card: string; price: number | null; claimedBy: string }[] } | undefined;
+  claimAnswer?: (input: ClaimLotInput) => { cards: { card: string; price: number | null; claimedBy: string | null }[] } | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
   answer?: (seller: string | null, text: string) => number | null | undefined;
 };
@@ -191,8 +193,8 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     let claimCards: ClaimCards | null = null;
     const lotInput = options.claims ? claimLotInput(c, seller) : null;
     const answer = lotInput ? options.claimAnswer?.(lotInput) : undefined;
-    if (answer) {
-      claimCards = answer.claimed.map((x) => ({ ...x, isMe: !!me && normalizeName(x.claimedBy) === me }));
+    if (answer?.cards) {
+      claimCards = answer.cards.map((x) => ({ ...x, isMe: !!me && !!x.claimedBy && normalizeName(x.claimedBy) === me }));
       if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
     }
     for (const r of options.claims ? [] : replies) {
@@ -251,6 +253,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       claims,
       myClaim,
       claimCards,
+      available: claimCards ? claimCards.filter((x) => !x.claimedBy).length : null,
     });
   }
   return lots;
@@ -288,13 +291,25 @@ export function claimLotInput(c: CapturedComment, seller: string | null): ClaimL
   return { seller, imageUrl: fullSizePhoto(photo), replies };
 }
 
-/** Claim lots you've claimed on that Claude should read (photo prices, who got what). */
+/** Claim lots you've claimed on (photo prices, who got what). */
 export function myClaimLots(capture: PostCapture, myName: string): ClaimLotInput[] {
   const seller = sellerOf(capture);
   const me = normalizeName(myName);
   return capture.comments
     .filter((c) => isLot(c, seller) && c.replies.some((r) => normalizeName(r.author) === me && claimItems(r.text, seller)))
     .flatMap((c) => claimLotInput(c, seller) ?? []);
+}
+
+/** Every lot in a claim sale, yours first: what's taken and what's still for sale. */
+export function claimLotsToRead(capture: PostCapture, myName: string): ClaimLotInput[] {
+  const seller = sellerOf(capture);
+  const mine = myClaimLots(capture, myName);
+  const mineUrls = new Set(mine.map((x) => x.imageUrl));
+  const rest = capture.comments
+    .filter((c) => isLot(c, seller))
+    .flatMap((c) => claimLotInput(c, seller) ?? [])
+    .filter((x) => !mineUrls.has(x.imageUrl));
+  return [...mine, ...rest];
 }
 
 const sameItem = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);

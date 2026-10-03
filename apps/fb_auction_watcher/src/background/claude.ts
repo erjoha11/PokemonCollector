@@ -1,4 +1,4 @@
-import { myClaimLots, unsureReplies, type ClaimLotInput } from "../domain/bids";
+import { claimLotsToRead, unsureReplies, type ClaimLotInput } from "../domain/bids";
 import { interpretListing } from "../domain/listing";
 import {
   bidAnswerKey,
@@ -80,17 +80,23 @@ export async function pendingItems(store: Store, myName = "") {
       bids.push({ id: bids.length, seller: u.seller, text: u.text, key });
     }
   }
-  // Claim and fixed-price lots you've claimed on: who got which card, and the price on the photo.
+  // Claim and fixed-price lots (yours first): every card, its price on the photo, taken or for sale.
   const claimLots: (ClaimLotInput & { key: string })[] = [];
   for (const { capture } of captures) {
     const type = interpretListing(capture.post.text, new Date(capture.capturedAt)).type;
     if (type !== "claim" && type !== "fixed") continue;
-    for (const lot of myClaimLots(capture, myName)) {
+    for (const lot of claimLotsToRead(capture, myName)) {
       const key = claimLotAnswerKey(lot);
       if (!answered.has(key) && !claimLots.some((x) => x.key === key)) claimLots.push({ ...lot, key });
     }
   }
-  return { endTimes: endTimes.slice(0, MAX_END_TIMES), bids: bids.slice(0, MAX_BIDS), claimLots: claimLots.slice(0, MAX_CLAIM_LOTS) };
+  return {
+    endTimes: endTimes.slice(0, MAX_END_TIMES),
+    bids: bids.slice(0, MAX_BIDS),
+    claimLots: claimLots.slice(0, MAX_CLAIM_LOTS),
+    /** More claim lots wait than fit in one run: run again after this one. */
+    more: claimLots.length > MAX_CLAIM_LOTS,
+  };
 }
 
 async function run(store: Store, onAnswered: () => void) {
@@ -105,7 +111,8 @@ async function run(store: Store, onAnswered: () => void) {
     const state = await getClaudeState();
     if (state.error && state.lastAt && Date.now() - Date.parse(state.lastAt) < ERROR_COOLDOWN_MS) return;
 
-    const { endTimes, bids, claimLots } = await pendingItems(store, settings.myName);
+    const { endTimes, bids, claimLots, more } = await pendingItems(store, settings.myName);
+    if (more) again = true; // Work through the rest in the next run.
     if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0) return;
 
     const at = new Date().toISOString();

@@ -169,3 +169,17 @@ tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--
 .kr { font-weight: 700; font-size: 1.1em; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
 .lot-terms .kr, td.price .kr { font-size: 1.05em; }
 .mine-lot .kr { font-size: 1.12em; }
+
+/* Claim lots: taken vs still for sale */
+.availability { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 4px; padding: 0 6px; margin: 2px 0; }
+.availability.open { color: #fff; background: var(--lead); }
+.availability.sold-out { color: var(--muted); border: 1px solid var(--border); }
+.card-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
+.card { font-size: 12px; }
+.card .card-state { font-size: 11px; color: var(--muted); }
+.card.available .card-name { font-weight: 600; }
+.card.available .card-state { color: var(--lead); font-weight: 600; }
+.card.taken { color: var(--muted); }
+.card.taken .card-name, .card.taken .kr { text-decoration: line-through; color: var(--muted); font-weight: 400; }
+.card.mine .card-state { color: var(--new); font-weight: 700; }
+.avail-sum { font-size: 12px; color: var(--lead); font-weight: 600; }
