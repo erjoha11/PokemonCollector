@@ -1,82 +1,86 @@
 # FB Auction Watcher – spec
 
 - **Id:** `fb-auction-watcher`
-- **Type:** Chrome-utvidelse (Manifest V3)
-- **Eier/bruker:** Erik Johansen
-- **Status:** spec, ingen funksjonalitet bygget ennå
+- **Type:** Chrome extension (Manifest V3)
+- **Owner/user:** Erik Johansen
+- **Status:** spec only, no functionality built yet
+
+UI strings are in Norwegian and quoted as-is (e.g. "Leder", "Overbudt"); everything else is in English.
 
 ## Problem
 
-Jeg kjøper Pokémon-kort i én Facebook-gruppe med opptil ~100 auksjoner per dag.
-Facebook sorterer på relevans/ny aktivitet/nye innlegg – aldri på sluttid. Det er umulig å
-holde oversikt over hva som slutter når og hvor jeg leder eller er overbudt.
+I buy Pokémon cards in one Facebook group with up to ~100 auctions per day. Facebook sorts
+by relevance / new activity / new posts – never by end time. It is impossible to keep track
+of what ends when, and where I'm leading or have been outbid.
 
-## Mål v1
+## v1 goals
 
-- Én tabell over alle salg i gruppa, gruppert og sortert på sluttid, med live nedtelling.
-- Lots jeg har budt på fremheves (Leder / Overbudt).
-- Åpne en auksjon og se lots og bud i et ryddig overlegg i stedet for kommentarfeltet.
-- Kun Chrome på PC/Mac. Ingen mobil, ingen server, ingen webapp.
+- One table of every sale in the group, grouped and sorted by end time, with a live countdown.
+- Lots I have bid on are highlighted ("Leder" / "Overbudt" – leading / outbid).
+- Open an auction and see its lots and bids in a clean overlay instead of the comment thread.
+- Chrome on PC/Mac only. No mobile, no server, no webapp.
 
-## Domenet
+## Domain
 
 ```
-Innlegg = listing: oversiktsbilder av hele auksjonen, regler, sluttid
- └ Toppnivå-kommentar MED bilde = lot (singel eller bundle)
-    └ Svar under lot-kommentaren = bud (navn, beløp, tid)
+Post = listing: overview photos of the whole auction, rules, end time
+ └ Top-level comment WITH an image = lot (single or bundle)
+    └ Reply under the lot comment = bid (name, amount, time)
 ```
 
-- Kommentarer uten bilde er prat. Svar fra selger er ikke bud.
-- Salgstyper: auksjon, claim (første kommentar får kjøpe), fastpris.
-- Close-regler: hard close, eller soft close (bud nær slutt forlenger, f.eks. 5 min).
-- Sluttid og regler står i fritekst ("slutter søndag kl 20") → tolkes i `Europe/Oslo`.
-- Mitt Facebook-navn: Erik Johansen (konfigurerbart).
+- Comments without an image are chatter. Replies from the seller are never bids.
+- Sale types: auction, claim (first commenter gets to buy), fixed price.
+- Close rules: hard close, or soft close (a bid near the end extends it, e.g. by 5 min).
+- End time and rules are free text (e.g. "slutter søndag kl 20" – "ends Sunday at 8 pm")
+  → interpreted in `Europe/Oslo`.
+- My Facebook name: Erik Johansen (configurable).
 
-## Ufravikelige regler
+## Non-negotiable rules
 
-- **KUN LESING.** Utvidelsen byr, claimer, kommenterer eller liker aldri. Eneste klikk:
-  "Vis flere kommentarer", "Vis N svar" og feed-sortering. (Høyeste bud er bindende.)
-- Ingen headless/server-scraping. Alt kjører i min egen innloggede Chrome.
-- Rolig tempo: feed-skann hvert 10–15 min ±20 %, pause når PC er låst (`chrome.idle`),
-  aldri parallelle faner mot Facebook. Må kunne slås av.
-- Selgerens originaltekst vises alltid ved siden av tolkede verdier.
-- Råtekst lagres (capture-tabell) så tolkning kan kjøres på nytt.
-- Aldri CSS-klasser som selektorer (Facebook obfuskerer). Bruk role, aria-label,
-  struktur og tekstmønstre. Facebook virtualiserer lister og er en SPA.
+- **READ-ONLY.** The extension never bids, claims, comments, or likes. The only clicks
+  allowed: "Vis flere kommentarer" (view more comments), "Vis N svar" (view N replies),
+  and the feed sort order. (The highest bid is binding.)
+- No headless/server-side scraping. Everything runs in my own logged-in Chrome.
+- Slow pacing: feed scan every 10–15 min ±20 %, pause while the PC is locked (`chrome.idle`),
+  never parallel tabs against Facebook. Must be possible to turn off.
+- The seller's original text is always shown next to interpreted values.
+- Raw text is stored (capture table) so interpretation can be re-run.
+- Never use CSS classes as selectors (Facebook obfuscates them). Use role, aria-label,
+  structure, and text patterns. Facebook virtualizes lists and is an SPA.
 
-## Arkitektur
+## Architecture
 
-- **Content scripts:** (a) feed-skann i en festet gruppefane, (b) post-leser + overlegg (Shadow DOM).
-- **Service worker:** koordinering, kall til Claude API for tolkning, lagring.
-- **Lagring:** IndexedDB (`idb`) bak et `Store`-grensesnitt, så Supabase kan byttes inn senere.
-- **Sider i utvidelsen:** tabellside (`dashboard.html`), Chrome Side Panel.
-- **Teknologi:** TypeScript, Vite, Preact, idb, zod. API-nøkkel i `chrome.storage.local`.
+- **Content scripts:** (a) feed scan in a pinned group tab, (b) post reader + overlay (Shadow DOM).
+- **Service worker:** coordination, Claude API calls for interpretation, persistence.
+- **Storage:** IndexedDB (`idb`) behind a `Store` interface, so Supabase can be swapped in later.
+- **Extension pages:** table page (`dashboard.html`), Chrome Side Panel.
+- **Tech:** TypeScript, Vite, Preact, idb, zod. API key in `chrome.storage.local`.
 
-## Populering
+## Population
 
-- **Backfill første gang:** sorter på "Nye innlegg", scroll rolig, lagre hvert innlegg når det
-  vises, stopp ved 3 dager gammelt. Deretter inkrementelt: stopp ved første kjente innlegg.
-- En sjeldnere runde på "Ny aktivitet" fanger eldre innlegg med nye bud.
-- **Detaljlesing (lots/bud)** bare: når jeg åpner en post, og automatisk hvert 15. min for
-  auksjoner jeg har budt på. Resten leses ikke før de åpnes.
+- **First-time backfill:** sort by "Nye innlegg" (new posts), scroll slowly, save each post as
+  it renders, stop at posts 3 days old. After that, incremental: stop at the first known post.
+- A less frequent pass sorted by "Ny aktivitet" (new activity) catches older posts with new bids.
+- **Detail reads (lots/bids)** only: when I open a post, and automatically every 15 min for
+  auctions I have bid on. Everything else is not read until opened.
 
-## Tolkning (LLM)
+## Interpretation (LLM)
 
-- **Feed-kall:** innleggstekst → `type`, `title`, `endsAt` (ISO), `endsAtText`, `closeRule`,
+- **Feed call:** post text → `type`, `title`, `endsAt` (ISO), `endsAtText`, `closeRule`,
   `softCloseMinutes`, `closeRuleText`, `increment`, `price`, `shippingText`, `soldOrWithdrawn`.
-- **Detalj-kall:** innlegg + kommentarer med svar →
+- **Detail call:** post + comments with replies →
   `lots[{commentId, kind, title, cards[], startBid, bids[{replyId, bidderName, amount, valid, note}]}]`.
-  Regler:
+  Rules:
   - `"250kr"` / `"250,-"` / `"bud 250"` = 250, `"2.5k"` = 2500
-  - selger er aldri budgiver
-  - `"200 sorry mente 250"` = 250
-  - bud ≤ gjeldende høyeste = ugyldig
-- Kun JSON, valideres med zod, ett nytt forsøk ved feil. Billig modell. Logg tokenbruk.
-- **Etterbehandling i kode:** `highestBid`, `myStatus` (`none`/`lead`/`outbid`), tider.
+  - the seller is never a bidder
+  - `"200 sorry mente 250"` ("200 sorry, meant 250") = 250
+  - a bid ≤ the current highest bid = invalid
+- JSON only, validated with zod, one retry on failure. Cheap model. Log token usage.
+- **Post-processing in code:** `highestBid`, `myStatus` (`none`/`lead`/`outbid`), times.
 
-## Datamodell
+## Data model
 
-**listing:** `id`, `fbPostUrl` (unik), `sellerName`, `type`, `title`, `postedAt`, `endsAt`,
+**listing:** `id`, `fbPostUrl` (unique), `sellerName`, `type`, `title`, `postedAt`, `endsAt`,
 `endsAtText`, `closeRule`, `softCloseMinutes`, `closeRuleText`, `increment`, `price`,
 `shippingText`, `thumbnailUrl`, `commentCount`, `commentCountPrev`, `lotCount`,
 `myLotStatus{lead,outbid}`, `lifecycle`, `detailFetchedAt`, `firstSeenAt`, `lastSeenAt`
@@ -95,86 +99,88 @@ Innlegg = listing: oversiktsbilder av hele auksjonen, regler, sluttid
 
 **userState:** `lastDashboardVisitAt`, `seenListingIds`
 
-## Statuser
+## Statuses
 
 Per listing:
 
-| Status | Betydning |
+| UI label | Meaning |
 |---|---|
-| Ny | Sett første gang etter siste besøk på tabellsiden |
-| Aktivitet | Flere kommentarer enn sist (`commentCount` > `commentCountPrev`) |
-| Slutter snart | Under 1 time igjen |
-| Ukjent sluttid | Sluttid kunne ikke tolkes |
-| Avsluttet? | Sluttid passert, men soft close-vinduet er ikke over |
-| Avsluttet | Sluttid (og eventuelt soft close-vindu) passert |
-| Solgt/trukket | Selger har markert salget som solgt eller trukket |
+| Ny | First seen after my last visit to the table page |
+| Aktivitet | More comments than last time (`commentCount` > `commentCountPrev`) |
+| Slutter snart | Less than 1 hour left |
+| Ukjent sluttid | End time could not be interpreted |
+| Avsluttet? | End time passed, but the soft close window is not over |
+| Avsluttet | End time (and any soft close window) passed |
+| Solgt/trukket | Seller marked the sale as sold or withdrawn |
 
-Per lot: **Leder** / **Overbudt**. En listing viser oppsummert, f.eks. "Leder 2 · overbudt 1".
+Per lot: **Leder** (leading) / **Overbudt** (outbid). A listing shows a summary, e.g.
+"Leder 2 · overbudt 1".
 
 ## Design
 
-- **Farger:** blå `#2457D6` = Leder, oransje `#C2570C` = Overbudt, rød `#B42318` = under 1 t.
-- **Skrift:** IBM Plex Sans / IBM Plex Mono.
-- **Språk:** norsk UI.
+- **Colors:** blue `#2457D6` = Leder, orange `#C2570C` = Overbudt, red `#B42318` = under 1 h.
+- **Fonts:** IBM Plex Sans / IBM Plex Mono.
+- **Language:** Norwegian UI.
 
-### Tabellside (`dashboard.html`)
+### Table page (`dashboard.html`)
 
-- Fire tall øverst: aktive, innen 1 t, overbudt, nye.
-- Grupper: innen 1 t · i dag · i morgen og senere · claim/fastpris · avsluttet.
-- Kolonner: Slutter · Salg (tittel, selger, Ny, +N kommentarer) · Type · Lots · Bud ·
-  Din status · Oppdatert.
-- Filtre: Alle / Auksjon / Claim / Fastpris / Mine bud / Nye + søk.
-- Rader jeg er aktiv i har farget venstrekant og kan foldes ut til "Dine lots i denne
-  auksjonen" (bilde, høyeste bud, mitt bud, status).
-- Klikk på tittel åpner Facebook-posten.
+- Four numbers at the top: active, within 1 h, outbid, new.
+- Groups: within 1 h · today · tomorrow and later · claim/fixed price · ended.
+- Columns: Ends · Sale (title, seller, New, +N comments) · Type · Lots · Bids ·
+  Your status · Updated.
+- Filters: All / Auction / Claim / Fixed price / My bids / New + search.
+- Rows I'm active in get a colored left border and can expand to "Dine lots i denne
+  auksjonen" (your lots in this auction: image, highest bid, my bid, status).
+- Clicking the title opens the Facebook post.
 
-### Sidepanel
+### Side panel
 
-- Bryter Fanger / Pauset.
-- Tellere: innen 1 t, overbudt, nye.
-- Filtre: Alle / Mine bud / Innen 1 t.
-- Kompakt liste + lenke til full tabell.
+- Toggle "Fanger" / "Pauset" (capturing / paused).
+- Counters: within 1 h, outbid, new.
+- Filters: All / My bids / Within 1 h.
+- Compact list + link to the full table.
 
-### Overlegg på posten
+### Overlay on the post
 
-- Toppfelt: selger, tittel, stor nedtelling, close-regel, selgerens regler ordrett +
-  tolkning, frakt, "Les på nytt".
-- Velger: "Alle lots" / "Bare mine".
-- "Dine lots" først (overbudt først, blå/oransje ramme, mitt bud vist), deretter "Andre lots".
-- Valgt lot: budliste, høyeste og neste gyldige bud, knapp "By på Facebook" som skjuler
-  overlegget og scroller til svarfeltet under lotet (skriver aldri).
-- "Vis Facebook-siden".
+- Header: seller, title, large countdown, close rule, the seller's rules verbatim +
+  interpretation, shipping, "Les på nytt" (re-read).
+- Selector: "Alle lots" / "Bare mine" (all lots / mine only).
+- "Dine lots" (your lots) first (outbid first, blue/orange border, my bid shown), then
+  "Andre lots" (other lots).
+- Selected lot: bid list, highest and next valid bid, a "By på Facebook" (bid on Facebook)
+  button that hides the overlay and scrolls to the reply field under the lot (never types).
+- "Vis Facebook-siden" (show the Facebook page).
 
 ## Plan
 
-Én modul om gangen; jeg tester mellom hver.
+One module at a time; I test between each.
 
-| # | Modul | Innhold |
+| # | Module | Scope |
 |---|---|---|
-| 0 | Eksempler | 3–5 ekte auksjonsposter lagret i `samples/` (gitignored) |
-| 1 | Spike | Content script som utvider kommentarer/svar og lager rå JSON for én post |
-| 2 | Lagring | `Store`-grensesnitt på IndexedDB med tester |
-| 3 | Tolkning | Claude API + zod + etterbehandling, testet mot samples |
-| 4 | Feed-skann | Backfill + inkrementelt + idle-pause |
-| 5 | Tabellside | |
-| 6 | Overlegg | Inkl. automatisk gjenlesing hvert 15. min av auksjoner jeg har budt på |
-| 7 | Sidepanel | |
-| 8 | Senere | Prising, varsler, Supabase, lot-visning |
+| 0 | Samples | 3–5 real auction posts saved in `samples/` (gitignored) |
+| 1 | Spike | Content script that expands comments/replies and produces raw JSON for one post |
+| 2 | Storage | `Store` interface on IndexedDB, with tests |
+| 3 | Interpretation | Claude API + zod + post-processing, tested against samples |
+| 4 | Feed scan | Backfill + incremental + idle pause |
+| 5 | Table page | |
+| 6 | Overlay | Incl. automatic re-read every 15 min of auctions I've bid on |
+| 7 | Side panel | |
+| 8 | Later | Pricing, notifications, Supabase, lot view |
 
-Byggerekkefølge i praksis: 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7 (tolkning testes mot
-spike-JSON før lagringen kobles på).
+Build order in practice: 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7 (interpretation is tested against
+the spike's JSON before storage is wired in).
 
-## Risiko
+## Risks
 
-| Risiko | Tiltak |
+| Risk | Mitigation |
 |---|---|
-| Metas vilkår forbyr automatisert innhenting | Reglene over: kun lesing, egen Chrome, rolig tempo, av-bryter |
-| Facebook endrer HTML | `samples/` som regresjonstest; ingen CSS-klasse-selektorer |
-| Selgere skriver ulikt | Vis alltid originaltekst ved siden av tolkning; lagre råtekst |
-| Ikke sanntid | Vis "sist lest" på alt |
+| Meta's terms forbid automated collection | The rules above: read-only, own Chrome, slow pacing, off switch |
+| Facebook changes its HTML | `samples/` as a regression test; no CSS-class selectors |
+| Sellers write differently | Always show original text next to interpretation; store raw text |
+| Not real-time | Show "last read" on everything |
 
-## Arbeidsform
+## Working style
 
-- Vis plan før kode for hver modul.
-- Kode og commits på engelsk, UI på norsk.
-- Etter hver økt: oppdater denne spec-en med det vi har lært, og commit.
+- Show a plan before code for each module.
+- Code and commits in English, UI in Norwegian.
+- After each session: update this spec with what we've learned, and commit.
