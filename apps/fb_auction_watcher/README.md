@@ -115,6 +115,14 @@ photos reliably (Haiku misread one on a real lot); the bridge downloads photos o
 extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
 which only passes the text to `claude -p` and the answer back.
 
+Only live sales are asked about: nothing from a sale that ended more than 6 hours ago, and for sales with no
+end time (fixed price) nothing once the post hasn't been seen or read for 3 days. Photo calls (Sonnet) are capped
+at 20 an hour; the rest waits for later runs. If one item fails (typically a lot photo Facebook's CDN no longer
+serves: its links expire), it's tried again after 15 minutes, then after an hour, and then skipped; the other
+items carry on. Only a failure that affects everything (bridge not installed, `claude` missing or not logged
+in, out of quota) pauses Claude, for 10 minutes. The Claude line under **Settings** shows the last run, e.g.
+"Read 5 claim lot photos · 2 skipped (photo unavailable) · photo limit reached, rest later".
+
 One-time setup:
 
 ```bash

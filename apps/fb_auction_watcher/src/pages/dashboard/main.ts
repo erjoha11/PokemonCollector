@@ -596,7 +596,11 @@ function renderSettings(now: Date) {
   $("#claude-status").textContent = !settings.useClaude
     ? "Off: what the rules can't read stays unsure."
     : claude.lastAt && claude.lastOutcome
-      ? `Last ${ago(claude.lastAt, now)}: ${claude.lastOutcome}`
+      ? `Last ${ago(claude.lastAt, now)}: ${claude.lastOutcome}` +
+        // The hourly cap on photo calls (src/background/claudeQueue.ts): when the rest goes on.
+        (claude.photoLimitUntil && Date.parse(claude.photoLimitUntil) > now.getTime()
+          ? ` · more photos in ${countdown(Date.parse(claude.photoLimitUntil), now)}`
+          : "")
       : "Asks Claude Code (claude -p, your login) only about what the rules can't read.";
 
   $("#reader-status").textContent =

@@ -85,6 +85,20 @@ on the user's Mac (`claude -p`, their own login) through Chrome native messaging
 (`native/fbaw_claude_host.py`), batched, Haiku, no tools, answers cached. The original design
 below is kept for reference.
 
+**Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
+- Only live sales: nothing from a sale that ended more than 6 h ago (late bids and claims are
+  read after the end, and Won/Lost needs a read after it, so a few hours' grace), and for sales
+  with no known end (fixed price, or an end nobody could read) nothing once the post hasn't been
+  seen or read for 3 days. The end is the one the overview shows: rules, else Claude's answer.
+- Photo calls (Sonnet, one per lot) are capped at 20 per rolling hour, counted in
+  `chrome.storage.local` so a worker restart doesn't reset it; at most 5 per run.
+- A failure that hits everything (bridge not installed, `claude` missing or not logged in, out of
+  quota) stops the run and pauses Claude for 10 min. Any other failure (a lot photo the CDN no
+  longer serves: signed URLs expire, `oe=`, HTTP 403/404; a timeout; no JSON) counts against
+  that item only: retried after 15 min, then 1 h, skipped after 3 tries, and the run goes on.
+  Failure records are kept in the store's meta (`claudeFailures`) for 7 days. A claim lot's key
+  includes its replies, so a new reply makes it a new question with fresh tries.
+
 - **Feed call:** post text → `type`, `title`, `endsAt` (ISO), `endsAtText`, `closeRule`,
   `softCloseMinutes`, `closeRuleText`, `increment`, `price`, `shippingText`, `soldOrWithdrawn`.
 - **Detail call:** post + comments with replies →

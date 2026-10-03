@@ -23,8 +23,17 @@ export type AutoScanState = {
 
 export const DEFAULT_AUTO_SCAN_STATE: AutoScanState = { nextAt: null, lastAt: null, lastOutcome: null, running: false };
 
-export type ClaudeState = { lastAt: string | null; lastOutcome: string | null; error: string | null };
-export const DEFAULT_CLAUDE_STATE: ClaudeState = { lastAt: null, lastOutcome: null, error: null };
+export type ClaudeState = {
+  lastAt: string | null;
+  lastOutcome: string | null;
+  /** A failure that pauses all of Claude for a while (bridge missing, not logged in); per-item failures don't set it. */
+  error: string | null;
+  /** The hourly cap on photo calls is reached until then (ISO), or null. */
+  photoLimitUntil: string | null;
+  /** When Sonnet photo calls were made in the last hour (ISO), for the hourly cap; survives worker restarts. */
+  photoCalls: string[];
+};
+export const DEFAULT_CLAUDE_STATE: ClaudeState = { lastAt: null, lastOutcome: null, error: null, photoLimitUntil: null, photoCalls: [] };
 
 async function read<T extends object>(key: string, defaults: T): Promise<T> {
   const stored = await chrome.storage.local.get(key);
