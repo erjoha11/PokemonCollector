@@ -82,7 +82,7 @@ async function load() {
   ]);
   [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
-  for (const id of justClicked) if (Object.values(reader.visible ?? {}).includes(id)) justClicked.delete(id);
+  for (const id of justClicked) if (visiblePostIds().includes(id)) justClicked.delete(id);
   source = {
     posts,
     captures: new Map(captures.map((c) => [c.postId, c.capture])),
@@ -162,6 +162,10 @@ function saleCell(r: Row): HTMLTableCellElement {
     e.preventDefault();
     const msg: QueueReadMessage = { type: MSG_QUEUE_READ, postId: r.id, url: r.url };
     justClicked.add(r.id); // Shows "Reading…" until the worker's state catches up.
+    setTimeout(() => {
+      justClicked.delete(r.id); // The worker never picked it up: don't show "Reading…" forever.
+      render();
+    }, 60_000);
     render();
     void chrome.runtime.sendMessage(msg).catch(() => {});
   });
@@ -178,9 +182,16 @@ function saleCell(r: Row): HTMLTableCellElement {
   return td;
 }
 
-/** "Reading…" / "Queued" while the background reader has this post. */
+/** Posts being read in a tab you opened, leaving out ones the worker will time out anyway. */
+function visiblePostIds(): string[] {
+  return Object.values(reader.visible ?? {})
+    .filter((v) => typeof v === "object" && Date.now() - Date.parse(v.startedAt) < 5 * 60_000)
+    .map((v) => v.postId);
+}
+
+/** "Reading…" / "Queued" while the reader has this post. */
 function readState(postId: string): string | null {
-  if (reader.current?.postId === postId || Object.values(reader.visible ?? {}).includes(postId) || justClicked.has(postId)) return "Reading…";
+  if (reader.current?.postId === postId || visiblePostIds().includes(postId) || justClicked.has(postId)) return "Reading…";
   if (reader.queue.some((j) => j.postId === postId)) return "Queued";
   return null;
 }
@@ -282,7 +293,7 @@ function renderSettings(now: Date) {
       : "Asks Claude Code (claude -p, your login) only about what the rules can't read.";
 
   $("#reader-status").textContent =
-    (reader.current || Object.keys(reader.visible ?? {}).length ? "Reading a post now. " : "") +
+    (reader.current || visiblePostIds().length ? "Reading a post now. " : "") +
     (reader.queue.length ? `${reader.queue.length} queued. ` : "") +
     (reader.lastAt && reader.lastOutcome ? `Last ${ago(reader.lastAt, now)}: ${reader.lastOutcome}` : "No background reads yet.");
 

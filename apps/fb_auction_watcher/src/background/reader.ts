@@ -4,6 +4,7 @@ import { bidAnswerKey } from "../llm/prompts";
 import { MSG_READ_POST, type ReadPostMessage } from "../shared/messages";
 import { getAutoScanState, getSettings } from "../shared/settings";
 import type { Store } from "../store";
+import { waitForTabLoad } from "./tabs";
 
 // Post reads without the panel. A click in the overview opens the post in a normal tab and
 // reads it silently there (openAndReadVisible). Automatic re-reads of auctions you're bidding
@@ -13,16 +14,20 @@ import type { Store } from "../store";
 // talking to Facebook), automatic re-reads skipped while the screen is locked or you're away.
 
 export const READER_ALARM = "fbaw-reader";
+/** Alarms for the reader: the queue's own, and per-tab timeouts for visible reads. */
+export const isReaderAlarm = (name: string) => name === READER_ALARM || name.startsWith(`${READER_ALARM}-`);
 /** Pause between reads. chrome.alarms can't go below 30 s. */
 const GAP_MS = [30_000, 45_000] as const;
 /** A read that hasn't reported back by then has failed; close its tab and move on. */
 const READ_TIMEOUT_MS = 3 * 60_000;
 const REREAD_AFTER_MS = 15 * 60_000;
+/** A visible read that hasn't reported back by then has failed (its tab stays open). */
+const VISIBLE_TIMEOUT_MS = 5 * 60_000;
 
 export type ReadJob = { postId: string; url: string; reason: "click" | "auto" };
 export type ReaderState = {
-  /** Posts you opened from the overview, being read silently in their (visible) tab: tabId → postId. */
-  visible: Record<string, string>;
+  /** Posts you opened from the overview, being read silently in their (visible) tab, by tab ID. */
+  visible: Record<string, { postId: string; startedAt: string }>;
   queue: ReadJob[];
   current: (ReadJob & { tabId: number; startedAt: string }) | null;
   lastAt: string | null;
@@ -32,7 +37,12 @@ const DEFAULT_STATE: ReaderState = { visible: {}, queue: [], current: null, last
 
 export async function getReaderState(): Promise<ReaderState> {
   const s = await chrome.storage.local.get("readerState");
-  return { ...DEFAULT_STATE, ...(s.readerState as Partial<ReaderState> | undefined) };
+  const state = { ...DEFAULT_STATE, ...(s.readerState as Partial<ReaderState> | undefined) };
+  // Entries saved by an older version (a bare post ID, no start time) can't time out: drop them.
+  state.visible = Object.fromEntries(
+    Object.entries(state.visible ?? {}).filter(([, v]) => typeof v === "object" && v !== null && typeof v.startedAt === "string"),
+  );
+  return state;
 }
 async function setReaderState(change: Partial<ReaderState>): Promise<ReaderState> {
   const next = { ...(await getReaderState()), ...change };
@@ -66,6 +76,10 @@ export function kickReader(): Promise<void> {
 }
 
 async function kickOnce(): Promise<void> {
+  // Visible reads that never reported back: give up on them (their tabs stay open).
+  for (const [tabId, v] of Object.entries((await getReaderState()).visible)) {
+    if (Date.now() - Date.parse(v.startedAt) > VISIBLE_TIMEOUT_MS) await finishRead(Number(tabId), false, "it took too long");
+  }
   let state = await getReaderState();
   if (state.current) {
     if (Date.now() - Date.parse(state.current.startedAt) < READ_TIMEOUT_MS) return;
@@ -93,18 +107,7 @@ async function kickOnce(): Promise<void> {
   await setReaderState({ queue: rest, current: { ...job, tabId: tab.id, startedAt: new Date().toISOString() } });
   await later(READ_TIMEOUT_MS + 5000); // Safety net if the read never reports back.
 
-  const loaded = await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => done(false), 45_000);
-    const listener = (id: number, info: { status?: string }) => {
-      if (id === tab.id && info.status === "complete") done(true);
-    };
-    function done(ok: boolean) {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve(ok);
-    }
-    chrome.tabs.onUpdated.addListener(listener);
-  });
+  const loaded = await waitForTabLoad(tab.id);
   if (!loaded) return finishRead(tab.id, false, "the post didn't load");
   const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true, silent: true };
   await chrome.tabs.sendMessage(tab.id, msg).catch(() => finishRead(tab.id!, false, "no content script in the tab"));
@@ -120,19 +123,9 @@ export async function openAndReadVisible(url: string, postId: string): Promise<v
   if (tab.id === undefined) return;
   const tabId = tab.id;
   const state = await getReaderState();
-  await setReaderState({ visible: { ...state.visible, [tabId]: postId } });
-  const loaded = await new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => done(false), 45_000);
-    const listener = (id: number, info: { status?: string }) => {
-      if (id === tabId && info.status === "complete") done(true);
-    };
-    function done(ok: boolean) {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve(ok);
-    }
-    chrome.tabs.onUpdated.addListener(listener);
-  });
+  await setReaderState({ visible: { ...state.visible, [tabId]: { postId, startedAt: new Date().toISOString() } } });
+  await chrome.alarms.create(`${READER_ALARM}-visible-${tabId}`, { when: Date.now() + VISIBLE_TIMEOUT_MS + 5000 });
+  const loaded = await waitForTabLoad(tabId);
   if (!loaded) return finishRead(tabId, false, "the post didn't load");
   const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true, silent: true };
   await chrome.tabs.sendMessage(tabId, msg).catch(() => finishRead(tabId, false, "no content script in the tab"));
@@ -143,7 +136,9 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
   const state = await getReaderState();
   if (state.visible[tabId] !== undefined) {
     // Your own tab: leave it open, just record the result.
-    const { [tabId]: _done, ...visible } = state.visible;
+    const visible = { ...state.visible };
+    delete visible[tabId];
+    void chrome.alarms.clear(`${READER_ALARM}-visible-${tabId}`);
     await setReaderState({ visible, lastAt: new Date().toISOString(), lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}` });
     return;
   }

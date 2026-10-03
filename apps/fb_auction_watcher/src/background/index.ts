@@ -18,7 +18,7 @@ import { getAutoScanState, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
 import { AUTO_SCAN_ALARM, describeAutoScan, runAutoScan, scheduleAutoScan } from "./autoScan";
 import { scheduleClaude } from "./claude";
-import { finishRead, getReaderState, kickReader, openAndReadVisible, queueMyAuctionRereads, READER_ALARM } from "./reader";
+import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, queueMyAuctionRereads } from "./reader";
 
 // Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
 // between the toolbar icon, the content script and the overview page.
@@ -80,10 +80,13 @@ void (async () => {
   for (const tab of tabs) if (tab.id !== undefined) void chrome.tabs.reload(tab.id);
 })();
 
+// Each time the worker starts: finish or time out reads left over from before (and go on with the queue).
+void kickReader();
+
 // The automatic scan: alarm → run; switching it on/off in the overview reschedules.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
-  if (alarm.name === READER_ALARM) void kickReader();
+  if (isReaderAlarm(alarm.name)) void kickReader();
 });
 // You closed the background reader's tab: count that read as done and go on.
 chrome.tabs.onRemoved.addListener((tabId) => {

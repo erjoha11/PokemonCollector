@@ -103,6 +103,8 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     }
     const controller = new AbortController();
     panel.onStop(() => controller.abort());
+    // A quiet read must always report back: cap it, and read whatever has loaded by then.
+    const cap = silent ? setTimeout(() => controller.abort(), 4 * 60_000) : null;
     panel.setStatus("Switching comments to All comments…");
     const commentSortAction = await ensureAllComments(root, { signal: controller.signal });
     panel.setStatus("Loading all comments and replies…");
@@ -111,6 +113,7 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
       onProgress: ({ clicks, scrolls, lastLabel }) =>
         panel.setStatus(`Expanding… ${clicks} clicked, ${scrolls} scrolled (last: "${lastLabel}")`),
     });
+    if (cap) clearTimeout(cap);
     panel.setStatus("Reading…");
     const capture = extractCapture(root, {
       pageUrl: location.href,
@@ -120,12 +123,17 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
       expandStoppedBecause: result.stoppedBecause,
       commentSortAction,
     });
-    // Save it for the overview (lots, bids, your status), unless reading was cut short.
-    if (result.stoppedBecause !== "aborted") {
+    // Save it for the overview (lots, bids, your status), unless you stopped it. A quiet read
+    // that hit its time cap is saved anyway: partial bids beat none, and it's flagged.
+    if (result.stoppedBecause !== "aborted" || silent) {
       const msg: SavePostCaptureMessage = { type: MSG_SAVE_POST_CAPTURE, capture };
       await chrome.runtime.sendMessage(msg).catch(() => {});
     }
-    report(true, `${capture.stats.topLevelComments} comments, ${capture.stats.replies} replies`);
+    report(
+      true,
+      `${capture.stats.topLevelComments} comments, ${capture.stats.replies} replies` +
+        (result.stoppedBecause === "aborted" ? " (took too long; some may be missing)" : ""),
+    );
     panel.showResult(capture, `<!doctype html>\n<!-- ${location.href} -->\n${root.outerHTML}`);
   } catch (err) {
     report(false, err instanceof Error ? err.message : String(err));

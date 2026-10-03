@@ -1,6 +1,7 @@
 import { MSG_AUTO_SCAN, type AutoScanMessage } from "../shared/messages";
 import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
 import { getReaderState } from "./reader";
+import { waitForTabLoad } from "./tabs";
 
 // The automatic feed scan (docs/spec.md "Slow pacing"):
 // - every 10-15 min ±20 % jitter, one-shot alarms rescheduled after each run;
@@ -45,21 +46,6 @@ async function findFeedTab(): Promise<chrome.tabs.Tab | null> {
   return feeds.find((t) => t.pinned) ?? null;
 }
 
-function waitForLoad(tabId: number, timeoutMs = 30_000): Promise<boolean> {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    const listener = (id: number, info: { status?: string }) => {
-      if (id === tabId && info.status === "complete") finish(true);
-    };
-    function finish(ok: boolean) {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve(ok);
-    }
-    chrome.tabs.onUpdated.addListener(listener);
-  });
-}
-
 async function skip(outcome: string) {
   await updateAutoScanState({ lastAt: new Date().toISOString(), lastOutcome: outcome, running: false });
 }
@@ -85,9 +71,9 @@ export async function runAutoScan(): Promise<void> {
     }
 
     await updateAutoScanState({ lastAt: new Date().toISOString(), lastOutcome: "Scanning…", running: true });
-    const loaded = waitForLoad(tab.id);
     await chrome.tabs.reload(tab.id);
-    if (!(await loaded)) return await skip("Failed: the feed tab didn't finish loading");
+    await new Promise((r) => setTimeout(r, 500)); // Let the reload start, so "complete" is the new page.
+    if (!(await waitForTabLoad(tab.id, 30_000))) return await skip("Failed: the feed tab didn't finish loading");
     const msg: AutoScanMessage = { type: MSG_AUTO_SCAN };
     await chrome.tabs.sendMessage(tab.id, msg).catch(async () => {
       await skip("Failed: no content script in the feed tab");
