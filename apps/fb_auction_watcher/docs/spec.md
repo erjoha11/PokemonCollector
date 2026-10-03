@@ -7,8 +7,8 @@
   and automatic (pinned tab, background), rule-based listing and bid interpretation, Claude
   Code (`claude -p`) through a native-messaging bridge for what the rules can't read, IndexedDB
   store of raw posts and post reads, table page with your Leading/Outbid status. See
-  `notes/fb_auction_watcher/overview-plan.md`. Not built: overlay, side panel, automatic
-  re-reads of posts you've bid on.
+  `notes/fb_auction_watcher/overview-plan.md`. Automatic re-reads of auctions you're in
+  (every 15 min, plus one after the end) are built. Not built: overlay, side panel.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
@@ -113,8 +113,10 @@ below is kept for reference.
 **capture:** `id`, `listingId`, `kind` (`feed`|`detail`), `rawText`, `capturedAt`,
 `parseStatus`, `parseError`
 
-**settings:** `groupUrl`, `myFbName`, `scanIntervalMin` (12), `backfillDays` (3),
-`captureEnabled`, `apiKey`
+**settings** (as built, `src/shared/settings.ts`): `autoScan` (the off switch, default off),
+`myName` (default "Erik Johansen"), `useClaude` (default on). The group is the pinned feed tab;
+the interval is fixed at 10–15 min ±20 %. Originally planned: `groupUrl`, `scanIntervalMin`,
+`backfillDays`, `captureEnabled`, `apiKey` (no API key is used).
 
 **userState:** `lastDashboardVisitAt`, `seenListingIds`
 

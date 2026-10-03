@@ -38,5 +38,6 @@ Feed snapshot → user captures → feed reader + rules + storage → table page
   `src/background/claude.ts`, prompts in `src/llm/prompts.ts` (23/23 on `src/llm/cases.ts`).
 - Overview: groups, countdowns, Leading/Outbid, lots, settings (auto-scan, Claude, your name).
 
-Not built: automatic re-reads of posts you've bid on (spec: every 15 min), the overlay, the side
-panel, notifications.
+Also built since: automatic re-reads of auctions you're in (every 15 min, plus one after the
+end), claim sales (Claude reads every card and price on lot photos), My Auctions, the toolbar menu.
+Not built: the overlay, the side panel, notifications.

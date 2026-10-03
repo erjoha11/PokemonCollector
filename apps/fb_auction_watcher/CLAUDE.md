@@ -8,7 +8,7 @@ App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.
 
 It is independent of the other apps in `apps/`: no imports to or from them, no shared database.
 
-**Status:** module 1 (spike) built — `src/content/post/` reads one open post and exports raw JSON. Modules 2–7 are not built; show a plan and wait for the go-ahead before starting one.
+**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store, `dashboard.html` (My Auctions, table, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read. Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Open review items: `notes/fb_auction_watcher/` and the last review (H2 capture merging, H6 one-tab lock, M2, M8 tests).
 
 ## Commands
 
@@ -35,21 +35,22 @@ These override convenience. Don't relax any of them without the user's explicit 
 - **Never use CSS class names as selectors** — Facebook obfuscates them. Use `role`, `aria-label`, DOM structure, and text patterns. Expect virtualized lists and SPA navigation (no full page loads).
 - **Keep raw text.** Store captured raw text so interpretation can be re-run, and always show the seller's original text next to any interpreted value.
 
-## Architecture (planned)
+## Architecture
 
 | Part | Folder | Responsibility |
 |---|---|---|
-| Feed content script | `src/content/feed/` | Scans the pinned group tab, captures posts as they render |
-| Post content script | `src/content/post/` | Reads one post's comments/replies, renders the overlay (Shadow DOM) |
-| Service worker | `src/background/` | Coordination, scheduling, Claude API calls, persistence |
-| Store | `src/store/` | `Store` interface over IndexedDB (`idb`); swappable for Supabase later |
-| LLM | `src/llm/` | Prompts, zod schemas, one retry on invalid JSON, token logging |
-| Domain | `src/domain/` | Pure logic: highestBid, myStatus, end-time math, soft close |
-| Pages | `src/pages/dashboard/`, `src/pages/sidepanel/` | `dashboard.html` table view, Chrome Side Panel |
-| Shared | `src/shared/` | Types and messaging between contexts |
-| Static | `public/` | `manifest.json`, icons |
+| Post content script | `src/content/post/` | Reads one post (sort switch, expanders, extract), the panel and the quiet-read status overlay (Shadow DOM) |
+| Feed content script | `src/content/feed/` | Records posts as the virtualized feed renders them, scrolls and opens "Se mer" (scan), extracts posts |
+| Service worker | `src/background/` | Message routing, automatic scan (`autoScan.ts`), post-read queue (`reader.ts`), Claude bridge client (`claude.ts`) |
+| Store | `src/store/` | `Store` interface over IndexedDB (`idb`): raw posts, post reads, Claude's answers; swappable for Supabase later |
+| LLM | `src/llm/` | Prompts and JSON schemas for `claude -p`; `cases.ts` evaluation set (`npm run eval:claude`) |
+| Domain | `src/domain/` | Pure rules: amounts, Oslo end times, listing type and terms, lots/bids/claims, your status |
+| Pages | `src/pages/dashboard/`, `src/pages/popup/` | The overview (`dashboard.html`; status rules in `model.ts`), the toolbar menu (`popup.html`) |
+| Shared | `src/shared/` | Types, messages, settings (`chrome.storage.local`), URL helpers |
+| Native | `native/` | `fbaw_claude_host.py` (runs `claude -p` with no tools, no MCP, no user settings) and `install.sh` |
+| Static | `public/` | `manifest.json`, page HTML/CSS |
 
-Stack: TypeScript, Vite, Preact, idb, zod (added per module as needed; module 1 uses none of Preact/idb/zod). The Anthropic API key lives in `chrome.storage.local`, never in the repo.
+Stack: TypeScript, Vite, Vitest + happy-dom, `idb`; vanilla DOM (no Preact, no zod). No Claude API and no API key: Claude runs through the user's own Claude Code login via the native bridge (decided 2026-10-03, see `docs/spec.md` "Interpretation"). Python tests for the host run with the repo's `pytest`.
 
 ## Working style
 

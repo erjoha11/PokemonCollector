@@ -2,7 +2,7 @@
 
 Chrome extension (Manifest V3) that gives a read-only overview of auctions in a Facebook buy/sell group for Pokémon cards: every sale sorted by end time, with live countdowns and Leading/Outbid status on lots you've bid on.
 
-**Status:** module 1 (spike) built: reads one open post and exports it as raw JSON. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
+**Status:** the overview works: feed scans (by hand and automatic), post reads, your Leading/Outbid/Won status, claim sales with what's still for sale, and Claude (through your Claude Code login) for what the rules can't read. Not built yet: an overlay on the post itself and a side panel. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
 
 ## Build
 
@@ -31,7 +31,7 @@ After every `npm run build`: **Reload extension**, then **Reload Facebook tabs**
 content script). A new permission in the manifest needs the reload icon on the extension's card in
 `chrome://extensions` once instead. A tab opened before the extension was (re)loaded has no content script; the icon then shows a `!` badge.
 
-## Test module 1: read one post
+## Read one post (with the full panel)
 
 1. Open an auction post in the group as a single post: click the post's timestamp, or open it so it shows in a dialog.
 2. Click the extension icon. A panel appears bottom right. It first switches the comments to **All comments** / **Alle kommentarer** ("Most relevant" can hide bids), then clicks "View more comments" / "View N replies" / "See more" ("Vis flere kommentarer" / "Vis N svar" / "Se mer") one at a time with pauses, and scrolls down the comments when Facebook loads more on scroll instead of with a button. Nothing else is ever clicked. A large auction can take a few minutes. **Stop** halts it.
@@ -119,8 +119,13 @@ apps/fb_auction_watcher/native/install.sh --uninstall
 ```
 
 It writes one file, `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.erjoha.fbaw.claude.json`,
-telling Chrome where the script is and that only this extension may start it. Switch it off under
-**Settings** in the overview; then those items just stay marked unsure.
+telling Chrome where the script is and that only this extension may start it. Claude runs with no tools, no
+MCP servers or connectors and no user settings, so text in a Facebook post can't make it do anything but answer.
+
+**What Claude gets:** the text of posts and replies (including commenters' names) and lot photos, from posts
+you've scanned or read. It's **on by default**; switch it off under **Settings** in the overview, and those
+items just stay marked unsure ("Leading?" where a reply couldn't be read). `npm run eval:claude` checks the
+prompts on `src/llm/cases.ts` through the real bridge (uses your Claude plan).
 
 ## Scan the feed
 
@@ -140,8 +145,8 @@ separate window.
 **Download feed sample** saves everything scanned so far as one HTML file. Move it to `samples/`
 like the others, and never commit it.
 
-## What module 1 does not do
+## What it doesn't do (yet)
 
-- No interpretation: no amounts, bid validity, or end times. That's module 3.
-- No storage, no feed scan, no dashboard.
+- No overlay on the Facebook post itself, and no side panel (modules 6–7 in the spec).
 - No absolute timestamps: Facebook shows relative ones ("2 t") and only shows the exact time on hover, which the extension doesn't do.
+- No notifications.
