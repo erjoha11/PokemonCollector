@@ -52,16 +52,25 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 
 ## The overview
 
-**Won** (top of My Auctions) lists everything you've won, per seller: the lots or cards with what you pay,
-the total ("400 kr + shipping"), and the seller's shipping and payment lines quoted from the post. Tick
-**Paid** and **Received** as you go; a seller with both ticked folds away ("Show paid & received" brings
-them back). Auctions count once a full read after the end confirms the win; claim lots show "price not read
-yet" until Claude has read the photo. The **Won lots** counter sits next to the others.
+**My Auctions** at the top is a to-do list for your own bidding, in three sections, with one summary
+line above them ("14 need you · 12 leading (4600 kr if they hold) · 412 kr to pay"):
 
-**My Auctions** at the top lists every sale you're bidding or claiming in, soonest ending first, with
-your lots (photo, your bid vs the highest, or what you claimed) and their status: **Leading** (blue),
-**Outbid** (orange), **Won** (green), **Check** (orange: someone claimed the same card first). Finished
-ones fold into **Ended**. Below it are the counters and the full table. Clicking a row shows or hides its lots; clicking a sale's
+- **Needs you**: every lot where you have to act, across all sales, soonest ending first. Outbid,
+  **Leading?** (a reply couldn't be read) and **Check** (someone claimed the same card first). One
+  line each: photo, lot name, sale and seller, countdown, the highest bid (and yours). The button
+  (**Bid 190+ ↗**) shows the lowest bid that counts now and opens that lot's comment on Facebook in
+  a new tab; you bid there yourself. The first 5 show, then **Show all**.
+- **Leading**: one folded line per sale (countdown, title, seller, "12 lots · 4600 kr", which is
+  what you pay if they all hold). Unfold it to see the lots. A sale that ended but hasn't been read
+  since says "ended: waiting for a final read".
+- **To pay**: what you've won, one folded line per seller with the total ("400 kr + shipping"), how to
+  pay, and **Paid** / **Received** ticks. Unfold it for the lots and the seller's shipping and payment
+  lines quoted from the post. A seller with both ticked folds away ("Show paid & received" brings them
+  back). Auctions count once a full read after the end confirms the win; claim lots show "price not
+  read yet" until Claude has read the photo or the seller's text.
+
+Lost lots and finished sales aren't listed there; they're in the table with their status. The
+**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots; clicking a sale's
 name opens the post on Facebook in a new tab and reads it quietly there.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
@@ -106,7 +115,7 @@ only as long as it's useful. Once a day (a `chrome.alarms` alarm) the service wo
 (`src/store/retention.ts`):
 
 - a sale's **post read** (comments, replies, names) 7 days after the sale ended, or **30 days** if you
-  bid or claimed in it (so My Auctions' "Ended" list lasts long enough to pay and follow up). A sale
+  bid or claimed in it (so it lasts long enough to pay and follow up). A sale
   with no end time (fixed price, or an end nobody could read) counts from when it was last seen or read,
   with a 14-day window (30 if yours);
 - a **post** once its read is gone, it hasn't been seen in the feed for 14 days, and it ended over 7 days

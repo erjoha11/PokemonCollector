@@ -181,7 +181,14 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 
 ### Table page (`dashboard.html`)
 
-- Four numbers at the top: active, within 1 h, outbid, new.
+- My Auctions above the numbers (redesigned 2026-10-04; it had become one card per sale with
+  every lot, 26 equal cards for one busy bidder): a summary line, then **Needs you** (lots where
+  you must act: outbid, unclear, check; across sales, soonest first, 5 then "Show all"; each links
+  to the lot's comment with the lowest bid that counts, the extension never bids), **Leading** (one
+  folded line per sale, what it costs if it holds) and **To pay** (one folded line per seller, with
+  Paid / Received). Lost and ended lots live in the table. Rules: `needsYou`, `leadingBySale`,
+  `wonBySeller` in `model.ts`.
+- Numbers at the top: active, within 1 h, need you (lots), won lots, new.
 - Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
   ended. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
   red under an hour, and the "Within 1 hour" counter stays.)
