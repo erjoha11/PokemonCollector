@@ -23,13 +23,13 @@ npm run typecheck
 
 CI runs all of these in the `fb_auction_watcher` job of `.github/workflows/tests.yml`. Build is two Vite passes into `dist/` (`vite.config.ts`): the content script as an IIFE (content scripts can't be ES modules), the service worker as an ES module.
 
-The click allowlist lives in `src/content/post/patterns.ts` (`isExpanderLabel`) and the last-moment guard in `expand.ts` (`isSafeToClick`). Any change there needs matching allow/reject cases in `tests/patterns.test.ts` — the reject list (Reply/Svar, Like/Liker, See more, comment sort, text boxes) must stay.
+The click allowlist lives in `src/content/post/patterns.ts` (`isClickableExpanderLabel`, `isAllCommentsMenuItemLabel`), with guards in `expand.ts` (`isSafeToClick`) and `sort.ts`. Any change there needs matching allow/reject cases in `tests/` — the reject list (Reply/Svar, Like/Liker, other sort options, text boxes, forms) must stay.
 
 ## Non-negotiable rules
 
 These override convenience. Don't relax any of them without the user's explicit say-so:
 
-- **Read-only.** Never bid, claim, comment, react, or post. The only clicks allowed are "View more comments", "View N replies", and switching the feed sort order — Facebook shows these in the account's language (the user's is Norwegian: "Vis flere kommentarer", "Vis N svar"), so never match on English text alone. The highest bid is binding, so a stray click costs real money. The overlay's "Bid on Facebook" button only hides the overlay and scrolls to the reply field — it never focuses, types, or submits.
+- **Read-only.** Never bid, claim, comment, react, or post. The only clicks allowed are "View more comments", "View N replies", "See more", switching a post's comment sort to "All comments" (sort control + that one menu item), and switching the feed sort order — Facebook shows these in the account's language (the user's is Norwegian: "Vis flere kommentarer", "Vis N svar", "Se mer", "Alle kommentarer"), so never match on English text alone. The highest bid is binding, so a stray click costs real money. The overlay's "Bid on Facebook" button only hides the overlay and scrolls to the reply field — it never focuses, types, or submits.
 - **No headless or server-side scraping.** Everything runs in the user's own logged-in Chrome.
 - **Slow pacing.** Feed scan every 10–15 min ±20 % jitter, pause while the machine is locked/idle (`chrome.idle`), never more than one tab talking to Facebook at a time, and a user-facing off switch.
 - **Never use CSS class names as selectors** — Facebook obfuscates them. Use `role`, `aria-label`, DOM structure, and text patterns. Expect virtualized lists and SPA navigation (no full page loads).

@@ -18,7 +18,7 @@ export type CapturedReply = {
   timeText: string | null;
   ariaLabel: string | null;
   images: CapturedImage[];
-  /** A "See more" / "Se mer" button was present, so the text may be cut off. */
+  /** A "See more" / "Se mer" button was still present after expanding, so the text may be cut off. */
   truncated: boolean;
   rawText: string;
 };
@@ -55,8 +55,10 @@ export type PostCapture = {
   capturedAt: string;
   pageUrl: string;
   pageLang: string;
-  /** Label of the comment sort control ("Most relevant", "Alle kommentarer"...), if found. */
+  /** Label of the comment sort control after any switch ("Alle kommentarer"...), if found. */
   commentSortLabel: string | null;
+  /** What the reader did about the comment sort before expanding. */
+  commentSortAction: "already-all" | "switched" | "not-found" | "failed" | "aborted";
   post: CapturedPost;
   comments: CapturedComment[];
   stats: CaptureStats;

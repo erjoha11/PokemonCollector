@@ -2,9 +2,11 @@ import { isReadPostMessage } from "../../shared/messages";
 import { expandAll } from "./expand";
 import { extractCapture, findPostRoot } from "./extract";
 import { showPanel } from "./panel";
+import { ensureAllComments } from "./sort";
 
-// Module 1 spike: on request (toolbar icon), expand the open post's comments and
-// replies, then offer the raw capture as JSON. Read-only apart from expander clicks.
+// Module 1 spike: on request (toolbar icon), switch the open post's comments to "All
+// comments", expand comments, replies and "See more", then offer the raw capture as JSON.
+// Those are the only clicks; nothing is ever written.
 
 let running = false;
 
@@ -20,6 +22,8 @@ async function readOpenPost() {
     }
     const controller = new AbortController();
     panel.onStop(() => controller.abort());
+    panel.setStatus("Switching comments to All comments…");
+    const commentSortAction = await ensureAllComments(root, { signal: controller.signal });
     panel.setStatus("Loading all comments and replies…");
     const result = await expandAll(root, {
       signal: controller.signal,
@@ -31,6 +35,7 @@ async function readOpenPost() {
       pageLang: document.documentElement.lang,
       expandClicks: result.clicks,
       expandStoppedBecause: result.stoppedBecause,
+      commentSortAction,
     });
     panel.showResult(capture, `<!doctype html>\n<!-- ${location.href} -->\n${root.outerHTML}`);
   } catch (err) {

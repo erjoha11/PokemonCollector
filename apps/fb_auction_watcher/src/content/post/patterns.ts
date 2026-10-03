@@ -9,9 +9,11 @@ export function normalize(text: string | null | undefined): string {
 const N = String.raw`\d[\d.,\s]*`;
 
 /**
- * The ONLY controls the extension may click: ones that load more comments or replies.
+ * Controls that load more comments or replies. Together with "See more" and the comment
+ * sort switch (sort.ts), these are the only things the extension ever clicks.
  * Every pattern is anchored to the whole label, so "Svar" / "Reply" (opens the reply
- * box), "Liker" / "Like", "Se mer" / "See more" and the comment sort menu never match.
+ * box), "Liker" / "Like" and the comment sort menu never match. "See more" is allowed
+ * separately (isClickableExpanderLabel).
  */
 const EXPANDER_PATTERNS: RegExp[] = [
   // "View more comments", "View previous comments", "View 5 more comments"
@@ -38,14 +40,31 @@ export function isExpanderLabel(label: string | null | undefined): boolean {
   return EXPANDER_PATTERNS.some((re) => re.test(text));
 }
 
-/** "See more" on truncated text. Detected only, never clicked: it isn't on the allowed list. */
+/** "See more" on cut-off post/comment text. Allowed to click: it only reveals text. */
 export function isSeeMoreLabel(label: string | null | undefined): boolean {
   return /^(see more|se mer|vis mer)$/.test(normalize(label));
 }
 
-/** The comment sort control. Detected only, never clicked. */
+/** Everything expandAll may click: comment/reply loaders and "See more". */
+export function isClickableExpanderLabel(label: string | null | undefined): boolean {
+  return isExpanderLabel(label) || isSeeMoreLabel(label);
+}
+
+/** The comment sort control. Clicked only to open its menu and pick "All comments" (see sort.ts). */
 export function isCommentSortLabel(label: string | null | undefined): boolean {
   return /^(most relevant|newest|all comments|mest relevante|nyeste|alle kommentarer)$/.test(normalize(label));
+}
+
+export function isAllCommentsLabel(label: string | null | undefined): boolean {
+  return /^(all comments|alle kommentarer)$/.test(normalize(label));
+}
+
+/**
+ * The "All comments" item in the sort menu. Its title is followed by a description in an
+ * adjacent span, so textContent runs them together ("Alle kommentarerVis alle…"): prefix match.
+ */
+export function isAllCommentsMenuItemLabel(label: string | null | undefined): boolean {
+  return /^(all comments|alle kommentarer)/.test(normalize(label));
 }
 
 /** Comment sorts that may hide comments (Facebook filters "most relevant"). */

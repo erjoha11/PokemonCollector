@@ -40,9 +40,11 @@ Post = listing: overview photos of the whole auction, rules, end time
 ## Non-negotiable rules
 
 - **READ-ONLY.** The extension never bids, claims, comments, or likes. The only clicks
-  allowed: "View more comments", "View N replies", and the feed sort order. (The highest
-  bid is binding.) Facebook shows these labels in the account's language (Norwegian for me:
-  "Vis flere kommentarer", "Vis N svar"), so matching must not assume English.
+  allowed: "View more comments", "View N replies", "See more" (cut-off text), switching a
+  post's comment sort to "All comments", and the feed sort order. (The highest bid is
+  binding.) Facebook shows these labels in the account's language (Norwegian for me:
+  "Vis flere kommentarer", "Vis N svar", "Se mer", "Alle kommentarer"), so matching must not
+  assume English.
 - No headless/server-side scraping. Everything runs in my own logged-in Chrome.
 - Slow pacing: feed scan every 10–15 min ±20 %, pause while the PC is locked (`chrome.idle`),
   never parallel tabs against Facebook. Must be possible to turn off.
@@ -178,6 +180,8 @@ against real Facebook**: the selectors below are informed guesses until checked 
 `samples/`.
 
 - Trigger: toolbar icon → service worker → content script in the active tab.
+- Order: switch comment sort to "All comments" (sort control → menu item, `sort.ts`), then
+  expand "View more comments" / "View N replies" / "See more" until none are left (`expand.ts`).
 - Post root: the topmost `role="dialog"` holding a `role="article"`, else `role="main"` on a
   `/groups/<g>/posts/<id>` or `/permalink/<id>` URL.
 - Comment vs. reply: the timestamp link's `comment_id` / `reply_comment_id` query params
@@ -186,13 +190,8 @@ against real Facebook**: the selectors below are informed guesses until checked 
 - Lot candidate: top-level comment with a photo (`img` ≥ 64 px, or inside a photo link).
 - Output: `PostCapture` JSON (`src/shared/capture.ts`) + an HTML snapshot of the post for `samples/`.
 
-Open questions for the user:
-
-- **"See more" / "Se mer"** isn't on the allowed-click list, so long post/comment text stays cut
-  off (flagged `truncated`). Long auction rules are likely to be cut off. Add it to the list?
-  It's read-only like the other expanders.
-- **Comment sort.** "Most relevant" can hide comments, and changing it isn't allowed, so the
-  user has to switch to "All comments" by hand. Allow the extension to switch it?
+Decided (2026-10-03): "See more" and switching the comment sort to "All comments" were
+added to the allowed clicks, since long rules get cut off and "Most relevant" can hide bids.
 
 ## Risks
 

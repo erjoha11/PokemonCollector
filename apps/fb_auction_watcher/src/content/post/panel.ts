@@ -95,11 +95,11 @@ export function showPanel(): Panel {
     showResult(capture, snapshotHtml) {
       stop.remove();
       const s = capture.stats;
-      status.textContent = "Done. Nothing was clicked except comment/reply expanders.";
+      status.textContent = "Done. Only clicked: comment sort, more comments/replies, See more.";
       const stats = document.createElement("p");
       stats.className = "stats";
       stats.textContent = [
-        `Comment sort:     ${capture.commentSortLabel ?? "not found"}`,
+        `Comment sort:     ${capture.commentSortLabel ?? "not found"} (${capture.commentSortAction})`,
         `Expand clicks:    ${s.expandClicks} (${s.expandStoppedBecause})`,
         `Comments:         ${s.topLevelComments}`,
         `  with image:     ${s.commentsWithImage}  (lot candidates)`,

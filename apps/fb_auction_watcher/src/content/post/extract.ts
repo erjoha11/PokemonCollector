@@ -9,14 +9,15 @@ import {
 import {
   ariaKind,
   commentIdsFromHref,
-  isCommentSortLabel,
   isFilteringCommentSort,
   isSeeMoreLabel,
   isSinglePostUrl,
   normalize,
 } from "./patterns";
+import { findSortControl, type SortAction } from "./sort";
 
-// Reads a fully expanded post out of the DOM. Read-only: no clicks, no hovers.
+// Reads a fully expanded post out of the DOM. No clicks, no hovers: expanding and the
+// comment sort switch happen before this, in expand.ts and sort.ts.
 // Structure signals only (role, aria-label, href patterns, dir="auto"), never CSS classes.
 
 const ARTICLE = "[role='article']";
@@ -179,6 +180,7 @@ export type ExtractContext = {
   pageLang: string;
   expandClicks: number;
   expandStoppedBecause: string;
+  commentSortAction: SortAction;
   now?: Date;
 };
 
@@ -216,9 +218,7 @@ export function extractCapture(root: Element, ctx: ExtractContext): PostCapture 
     parent.replies.push(t.data);
   }
 
-  const sortControl = Array.from(root.ownerDocument.querySelectorAll("[role='button']")).find((b) =>
-    isCommentSortLabel(b.textContent),
-  );
+  const sortControl = findSortControl(root);
   const commentSortLabel = sortControl ? collectText(sortControl) : null;
 
   if (comments.length === 0) {
@@ -226,7 +226,7 @@ export function extractCapture(root: Element, ctx: ExtractContext): PostCapture 
   }
   if (isFilteringCommentSort(commentSortLabel)) {
     warnings.push(
-      `Comments are sorted by "${commentSortLabel}", which can hide comments. Switch to "All comments" / "Alle kommentarer" by hand and read again.`,
+      `Comments are still sorted by "${commentSortLabel}" (switch: ${ctx.commentSortAction}), which can hide comments. Switch to "All comments" / "Alle kommentarer" by hand and read again.`,
     );
   }
   if (orphanReplies > 0) {
@@ -236,7 +236,7 @@ export function extractCapture(root: Element, ctx: ExtractContext): PostCapture 
   const post = readPost(root, things.map((t) => t.article), ctx.pageUrl);
   if (post.truncated || truncatedCount > 0) {
     warnings.push(
-      `Text is cut off ("See more") in ${post.truncated ? "the post" : ""}${post.truncated && truncatedCount ? " and " : ""}${truncatedCount ? `${truncatedCount} comment thread(s)` : ""}. Not expanded: "See more" isn't on the allowed-click list.`,
+      `Text is still cut off ("See more") in ${post.truncated ? "the post" : ""}${post.truncated && truncatedCount ? " and " : ""}${truncatedCount ? `${truncatedCount} comment thread(s)` : ""} after expanding.`,
     );
   }
   if (ctx.expandStoppedBecause !== "done") {
@@ -249,6 +249,7 @@ export function extractCapture(root: Element, ctx: ExtractContext): PostCapture 
     pageUrl: ctx.pageUrl,
     pageLang: ctx.pageLang,
     commentSortLabel,
+    commentSortAction: ctx.commentSortAction,
     post,
     comments,
     stats: {

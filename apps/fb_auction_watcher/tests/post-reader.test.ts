@@ -27,14 +27,14 @@ describe("findPostRoot", () => {
 });
 
 describe("expandAll", () => {
-  it("clicks only expanders, never reply/like/see-more/sort/text box", async () => {
+  it("clicks only expanders and See more, never reply/like/sort/text box", async () => {
     const clicked: string[] = [];
     document.querySelectorAll("[role='button'], [role='textbox']").forEach((el) => {
       el.addEventListener("click", () => clicked.push(el.textContent?.trim() || el.getAttribute("aria-label") || ""));
     });
     const result = await expandAll(root(), FAST);
     expect(result.stoppedBecause).toBe("done");
-    expect(clicked.sort()).toEqual(["Vis 2 flere svar", "Vis flere kommentarer"]);
+    expect(clicked.sort()).toEqual(["Se mer", "Vis 2 flere svar", "Vis flere kommentarer"]);
   });
 
   it("keeps going as new expanders appear, then stops", async () => {
@@ -48,8 +48,8 @@ describe("expandAll", () => {
     });
     const progress = vi.fn();
     const result = await expandAll(root(), { ...FAST, onProgress: progress });
-    expect(result.clicks).toBe(3);
-    expect(progress).toHaveBeenCalledTimes(3);
+    expect(result.clicks).toBe(4);
+    expect(progress).toHaveBeenCalledTimes(4);
   });
 
   it("never treats an expander-looking label inside a form as clickable", () => {
@@ -81,6 +81,7 @@ describe("extractCapture", () => {
       pageLang: "nb",
       expandClicks: 2,
       expandStoppedBecause: "done",
+      commentSortAction: "failed",
       now: new Date("2026-10-04T10:00:00Z"),
     });
 
@@ -120,7 +121,7 @@ describe("extractCapture", () => {
     expect(lot1.replies[0].text).toBe("250");
   });
 
-  it("flags cut-off text and a filtering comment sort", () => {
+  it("flags text still cut off and a comment sort that is still filtering", () => {
     const c = capture();
     expect(c.comments[1].truncated).toBe(true);
     expect(c.commentSortLabel).toBe("Mest relevante");

@@ -1,7 +1,7 @@
-import { isExpanderLabel } from "./patterns";
+import { isClickableExpanderLabel } from "./patterns";
 
-// Expands a post's comment thread by clicking "View more comments" / "View N replies"
-// until none are left. These are the only clicks this module makes: see isSafeToClick.
+// Expands a post's comment thread by clicking "View more comments" / "View N replies" /
+// "See more" until none are left. These are the only clicks this module makes: see isSafeToClick.
 
 export type ExpandProgress = { clicks: number; lastLabel: string };
 
@@ -34,7 +34,7 @@ function label(el: Element): string {
  */
 export function isSafeToClick(el: Element): boolean {
   if (!el.isConnected) return false;
-  if (!isExpanderLabel(label(el))) return false;
+  if (!isClickableExpanderLabel(label(el))) return false;
   if (el.closest("form, [contenteditable='true'], [role='textbox'], textarea, input")) return false;
   if (el.querySelector("[contenteditable='true'], [role='textbox'], textarea, input")) return false;
   const tag = el.tagName.toLowerCase();

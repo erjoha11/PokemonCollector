@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ariaKind,
   commentIdsFromHref,
+  isAllCommentsMenuItemLabel,
+  isClickableExpanderLabel,
   isCommentSortLabel,
   isExpanderLabel,
   isSeeMoreLabel,
@@ -62,7 +64,26 @@ describe("isExpanderLabel", () => {
   });
 });
 
+describe("isClickableExpanderLabel", () => {
+  it("adds See more to the expanders, and nothing else", () => {
+    for (const label of ["Se mer", "See more", "Vis mer", "Vis 1 svar", "View more comments"]) {
+      expect(isClickableExpanderLabel(label)).toBe(true);
+    }
+    for (const label of ["Svar", "Reply", "Liker", "Like", "Mest relevante", "Alle kommentarer", "Se mer av Ola"]) {
+      expect(isClickableExpanderLabel(label)).toBe(false);
+    }
+  });
+});
+
 describe("other labels", () => {
+  it("detects the All comments menu item, description included", () => {
+    expect(isAllCommentsMenuItemLabel("Alle kommentarer Vis alle kommentarer, med de nyeste først.")).toBe(true);
+    expect(isAllCommentsMenuItemLabel("All comments Show all comments, including potential spam.")).toBe(true);
+    expect(isAllCommentsMenuItemLabel("Mest relevante Vis venners kommentarer og de mest engasjerende kommentarene først.")).toBe(false);
+    expect(isAllCommentsMenuItemLabel("Alle kommentarerVis alle kommentarer.")).toBe(true);
+    expect(isAllCommentsMenuItemLabel("NyesteVis alle kommentarer, med de nyeste først.")).toBe(false);
+  });
+
   it("detects See more", () => {
     expect(isSeeMoreLabel("Se mer")).toBe(true);
     expect(isSeeMoreLabel("See more")).toBe(true);
