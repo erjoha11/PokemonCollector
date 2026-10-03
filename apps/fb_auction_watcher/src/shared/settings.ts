@@ -73,3 +73,18 @@ export async function markWon(postIds: string[], change: Partial<WonMark>): Prom
   for (const id of postIds) state[id] = { ...none, ...state[id], ...change };
   await chrome.storage.local.set({ wonState: state });
 }
+
+/** Sales you've marked as ended yourself (post ID → when), e.g. an end time nobody could read or a seller who closed early. */
+export type EndedMarks = Record<string, string>;
+
+export async function getEndedMarks(): Promise<EndedMarks> {
+  return ((await chrome.storage.local.get("endedMarks")).endedMarks as EndedMarks | undefined) ?? {};
+}
+
+/** Marks a sale as ended now, or (ended = false) takes the mark back. */
+export async function markEnded(postId: string, ended: boolean): Promise<void> {
+  const marks = await getEndedMarks();
+  if (ended) marks[postId] = new Date().toISOString();
+  else delete marks[postId];
+  await chrome.storage.local.set({ endedMarks: marks });
+}

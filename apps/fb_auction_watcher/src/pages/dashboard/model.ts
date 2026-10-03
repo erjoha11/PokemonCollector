@@ -20,6 +20,8 @@ export type Row = StoredPost &
     /** End time passed, but within the antisnipe window: bids may still extend it. */
     maybeEnded: boolean;
     ended: boolean;
+    /** You marked the sale as ended yourself (ISO), or null. It then counts as ended from that moment. */
+    endedByYouAt: string | null;
     /** The end time came from Claude (the rules couldn't read it). */
     endsViaClaude: boolean;
     /** From the latest post read with the icon, if any. */
@@ -35,6 +37,8 @@ export type RowExtras = {
   captures?: Map<string, PostCapture>;
   answers?: Map<string, unknown>;
   myName?: string;
+  /** Sales you marked as ended yourself (post ID → when). */
+  endedMarks?: Record<string, string>;
 };
 
 export type GroupId = "today" | "later" | "unknown" | "claim-fixed" | "ended";
@@ -44,7 +48,7 @@ const HOUR = 3_600_000;
 
 /** Sales only: wanted, trade and unrecognized posts are left out of the table. */
 export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
-  const { captures = new Map(), answers = new Map(), myName = "" } = extras;
+  const { captures = new Map(), answers = new Map(), myName = "", endedMarks = {} } = extras;
   const rows: Row[] = [];
   for (const p of posts) {
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
@@ -76,13 +80,15 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const endsAtMs = i.endsAt ? Date.parse(i.endsAt) : null;
     const softMs = (i.softCloseMinutes ?? 0) * 60_000;
     const t = now.getTime();
+    const endedByYouAt = endedMarks[p.id] ?? null;
     rows.push({
       ...p,
       ...i,
       endsAtMs,
       isNew: lastVisit !== null && Date.parse(p.firstSeenAt) > lastVisit.getTime(),
-      maybeEnded: endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
-      ended: endsAtMs !== null && t >= endsAtMs + softMs,
+      maybeEnded: !endedByYouAt && endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
+      ended: endedByYouAt !== null || (endsAtMs !== null && t >= endsAtMs + softMs),
+      endedByYouAt,
       endsViaClaude,
       lots,
       summary: lots ? summarizeLots(lots) : null,
@@ -92,6 +98,12 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     });
   }
   return rows;
+}
+
+/** When a sale ended: your mark if it came first (or there's no end time), else its end time. */
+function endedAtMs(r: Row): number {
+  const times = [r.endsAtMs, r.endedByYouAt ? Date.parse(r.endedByYouAt) : null].filter((x): x is number => x !== null);
+  return times.length ? Math.min(...times) : 0;
 }
 
 const sameOsloDay = (a: Date, b: Date) => {
@@ -118,7 +130,7 @@ export function groupRows(rows: Row[], now: Date): Group[] {
   groups.unknown.sort(bySeen);
   // Claim sales by end time first, then fixed-price posts (no end) newest first.
   groups["claim-fixed"].sort((a, b) => byEnd(a, b) || bySeen(a, b));
-  groups.ended.sort((a, b) => (b.endsAtMs ?? 0) - (a.endsAtMs ?? 0));
+  groups.ended.sort((a, b) => endedAtMs(b) - endedAtMs(a));
   const labels: Record<GroupId, string> = {
     today: "Today",
     later: "Tomorrow and later",
@@ -186,10 +198,13 @@ export type LotStatus = {
 /**
  * Has the sale been read completely after it ended (end time + antisnipe)? Only then can
  * "Leading" become "Won": the last minutes are exactly when people get outbid (review H3), and a
- * partial read may have missed the bid that beat you (review H2).
+ * partial read may have missed the bid that beat you (review H2). A sale you marked as ended
+ * yourself takes your word for it: its last full read is final.
  */
-export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastCompleteReadAt">): boolean {
-  if (!r.ended || r.endsAtMs === null || !r.lastCompleteReadAt) return false;
+export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastCompleteReadAt" | "endedByYouAt">): boolean {
+  if (!r.ended || !r.lastCompleteReadAt) return false;
+  if (r.endedByYouAt) return true;
+  if (r.endsAtMs === null) return false;
   return Date.parse(r.lastCompleteReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
 }
 
@@ -340,7 +355,7 @@ export function leadingBySale(rows: Row[]): LeadingSale[] {
       return k === "leading" || k === "leading-at-last-read";
     });
     if (lots.length === 0) continue;
-    sales.push({ row, lots, kr: lots.reduce((n, l) => n + (l.myHighestBid ?? 0), 0), awaitingFinalRead: row.ended });
+    sales.push({ row, lots, kr: lots.reduce((n, l) => n + (l.myHighestBid ?? 0), 0), awaitingFinalRead: row.ended && !readAfterEnd(row) });
   }
   return sales.sort((a, b) => (a.row.endsAtMs ?? Infinity) - (b.row.endsAtMs ?? Infinity));
 }

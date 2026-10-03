@@ -188,6 +188,10 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   folded line per sale, what it costs if it holds) and **To pay** (one folded line per seller, with
   Paid / Received). Lost and ended lots live in the table. Rules: `needsYou`, `leadingBySale`,
   `wonBySeller` in `model.ts`.
+- **Mark as ended** (2026-10-04): you can mark a sale as ended yourself (an end time nobody
+  could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in
+  `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
+  final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
 - Numbers at the top: active, within 1 h, need you (lots), won lots, new.
 - Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
   ended. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns

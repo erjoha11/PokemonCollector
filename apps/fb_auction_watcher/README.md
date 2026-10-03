@@ -69,6 +69,12 @@ line above them ("14 need you · 12 leading (4600 kr if they hold) · 412 kr to 
   back). Auctions count once a full read after the end confirms the win; claim lots show "price not
   read yet" until Claude has read the photo or the seller's text.
 
+**Mark as ended** (under a sale's end time in the table, on a Leading line, and as **Sale ended**
+under a Needs you line) tells the overview a sale is over when its end time says otherwise: none
+could be read, or the seller closed early. The sale moves to Ended, and your lots' statuses come
+from its last full read (Leading becomes Won and shows under To pay). **Undo ended** (there, or on
+the seller in To pay) takes the mark back. The mark is yours only, stored in the extension.
+
 Lost lots and finished sales aren't listed there; they're in the table with their status. The
 **Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots; clicking a sale's
 name opens the post on Facebook in a new tab and reads it quietly there.

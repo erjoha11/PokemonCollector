@@ -100,6 +100,18 @@ describe("table model", () => {
     expect(countdown(t - 1, now)).toBe("ended");
   });
 
+  it("a sale you marked as ended is ended, whatever its end time says", () => {
+    const marks = { "3": "2026-10-03T12:00:00Z", "4": "2026-10-03T12:30:00Z", "7": "2026-10-03T12:58:00Z" }; // 14:00, 14:30, 14:58 Oslo.
+    const marked = buildRows(posts, now, null, { endedMarks: marks });
+    expect(marked.find((r) => r.id === "3")).toMatchObject({ ended: true, maybeEnded: false, endedByYouAt: "2026-10-03T12:00:00Z" });
+    expect(marked.find((r) => r.id === "7")).toMatchObject({ ended: true, maybeEnded: false });
+    const g = Object.fromEntries(groupRows(marked, now).map((x) => [x.id, x.rows.map((r) => r.id)]));
+    // Newest ended first: 7 (its end time, 14:57 Oslo), 4 (marked 14:30, no end time), 3 (marked 14:00, before its end), 8.
+    expect(g.ended).toEqual(["7", "4", "3", "8"]);
+    expect(g.unknown).toEqual([]);
+    expect(rows.find((r) => r.id === "3")).toMatchObject({ ended: false, endedByYouAt: null });
+  });
+
   it("uses Claude's end time when the rules found none, and marks it", () => {
     const text = "AUKSJON\nAuksjonen avsluttes søndag kveld klokka ni";
     const [r] = buildRows([stored("20", text)], now, null, { answers: new Map([[endTimeAnswerKey(text), "2026-10-04 21:00"]]) });

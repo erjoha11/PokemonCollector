@@ -6,13 +6,16 @@ import {
   getAutoScanState,
   getClaudeState,
   getCleanupState,
+  getEndedMarks,
   getSettings,
   getWonState,
+  markEnded,
   markWon,
   updateSettings,
   type AutoScanState,
   type ClaudeState,
   type CleanupState,
+  type EndedMarks,
   type Settings,
   type WonState,
 } from "../../shared/settings";
@@ -120,6 +123,7 @@ let autoScan: AutoScanState;
 let claude: ClaudeState;
 let cleanup: CleanupState;
 let wonState: WonState = {};
+let endedMarks: EndedMarks = {};
 let showDone = local.get("fbaw-show-done") === "1";
 let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
@@ -131,12 +135,19 @@ let source: { posts: Awaited<ReturnType<typeof store.allPosts>>; captures: Map<s
 };
 
 function rebuild() {
-  rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName });
+  rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName, endedMarks });
 }
 
 /** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude, cleanup, wonState] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState(), getCleanupState(), getWonState()]);
+  [settings, autoScan, claude, cleanup, wonState, endedMarks] = await Promise.all([
+    getSettings(),
+    getAutoScanState(),
+    getClaudeState(),
+    getCleanupState(),
+    getWonState(),
+    getEndedMarks(),
+  ]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
   for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
 }
@@ -183,9 +194,30 @@ const TYPE_LABEL: Record<Row["type"], string> = {
   auction: "Auction", claim: "Claim", fixed: "Fixed price", wanted: "Wanted", trade: "Trade", other: "Other",
 };
 
+/**
+ * "Mark as ended" for a sale that's over though its end time says otherwise (none could be read,
+ * or the seller closed early), or "Undo" for one you marked. Your own mark, in chrome.storage.
+ */
+function endedToggle(r: Row, label = "Mark as ended"): HTMLButtonElement | null {
+  if (r.ended && !r.endedByYouAt) return null; // Ended by its end time: nothing to mark.
+  const button = el("button", "linkish end-toggle", r.endedByYouAt ? "Undo ended" : label);
+  button.type = "button";
+  button.title = r.endedByYouAt
+    ? `You marked this sale as ended ${ago(r.endedByYouAt, new Date())}. Undo puts it back by its end time.`
+    : "The sale is over: stop counting down, and take your lots' statuses from the last full read (Leading becomes Won).";
+  button.addEventListener("click", (e) => {
+    e.preventDefault(); // Inside a <summary>: don't fold or unfold.
+    e.stopPropagation();
+    void markEnded(r.id, !r.endedByYouAt);
+  });
+  return button;
+}
+
 function endsCell(r: Row, now: Date): HTMLTableCellElement {
   const td = el("td", "ends");
-  if (r.endsAtMs !== null) {
+  if (r.endedByYouAt) {
+    td.append(line("div", el("span", "countdown", "Ended"), el("span", "when", `marked by you ${ago(r.endedByYouAt, now)}`)));
+  } else if (r.endsAtMs !== null) {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : countdown(r.endsAtMs, now));
     cd.dataset.ends = String(r.endsAtMs);
     if (!r.ended && r.endsAtMs - now.getTime() < 3_600_000) cd.classList.add("soon");
@@ -205,6 +237,8 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
   if (r.endsViaClaude) td.append(el("div", "via", "End time read by Claude"));
   else if (r.endsAt && !r.sure) td.append(el("div", "flag", "? check the original text"));
   if (!r.textComplete && !r.endsAtText && r.type !== "fixed") td.append(el("div", "flag", "Text was cut off"));
+  const toggle = endedToggle(r);
+  if (toggle) td.append(el("div", undefined), toggle);
   return td;
 }
 
@@ -562,6 +596,7 @@ function lotThumb(l: Lot, photos: Photo[]): HTMLElement {
 
 /** A live countdown (ticks with the others; red under an hour). */
 function countdownEl(r: Row, now: Date): HTMLElement {
+  if (r.endedByYouAt) return el("span", "countdown", "Ended");
   if (r.endsAtMs === null) return el("span", "countdown unknown", r.type === "fixed" ? "No end" : "?");
   const cd = el("span", "countdown", r.maybeEnded ? "Ended?" : r.ended ? "Ended" : countdown(r.endsAtMs, now));
   if (!r.ended) cd.dataset.ends = String(r.endsAtMs);
@@ -594,7 +629,11 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   act.target = "_blank";
   act.rel = "noopener";
   act.title = item.nextBid !== null ? `The lowest bid that counts now is ${item.nextBid} kr. Opens the lot on Facebook.` : "Opens the lot on Facebook.";
-  li.append(act);
+  const actions = el("span", "line-actions");
+  actions.append(act);
+  const toggle = endedToggle(r, "Sale ended");
+  if (toggle) actions.append(toggle);
+  li.append(actions);
   return li;
 }
 
@@ -660,7 +699,10 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
     terms.append(link);
     if (r.shippingText) terms.append(" · ", el("span", undefined, `Shipping: ${r.shippingText}`));
     if (r.paymentText) terms.append(" · ", el("span", undefined, `Pay: ${r.paymentText}`));
-    terms.append(" · ", el("span", "muted", r.endsAtMs !== null ? `ended ${endLabel(r.endsAtMs, now)}` : "fixed price"));
+    if (r.endedByYouAt) {
+      terms.append(" · ", el("span", "muted", `marked ended by you ${ago(r.endedByYouAt, now)}`), " ");
+      terms.append(endedToggle(r)!);
+    } else terms.append(" · ", el("span", "muted", r.endsAtMs !== null ? `ended ${endLabel(r.endsAtMs, now)}` : "fixed price"));
     card.append(terms);
   }
   return card;
@@ -713,6 +755,8 @@ function renderMine(now: Date) {
       head.append(countdownEl(s.row, now), titleLine(s.row), el("span", "muted small", s.row.sellerName ?? ""));
       head.append(line("span", `${s.lots.length} lot${s.lots.length === 1 ? "" : "s"} · `, kr(s.kr)));
       if (s.awaitingFinalRead) head.append(el("span", "flag", "ended: waiting for a final read"));
+      const toggle = endedToggle(s.row);
+      if (toggle) head.append(toggle);
       d.append(head);
       const lotPics = lotPhotos(s.lots);
       const list = el("ul", "lead-lots");
@@ -923,6 +967,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // need their own small state, not a reload of every post from the database (review M6).
   if ("settings" in changes) {
     void load();
+  } else if ("endedMarks" in changes) {
+    // Marking a sale ended changes its row and its lots' statuses: rebuild from what's loaded.
+    void loadStatus().then(() => {
+      rebuild();
+      render();
+    });
   } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState"].some((k) => k in changes)) {
     void loadStatus().then(render);
   }

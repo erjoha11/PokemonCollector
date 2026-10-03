@@ -25,6 +25,15 @@ describe("lotStatus", () => {
     expect(lotStatus(readBefore, lot({ myStatus: "outbid" }))).toMatchObject({ label: "Outbid at last read" });
   });
 
+  it("marked as ended by you: the last full read is final, even before the end time", () => {
+    const marked = row({ ended: true, endedByYouAt: "2026-10-04T15:40:00Z" });
+    expect(lotStatus(marked, lot({ myStatus: "lead" }))).toMatchObject({ key: "won" });
+    expect(lotStatus(marked, lot({ myStatus: "outbid" }))).toMatchObject({ key: "lost" });
+    expect(readAfterEnd(row({ ended: true, endsAtMs: null, endedByYouAt: "2026-10-04T15:40:00Z" }))).toBe(true);
+    // Never read in full: nothing to go by yet.
+    expect(lotStatus(row({ ended: true, endedByYouAt: "2026-10-04T15:40:00Z", lastCompleteReadAt: null }), lot({ myStatus: "lead" })).key).toBe("leading-at-last-read");
+  });
+
   it("claim sales: Won / Check", () => {
     expect(lotStatus(row({ type: "claim" }), lot({ myClaim: "claimed" }))).toMatchObject({ label: "Won", cls: "won" });
     expect(lotStatus(row({ type: "fixed" }), lot({ myClaim: "check" }))).toMatchObject({ key: "check", cls: "outbid" });

@@ -268,6 +268,8 @@ td.ends > div:first-child { white-space: nowrap; }
 .line-sale { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lot-line .countdown { font-size: 13px; }
 .line-price { white-space: nowrap; }
+.line-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.end-toggle { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .line-act { white-space: nowrap; font-weight: 600; color: var(--lead); text-decoration: none; border: 1px solid var(--lead); border-radius: 6px; padding: 2px 8px; }
 .line-act:hover { background: var(--lead); color: #fff; }
 .lead-lots .lot-line, .pay-items .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
@@ -284,6 +286,6 @@ td.ends > div:first-child { white-space: nowrap; }
 @media (max-width: 720px) {
   .lot-lines .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .lot-lines .line-price { grid-column: 2; }
-  .lot-lines .line-act { grid-column: 3; }
+  .lot-lines .line-actions { grid-column: 3; }
   .lead-lots .lot-line, .pay-items .lot-line { gap: 6px; }
 }
