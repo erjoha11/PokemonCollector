@@ -24,6 +24,8 @@ export type Row = StoredPost &
     lots: Lot[] | null;
     summary: LotSummary | null;
     lastReadAt: string | null;
+    /** The last read that loaded every comment (reads are merged; see src/domain/captures.ts). */
+    lastCompleteReadAt: string | null;
   };
 
 /** Post reads, Claude's cached answers, and your name, for lots, bids and your status. */
@@ -88,6 +90,8 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
       lots,
       summary: lots ? summarizeLots(lots) : null,
       lastReadAt: capture?.capturedAt ?? null,
+      // Reads saved before merging existed have no completeAt: treat them as complete, as before.
+      lastCompleteReadAt: capture ? (capture.completeAt === undefined ? capture.capturedAt : capture.completeAt) : null,
     });
   }
   return rows;
@@ -185,12 +189,13 @@ export type LotStatus = {
 };
 
 /**
- * Has the sale been read after it ended (end time + antisnipe)? Only then can "Leading"
- * become "Won": the last minutes are exactly when people get outbid (review H3).
+ * Has the sale been read completely after it ended (end time + antisnipe)? Only then can
+ * "Leading" become "Won": the last minutes are exactly when people get outbid (review H3), and a
+ * partial read may have missed the bid that beat you (review H2).
  */
-export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastReadAt">): boolean {
-  if (!r.ended || r.endsAtMs === null || !r.lastReadAt) return false;
-  return Date.parse(r.lastReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
+export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastCompleteReadAt">): boolean {
+  if (!r.ended || r.endsAtMs === null || !r.lastCompleteReadAt) return false;
+  return Date.parse(r.lastCompleteReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
 }
 
 export function lotStatus(r: Row, l: Lot): LotStatus {

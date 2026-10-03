@@ -5,7 +5,7 @@ import { krText, lotStatus, readAfterEnd, wonTotal, type Row } from "../src/page
 // The overview's one place for "how does this lot show for you" (review H3, H4, M7).
 const END = Date.parse("2026-10-04T16:00:00Z");
 const row = (over: Partial<Row>): Row =>
-  ({ type: "auction", ended: false, endsAtMs: END, softCloseMinutes: 5, lastReadAt: "2026-10-04T15:30:00Z", ...over }) as Row;
+  ({ type: "auction", ended: false, endsAtMs: END, softCloseMinutes: 5, lastReadAt: "2026-10-04T15:30:00Z", lastCompleteReadAt: "2026-10-04T15:30:00Z", ...over }) as Row;
 const lot = (over: Partial<Lot>): Lot => ({ myStatus: "none", myClaim: "none", claimCards: null, ...over }) as Lot;
 
 describe("lotStatus", () => {
@@ -16,11 +16,11 @@ describe("lotStatus", () => {
   });
 
   it("ended: Won / Lost only when read after the end plus antisnipe", () => {
-    const readAfter = row({ ended: true, lastReadAt: "2026-10-04T16:06:00Z" });
+    const readAfter = row({ ended: true, lastReadAt: "2026-10-04T16:06:00Z", lastCompleteReadAt: "2026-10-04T16:06:00Z" });
     expect(lotStatus(readAfter, lot({ myStatus: "lead" }))).toMatchObject({ label: "Won", cls: "won" });
     expect(lotStatus(readAfter, lot({ myStatus: "outbid" }))).toMatchObject({ label: "Lost" });
     // Read before the end (or inside the antisnipe window): only what was true then.
-    const readBefore = row({ ended: true, lastReadAt: "2026-10-04T16:03:00Z" });
+    const readBefore = row({ ended: true, lastReadAt: "2026-10-04T16:03:00Z", lastCompleteReadAt: "2026-10-04T16:03:00Z" });
     expect(lotStatus(readBefore, lot({ myStatus: "lead" }))).toMatchObject({ label: "Leading at last read", cls: "lead" });
     expect(lotStatus(readBefore, lot({ myStatus: "outbid" }))).toMatchObject({ label: "Outbid at last read" });
   });
@@ -31,9 +31,12 @@ describe("lotStatus", () => {
     expect(lotStatus(row({ type: "claim" }), lot({}))).toMatchObject({ key: "none" });
   });
 
-  it("readAfterEnd needs an end time and a read", () => {
+  it("readAfterEnd needs an end time and a complete read after it", () => {
     expect(readAfterEnd(row({ ended: true, endsAtMs: null }))).toBe(false);
-    expect(readAfterEnd(row({ ended: true, lastReadAt: null }))).toBe(false);
+    expect(readAfterEnd(row({ ended: true, lastCompleteReadAt: null }))).toBe(false);
+    // A partial read after the end doesn't count (review H2): only "Leading at last read".
+    const partialAfter = row({ ended: true, lastReadAt: "2026-10-04T16:10:00Z", lastCompleteReadAt: "2026-10-04T15:30:00Z" });
+    expect(lotStatus(partialAfter, lot({ myStatus: "lead" })).label).toBe("Leading at last read");
   });
 });
 

@@ -275,6 +275,13 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   per card. Only a model can read it: Claude via the bridge, with the full-size photo (the CDN
   URL's `ctp=p240x240` asks for a 240 px crop; without it the photo is 540×960). Tried on a
   real lot: Sonnet 4/4 cards and prices right in 7 s, Haiku 3/4 in 56 s.
+- **Reads are merged, not replaced** (2026-10-03, review H2): a read can miss replies (hidden
+  background tab, 4-minute cap, sort switch failed), so each read of a post is merged into the
+  stored one by comment/reply ID (`src/domain/captures.ts`). A read counts as *complete* when
+  sorted by "All comments", expanding finished, and it saw at least as many comments and replies
+  as before; "Won"/"Lost" need a complete read after the end. Known limit: a bid the seller
+  deletes on Facebook stays in the overview (can't tell it from one a partial read missed),
+  which errs towards "Outbid".
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.

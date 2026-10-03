@@ -75,6 +75,9 @@ row; **Your lots** expands them). Rules: a lot is a comment with a photo from th
 to it, in the order they were placed; the seller's own replies never count; a bid has to beat the highest
 by the increment; bids placed under another reply (e.g. under the seller's photo) are shown but not
 counted, since sellers reject them. Set your Facebook name under **Settings** if it isn't Erik Johansen.
+Each read of a post is merged with the earlier ones, so a read that missed comments (a background tab, the
+time limit) never hides a bid already seen; the row then says **partial read** with when the last full
+read was. **Won**/**Lost** only show after a full read made after the auction ended.
 
 **Claim sales and fixed price:** replies are read as claims ("claim Persian og Clefairy", "<seller>
 marowak og feraligatr", "claim alle"). First to claim a card gets it: you get **Won** when nobody claimed

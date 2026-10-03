@@ -199,7 +199,9 @@ export async function queueMyAuctionRereads(store: Store): Promise<void> {
     // Ended: one final read just after the end (if the last one was before it), so "Leading"
     // can become "Won" or "Lost" (review H3). Not for long-gone auctions.
     const ended = closesAt !== null && now > closesAt;
-    if (ended && (lastRead >= closesAt! || now - closesAt! > FINAL_READ_WITHIN_MS)) continue;
+    // A complete read after the end settles it; a partial one is tried again (review H2).
+    const lastComplete = capture.completeAt === undefined ? lastRead : capture.completeAt ? Date.parse(capture.completeAt) : 0;
+    if (ended && (lastComplete >= closesAt! || now - closesAt! > FINAL_READ_WITHIN_MS)) continue;
     if (!ended && now - lastRead < REREAD_AFTER_MS) continue;
     const lots = interpretLots(capture, {
       myName: settings.myName,

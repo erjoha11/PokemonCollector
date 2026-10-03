@@ -17,6 +17,7 @@ export interface Store {
   savePosts(posts: FeedPost[], seenAt: Date): Promise<{ added: number; updated: number }>;
   allPosts(): Promise<StoredPost[]>;
   saveCapture(postId: string, capture: PostCapture): Promise<void>;
+  getCapture(postId: string): Promise<PostCapture | null>;
   allCaptures(): Promise<StoredCapture[]>;
   saveAnswers(answers: StoredAnswer[]): Promise<void>;
   allAnswers(): Promise<StoredAnswer[]>;
@@ -85,6 +86,9 @@ export function idbStore(): Store {
     },
     async saveCapture(postId, capture) {
       await (await open()).put("captures", { postId, capture });
+    },
+    async getCapture(postId) {
+      return (await (await open()).get("captures", postId))?.capture ?? null;
     },
     async allCaptures() {
       return (await open()).getAll("captures");

@@ -1,4 +1,5 @@
 import { capturePostId } from "../domain/bids";
+import { mergeCaptures } from "../domain/captures";
 import {
   isAutoScanDoneMessage,
   isGetKnownPostsMessage,
@@ -161,7 +162,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const { capture } = msg;
       const id = capturePostId(capture);
       if (!id) return;
-      await store.saveCapture(id, capture);
+      // Merge with what earlier reads saw: a partial read must not hide a bid (review H2).
+      await store.saveCapture(id, mergeCaptures(await store.getCapture(id), capture));
       // A post read directly also belongs in the overview, even if no scan has seen it.
       const slug = groupSlug(capture.pageUrl);
       await store.savePosts(

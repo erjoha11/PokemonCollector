@@ -338,6 +338,12 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   }
   const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
   youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
+  // The latest read missed comments (merged with earlier ones, nothing lost), so say when the last full one was.
+  if (r.lastCompleteReadAt !== r.lastReadAt) {
+    const note = el("div", "flag", r.lastCompleteReadAt ? `partial read · last full ${ago(r.lastCompleteReadAt, now)}` : "partial read");
+    note.title = "The latest read didn't load every comment. Earlier reads are kept, but new bids may be missing: open the post to read it again.";
+    youTd.append(note);
+  }
   return [lotsTd, youTd];
 }
 
