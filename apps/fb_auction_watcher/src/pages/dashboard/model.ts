@@ -1,4 +1,5 @@
 import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
+export type { Lot } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
 import { osloDate, osloToUtc } from "../../domain/endTime";
 import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
@@ -137,7 +138,8 @@ export function countRows(rows: Row[], now: Date): Counts {
   return {
     active: active.length,
     withinHour: active.filter((r) => r.endsAtMs !== null && (r.maybeEnded || r.endsAtMs - t < HOUR)).length,
-    outbid: active.filter((r) => (r.summary?.outbid ?? 0) + (r.summary?.check ?? 0) > 0).length,
+    // "Leading?" counts with outbid: act on it as if you might be.
+    outbid: active.filter((r) => (r.summary?.outbid ?? 0) + (r.summary?.unclear ?? 0) + (r.summary?.check ?? 0) > 0).length,
     isNew: rows.filter((r) => r.isNew && !r.ended).length,
   };
 }
@@ -173,3 +175,54 @@ export function ago(iso: string, now: Date): string {
   if (s < 86_400) return `${Math.floor(s / 3600)} h ago`;
   return `${Math.floor(s / 86_400)} d ago`;
 }
+
+/** How a lot shows for you: one place for these rules (they used to be repeated in main.ts). */
+export type LotStatus = {
+  key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "leading-at-last-read" | "outbid-at-last-read" | "check";
+  label: string;
+  /** CSS class: lead (blue), won (green), outbid (orange). */
+  cls: "lead" | "won" | "outbid" | "none";
+};
+
+/**
+ * Has the sale been read after it ended (end time + antisnipe)? Only then can "Leading"
+ * become "Won": the last minutes are exactly when people get outbid (review H3).
+ */
+export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastReadAt">): boolean {
+  if (!r.ended || r.endsAtMs === null || !r.lastReadAt) return false;
+  return Date.parse(r.lastReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
+}
+
+export function lotStatus(r: Row, l: Lot): LotStatus {
+  if (r.type === "claim" || r.type === "fixed") {
+    if (l.myClaim === "claimed") return { key: "won", label: "Won", cls: "won" };
+    if (l.myClaim === "check") return { key: "check", label: "Check: someone was earlier", cls: "outbid" };
+    return { key: "none", label: "", cls: "none" };
+  }
+  const final = readAfterEnd(r);
+  switch (l.myStatus) {
+    case "lead":
+      if (!r.ended) return { key: "leading", label: "Leading", cls: "lead" };
+      return final ? { key: "won", label: "Won", cls: "won" } : { key: "leading-at-last-read", label: "Leading at last read", cls: "lead" };
+    case "unclear":
+      return { key: "unclear", label: "Leading?", cls: "outbid" };
+    case "outbid":
+      if (!r.ended) return { key: "outbid", label: "Outbid", cls: "outbid" };
+      return final ? { key: "lost", label: "Lost", cls: "outbid" } : { key: "outbid-at-last-read", label: "Outbid at last read", cls: "outbid" };
+    default:
+      return { key: "none", label: "", cls: "none" };
+  }
+}
+
+/** What you won in a claim sale (from Claude's reading of the photos): total kr, and cards whose price couldn't be read. */
+export function wonTotal(lots: Lot[]): { cards: number; kr: number; unknown: number } {
+  const mine = lots.flatMap((l) => l.claimCards?.filter((x) => x.isMe) ?? []);
+  return {
+    cards: mine.length,
+    kr: mine.reduce((n, x) => n + (x.price ?? 0), 0),
+    unknown: mine.filter((x) => x.price === null).length,
+  };
+}
+
+/** "400 kr", or "400 kr + ?" when some prices couldn't be read. */
+export const krText = (t: { kr: number; unknown: number }) => `${t.kr} kr${t.unknown ? " + ?" : ""}`;

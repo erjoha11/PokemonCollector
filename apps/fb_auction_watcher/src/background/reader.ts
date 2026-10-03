@@ -21,6 +21,8 @@ const GAP_MS = [30_000, 45_000] as const;
 /** A read that hasn't reported back by then has failed; close its tab and move on. */
 const READ_TIMEOUT_MS = 3 * 60_000;
 const REREAD_AFTER_MS = 15 * 60_000;
+/** After an auction ends, one final read is still worth it this long (for "Won" vs "Lost"). */
+const FINAL_READ_WITHIN_MS = 2 * 60 * 60_000;
 /** A visible read that hasn't reported back by then has failed (its tab stays open). */
 const VISIBLE_TIMEOUT_MS = 5 * 60_000;
 
@@ -176,12 +178,18 @@ export async function queueMyAuctionRereads(store: Store): Promise<void> {
   const jobs: ReadJob[] = [];
   for (const { postId, capture } of captures) {
     const post = byId.get(postId);
-    if (!post || now - Date.parse(capture.capturedAt) < REREAD_AFTER_MS) continue;
+    if (!post) continue;
     const listing = interpretListing(post.text, new Date(post.firstSeenAt));
     if (listing.type !== "auction") continue;
+    // Every 15 min while it runs (a final read after the end doesn't wait for that).
+    const lastRead = Date.parse(capture.capturedAt);
     const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
-    const softMs = (listing.softCloseMinutes ?? 0) * 60_000;
-    if (endsAt !== null && now > endsAt + softMs) continue; // Ended.
+    const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
+    // Ended: one final read just after the end (if the last one was before it), so "Leading"
+    // can become "Won" or "Lost" (review H3). Not for long-gone auctions.
+    const ended = closesAt !== null && now > closesAt;
+    if (ended && (lastRead >= closesAt! || now - closesAt! > FINAL_READ_WITHIN_MS)) continue;
+    if (!ended && now - lastRead < REREAD_AFTER_MS) continue;
     const lots = interpretLots(capture, {
       myName: settings.myName,
       listingIncrement: listing.increment,
@@ -192,7 +200,7 @@ export async function queueMyAuctionRereads(store: Store): Promise<void> {
       },
     });
     const s = summarizeLots(lots);
-    if (s.lead + s.outbid > 0) jobs.push({ postId, url: post.url, reason: "auto" });
+    if (s.lead + s.outbid + s.unclear > 0) jobs.push({ postId, url: post.url, reason: "auto" });
   }
   await enqueueReads(jobs);
 }

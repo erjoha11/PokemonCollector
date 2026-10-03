@@ -31,7 +31,11 @@ export type Bid = {
   viaClaude: boolean;
 };
 
-export type MyStatus = "none" | "lead" | "outbid";
+/**
+ * Your status on an auction lot. "unclear": you'd be leading, but a reply the rules couldn't
+ * read (or one without an ID, so its order is unknown) may be a higher bid placed after yours.
+ */
+export type MyStatus = "none" | "lead" | "outbid" | "unclear";
 
 /** A claim on a claim-sale or fixed-price lot: "claim Persian og Clefairy", "<Seller> marowak". */
 export type Claim = {
@@ -116,9 +120,9 @@ export function readBid(text: string, seller: string | null): BidReading {
   return /\d/.test(t) ? { kind: "unsure", amount: null } : { kind: "none" };
 }
 
-/** Reply IDs are large numbers that increase with time; compare without losing precision. */
+/** Reply IDs are large numbers that increase with time; compare without losing precision. No ID sorts last. */
 function compareIds(a: string | null, b: string | null): number {
-  if (a === null || b === null) return 0;
+  if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
   if (a.length !== b.length) return a.length - b.length;
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -186,6 +190,8 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     const replies = [...c.replies].sort((a, b) => compareIds(a.id, b.id));
     const bids: Bid[] = [];
     let unsureCount = 0;
+    /** Replies that may be bids but couldn't be counted: their IDs (null = order unknown). */
+    const doubtful: (string | null)[] = [];
     const claims = options.claims ? readClaims(replies, seller, me) : [];
     const mineClaims = claims.filter((x) => x.isMe);
     let myClaim: MyClaim = mineClaims.length === 0 ? "none" : mineClaims.some((x) => !x.contested) ? "claimed" : "check";
@@ -199,8 +205,13 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     }
     for (const r of options.claims ? [] : replies) {
       const bid = toBid(r, seller, me, options);
-      if (bid === "unsure") unsureCount++;
-      else if (bid) bids.push(bid);
+      if (bid === "unsure") {
+        unsureCount++;
+        if (normalizeName(r.author) !== me) doubtful.push(r.id);
+      } else if (bid) {
+        if (bid.replyId === null && !bid.isMe) doubtful.push(null); // Can't tell if it came before or after yours.
+        bids.push(bid);
+      }
     }
     // Validity, in the order bids were placed: on the lot itself (sellers reject bids placed
     // under another reply: "bud blir bare godtatt under hovedbildet"), at least the start bid,
@@ -247,7 +258,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       highestBid: highest?.amount ?? null,
       highestBidder: highest?.bidder ?? null,
       myHighestBid,
-      myStatus: mine.length === 0 ? "none" : highest?.isMe ? "lead" : "outbid",
+      myStatus: myStatusFor(mine, highest, doubtful),
       unsureCount,
       belowStart,
       claims,
@@ -343,6 +354,15 @@ function readClaims(replies: CapturedReply[], seller: string | null, me: string)
   return claims;
 }
 
+/** Leading only when nothing unreadable could be a higher bid after yours: otherwise "unclear". */
+function myStatusFor(mine: Bid[], highest: Bid | null, doubtful: (string | null)[]): MyStatus {
+  if (mine.length === 0) return "none";
+  if (!highest?.isMe) return "outbid";
+  const myLast = [...mine].sort((a, b) => compareIds(a.replyId, b.replyId)).at(-1)!.replyId;
+  const after = doubtful.some((id) => id === null || myLast === null || compareIds(id, myLast) > 0);
+  return after ? "unclear" : "lead";
+}
+
 function toBid(r: CapturedReply, seller: string | null, me: string, options: LotOptions): Bid | "unsure" | null {
   const bidder = r.author ?? "";
   if (seller && normalizeName(bidder) === normalizeName(seller)) return null; // The seller never bids.
@@ -392,6 +412,8 @@ export type LotSummary = {
   bids: number;
   lead: number;
   outbid: number;
+  /** "Leading?": see MyStatus. */
+  unclear: number;
   unsure: number;
   claims: number;
   /** Lots where your claim was first. */
@@ -406,6 +428,7 @@ export function summarizeLots(lots: Lot[]): LotSummary {
     bids: lots.reduce((n, l) => n + l.bids.length, 0),
     lead: lots.filter((l) => l.myStatus === "lead").length,
     outbid: lots.filter((l) => l.myStatus === "outbid").length,
+    unclear: lots.filter((l) => l.myStatus === "unclear").length,
     unsure: lots.reduce((n, l) => n + l.unsureCount, 0),
     claims: lots.reduce((n, l) => n + l.claims.length, 0),
     claimed: lots.filter((l) => l.myClaim === "claimed").length,

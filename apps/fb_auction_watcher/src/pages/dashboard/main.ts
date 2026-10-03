@@ -12,7 +12,7 @@ import {
   type Settings,
 } from "../../shared/settings";
 import { idbStore } from "../../store";
-import { ago, buildRows, countdown, countRows, endLabel, groupRows, type Row } from "./model";
+import { ago, buildRows, countdown, countRows, endLabel, groupRows, krText, lotStatus, wonTotal, type LotStatus, type Row } from "./model";
 
 // The overview: every sale read from the feed, grouped and sorted by end time, with live
 // countdowns, and for posts you've read with the icon: lots, bids and your Leading/Outbid
@@ -104,7 +104,7 @@ async function load() {
 
 function matches(r: Row): boolean {
   if (filter === "mine") {
-    if (!r.summary || r.summary.lead + r.summary.outbid + r.summary.claimed + r.summary.check === 0) return false;
+    if (mineCount(r) === 0) return false;
   } else if (filter !== "all" && r.type !== filter) return false;
   if (!query) return true;
   const q = query.toLowerCase();
@@ -317,20 +317,19 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
     lotsTd.append(el("div", open ? "avail-sum" : "muted small", open ? `${open} card${open === 1 ? "" : "s"} available${note}` : `Sold out${note}`));
   }
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
-  const mineTotal = s.lead + s.outbid + s.claimed + s.check;
-  if (mineTotal === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
-  if (s.lead) youTd.append(el("span", "status lead", `Leading ${s.lead}`));
-  if (s.outbid) youTd.append(el("span", "status outbid", `Outbid ${s.outbid}`));
-  if (s.claimed) {
-    // What you won, with the prices Claude read off the photos (when it has).
-    const mine = (r.lots ?? []).flatMap((l) => l.claimCards?.filter((x) => x.isMe) ?? []);
-    const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
-    youTd.append(el("span", "status won", mine.length ? `Won ${mine.length} · ${total} kr` : `Won ${s.claimed}`));
-  }
-  if (s.check) {
-    const check = el("span", "status outbid", `Check ${s.check}`);
-    check.title = "Someone claimed the same before you: first come wins";
-    youTd.append(check);
+  const counts = statusCounts(r);
+  if (counts.length === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
+  for (const { status, count } of counts) {
+    let text = `${status.label} ${count}`;
+    if (isClaims && status.key === "won") {
+      const t = wonTotal(r.lots ?? []); // Prices Claude read off the photos, when it has.
+      if (t.cards) text = `Won ${t.cards} card${t.cards === 1 ? "" : "s"} · ${krText(t)}`;
+    }
+    const chip = el("span", `status ${status.cls}`, text);
+    if (status.key === "unclear") chip.title = "A reply that may be a higher bid came after yours and couldn't be read yet";
+    if (status.key === "check") chip.title = "Someone claimed the same before you: first come wins";
+    if (status.key.endsWith("at-last-read")) chip.title = "Not read since the auction ended: open it to see the final result";
+    youTd.append(chip);
   }
   const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
   youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
@@ -368,8 +367,8 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   const photos = lotPhotos(lots);
   for (const l of lots) {
     const isClaims = r.type === "claim" || r.type === "fixed";
-    const won = isClaims ? l.myClaim === "claimed" : r.ended && l.myStatus === "lead";
-    const item = el("div", `lot lot-${won ? "won" : isClaims ? { none: "none", claimed: "lead", check: "outbid" }[l.myClaim] : l.myStatus}`);
+    const status = lotStatus(r, l);
+    const item = el("div", `lot lot-${status.cls}`);
     if (l.imageUrl) {
       const img = el("img", "lot-img");
       img.src = l.imageUrl;
@@ -391,7 +390,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         body.append(
           el("div", `availability ${open ? "open" : "sold-out"}`, open ? `${open} of ${l.claimCards.length} available` : "Sold out"),
         );
-        if (mine.length) body.append(line("div", el("span", "status won", "You won"), " ", kr(total)));
+        if (mine.length) body.append(line("div", el("span", "status won", "You won"), " ", kr(total), mine.some((x) => x.price === null) ? " + ?" : ""));
         else if (l.myClaim !== "none") body.append(el("div", "status outbid", "Someone claimed it before you"));
         const cards = el("ul", "card-list");
         for (const x of l.claimCards) {
@@ -429,10 +428,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         : line("div", "Highest ", kr(l.highestBid), ` (${l.highestBidder})`, l.belowStart ? ` · below the start bid ${l.startBid} kr` : "");
     if (l.belowStart) hi.className = "flag";
     body.append(hi);
-    if (l.myStatus !== "none") {
-      const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
-      body.append(el("div", `status ${won ? "won" : l.myStatus}`, `${label} · your bid ${l.myHighestBid} kr`));
-    }
+    if (status.key !== "none") body.append(el("div", `status ${status.cls}`, `${status.label} · your bid ${l.myHighestBid} kr`));
     // Details only where they matter to you: your own bids' notes and Claude's readings.
     for (const b of l.bids.filter((x) => (x.isMe && x.note && !x.valid) || x.viaClaude)) {
       body.append(el("div", "small muted", `${b.isMe ? "You" : b.bidder}: "${b.rawText}" → ${b.amount ?? "?"}${b.viaClaude ? " (read by Claude)" : ""}${b.note ? ` · ${b.note}` : ""}`));
@@ -452,9 +448,32 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
 }
 
 const isClaimType = (r: Row) => r.type === "claim" || r.type === "fixed";
-const mineCount = (r: Row) => (r.summary ? r.summary.lead + r.summary.outbid + r.summary.claimed + r.summary.check : 0);
+
+/** Your lots' statuses in a sale, counted by label ("Leading 2", "Outbid 1"), in a sensible order. */
+function statusCounts(r: Row): { status: LotStatus; count: number }[] {
+  const order: LotStatus["key"][] = ["outbid", "unclear", "check", "outbid-at-last-read", "lost", "leading", "leading-at-last-read", "won"];
+  const byKey = new Map<LotStatus["key"], { status: LotStatus; count: number }>();
+  for (const l of r.lots ?? []) {
+    const st = lotStatus(r, l);
+    if (st.key === "none") continue;
+    const entry = byKey.get(st.key) ?? { status: st, count: 0 };
+    entry.count++;
+    byKey.set(st.key, entry);
+  }
+  return order.flatMap((k) => byKey.get(k) ?? []);
+}
+
+/** A sale's edge colour: orange if anything needs you, green if all won, blue if leading. */
+function rowTone(r: Row): "outbid" | "won" | "lead" | null {
+  const counts = statusCounts(r);
+  if (counts.length === 0) return null;
+  if (counts.some((c) => c.status.cls === "outbid")) return "outbid";
+  return counts.every((c) => c.status.cls === "won") ? "won" : "lead";
+}
+const mineCount = (r: Row) =>
+  r.summary ? r.summary.lead + r.summary.outbid + r.summary.unclear + r.summary.claimed + r.summary.check : 0;
 /** Your lots in a sale: bid on or claimed. */
-const myLots = (r: Row) => (r.lots ?? []).filter((l) => l.myStatus !== "none" || l.myClaim !== "none");
+const myLots = (r: Row) => (r.lots ?? []).filter((l) => lotStatus(r, l).key !== "none");
 
 /** One of your lots, compact: photo, name, your bid vs the highest (or what you claimed), status. */
 function myLotChip(r: Row, l: Lot, photos: Photo[]): HTMLDivElement {
@@ -473,24 +492,25 @@ function myLotChip(r: Row, l: Lot, photos: Photo[]): HTMLDivElement {
   if (isClaimType(r)) {
     const mine = l.claimCards?.filter((x) => x.isMe) ?? [];
     if (mine.length) {
-      const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
+      const t = wonTotal([l]);
       const parts: (string | Node)[] = [];
       mine.forEach((x, i) => parts.push(i ? ", " : "", `${x.card} `, kr(x.price)));
-      if (mine.length > 1) parts.push(" = ", kr(total));
+      if (mine.length > 1) parts.push(" = ", kr(t.kr), t.unknown ? " + ?" : "");
       text.append(line("div", ...parts));
     } else {
       const named = l.claims.filter((x) => x.isMe).flatMap((x) => (x.all ? ["everything"] : x.items));
       text.append(el("div", undefined, named.length ? `Claimed: ${named.join(", ")}` : "Claimed"));
     }
-    text.append(el("div", `status ${l.myClaim === "claimed" ? "won" : "outbid"}`, l.myClaim === "claimed" ? "Won" : "Check: someone was earlier"));
+    const st = lotStatus(r, l);
+    text.append(el("div", `status ${st.cls}`, st.label));
   } else {
     text.append(
       l.highestBid !== null
         ? line("div", "Your bid ", kr(l.myHighestBid), " · highest ", kr(l.highestBid))
         : line("div", "Your bid ", kr(l.myHighestBid), " · no valid bids"),
     );
-    const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
-    text.append(el("div", `status ${l.myStatus === "lead" ? (r.ended ? "won" : "lead") : "outbid"}`, label));
+    const st = lotStatus(r, l);
+    text.append(el("div", `status ${st.cls}`, st.label));
   }
   chip.append(text);
   return chip;
@@ -498,9 +518,7 @@ function myLotChip(r: Row, l: Lot, photos: Photo[]): HTMLDivElement {
 
 function myAuctionCard(r: Row, now: Date): HTMLDivElement {
   const lots = myLots(r);
-  const bad = lots.some((l) => l.myStatus === "outbid" || l.myClaim === "check");
-  const allWon = lots.every((l) => l.myClaim === "claimed" || (r.ended && l.myStatus === "lead"));
-  const card = el("div", `mine-card ${bad ? "outbid" : allWon ? "won" : "lead"}`);
+  const card = el("div", `mine-card ${rowTone(r) ?? "lead"}`);
   const head = el("div", "mine-card-head");
   if (r.endsAtMs !== null) {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : r.ended ? "Ended" : countdown(r.endsAtMs, now));
@@ -526,18 +544,28 @@ function renderMine(now: Date) {
   const active = mine.filter((r) => !r.ended).sort((a, b) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity));
   const ended = mine.filter((r) => r.ended).sort((a, b) => (b.endsAtMs ?? 0) - (a.endsAtMs ?? 0));
 
-  const lots = active.flatMap((r) => myLots(r).map((l) => ({ r, l })));
-  const leading = lots.filter(({ l }) => l.myStatus === "lead").length;
-  const outbid = lots.filter(({ l }) => l.myStatus === "outbid").length;
-  const won = lots.filter(({ l }) => l.myClaim === "claimed").length;
-  const check = lots.filter(({ l }) => l.myClaim === "check").length;
-  const wonKr = lots.flatMap(({ l }) => l.claimCards?.filter((x) => x.isMe) ?? []).reduce((n, x) => n + (x.price ?? 0), 0);
+  // Summary over active sales: each status once, with how many lots; won claim lots with their total.
+  const totals = new Map<LotStatus["key"], { status: LotStatus; count: number }>();
+  for (const r of active) {
+    for (const { status, count } of statusCounts(r)) {
+      const t = totals.get(status.key) ?? { status, count: 0 };
+      t.count += count;
+      totals.set(status.key, t);
+    }
+  }
+  const wonKr = wonTotal(active.flatMap((r) => r.lots ?? []));
   const summary = $("#mine-summary");
-  summary.replaceChildren();
-  if (outbid) summary.append(el("span", "status outbid", `Outbid ${outbid}`));
-  if (leading) summary.append(el("span", "status lead", `Leading ${leading}`));
-  if (won) summary.append(el("span", "status won", `Won ${won}${wonKr ? ` · ${wonKr} kr` : ""}`));
-  if (check) summary.append(el("span", "status outbid", `Check ${check}`));
+  summary.replaceChildren(
+    ...[...totals.values()].map(({ status, count }) =>
+      el(
+        "span",
+        `status ${status.cls}`,
+        status.key === "won" && wonKr.cards
+          ? `Won ${wonKr.cards} card${wonKr.cards === 1 ? "" : "s"} · ${krText(wonKr)}`
+          : `${status.label} ${count}`,
+      ),
+    ),
+  );
 
   const list = $("#mine-list");
   list.replaceChildren(...active.map((r) => myAuctionCard(r, now)));
@@ -610,9 +638,8 @@ function render() {
     table.tHead!.append(head);
     for (const r of g.rows) {
       const tr = el("tr");
-      if (r.summary?.outbid || r.summary?.check) tr.classList.add("mine-outbid");
-      else if (r.summary?.claimed || (r.ended && r.summary?.lead)) tr.classList.add("mine-won");
-      else if (r.summary?.lead) tr.classList.add("mine-lead");
+      const tone = rowTone(r);
+      if (tone) tr.classList.add(`mine-${tone}`);
       tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
       const seen = el("td", "seen", ago(r.lastSeenAt, now));

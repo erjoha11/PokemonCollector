@@ -55,7 +55,7 @@ async function summary(capture: PostCapture): Promise<{ text: string; lead: numb
   const parts = [`${s.lots} lot${s.lots === 1 ? "" : "s"}`, count];
   return claims
     ? { text: parts.join(" · "), lead: s.claimed, outbid: s.check, labels: ["Won", "Check"] }
-    : { text: parts.join(" · "), lead: s.lead, outbid: s.outbid, labels: ["Leading", "Outbid"] };
+    : { text: parts.join(" · "), lead: s.lead, outbid: s.outbid + s.unclear, labels: ["Leading", "Outbid or unclear"] };
 }
 
 export function showStatusPill(): Panel {

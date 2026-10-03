@@ -104,8 +104,21 @@ describe("interpretLots", () => {
   });
 
   it("summarizes and lists unsure replies for Claude", () => {
-    expect(summarizeLots(interpretLots(c, OPTS))).toEqual({ lots: 3, bids: 9, lead: 2, outbid: 0, unsure: 1, claims: 0, claimed: 0, check: 0 });
+    expect(summarizeLots(interpretLots(c, OPTS))).toEqual({ lots: 3, bids: 9, lead: 2, outbid: 0, unclear: 0, unsure: 1, claims: 0, claimed: 0, check: 0 });
     expect(unsureReplies(c)).toEqual([{ seller: SELLER, text: `${SELLER} 580?` }]);
+  });
+
+  it("an unreadable reply after your highest bid makes 'Leading' unclear (review H4)", () => {
+    const c2 = capture([
+      lot(0, "Lot\nMp 100kr", [reply(ME, `${SELLER} 300`, { id: 10 }), reply("Bidder X", `${SELLER} 500?`, { id: 11 })]),
+      // An unreadable reply *before* your bid doesn't matter.
+      lot(1, "Lot\nMp 100kr", [reply("Bidder X", `${SELLER} 500?`, { id: 20 }), reply(ME, `${SELLER} 300`, { id: 21 })]),
+      // A bid with no ID can't be placed in time: unclear too (review M4).
+      lot(2, "Lot\nMp 100kr", [reply(ME, `${SELLER} 300`, { id: 30 }), { ...reply("Bidder Y", `${SELLER} 250`), id: null }]),
+    ]);
+    expect(interpretLots(c2, OPTS).map((l) => l.myStatus)).toEqual(["unclear", "lead", "unclear"]);
+    // Once Claude has read "500?" as 500, you're plainly outbid.
+    expect(interpretLots(c2, { ...OPTS, answer: () => 500 })[0].myStatus).toBe("outbid");
   });
 
   it("falls back to the main image poster when the post author doesn't match (old captures)", () => {
