@@ -1,3 +1,4 @@
+import { saleType } from "../../domain/listing";
 import { isSafeToClick } from "../post/expand";
 import { isSeeMoreLabel } from "../post/patterns";
 import { feedPosts, postId, type FeedRecorder } from "./recorder";
@@ -9,9 +10,10 @@ import { feedPosts, postId, type FeedRecorder } from "./recorder";
 // A repeat scan stops once it reaches posts already saved, and the scan pauses while its tab
 // is hidden (Chrome barely runs hidden tabs, so the feed wouldn't load and it'd stop early).
 
-/** Auction and claim-sale posts, by the group template's headline words. */
+/** Auction and claim-sale posts, by the group template's headline (see saleType). */
 export function isSaleText(text: string | null | undefined): boolean {
-  return /auksjon|budrunde|claim|clame|auction/i.test(text ?? "");
+  const type = saleType(text ?? "");
+  return type === "auction" || type === "claim";
 }
 
 /**

@@ -19,14 +19,27 @@ export type Interpretation = EndTime & {
   fixedPrice: number | null;
 };
 
-/** The template headline decides the type; claim sales also have a "Fastpris:" line, so order matters. */
-export function saleType(text: string): SaleType {
+/** The type a piece of text names, by the template's words; claim before fixed price (claim sales have a "Fastpris:" line). */
+function typeIn(text: string): SaleType | null {
   if (/ønskes\s+kjøpt/i.test(text)) return "wanted";
   if (/bytte-?annonse|ønsker\s+å\s+bytte/i.test(text)) return "trade";
   if (/claim|clame/i.test(text)) return "claim";
   if (/auksjon|budrunde|auction/i.test(text)) return "auction";
   if (/fastpris/i.test(text)) return "fixed";
-  return "other";
+  return null;
+}
+
+/**
+ * The sale type, from where the group's template puts it: the headline in the first two lines
+ * ("AUKSJON/BUDRUNDE-annonse", "Claim salg-annonse", "Claimsalg"), else the closing hashtag
+ * (#Auksjon, #Claimsalg, #Fastpris; sellers get it wrong more often than the headline, e.g.
+ * "Claimsalg" with #Fastpris), and only then anywhere in the text. A word in the rules
+ * ("Ingen claim etter sluttid") must not turn an auction into a claim sale.
+ */
+export function saleType(text: string): SaleType {
+  const headline = text.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 2);
+  const tags = (text.match(/#[\p{L}-]+/gu) ?? []).join(" ");
+  return headline.map(typeIn).find((t) => t !== null) ?? ((tags && typeIn(tags)) || typeIn(text) || "other");
 }
 
 /** First line of the post, without the template's "-annonse" suffix and the "… Se mer" cut. */

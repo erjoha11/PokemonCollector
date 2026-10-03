@@ -15,6 +15,12 @@ describe("saleType", () => {
     [AUCTION, "auction"], [CLAIM, "claim"], [FIXED, "fixed"], ["LYNAUKSJON/BUDRUNDE-annonse", "auction"],
     ["ØNSKES KJØPT-annonse\nØnskes Kjøpt: Umbreon v", "wanted"], ["BYTTE-annonse\nØnsker å bytte kort", "trade"],
     ["SØTE FAIRY KORT CLAIM SALG", "claim"], ["Hei alle sammen!", "other"],
+    // Review H5: a word in the rules must not change the type; the headline / hashtag decides.
+    ["AUKSJON/BUDRUNDE\nMinstepris: 10kr\nIngen claim etter sluttid", "auction"],
+    ["Pikachu, Glassbirds, Gengar\nAUKSJON/BUDRUNDE-annonse\nMinstepris: 20\nClaim etter sluttid er bindende", "auction"],
+    ["Diverse kort\nTar imot bud\nkan claimes etter avtale\n#Auksjon", "auction"],
+    ["Stor low-pop slab Claim salg-annonse\nFastpris: Oppgis over hvert bilde\n#Claimsalg", "claim"],
+    ["Claimsalg\nInnlegget vil bli markert som SOLGT\nPris: står på kortet\n#Fastpris", "claim"], // Headline beats a wrong hashtag.
   ])("%#", (text, want) => expect(saleType(text)).toBe(want));
 });
 
