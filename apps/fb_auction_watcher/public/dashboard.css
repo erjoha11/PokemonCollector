@@ -40,7 +40,7 @@ header { padding-top: 20px; }
 h1 { font-size: 22px; margin: 0; }
 .muted { color: var(--muted); }
 
-.counters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
+.counters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .counter { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; }
 .counter .num { font: 600 26px/1.1 var(--mono); }
 .counter .label { color: var(--muted); font-size: 12px; }
@@ -86,6 +86,7 @@ td.type, td.price, td.seen { white-space: nowrap; color: var(--muted); font-size
 
 @media (max-width: 720px) {
   .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .counter:last-child { grid-column: span 2; }
   thead { display: none; }
   table, tbody, tr, td { display: block; width: 100%; }
   tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
@@ -190,3 +191,59 @@ tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--
 .photo-nav:hover { background: #fff; }
 .photo-nav.prev { left: 16px; }
 .photo-nav.next { right: 16px; }
+
+/* Won: what you won and what you owe, per seller */
+.counter.won .num { color: var(--new); }
+.won-panel { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+.won-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.won-head h3 { font-size: 15px; margin: 0; color: var(--new); }
+.won-summary { font-size: 13px; font-weight: 600; }
+.won-head label { margin-left: auto; cursor: pointer; }
+.won-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; margin-top: 8px; }
+.won-card { border: 1px solid var(--border); border-left: 4px solid var(--new); border-radius: 8px; padding: 8px 10px; background: var(--bg); display: grid; gap: 6px; align-content: start; }
+.won-card.done { opacity: .6; border-left-color: var(--border); }
+.won-card-head { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.won-items { display: grid; gap: 4px; }
+.won-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.won-item img { width: 30px; height: 40px; object-fit: cover; border-radius: 3px; flex: none; background: var(--border); }
+.won-label { flex: 1; min-width: 0; }
+.won-terms { font-size: 12px; color: var(--muted); }
+.won-marks { display: flex; gap: 14px; font-size: 13px; }
+.won-mark { cursor: pointer; }
+.mine-card.lost { border-left: 4px solid var(--border); opacity: .85; }
+tr.mine-lost > td:first-child { box-shadow: inset 4px 0 0 var(--border); }
+@media (max-width: 720px) { .won-list { grid-template-columns: 1fr; } }
+
+/* Folding: table groups, sale cards, Won sellers (<details>/<summary>) */
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details[data-fold] > summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+details[data-fold][open] > summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { details[data-fold] > summary::before { transition: none; } }
+details > summary:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; border-radius: 4px; }
+.group-fold > summary.group-title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
+.mine-card > summary.mine-card-head { align-items: center; }
+.mine-card:not([open]) { padding-bottom: 8px; }
+.card-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.card-chips .status { font-size: 11px; margin: 0; }
+.mine-card .mine-lots, .won-card .won-items { margin-top: 6px; }
+.won-card > summary.won-card-head { align-items: baseline; }
+.fold-buttons { margin-left: auto; display: flex; gap: 10px; }
+
+/* Compact table: more rows on screen */
+th { padding: 4px 8px; }
+td { padding: 4px 8px; }
+td.ends { width: 190px; }
+.countdown { font-size: 14px; display: inline-block; margin-right: 6px; }
+.ends .when { display: inline; font-size: 11px; }
+.orig { font-size: 10px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+.flag, .via { font-size: 10px; margin-top: 0; }
+.sale-wrap { gap: 8px; align-items: center; }
+.thumb { width: 32px; height: 32px; }
+.title { font-size: 13px; }
+.desc { font-size: 12px; -webkit-line-clamp: 1; }
+.seller { font-size: 11px; }
+td.type, td.price, td.seen, td.lots, td.you { font-size: 12px; }
+td.you .status, td.lots .status { font-size: 11px; }
+td.you .small, td.you .muted { font-size: 11px; }
+td.ends > div:first-child { white-space: nowrap; }

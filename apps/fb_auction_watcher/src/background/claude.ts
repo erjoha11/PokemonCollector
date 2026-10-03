@@ -1,4 +1,4 @@
-import { bidRequest, claimLotRequest, endTimeRequest, type ClaudeRequest } from "../llm/prompts";
+import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, type ClaudeRequest } from "../llm/prompts";
 import { getClaudeState, getSettings, updateClaudeState } from "../shared/settings";
 import type { Store, StoredAnswer } from "../store";
 import {
@@ -6,6 +6,7 @@ import {
   failureStatus,
   isGlobalError,
   loadFailures,
+  lotNameBatches,
   pendingItems,
   photoCallsLeft,
   photoLimitFreesAt,
@@ -86,15 +87,15 @@ async function run(store: Store, onAnswered: () => void) {
     let failures: Failures = pruneFailures(await loadFailures(store), now);
     let photoCalls = recentPhotoCalls(state.photoCalls ?? [], now);
     const pending = await pendingItems(store, { myName: settings.myName, now, failures, photoCallsLeft: photoCallsLeft(photoCalls, now) });
-    const { endTimes, bids, claimLots } = pending;
-    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0) {
+    const { endTimes, bids, claimLots, lotNames } = pending;
+    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0 && lotNames.length === 0) {
       await saveFailures(store, failures);
       if (pending.photoLimited) await updateClaudeState({ photoLimitUntil: photoLimitFreesAt(photoCalls, now), photoCalls });
       return;
     }
 
     const saved: StoredAnswer[] = [];
-    const read = { endTimes: 0, bids: 0, claimLots: 0 };
+    const read = { endTimes: 0, bids: 0, claimLots: 0, lotNames: 0 };
     let failed = 0;
     const newlySkipped: ItemFailure[] = [];
     const answered = (key: string, value: unknown) => {
@@ -147,6 +148,26 @@ async function run(store: Store, onAnswered: () => void) {
       }
       answered(lot.key, reply.result);
       read.claimLots++;
+    }
+    // Name lots from their photos, several per call; each photo counts against the hourly cap.
+    for (const batch of lotNameBatches(lotNames, failures)) {
+      const stamp = new Date().toISOString();
+      photoCalls = [...photoCalls, ...batch.map(() => stamp)];
+      await updateClaudeState({ photoCalls });
+      const reply = await ask(lotNameRequest(batch));
+      if (!reply.ok) {
+        if (reply.global) return await stop(reply.error);
+        for (const item of batch) failedItem(item.key, "lot-name", reply.error);
+        continue;
+      }
+      const names = (reply.result as unknown as { lots?: { photo: number; name: string | null }[] }).lots ?? [];
+      for (const n of names) {
+        const item = batch[n.photo - 1];
+        if (item) {
+          answered(item.key, n.name ?? null);
+          read.lotNames++;
+        }
+      }
     }
 
     await store.saveAnswers(saved);

@@ -1,5 +1,5 @@
-import { claimLotAnswerKey, bidAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../llm/prompts";
-import { claimLotsToRead, interpretLots, summarizeLots, unsureReplies } from "../domain/bids";
+import { claimLotAnswerKey, bidAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../llm/prompts";
+import { claimLotsToRead, interpretLots, summarizeLots, untitledLotPhotos, unsureReplies } from "../domain/bids";
 import { claudeEndsAt } from "../domain/endTime";
 import { interpretListing } from "../domain/listing";
 import type { PostCapture } from "../shared/capture";
@@ -64,6 +64,7 @@ function answerKeysFor(post: StoredPost | null, capture: PostCapture | null, myN
     keys.push(endTimeAnswerKey(capture.post.text));
     for (const u of unsureReplies(capture)) keys.push(bidAnswerKey(u.seller, u.text));
     for (const lot of claimLotsToRead(capture, myName)) keys.push(claimLotAnswerKey(lot));
+    for (const url of untitledLotPhotos(capture)) keys.push(lotNameAnswerKey(url));
   }
   return keys;
 }

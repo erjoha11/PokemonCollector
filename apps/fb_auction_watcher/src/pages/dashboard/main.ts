@@ -7,14 +7,17 @@ import {
   getClaudeState,
   getCleanupState,
   getSettings,
+  getWonState,
+  markWon,
   updateSettings,
   type AutoScanState,
   type ClaudeState,
   type CleanupState,
   type Settings,
+  type WonState,
 } from "../../shared/settings";
 import { idbStore } from "../../store";
-import { ago, buildRows, countdown, countRows, endLabel, groupRows, krText, lotStatus, wonTotal, type LotStatus, type Row } from "./model";
+import { ago, buildRows, countdown, countRows, endLabel, groupRows, krText, lotStatus, wonBySeller, wonTotal, type LotStatus, type Row, type WonSeller } from "./model";
 
 // The overview: every sale read from the feed, grouped and sorted by end time, with live
 // countdowns, and for posts you've read with the icon: lots, bids and your Leading/Outbid
@@ -60,6 +63,32 @@ const local = {
   },
 };
 
+/**
+ * What you've folded away (table groups "group:<id>", sale cards "sale:<post id>", Won sellers
+ * "won:<seller>"), remembered in this browser. Keys in `foldedByDefault` start folded.
+ */
+const foldedByDefault = new Set(["group:ended"]);
+const folds: Record<string, boolean> = (() => {
+  try {
+    return JSON.parse(local.get("fbaw-folds") ?? "{}") as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+})();
+const isFolded = (key: string) => folds[key] ?? foldedByDefault.has(key);
+function setFolded(key: string, folded: boolean) {
+  folds[key] = folded;
+  local.set("fbaw-folds", JSON.stringify(folds));
+}
+/** A <details> that remembers whether you folded it. */
+function foldable(key: string, cls: string): HTMLDetailsElement {
+  const d = el("details", cls);
+  d.open = !isFolded(key);
+  d.dataset.fold = key;
+  d.addEventListener("toggle", () => setFolded(key, !d.open));
+  return d;
+}
+
 const previousVisit = local.get("fbaw-last-visit");
 const lastVisit = previousVisit ? new Date(previousVisit) : null;
 local.set("fbaw-last-visit", new Date().toISOString());
@@ -72,6 +101,8 @@ let settings: Settings;
 let autoScan: AutoScanState;
 let claude: ClaudeState;
 let cleanup: CleanupState;
+let wonState: WonState = {};
+let showDone = local.get("fbaw-show-done") === "1";
 let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
 const justClicked = new Set<string>();
@@ -87,7 +118,7 @@ function rebuild() {
 
 /** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude, cleanup] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState(), getCleanupState()]);
+  [settings, autoScan, claude, cleanup, wonState] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState(), getCleanupState(), getWonState()]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
   for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
 }
@@ -140,7 +171,9 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : countdown(r.endsAtMs, now));
     cd.dataset.ends = String(r.endsAtMs);
     if (!r.ended && r.endsAtMs - now.getTime() < 3_600_000) cd.classList.add("soon");
-    td.append(cd, el("div", "when", endLabel(r.endsAtMs, now) + (r.softCloseMinutes ? ` · +${r.softCloseMinutes} min antisnipe` : "")));
+    const when = el("span", "when", endLabel(r.endsAtMs, now) + (r.softCloseMinutes ? ` · +${r.softCloseMinutes}m` : ""));
+    if (r.softCloseMinutes) when.title = `Antisnipe: a late bid extends the end by ${r.softCloseMinutes} min`;
+    td.append(line("div", cd, when));
   } else if (r.type === "fixed") {
     td.append(el("div", "when", "No end time"));
   } else {
@@ -148,7 +181,7 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
   }
   if (r.endsAtText) {
     const orig = el("div", "orig", r.endsAtText);
-    orig.title = "The seller's original text";
+    orig.title = `The seller's original text: ${r.endsAtText}`;
     td.append(orig);
   }
   if (r.endsViaClaude) td.append(el("div", "via", "End time read by Claude"));
@@ -235,7 +268,11 @@ function saleCell(r: Row): HTMLTableCellElement {
   }
   const box = el("div", "sale-text");
   box.append(titleLine(r));
-  if (r.description && r.description !== r.title) box.append(el("div", "desc", r.description));
+  if (r.description && r.description !== r.title) {
+    const desc = el("div", "desc", r.description);
+    desc.title = r.description;
+    box.append(desc);
+  }
   const meta = el("div", "seller", r.sellerName ?? "Unknown seller");
   if (r.isNew) meta.append(" ", el("span", "badge new", "New"));
   box.append(meta);
@@ -278,7 +315,10 @@ function zoomable(img: HTMLImageElement, photos: Photo[], index: number) {
   img.classList.add("zoomable");
   img.tabIndex = 0;
   img.title = photos.length > 1 ? "Click for a bigger picture (← / → for the other lots)" : "Click for a bigger picture";
-  img.addEventListener("click", () => showPhoto(photos, index));
+  img.addEventListener("click", (e) => {
+    e.preventDefault(); // Inside a card's header (<summary>): show the photo, don't fold the card.
+    showPhoto(photos, index);
+  });
   img.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -386,7 +426,10 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       item.append(img);
     }
     const body = el("div", "lot-body");
-    body.append(el("div", "lot-title", `${l.position}. ${l.title}`));
+    const lotTitleEl = el("div", "lot-title", `${l.position}. ${l.title}`);
+    if (l.namedByClaude) lotTitleEl.title = "Named by Claude from the photo";
+    body.append(lotTitleEl);
+    if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
       if (l.claimCards) {
@@ -471,11 +514,14 @@ function statusCounts(r: Row): { status: LotStatus; count: number }[] {
 }
 
 /** A sale's edge colour: orange if anything needs you, green if all won, blue if leading. */
-function rowTone(r: Row): "outbid" | "won" | "lead" | null {
-  const counts = statusCounts(r);
-  if (counts.length === 0) return null;
-  if (counts.some((c) => c.status.cls === "outbid")) return "outbid";
-  return counts.every((c) => c.status.cls === "won") ? "won" : "lead";
+function rowTone(r: Row): "outbid" | "won" | "lead" | "lost" | null {
+  const keys = statusCounts(r).map((c) => c.status.key);
+  if (keys.length === 0) return null;
+  // Something still needs you (outbid, unclear, someone earlier on a claim): orange.
+  if (keys.some((k) => k === "outbid" || k === "unclear" || k === "check" || k === "outbid-at-last-read")) return "outbid";
+  if (keys.some((k) => k === "leading" || k === "leading-at-last-read")) return "lead";
+  // Finished: green if you won anything (a lost lot beside it doesn't make it a failure), else grey.
+  return keys.includes("won") ? "won" : "lost";
 }
 const mineCount = (r: Row) =>
   r.summary ? r.summary.lead + r.summary.outbid + r.summary.unclear + r.summary.claimed + r.summary.check : 0;
@@ -511,22 +557,26 @@ function myLotChip(r: Row, l: Lot, photos: Photo[]): HTMLDivElement {
     const st = lotStatus(r, l);
     text.append(el("div", `status ${st.cls}`, st.label));
   } else {
-    text.append(
-      l.highestBid !== null
-        ? line("div", "Your bid ", kr(l.myHighestBid), " · highest ", kr(l.highestBid))
-        : line("div", "Your bid ", kr(l.myHighestBid), " · no valid bids"),
-    );
     const st = lotStatus(r, l);
+    text.append(
+      st.key === "won"
+        ? line("div", "You pay ", kr(l.highestBid))
+        : st.key === "lost"
+          ? line("div", "Sold for ", kr(l.highestBid), " · yours ", kr(l.myHighestBid))
+          : l.highestBid !== null
+            ? line("div", "Your bid ", kr(l.myHighestBid), " · highest ", kr(l.highestBid))
+            : line("div", "Your bid ", kr(l.myHighestBid), " · no valid bids"),
+    );
     text.append(el("div", `status ${st.cls}`, st.label));
   }
   chip.append(text);
   return chip;
 }
 
-function myAuctionCard(r: Row, now: Date): HTMLDivElement {
+function myAuctionCard(r: Row, now: Date): HTMLDetailsElement {
   const lots = myLots(r);
-  const card = el("div", `mine-card ${rowTone(r) ?? "lead"}`);
-  const head = el("div", "mine-card-head");
+  const card = foldable(`sale:${r.id}`, `mine-card ${rowTone(r) ?? "lead"}`);
+  const head = el("summary", "mine-card-head");
   if (r.endsAtMs !== null) {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : r.ended ? "Ended" : countdown(r.endsAtMs, now));
     if (!r.ended) cd.dataset.ends = String(r.endsAtMs);
@@ -536,6 +586,10 @@ function myAuctionCard(r: Row, now: Date): HTMLDivElement {
     head.append(el("div", "countdown unknown", r.type === "fixed" ? "No end" : "Unknown"));
   }
   head.append(titleLine(r), el("span", "seller", `${r.sellerName ?? ""}${r.endsAtMs !== null ? ` · ends ${endLabel(r.endsAtMs, now)}` : ""}`));
+  // The status at a glance, so a folded card still says what's in it.
+  const chips = el("span", "card-chips");
+  for (const { status, count } of statusCounts(r)) chips.append(el("span", `status ${status.cls}`, `${status.label} ${count}`));
+  head.append(chips);
   if (r.lastReadAt) head.append(el("span", "muted small", `read ${ago(r.lastReadAt, now)}`));
   card.append(head);
   const list = el("div", "mine-lots");
@@ -545,9 +599,104 @@ function myAuctionCard(r: Row, now: Date): HTMLDivElement {
   return card;
 }
 
+const isDone = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.paidAt && wonState[r.id]?.receivedAt);
+const isPaid = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.paidAt);
+const isReceived = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.receivedAt);
+
+/** "400 kr", "400 kr + ?" (a price not known yet). */
+const sellerTotal = (g: { kr: number; unknown: number }) => `${g.kr} kr${g.unknown ? " + ?" : ""}`;
+
+/** One seller in the Won list: what you won from them, the total, their shipping and payment terms, Paid / Received. */
+function wonSellerCard(g: WonSeller, now: Date): HTMLDetailsElement {
+  const card = foldable(`won:${g.seller}`, `won-card${isDone(g) ? " done" : ""}`);
+  const head = el("summary", "won-card-head");
+  head.append(el("strong", "won-seller", g.seller), " ", line("span", kr(g.kr), g.unknown ? " + ?" : "", " + shipping"));
+  card.append(head);
+
+  const items = el("div", "won-items");
+  const photos = lotPhotos(g.items.map((i) => i.lot));
+  for (const item of g.items) {
+    const row = el("div", "won-item");
+    if (item.lot.imageUrl) {
+      const img = el("img");
+      img.src = item.lot.imageUrl;
+      img.alt = "";
+      img.loading = "lazy";
+      img.referrerPolicy = "no-referrer";
+      zoomable(img, photos, photos.findIndex((p) => p.src === item.lot.imageUrl));
+      row.append(img);
+    }
+    row.append(el("span", "won-label", item.label), " ", item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
+    items.append(row);
+  }
+  card.append(items);
+
+  // The seller's terms, quoted from each post, with a link to it.
+  for (const r of g.rows) {
+    const terms = el("div", "won-terms");
+    const link = el("a", "open-link", `${r.title} ↗`);
+    link.href = r.url;
+    link.target = "_blank";
+    link.rel = "noopener";
+    terms.append(link);
+    if (r.shippingText) terms.append(" · ", el("span", undefined, `Shipping: ${r.shippingText}`));
+    if (r.paymentText) terms.append(" · ", el("span", undefined, `Pay: ${r.paymentText}`));
+    if (r.endsAtMs !== null) terms.append(" · ", el("span", "muted", `ended ${endLabel(r.endsAtMs, now)}`));
+    card.append(terms);
+  }
+
+  // Paid / Received: your own marks, for all of this seller's sales listed here.
+  const marks = el("div", "won-marks");
+  for (const [field, label, done] of [
+    ["paidAt", "Paid", isPaid(g)],
+    ["receivedAt", "Received", isReceived(g)],
+  ] as const) {
+    const box = el("label", "won-mark");
+    const input = el("input");
+    input.type = "checkbox";
+    input.checked = done;
+    input.addEventListener("change", () => {
+      void markWon(
+        g.rows.map((r) => r.id),
+        { [field]: input.checked ? new Date().toISOString() : null },
+      );
+    });
+    const when = done ? g.rows.map((r) => wonState[r.id]?.[field]).filter(Boolean).sort().at(-1) : null;
+    box.append(input, ` ${label}${when ? ` ${ago(when, now)}` : ""}`);
+    marks.append(box);
+  }
+  card.append(marks);
+  return card;
+}
+
+/** Won: everything you've won, per seller, until you've marked it paid and received. */
+function renderWon(now: Date) {
+  const groups = wonBySeller(rows);
+  const open = groups.filter((g) => !isDone(g));
+  const toPay = groups.filter((g) => !isPaid(g));
+  const lots = groups.reduce((n, g) => n + g.items.length, 0);
+  const total = { kr: groups.reduce((n, g) => n + g.kr, 0), unknown: groups.reduce((n, g) => n + g.unknown, 0) };
+  const owe = { kr: toPay.reduce((n, g) => n + g.kr, 0), unknown: toPay.reduce((n, g) => n + g.unknown, 0) };
+
+  $<HTMLElement>("#won").hidden = groups.length === 0;
+  $("#won-summary").textContent = groups.length
+    ? `${lots} lot${lots === 1 ? "" : "s"} · ${sellerTotal(total)}${toPay.length ? ` · to pay ${sellerTotal(owe)} to ${toPay.length} seller${toPay.length === 1 ? "" : "s"}` : " · all paid"}`
+    : "";
+  const done = groups.length - open.length;
+  const toggle = $<HTMLInputElement>("#show-done");
+  toggle.checked = showDone;
+  $<HTMLElement>("#show-done-label").hidden = done === 0;
+  $("#show-done-count").textContent = String(done);
+  $("#won-list").replaceChildren(...(showDone ? groups : open).map((g) => wonSellerCard(g, now)));
+  $("#count-won").textContent = String(lots);
+}
+
 /** The top panel: every sale you're bidding or claiming in, soonest ending first. */
 function renderMine(now: Date) {
-  const mine = rows.filter((r) => mineCount(r) > 0);
+  renderWon(now);
+  // A sale where everything of yours is won is listed under Won (until it ends: then Ended).
+  const allWon = (r: Row) => myLots(r).every((l) => lotStatus(r, l).key === "won");
+  const mine = rows.filter((r) => mineCount(r) > 0 && !(allWon(r) && !r.ended));
   const active = mine.filter((r) => !r.ended).sort((a, b) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity));
   const ended = mine.filter((r) => r.ended).sort((a, b) => (b.endsAtMs ?? 0) - (a.endsAtMs ?? 0));
 
@@ -560,24 +709,14 @@ function renderMine(now: Date) {
       totals.set(status.key, t);
     }
   }
-  const wonKr = wonTotal(active.flatMap((r) => r.lots ?? []));
+  totals.delete("won"); // Counted from the Won list below, which includes ended sales.
   const summary = $("#mine-summary");
-  summary.replaceChildren(
-    ...[...totals.values()].map(({ status, count }) =>
-      el(
-        "span",
-        `status ${status.cls}`,
-        status.key === "won" && wonKr.cards
-          ? `Won ${wonKr.cards} card${wonKr.cards === 1 ? "" : "s"} · ${krText(wonKr)}`
-          : `${status.label} ${count}`,
-      ),
-    ),
-  );
+  summary.replaceChildren(...[...totals.values()].map(({ status, count }) => el("span", `status ${status.cls}`, `${status.label} ${count}`)));
 
   const list = $("#mine-list");
   list.replaceChildren(...active.map((r) => myAuctionCard(r, now)));
   if (active.length === 0) {
-    list.append(el("p", "mine-empty", "No active bids or claims. Click a sale's title below to read it; sales where you've bid or claimed show up here."));
+    list.append(el("p", "mine-empty", "No open bids or claims. Click a sale's title below to read it; sales where you've bid or claimed show up here."));
   }
   const endedBox = $<HTMLDetailsElement>("#mine-ended");
   endedBox.hidden = ended.length === 0;
@@ -641,8 +780,8 @@ function render() {
   for (const g of groupRows(visible, now)) {
     if (g.rows.length === 0) continue;
     const section = el("section", `group group-${g.id}`);
-    const wrap = g.id === "ended" ? el("details") : section;
-    const heading = el(g.id === "ended" ? "summary" : "h2", "group-title", `${g.label} `);
+    const wrap = foldable(`group:${g.id}`, "group-fold");
+    const heading = el("summary", "group-title", `${g.label} `);
     heading.append(el("span", "group-count", String(g.rows.length)));
     wrap.append(heading);
     const table = el("table");
@@ -663,7 +802,7 @@ function render() {
       if (expanded.has(r.id)) table.tBodies[0].append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
     }
     wrap.append(table);
-    if (wrap !== section) section.append(wrap);
+    section.append(wrap);
     main.append(section);
   }
   if (visible.length === 0) main.append(el("p", "empty", "Nothing matches the filter."));
@@ -706,6 +845,21 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) =>
 );
 $<HTMLInputElement>("#search").addEventListener("input", (e) => {
   query = (e.target as HTMLInputElement).value.trim();
+  render();
+});
+/** Folds or unfolds every card in My Auctions (sales and Won sellers) and remembers it. */
+function foldAllCards(folded: boolean) {
+  document.querySelectorAll<HTMLDetailsElement>("#my-auctions details[data-fold]").forEach((d) => {
+    if (d.id === "mine-ended") return;
+    setFolded(d.dataset.fold!, folded);
+    d.open = !folded;
+  });
+}
+$("#fold-all").addEventListener("click", () => foldAllCards(true));
+$("#unfold-all").addEventListener("click", () => foldAllCards(false));
+$<HTMLInputElement>("#show-done").addEventListener("change", (e) => {
+  showDone = (e.target as HTMLInputElement).checked;
+  local.set("fbaw-show-done", showDone ? "1" : "0");
   render();
 });
 $<HTMLInputElement>("#auto-scan").addEventListener("change", (e) => {
@@ -760,7 +914,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // need their own small state, not a reload of every post from the database (review M6).
   if ("settings" in changes) {
     void load();
-  } else if (["autoScanState", "claudeState", "readerState", "cleanupState"].some((k) => k in changes)) {
+  } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState"].some((k) => k in changes)) {
     void loadStatus().then(render);
   }
 });

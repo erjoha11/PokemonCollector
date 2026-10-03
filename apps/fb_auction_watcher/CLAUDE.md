@@ -8,7 +8,7 @@ App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.
 
 It is independent of the other apps in `apps/`: no imports to or from them, no shared database.
 
-**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store, `dashboard.html` (My Auctions, table, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read. Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Open review items: M2 (Claude per-item failures, ended sales), M6 (retention), M8 (tests for the worker and store), M9 (push), and the remaining low items.
+**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store with retention and "Clear stored data", `dashboard.html` (My Auctions, Won per seller with what you owe, the table grouped Today/Later with folding, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read (end times, odd bids, claim-lot photos, and lot names read from photos), with per-item failure tracking and an hourly photo cap. Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Review items M2, M6 and M8 are done (#286-#288); what's left from the review are the remaining low items.
 
 ## Commands
 

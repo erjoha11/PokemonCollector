@@ -17,6 +17,10 @@ export type Interpretation = EndTime & {
   increment: number | null;
   minPrice: number | null;
   fixedPrice: number | null;
+  /** The template's "Sender med post (pris m/emballasje): …", as written (shipping terms). */
+  shippingText: string | null;
+  /** The template's "Betalingsalternativ: …", as written (Vipps, bank transfer…). */
+  paymentText: string | null;
 };
 
 /** The type a piece of text names, by the template's words; claim before fixed price (claim sales have a "Fastpris:" line). */
@@ -72,5 +76,7 @@ export function interpretListing(text: string, capturedAt: Date): Interpretation
     increment: parseAmount(labelled(text, /minimum\s+budøkning\s*:?/i)),
     minPrice: parseAmount(labelled(text, /(?<!lav\s)minstepris\s*:?/i)),
     fixedPrice: parseAmount(labelled(text, /fastpris\s*:/i)),
+    shippingText: labelled(text, /sender\s+med\s+post[^:\n]*:/i)?.trim() || null,
+    paymentText: labelled(text, /betalingsalternativ\s*:/i)?.trim() || null,
   };
 }

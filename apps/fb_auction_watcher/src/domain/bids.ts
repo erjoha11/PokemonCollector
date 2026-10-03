@@ -82,6 +82,10 @@ export type Lot = {
   claimCards: ClaimCards | null;
   /** Cards still for sale (from claimCards), or null when Claude hasn't read the lot yet. */
   available: number | null;
+  /** The lot's text didn't name it (only a price, or nothing): `title` is "Lot N" or Claude's name for the photo. */
+  untitled: boolean;
+  /** `title` came from Claude reading the photo. */
+  namedByClaude: boolean;
 };
 
 export const normalizeName = (s: string | null | undefined) =>
@@ -135,6 +139,24 @@ function lotStartBid(text: string): number | null {
   return bare ? parseAmount(bare[1]) : null;
 }
 
+/** The lot's title: its own text, else Claude's name for the photo, else "Lot N". */
+function lotTitleFor(c: CapturedComment, position: number, options: LotOptions): { title: string; untitled: boolean; namedByClaude: boolean } {
+  const title = lotTitle(c.text, position);
+  const untitled = title === `Lot ${position}`;
+  const photo = c.images[0]?.src;
+  const name = untitled && photo ? options.lotName?.(fullSizePhoto(photo)) : undefined;
+  return name ? { title: name, untitled, namedByClaude: true } : { title, untitled, namedByClaude: false };
+}
+
+/** Lots whose text doesn't name them but which have a photo: Claude can name them from it. */
+export function untitledLotPhotos(capture: PostCapture): string[] {
+  const seller = sellerOf(capture);
+  return capture.comments
+    .filter((c) => isLot(c, seller) && c.images[0]?.src)
+    .filter((c, i) => lotTitle(c.text, i + 1) === `Lot ${i + 1}`)
+    .map((c) => fullSizePhoto(c.images[0].src));
+}
+
 /** The lot's first line, unless it's only a price ("Mp 15kr"); then "Lot N". */
 function lotTitle(text: string, position: number): string {
   const first = text.split("\n")[0]?.trim() ?? "";
@@ -155,6 +177,8 @@ export type LotOptions = {
   /** From the post: used when a lot doesn't state its own. */
   listingIncrement: number | null;
   listingMinPrice: number | null;
+  /** Claude's name for a lot's photo (by its full-size URL), when the lot's text doesn't name it. */
+  lotName?: (imageUrl: string) => string | null | undefined;
   /** Claude's reading of a claim lot (see claimLotInput), or undefined when not asked yet. */
   claimAnswer?: (input: ClaimLotInput) => { cards: { card: string; price: number | null; claimedBy: string | null }[] } | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
@@ -249,7 +273,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     lots.push({
       commentId: c.id,
       position: lots.length + 1,
-      title: lotTitle(c.text, lots.length + 1),
+      ...lotTitleFor(c, lots.length + 1, options),
       rawText: c.text,
       imageUrl: c.images[0]?.src ?? null,
       startBid,

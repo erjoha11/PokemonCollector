@@ -2,13 +2,15 @@ import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../d
 export type { Lot } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, osloDate } from "../../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
 // The table's logic, without any DOM: stored raw posts → interpreted rows → groups.
-// Groups follow docs/spec.md "Table page": within 1 h · today · tomorrow and later ·
-// claim/fixed price · ended, plus "end time unknown" for auctions the rules couldn't read.
+// Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
+// ended, plus "end time unknown" for auctions the rules couldn't read. (docs/spec.md planned a
+// separate "within 1 h" group; merged into Today on 2026-10-04, since the countdown turns red under
+// an hour and the "Within 1 hour" counter stays.)
 
 export type Row = StoredPost &
   Interpretation & {
@@ -35,7 +37,7 @@ export type RowExtras = {
   myName?: string;
 };
 
-export type GroupId = "soon" | "today" | "later" | "unknown" | "claim-fixed" | "ended";
+export type GroupId = "today" | "later" | "unknown" | "claim-fixed" | "ended";
 export type Group = { id: GroupId; label: string; rows: Row[] };
 
 const HOUR = 3_600_000;
@@ -64,6 +66,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
           listingIncrement: i.increment,
           listingMinPrice: i.minPrice,
           claimAnswer: (input) => answers.get(claimLotAnswerKey(input)) as ClaimLotAnswer | undefined,
+          lotName: (imageUrl) => answers.get(lotNameAnswerKey(imageUrl)) as string | null | undefined,
           answer: (seller, text) => {
             const key = bidAnswerKey(seller, text);
             return answers.has(key) ? (answers.get(key) as number | null) : undefined;
@@ -99,27 +102,25 @@ const sameOsloDay = (a: Date, b: Date) => {
 
 export function groupRows(rows: Row[], now: Date): Group[] {
   const t = now.getTime();
-  const groups: Record<GroupId, Row[]> = { soon: [], today: [], later: [], unknown: [], "claim-fixed": [], ended: [] };
+  const groups: Record<GroupId, Row[]> = { today: [], later: [], unknown: [], "claim-fixed": [], ended: [] };
   for (const r of rows) {
     if (r.ended) groups.ended.push(r);
     else if (r.type !== "auction") groups["claim-fixed"].push(r);
     else if (r.endsAtMs === null) groups.unknown.push(r);
-    else if (r.maybeEnded || r.endsAtMs - t < HOUR) groups.soon.push(r);
-    else if (sameOsloDay(new Date(r.endsAtMs), now)) groups.today.push(r);
+    // Today, or within the hour (just before midnight); the countdown turns red under an hour.
+    else if (r.maybeEnded || r.endsAtMs - t < HOUR || sameOsloDay(new Date(r.endsAtMs), now)) groups.today.push(r);
     else groups.later.push(r);
   }
   const byEnd = (a: Row, b: Row) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity);
   const bySeen = (a: Row, b: Row) => b.firstSeenAt.localeCompare(a.firstSeenAt);
-  groups.soon.sort(byEnd);
-  groups.today.sort(byEnd);
+  groups.today.sort(byEnd); // "Ended?" (in the antisnipe window) first: their end time has passed.
   groups.later.sort(byEnd);
   groups.unknown.sort(bySeen);
   // Claim sales by end time first, then fixed-price posts (no end) newest first.
   groups["claim-fixed"].sort((a, b) => byEnd(a, b) || bySeen(a, b));
   groups.ended.sort((a, b) => (b.endsAtMs ?? 0) - (a.endsAtMs ?? 0));
   const labels: Record<GroupId, string> = {
-    soon: "Within 1 hour",
-    today: "Later today",
+    today: "Today",
     later: "Tomorrow and later",
     unknown: "End time unknown",
     "claim-fixed": "Claim and fixed price",
@@ -225,3 +226,59 @@ export function wonTotal(lots: Lot[]): { cards: number; kr: number; unknown: num
 
 /** "400 kr", or "400 kr + ?" when some prices couldn't be read. */
 export const krText = (t: { kr: number; unknown: number }) => `${t.kr} kr${t.unknown ? " + ?" : ""}`;
+
+/** One thing you won: a lot (auction) or the cards you got in a claim lot, and what it costs. */
+export type WonItem = {
+  row: Row;
+  lot: Lot;
+  /** "Lot 9" / "7. Marowak, Feraligatr". */
+  label: string;
+  /** What you pay, or null when it isn't known yet (a claim lot Claude hasn't read). */
+  kr: number | null;
+};
+
+/** Everything won from one seller: you pay per seller. */
+export type WonSeller = {
+  seller: string;
+  items: WonItem[];
+  /** Sum of the known prices. */
+  kr: number;
+  /** Items whose price isn't known yet. */
+  unknown: number;
+  /** The sales involved, newest first (for their shipping/payment lines and links). */
+  rows: Row[];
+};
+
+/**
+ * Everything you've won, grouped by seller, sellers with the most recent sale first. Auctions
+ * count once a complete read after the end confirms the win (lotStatus "won"); claims count when
+ * you were first on what you claimed, priced from Claude's reading of the photo when it has one.
+ */
+export function wonBySeller(rows: Row[]): WonSeller[] {
+  const bySeller = new Map<string, WonSeller>();
+  for (const r of rows) {
+    for (const l of r.lots ?? []) {
+      if (lotStatus(r, l).key !== "won") continue;
+      let label: string;
+      let kr: number | null;
+      if (r.type === "claim" || r.type === "fixed") {
+        const mine = l.claimCards?.filter((x) => x.isMe) ?? [];
+        const named = l.claims.filter((x) => x.isMe).flatMap((x) => (x.all ? ["everything"] : x.items));
+        label = `${l.position}. ${mine.length ? mine.map((x) => x.card).join(", ") : named.join(", ") || l.title}`;
+        kr = mine.length && mine.every((x) => x.price !== null) ? mine.reduce((n, x) => n + x.price!, 0) : null;
+      } else {
+        label = `${l.position}. ${l.title}`;
+        kr = l.highestBid;
+      }
+      const seller = r.sellerName ?? "Unknown seller";
+      const group = bySeller.get(seller) ?? { seller, items: [], kr: 0, unknown: 0, rows: [] };
+      group.items.push({ row: r, lot: l, label, kr });
+      if (kr === null) group.unknown++;
+      else group.kr += kr;
+      if (!group.rows.includes(r)) group.rows.push(r);
+      bySeller.set(seller, group);
+    }
+  }
+  const latest = (g: WonSeller) => Math.max(...g.rows.map((r) => r.endsAtMs ?? Date.parse(r.lastSeenAt)));
+  return [...bySeller.values()].sort((a, b) => latest(b) - latest(a));
+}

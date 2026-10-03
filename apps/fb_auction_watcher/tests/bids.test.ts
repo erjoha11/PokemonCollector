@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, claimLotInput, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, unsureReplies } from "../src/domain/bids";
+import { capturePostId, claimItems, claimLotInput, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
+import { lotNameAnswerKey } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
 // Synthetic capture shaped like the real Gengar auction in samples/ (all names invented):
@@ -252,5 +253,27 @@ describe("claim lots read by Claude (photo prices, who got what)", () => {
 
   it("knows a lot's input even with no replies", () => {
     expect(claimLotInput(c.comments[1], SELLER)?.replies).toHaveLength(1);
+  });
+});
+
+describe("naming lots from their photo", () => {
+  const c = capture([lot(0, "Mp 20kr", []), lot(1, "Charizard ex 199/165\nMp 500", []), lot(2, "", [])]);
+
+  it("only lots whose text doesn't name them are sent to Claude", () => {
+    expect(untitledLotPhotos(c)).toEqual(["lot0.jpg", "lot2.jpg"]);
+  });
+
+  it("uses Claude's name for those, keeps the seller's own text, and says where the name came from", () => {
+    const names: Record<string, string> = { "lot0.jpg": "Pikachu (74/112)" };
+    const lots = interpretLots(c, { ...OPTS, lotName: (url) => names[url] });
+    expect(lots.map((l) => [l.title, l.namedByClaude, l.untitled])).toEqual([
+      ["Pikachu (74/112)", true, true],
+      ["Charizard ex 199/165", false, false],
+      ["Lot 3", false, true], // Not named yet.
+    ]);
+  });
+
+  it("caches by the photo's path (its query string changes per read)", () => {
+    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8"));
   });
 });

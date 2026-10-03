@@ -4,7 +4,7 @@
 
 export type ClaudeRequest = {
   /** A short name for logs. */
-  task: "end-time" | "bid" | "claim-lot";
+  task: "end-time" | "bid" | "claim-lot" | "lot-name";
   /** Haiku unless set; photos need Sonnet (Haiku misread prices on a real lot). */
   model?: "haiku" | "sonnet";
   /** Photo URLs (Facebook's CDN) the bridge downloads and sends along. */
@@ -120,3 +120,32 @@ First to claim a card gets it. List every card in the photo, left to right, top 
 /** Same photo and same replies → same answer; a new reply asks again. The URL's query changes per read, so only its path counts. */
 export const claimLotAnswerKey = (item: ClaimLotItem) =>
   `claim-lot-cards:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;
+
+/** A lot photo to name: the lot's text is only a price or empty, so the photo is all there is. */
+export type LotNameItem = { imageUrl: string };
+export type LotNameAnswer = string | null;
+
+// Tried 2026-10-04 on 12 real lot photos in one call: Sonnet named all 12 with set numbers in 6 s;
+// Haiku named them too but without numbers, in 20 s.
+export function lotNameRequest(items: LotNameItem[]): ClaudeRequest {
+  return {
+    task: "lot-name",
+    model: "sonnet",
+    images: items.map((i) => i.imageUrl),
+    system: `You name lots in a Norwegian Facebook auction or claim sale for Pokémon cards. Each photo is one lot. For each photo give a short name for the lot (at most about 60 characters): if the seller wrote text on or over the photo naming what it is, use that; otherwise the card name as printed on the card, plus its set number (e.g. 74/112) if you can read it; for several cards, name them briefly (e.g. "Pikachu, Raichu" or "3 Eevee cards"). Leave out prices. Use null if you can't tell.`,
+    input: `There ${items.length === 1 ? "is 1 photo" : `are ${items.length} photos`}, numbered in order. Name each lot.`,
+    schema: {
+      type: "object",
+      properties: {
+        lots: {
+          type: "array",
+          items: { type: "object", properties: { photo: { type: "integer" }, name: { type: ["string", "null"] } }, required: ["photo", "name"] },
+        },
+      },
+      required: ["lots"],
+    },
+  };
+}
+
+/** Same photo, same name: only the photo's path counts (its query changes per read). */
+export const lotNameAnswerKey = (imageUrl: string) => `lot-name:${hashText(imageUrl.split("?")[0])}`;
