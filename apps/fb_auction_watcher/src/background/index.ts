@@ -16,7 +16,8 @@ import {
 import { groupSlug } from "../shared/feed";
 import { getAutoScanState, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
-import { AUTO_SCAN_ALARM, describeAutoScan, runAutoScan, scheduleAutoScan } from "./autoScan";
+import { AUTO_SCAN_ALARM, describeAutoScan, isGroupFeedUrl, newPostsUrl, runAutoScan, scheduleAutoScan } from "./autoScan";
+import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
 import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, queueMyAuctionRereads } from "./reader";
 
@@ -33,9 +34,16 @@ function broadcastUpdate(added = 0, updated = 0) {
 const askClaudeSoon = () => scheduleClaude(store, () => broadcastUpdate());
 
 // Toolbar icon: read the open post, or scan the feed (the content script decides which).
-chrome.action.onClicked.addListener((tab) => {
+chrome.action.onClicked.addListener(async (tab) => {
   if (tab.id === undefined) return;
   const tabId = tab.id;
+  // On the group feed: always scan it sorted by "New posts", so "caught up" means caught up.
+  if (isGroupFeedUrl(tab.url) && tab.url !== newPostsUrl(tab.url!)) {
+    await chrome.tabs.update(tabId, { url: newPostsUrl(tab.url!) });
+    await new Promise((r) => setTimeout(r, 500)); // Let the load start, so "complete" is the new page.
+    await waitForTabLoad(tabId, 30_000);
+    await new Promise((r) => setTimeout(r, 1500)); // Let the feed render its first posts.
+  }
   const msg: ReadPostMessage = { type: MSG_READ_POST };
   chrome.tabs.sendMessage(tabId, msg).catch(() => {
     // Not a Facebook tab, or the tab was open before the extension was (re)loaded and

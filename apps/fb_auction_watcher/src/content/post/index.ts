@@ -94,7 +94,12 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     const root = findPostRoot(document);
     if (!root && silent) return report(false, "the post didn't load");
     if (!root) {
-      const feed = document.querySelector("[role='feed']");
+      let feed = document.querySelector("[role='feed']");
+      // Just switched to "New posts": give the feed a moment to render.
+      for (let i = 0; i < 20 && !(feed && feedPosts(feed).length > 0) && /\/groups\/[^/]+\/?(\?|$)/.test(location.pathname + location.search); i++) {
+        await sleep(500);
+        feed = document.querySelector("[role='feed']");
+      }
       if (feed) {
         const controller = new AbortController();
         panel.onStop(() => controller.abort());

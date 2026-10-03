@@ -108,7 +108,8 @@ telling Chrome where the script is and that only this extension may start it. Sw
 
 ## Scan the feed
 
-Open the group's feed (no post open) and click the extension icon. The extension then scrolls the
+Open the group's feed (no post open) and click the extension icon. If the feed isn't sorted by **New
+posts**, the extension reloads it that way first (`?sorting_setting=CHRONOLOGICAL`). It then scrolls the
 feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
 screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is
 saved. Those are its only clicks. It stops when it reaches 5 posts in a row that an earlier scan
