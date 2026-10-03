@@ -27,7 +27,7 @@ After every `npm run build`, click the reload icon on the extension's card, **an
 ## Test module 1: read one post
 
 1. Open an auction post in the group as a single post: click the post's timestamp, or open it so it shows in a dialog.
-2. Click the extension icon. A panel appears bottom right. It first switches the comments to **All comments** / **Alle kommentarer** ("Most relevant" can hide bids), then clicks "View more comments" / "View N replies" / "See more" ("Vis flere kommentarer" / "Vis N svar" / "Se mer") one at a time with pauses. Nothing else is ever clicked. A large auction can take a few minutes. **Stop** halts it.
+2. Click the extension icon. A panel appears bottom right. It first switches the comments to **All comments** / **Alle kommentarer** ("Most relevant" can hide bids), then clicks "View more comments" / "View N replies" / "See more" ("Vis flere kommentarer" / "Vis N svar" / "Se mer") one at a time with pauses, and scrolls down the comments when Facebook loads more on scroll instead of with a button. Nothing else is ever clicked. A large auction can take a few minutes. **Stop** halts it.
 3. When it's done, the panel shows counts and warnings, plus:
    - **Download JSON**: the raw capture (post, top-level comments with image flag, replies nested under each).
    - **Download HTML snapshot**: the post's DOM as rendered, as a sample for `samples/`.

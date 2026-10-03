@@ -27,13 +27,15 @@ async function readOpenPost() {
     panel.setStatus("Loading all comments and replies…");
     const result = await expandAll(root, {
       signal: controller.signal,
-      onProgress: ({ clicks, lastLabel }) => panel.setStatus(`Expanding… ${clicks} clicked (last: "${lastLabel}")`),
+      onProgress: ({ clicks, scrolls, lastLabel }) =>
+        panel.setStatus(`Expanding… ${clicks} clicked, ${scrolls} scrolled (last: "${lastLabel}")`),
     });
     panel.setStatus("Reading…");
     const capture = extractCapture(root, {
       pageUrl: location.href,
       pageLang: document.documentElement.lang,
       expandClicks: result.clicks,
+      expandScrolls: result.scrolls,
       expandStoppedBecause: result.stoppedBecause,
       commentSortAction,
     });

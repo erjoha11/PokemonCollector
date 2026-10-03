@@ -31,6 +31,9 @@ Post = listing: overview photos of the whole auction, rules, end time
 ```
 
 - Comments without an image are chatter. Replies from the seller are never bids.
+- A top-level comment of just "." is someone tagging themselves to follow the sale (they get
+  notified of new activity). Not a lot, not a bid. The count of them is a rough "watchers"
+  number. Claim sales ask for this explicitly ("Tagg deg selv i kommentarfeltet").
 - Sale types: auction, claim (first commenter gets to buy), fixed price.
 - Close rules: hard close, or soft close (a bid near the end extends it, e.g. by 5 min).
 - End time and rules are free text (e.g. "slutter søndag kl 20" – "ends Sunday at 8 pm")
@@ -175,9 +178,11 @@ the spike's JSON before storage is wired in).
 
 ## Module 1 status (spike)
 
-Built, unit-tested against a synthetic fixture, smoke-tested in Chromium. **Not yet run
-against real Facebook**: the selectors below are informed guesses until checked against
-`samples/`.
+Built, unit-tested against a synthetic fixture, smoke-tested in Chromium, and run against
+real Facebook on 2026-10-03 (two posts in the group, nb locale: one auction with 24
+comments / 13 lots / 5 replies, one claim sale with 27 comments / 19 lots / 16 replies).
+Comment/reply structure, IDs, nesting, images, and sort detection all matched the page; no
+warnings, no orphan replies.
 
 - Trigger: toolbar icon → service worker → content script in the active tab.
 - Order: switch comment sort to "All comments" (sort control → menu item, `sort.ts`), then
@@ -189,6 +194,55 @@ against real Facebook**: the selectors below are informed guesses until checked 
   fra", "Reply by" / "Svar fra"). Replies attach to their parent by `comment_id`.
 - Lot candidate: top-level comment with a photo (`img` ≥ 64 px, or inside a photo link).
 - Output: `PostCapture` JSON (`src/shared/capture.ts`) + an HTML snapshot of the post for `samples/`.
+
+DOM findings from the real run (2026-10-03):
+
+- Post author: the `h3` heading link is the **group name**; the poster is the
+  `/groups/<g>/user/<id>/` link in the header (inside `data-ad-rendering-role="profile_name"`).
+  The `h2` is a screen-reader title ("<Name> sitt innlegg", sometimes first name only).
+  `readPost` now prefers the `/user/` link.
+- Post timestamp: Facebook scrambles the header's time text (anti-scraping; the `meta` block
+  reads like `p0xiQP.com…`) and the post link has no plain href, so `post.timeText` is `null`.
+  Expected: end time comes from the post text ("Sluttid: …"), not the post's age.
+- Replies can be image-only (empty `text`, one image): sellers reply to a lot with a close-up
+  or a "sold" photo. Lot detection must only look at top-level comments, as it does.
+- Bids in replies start with the tagged name ("<Seller> 100", "<Seller> 50kr"); the seller's
+  post-auction replies ("Sendt PM …") sit in the same threads. Module 3 has to handle both.
+- Not every top-level comment with an image is a lot: in the claim sale, a comment with an
+  image plus a tag list ("Denne kommer også …") was a late addition and arguably a lot, so
+  "image = lot" is a candidate signal, not a rule.
+- Loading comments: a post opened in a dialog shows ~10 comments and loads the rest **on
+  scroll**, with no "Vis flere kommentarer" button. The first build only clicked buttons and
+  stopped at 10. `expand.ts` now scrolls the last loaded comment into view (never a click)
+  when no expander is left, and stops after a few rounds with no new comments.
+- Post types seen: "AUKSJON/BUDRUNDE" (bids, `MP`/`MB` = minimum price/minimum increment
+  per lot, "Antisnipe 5 min") and "Claim salg" (fixed price per lot, first to claim). Both
+  use the group's template ("Sluttid:", "Betalingsalternativ:", …).
+
+Findings from a busy live auction (36 lots, 264 replies) and a second claim sale, 2026-10-03:
+
+- **Reply target:** the reply's aria-label says what it answers: "Svar fra A på B sin
+  **kommentar**" = a reply to the lot, "… på B sitt **svar**" = a reply to another reply
+  (typically the seller's photo reply under the lot). Sellers can reject bids placed under the
+  wrong reply ("kan du legge det under hovedbudet"), so the target matters for validity. The
+  capture keeps it in `ariaLabel`; module 3 must use it.
+- **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
+  increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
+  is too coarse for ordering.
+- **Bid text:** almost always "<Seller name> 250" (a tag), sometimes a bare number ("850"),
+  sometimes "250kr". Also seen: "580?" (a question, which the seller accepted below the
+  minimum price, "den er grei"), and "<Seller> ." (following a single lot, not a bid).
+- **Minimum price per lot:** "Mp 10kr" (lower case, no colon) as well as "MP: 1400"; one lot
+  had a bare "700kr".
+- **End time formats:** "Sluttid: 2026-10-02 22.00", "Sluttid (Lørdag 3. oktober 23.59):",
+  "Sluttid: 03.10 Lørdag kl22:00", "Sluttid: Søndag 04.10 kl 21:00", and "Slutt: 05.10.26
+  kl 21:00" (label "Slutt", not "Sluttid").
+- **Claim sales:** the lot comment can be just an image, with the price written on the
+  image ("Pris: … står på kortet"). One image can hold several cards, claimed by name:
+  "claim Persian og Clefairy", "clame salazzle", "claim alle", or just the names. Prices on
+  images can't be read from text.
+- **Other chatter:** top-level comments that are only a person's name (tagging a friend),
+  "Sjekk pm", and the seller's own notices ("Da var alle kortene ute!", "starter om 6 min").
 
 Decided (2026-10-03): "See more" and switching the comment sort to "All comments" were
 added to the allowed clicks, since long rules get cut off and "Most relevant" can hide bids.

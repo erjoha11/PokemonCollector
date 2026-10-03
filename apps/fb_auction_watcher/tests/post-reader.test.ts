@@ -65,12 +65,39 @@ describe("expandAll", () => {
     const controller = new AbortController();
     controller.abort();
     const result = await expandAll(root(), { ...FAST, signal: controller.signal });
-    expect(result).toEqual({ clicks: 0, stoppedBecause: "aborted" });
+    expect(result).toEqual({ clicks: 0, scrolls: 0, stoppedBecause: "aborted" });
   });
 
   it("stops at maxClicks", async () => {
     const result = await expandAll(root(), { ...FAST, maxClicks: 1 });
-    expect(result).toEqual({ clicks: 1, stoppedBecause: "max-clicks" });
+    expect(result).toEqual({ clicks: 1, scrolls: 0, stoppedBecause: "max-clicks" });
+  });
+
+  it("scrolls to load more comments when no button is left (dialogs load on scroll)", async () => {
+    // Fake Facebook: scrolling the last comment into view appends one more comment, twice.
+    let batches = 2;
+    const list = document.querySelector("ul")!;
+    const proto = Element.prototype as Element & { scrollIntoView: (arg?: unknown) => void };
+    const original = proto.scrollIntoView;
+    proto.scrollIntoView = function (this: Element) {
+      if (this.getAttribute("role") !== "article" || batches === 0) return;
+      batches--;
+      const li = document.createElement("li");
+      li.innerHTML = `<div role="article" aria-label="Kommentar fra Ny Person for 1 minutt siden"><a href="https://www.facebook.com/groups/123/posts/555/?comment_id=9${batches}">1 min</a><div dir="auto">.</div></div>`;
+      list.appendChild(li);
+    };
+    const clicked: string[] = [];
+    document.querySelectorAll("[role='button']").forEach((el) => {
+      el.addEventListener("click", () => clicked.push(el.textContent?.trim() ?? ""));
+    });
+    try {
+      const result = await expandAll(root(), { ...FAST, idleRounds: 2 });
+      expect(result.scrolls).toBe(2);
+      expect(result.stoppedBecause).toBe("done");
+      expect(clicked.sort()).toEqual(["Se mer", "Vis 2 flere svar", "Vis flere kommentarer"]);
+    } finally {
+      proto.scrollIntoView = original;
+    }
   });
 });
 
@@ -91,6 +118,15 @@ describe("extractCapture", () => {
     expect(post.text).toBe("Auksjon! Slutter søndag kl 20:00.\nSoft close 5 min. Minstebud 50 kr, budøkning 10 kr.");
     expect(post.timeText).toBe("2 t");
     expect(post.images.map((i) => i.src)).toEqual(["https://scontent.example/overview1.jpg"]);
+  });
+
+  it("takes the post author from the member profile link, not a group-name heading", () => {
+    // Real group posts: the h3 heading links to the group, the poster is a /groups/<id>/user/<id>/ link.
+    const heading = root().querySelector("h2")!;
+    heading.outerHTML =
+      '<h3><a href="/groups/123/">Testgruppe - Kjøp/selg</a></h3>' +
+      '<span><a href="/groups/123/user/900/">Selger Testesen</a></span>';
+    expect(capture().post.author).toBe("Selger Testesen");
   });
 
   it("reads top-level comments as lot candidates (image) or chatter (no image)", () => {
@@ -132,6 +168,7 @@ describe("extractCapture", () => {
   it("reports stats", () => {
     expect(capture().stats).toEqual({
       expandClicks: 2,
+      expandScrolls: 0,
       expandStoppedBecause: "done",
       topLevelComments: 3,
       commentsWithImage: 2,

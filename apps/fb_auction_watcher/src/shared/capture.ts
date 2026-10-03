@@ -42,6 +42,8 @@ export type CapturedPost = {
 
 export type CaptureStats = {
   expandClicks: number;
+  /** Scrolls that loaded more comments (dialogs load comments on scroll, not by button). */
+  expandScrolls: number;
   expandStoppedBecause: string;
   topLevelComments: number;
   commentsWithImage: number;
