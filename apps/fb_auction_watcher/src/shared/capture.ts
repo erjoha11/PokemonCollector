@@ -42,6 +42,8 @@ export type CapturedPost = {
 
 export type CaptureStats = {
   expandClicks: number;
+  /** Scrolls that loaded more comments (dialogs load comments on scroll, not by button). */
+  expandScrolls: number;
   expandStoppedBecause: string;
   topLevelComments: number;
   commentsWithImage: number;
@@ -63,4 +65,12 @@ export type PostCapture = {
   comments: CapturedComment[];
   stats: CaptureStats;
   warnings: string[];
+  /**
+   * Set on stored captures (src/domain/captures.ts): when the last *complete* read happened
+   * (all comments loaded, sorted by "All comments"). Reads are merged, so `capturedAt` is the
+   * latest read of any kind; decisions like "Won" need a complete one.
+   */
+  completeAt?: string | null;
+  /** How many reads were merged into this capture. */
+  reads?: number;
 };

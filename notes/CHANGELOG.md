@@ -51,6 +51,31 @@ yet.
   and `non_holo` -> `normal`.
 - `.github/pull_request_template.md` carries the Definition of Done.
 
+### fb_auction_watcher
+
+**Overview of the group's sales, Claude via `claude -p`, review fixes (#285)**
+- Builds on the scaffold + module 1 spike (read one post to JSON, #284).
+- Feed scans record posts as Facebook's virtualized feed renders them
+  (New posts sort, "Se mer" opened on sales), from the toolbar menu or
+  automatically every 10-15 min in a pinned feed tab (off by default).
+- Post reads sort comments by "All comments", click allowlisted expanders,
+  and re-read auctions you're in every 15 min plus once after the end.
+  Reads are merged by comment/reply ID, never replaced.
+- Rule-based interpretation in `src/domain/`: amounts, Oslo end times, sale
+  type from the template headline, lots and bids (placement order by reply
+  ID, seller never bids), claims, and your status.
+- Claude without an API key: a native-messaging bridge
+  (`native/fbaw_claude_host.py`) runs `claude -p` on the user's own login
+  with no tools, MCP or user settings, for free-text end times, odd bids and
+  claim-lot photos.
+- Overview page (`dashboard.html`): My Auctions at the top, sales grouped by
+  end time with countdowns, Leading / "Leading?" / Outbid / Won / Lost /
+  Check, claim lots with what's still for sale.
+- One Facebook slot: scans, post reads and menu actions never talk to
+  Facebook at the same time.
+- Review fixes H1-H6, M1, M3, M5, M6 (partly), M7, L1, L3, L10-L12, L14,
+  L16-L18. Still open: M2, M6 (retention), M8 (service worker/store tests).
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**

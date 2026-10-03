@@ -4,7 +4,8 @@ import { defineConfig } from "vite";
 const src = (path: string) => fileURLToPath(new URL(`./src/${path}`, import.meta.url));
 
 // Two passes into the same dist/ (see package.json "build"): content scripts can't be
-// ES modules, so they're built as a self-contained IIFE; the service worker is an ES module.
+// ES modules, so they're built as a self-contained IIFE; the service worker and the extension
+// pages (dashboard.html in public/ loads dashboard.js) are ES modules sharing chunks.
 export default defineConfig(({ mode }) => {
   const content = mode === "content";
   return {
@@ -23,9 +24,13 @@ export default defineConfig(({ mode }) => {
             fileName: () => "content-post.js",
           }
         : {
-            entry: src("background/index.ts"),
+            entry: {
+              background: src("background/index.ts"),
+              dashboard: src("pages/dashboard/main.ts"),
+              popup: src("pages/popup/main.ts"),
+            },
             formats: ["es"],
-            fileName: () => "background.js",
+            fileName: (_format, name) => `${name}.js`,
           },
     },
   };

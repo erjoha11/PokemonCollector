@@ -2,7 +2,7 @@
 
 Chrome extension (Manifest V3) that gives a read-only overview of auctions in a Facebook buy/sell group for Pokémon cards: every sale sorted by end time, with live countdowns and Leading/Outbid status on lots you've bid on.
 
-**Status:** module 1 (spike) built: reads one open post and exports it as raw JSON. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
+**Status:** the overview works: feed scans (by hand and automatic), post reads, your Leading/Outbid/Won status, claim sales with what's still for sale, and Claude (through your Claude Code login) for what the rules can't read. Not built yet: an overlay on the post itself and a side panel. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
 
 ## Build
 
@@ -22,12 +22,19 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-After every `npm run build`, click the reload icon on the extension's card, **and reload any open Facebook tabs**. A tab opened before the extension was (re)loaded has no content script; the icon then shows a `!` badge.
+**Clicking the icon opens a small menu**; nothing starts until you choose it there: **Read this post** (on a
+post), **Scan the feed** (on the group feed), **Open overview**, and at the bottom **Reload extension** and
+**Reload Facebook tabs**. The right-click menu has **Open overview**, **Reload extension** and **Reload
+Facebook tabs** too.
 
-## Test module 1: read one post
+After every `npm run build`: **Reload extension**, then **Reload Facebook tabs** (open tabs need the new
+content script). A new permission in the manifest needs the reload icon on the extension's card in
+`chrome://extensions` once instead. A tab opened before the extension was (re)loaded has no content script; the icon then shows a `!` badge.
+
+## Read one post (with the full panel)
 
 1. Open an auction post in the group as a single post: click the post's timestamp, or open it so it shows in a dialog.
-2. Click the extension icon. A panel appears bottom right. It first switches the comments to **All comments** / **Alle kommentarer** ("Most relevant" can hide bids), then clicks "View more comments" / "View N replies" / "See more" ("Vis flere kommentarer" / "Vis N svar" / "Se mer") one at a time with pauses. Nothing else is ever clicked. A large auction can take a few minutes. **Stop** halts it.
+2. Click the extension icon. A panel appears bottom right. It first switches the comments to **All comments** / **Alle kommentarer** ("Most relevant" can hide bids), then clicks "View more comments" / "View N replies" / "See more" ("Vis flere kommentarer" / "Vis N svar" / "Se mer") one at a time with pauses, and scrolls down the comments when Facebook loads more on scroll instead of with a button. Nothing else is ever clicked. A large auction can take a few minutes. **Stop** halts it.
 3. When it's done, the panel shows counts and warnings, plus:
    - **Download JSON**: the raw capture (post, top-level comments with image flag, replies nested under each).
    - **Download HTML snapshot**: the post's DOM as rendered, as a sample for `samples/`.
@@ -43,8 +50,107 @@ Check against what you see on Facebook:
 
 Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/samples/` (gitignored). **Never commit them**: they contain other people's names and comments.
 
-## What module 1 does not do
+## The overview
 
-- No interpretation: no amounts, bid validity, or end times. That's module 3.
-- No storage, no feed scan, no dashboard.
+**My Auctions** at the top lists every sale you're bidding or claiming in, soonest ending first, with
+your lots (photo, your bid vs the highest, or what you claimed) and their status: **Leading** (blue),
+**Outbid** (orange), **Won** (green), **Check** (orange: someone claimed the same card first). Finished
+ones fold into **Ended**. Below it are the counters and the full table. Clicking a row shows or hides its lots; clicking a sale's
+name opens the post on Facebook in a new tab and reads it quietly there.
+
+**Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
+auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
+and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
+the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
+Claude filled in. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
+("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
+small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
+saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and
+the overview row says **Just read**. Ctrl/Cmd-click just opens the post. **My bids** filters to sales you're
+bidding in.
+
+**Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the
+icon (it reads every comment and reply).
+The overview then shows its lots and bids, and **Leading / Outbid** per lot (blue / orange edge on the
+row; **Your lots** expands them). Rules: a lot is a comment with a photo from the seller; bids are replies
+to it, in the order they were placed; the seller's own replies never count; a bid has to beat the highest
+by the increment; bids placed under another reply (e.g. under the seller's photo) are shown but not
+counted, since sellers reject them. Set your Facebook name under **Settings** if it isn't Erik Johansen.
+Each read of a post is merged with the earlier ones, so a read that missed comments (a background tab, the
+time limit) never hides a bid already seen; the row then says **partial read** with when the last full
+read was. **Won**/**Lost** only show after a full read made after the auction ended.
+
+**Claim sales and fixed price:** replies are read as claims ("claim Persian og Clefairy", "<seller>
+marowak og feraligatr", "claim alle"). First to claim a card gets it: you get **Won** when nobody claimed
+the same card (or everything) before you, and **Check** when someone was earlier. For lots you've claimed
+on, and then every other lot in the sale, Claude reads the photo (prices are usually written on it) and
+the replies: every card, its price, and who claimed it first. The overview shows what you won and for how
+much ("You won 2 · 400 kr"), and per lot which cards are taken (crossed out) and which are still for sale
+("4 of 8 available"); a lot stays open until every card is claimed ("Sold out").
+A "." is someone following the lot, not a claim. Click any photo for a bigger picture; **← / →** (or the
+‹ › buttons) go to the previous / next lot's photo in that sale.
+
+Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
+it every time it loads, so improved rules apply to old posts too.
+
+## Automatic scan
+
+Under **Settings** in the overview: **Scan the feed automatically every 10–15 min**. It needs a **pinned**
+tab with the group's feed (right-click the tab → Pin). Every 10–15 min (±20 %) it loads that tab's group
+feed sorted by **New posts** (`?sorting_setting=CHRONOLOGICAL`, whatever sort the tab had) in the background, saves the newest posts and opens their "Se mer", and stops once it reaches posts it already
+has. While it's on, auctions you're bidding in are also re-read every 15 min in a background tab that
+opens and closes by itself, one at a time and never during a feed scan. It never uses more than one tab
+at a time, skips a round while your screen is locked, you're
+away, or you're looking at that tab, and is off until you switch it on. A background tab only shows the
+first few posts, so if more were posted than that since the last round, the status says so: open the
+feed tab and click the icon to catch up.
+
+## Claude for what the rules can't read
+
+End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers
+("200 sorry mente 250", "580?") are sent to **Claude Code** on this Mac (`claude -p`, your own Claude login,
+no API key), batched, the smallest model (Haiku), no tools, each answer cached so it's asked only once.
+Claim lots you've claimed on go one at a time with their full-size photo to Sonnet, which reads prices on
+photos reliably (Haiku misread one on a real lot); the bridge downloads photos only from Facebook's CDN. The
+extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
+which only passes the text to `claude -p` and the answer back.
+
+One-time setup:
+
+```bash
+apps/fb_auction_watcher/native/install.sh            # or: install.sh <extension ID from chrome://extensions>
+apps/fb_auction_watcher/native/install.sh --uninstall
+```
+
+It writes one file, `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.erjoha.fbaw.claude.json`,
+telling Chrome where the script is and that only this extension may start it. Claude runs with no tools, no
+MCP servers or connectors and no user settings, so text in a Facebook post can't make it do anything but answer.
+
+**What Claude gets:** the text of posts and replies (including commenters' names) and lot photos, from posts
+you've scanned or read. It's **on by default**; switch it off under **Settings** in the overview, and those
+items just stay marked unsure ("Leading?" where a reply couldn't be read). `npm run eval:claude` checks the
+prompts on `src/llm/cases.ts` through the real bridge (uses your Claude plan).
+
+## Scan the feed
+
+Open the group's feed (no post open) and click the extension icon. If the feed isn't sorted by **New
+posts**, the extension reloads it that way first (`?sorting_setting=CHRONOLOGICAL`). It then scrolls the
+feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
+screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is
+saved. Those are its only clicks. It stops when it reaches 5 posts in a row that an earlier scan
+already saved ("caught up"), at the end of what the feed loads, after 150 posts, or when you press
+**Stop scan**. Posts are saved as it goes, so the overview fills in while it runs.
+
+Start from the top of the feed (reload the tab) to pick up the newest posts. Keep the Facebook tab
+visible while it scans: Chrome barely runs background tabs, so the scan **pauses** while the tab is
+hidden and continues when you come back. To watch the overview at the same time, open it in a
+separate window.
+
+**Download feed sample** saves everything scanned so far as one HTML file. Move it to `samples/`
+like the others, and never commit it.
+
+## What it doesn't do (yet)
+
+- No overlay on the Facebook post itself, and no side panel (modules 6–7 in the spec).
 - No absolute timestamps: Facebook shows relative ones ("2 t") and only shows the exact time on hover, which the extension doesn't do.
+- No notifications.

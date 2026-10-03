@@ -4,8 +4,19 @@
   "short_name": "Auction Watcher",
   "version": "0.1.0",
   "description": "Read-only overview of auctions in a Facebook buy/sell group.",
+  "permissions": [
+    "alarms",
+    "contextMenus",
+    "idle",
+    "nativeMessaging",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://www.facebook.com/*"
+  ],
   "action": {
-    "default_title": "FB Auction Watcher: read this post"
+    "default_title": "FB Auction Watcher",
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js",
@@ -13,8 +24,12 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.facebook.com/*"],
-      "js": ["content-post.js"],
+      "matches": [
+        "https://www.facebook.com/*"
+      ],
+      "js": [
+        "content-post.js"
+      ],
       "run_at": "document_idle"
     }
   ]

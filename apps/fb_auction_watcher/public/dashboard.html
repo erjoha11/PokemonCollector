@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auction overview</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <header>
+    <div class="top">
+      <h1>Auction overview</h1>
+      <span id="last-read" class="muted"></span>
+    </div>
+    <section id="my-auctions" class="mine-panel" aria-labelledby="mine-title">
+      <div class="mine-head">
+        <h2 id="mine-title">My Auctions</h2>
+        <div id="mine-summary" class="mine-summary"></div>
+      </div>
+      <div id="mine-list" class="mine-list"></div>
+      <details id="mine-ended" class="mine-ended" hidden>
+        <summary>Ended <span id="mine-ended-count" class="group-count"></span></summary>
+        <div id="mine-ended-list" class="mine-list"></div>
+      </details>
+    </section>
+    <div class="counters">
+      <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
+      <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
+      <div class="counter outbid" title="Sales where you've been outbid on at least one lot (from posts you've read)"><span id="count-outbid" class="num">–</span><span class="label">Outbid</span></div>
+      <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
+    </div>
+    <div class="controls">
+      <div class="filters" role="group" aria-label="Filter by type">
+        <button type="button" data-filter="all">All</button>
+        <button type="button" data-filter="auction">Auction</button>
+        <button type="button" data-filter="claim">Claim</button>
+        <button type="button" data-filter="fixed">Fixed price</button>
+        <button type="button" data-filter="mine">My bids</button>
+      </div>
+      <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
+    </div>
+    <details class="settings">
+      <summary>Settings</summary>
+      <div class="setting">
+        <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
+        <div id="auto-scan-status" class="muted small"></div>
+        <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab. While it's on, auctions you're bidding in are also re-read in the background every 15 min.</div>
+      </div>
+      <div class="setting">
+        <label>Post reads</label>
+        <div id="reader-status" class="muted small"></div>
+        <div class="muted small">Clicking a sale's title opens the post and reads its bids quietly in that tab (no panel). Automatic re-reads use a background tab that opens and closes by itself, one post at a time.</div>
+      </div>
+      <div class="setting">
+        <label><input id="use-claude" type="checkbox"> Ask Claude about what the rules can't read</label>
+        <div id="claude-status" class="muted small"></div>
+      </div>
+      <div class="setting">
+        <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
+        <input id="my-name" type="text" autocomplete="off">
+      </div>
+    </details>
+  </header>
+  <main id="groups"></main>
+  <dialog id="photo" aria-label="Photo">
+    <button type="button" class="photo-close" aria-label="Close">×</button>
+    <button type="button" class="photo-nav prev" data-step="prev" aria-label="Previous lot">‹</button>
+    <button type="button" class="photo-nav next" data-step="next" aria-label="Next lot">›</button>
+    <img alt="" referrerpolicy="no-referrer">
+    <div class="photo-caption"></div>
+  </dialog>
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>

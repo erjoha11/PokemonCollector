@@ -1,4 +1,5 @@
 import type { PostCapture } from "../../shared/capture";
+import type { ScanProgress, ScanResult } from "../feed/scan";
 
 // Small status panel for the module 1 spike, in a Shadow DOM so Facebook's CSS can't
 // reach it (and ours can't reach Facebook). Its buttons act only on the extension itself.
@@ -34,6 +35,10 @@ export type Panel = {
   onStop(handler: () => void): void;
   showResult(capture: PostCapture, snapshotHtml: string): void;
   showError(text: string): void;
+  /** Feed recording mode; `sampleHtml` builds the download from everything recorded so far. */
+  showFeedRecorder(sampleHtml: () => string, openOverview: () => void): void;
+  setScanProgress(progress: ScanProgress): void;
+  showScanDone(result: ScanResult): void;
 };
 
 function download(filename: string, content: string, type: string) {
@@ -95,12 +100,12 @@ export function showPanel(): Panel {
     showResult(capture, snapshotHtml) {
       stop.remove();
       const s = capture.stats;
-      status.textContent = "Done. Only clicked: comment sort, more comments/replies, See more.";
+      status.textContent = "Done. Only clicked: comment sort, more comments/replies, See more. Scrolled to load comments.";
       const stats = document.createElement("p");
       stats.className = "stats";
       stats.textContent = [
         `Comment sort:     ${capture.commentSortLabel ?? "not found"} (${capture.commentSortAction})`,
-        `Expand clicks:    ${s.expandClicks} (${s.expandStoppedBecause})`,
+        `Expand clicks:    ${s.expandClicks}, scrolls: ${s.expandScrolls} (${s.expandStoppedBecause})`,
         `Comments:         ${s.topLevelComments}`,
         `  with image:     ${s.commentsWithImage}  (lot candidates)`,
         `Replies:          ${s.replies}`,
@@ -128,6 +133,48 @@ export function showPanel(): Panel {
       html.title = "The post's DOM as rendered now, for samples/. Contains other people's names: never commit it.";
       html.addEventListener("click", () => download(`${stem}.html`, snapshotHtml, "text/html"));
       buttons.prepend(json, html);
+    },
+    showFeedRecorder(sampleHtml, openOverview) {
+      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: scan feed";
+      stop.textContent = "Stop scan";
+      status.textContent = "Scanning…";
+      const hint = document.createElement("p");
+      hint.textContent =
+        "Scrolling the feed slowly and saving each post to the overview. Clicks only \"Se mer\" on auction and claim-sale posts. Leave this tab alone until it's done, or press Stop. The download contains other people's names: keep it in samples/, never commit it.";
+      body.replaceChildren(hint);
+      const html = document.createElement("button");
+      html.type = "button";
+      html.className = "primary";
+      html.textContent = "Download feed sample";
+      html.addEventListener("click", () => {
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        download(`fbaw-feed-${stamp}.html`, sampleHtml(), "text/html");
+      });
+      const overview = document.createElement("button");
+      overview.type = "button";
+      overview.className = "primary";
+      overview.textContent = "Open overview";
+      overview.addEventListener("click", openOverview);
+      html.className = "";
+      buttons.prepend(overview, html);
+    },
+    setScanProgress({ posts, scrolls, seeMoreClicks, paused }) {
+      status.textContent = paused
+        ? `Paused while this tab is in the background (${posts} posts so far). Come back to this tab to continue.`
+        : `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
+    },
+    showScanDone({ posts, scrolls, seeMoreClicks, stoppedBecause }) {
+      stop.remove();
+      const why: Record<ScanResult["stoppedBecause"], string> = {
+        "caught-up": "caught up: reached posts saved in an earlier scan",
+        hidden: "the tab went to the background",
+        "end-of-feed": "reached the end of what the feed loads",
+        "max-posts": "reached the post limit",
+        "max-scrolls": "reached the scroll limit",
+        aborted: "stopped",
+        "dialog-opened": "stopped: a \"Se mer\" click opened a dialog instead of expanding the text",
+      };
+      status.textContent = `Done (${why[stoppedBecause]}): ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
     },
     showError(text) {
       stop.remove();

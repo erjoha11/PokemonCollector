@@ -25,10 +25,22 @@ const BLOCK_TAGS = new Set(["DIV", "P", "LI", "UL", "OL", "H1", "H2", "H3", "H4"
 /** Images smaller than this are avatars, emoji, or icons rather than photos. */
 const MIN_PHOTO_PX = 64;
 
-/** The post being read: a post opened from the feed renders in a dialog, a permalink page in main. */
+/**
+ * Marks a post's own parts. A post always has these; comments (role="article") it may not have,
+ * so a dialog must be recognized by these, or a post with no comments is missed.
+ */
+const POST_MARK = "[data-ad-rendering-role='story_message'], [data-ad-preview='message'], [data-ad-comet-preview='message']";
+
+/** A dialog holding a post (Facebook opens posts in a dialog, even from a direct link). */
+export function findPostDialog(doc: Document): Element | null {
+  const dialogs = Array.from(doc.querySelectorAll("[role='dialog']")).filter((d) => d.querySelector(`${POST_MARK}, ${ARTICLE}`));
+  return dialogs[dialogs.length - 1] ?? null;
+}
+
+/** The post being read: the dialog it's opened in, else main on a /posts/<id> or /permalink/<id> page. */
 export function findPostRoot(doc: Document): Element | null {
-  const dialogs = Array.from(doc.querySelectorAll("[role='dialog']")).filter((d) => d.querySelector(ARTICLE));
-  if (dialogs.length > 0) return dialogs[dialogs.length - 1];
+  const dialog = findPostDialog(doc);
+  if (dialog) return dialog;
   if (isSinglePostUrl(doc.location?.href ?? "")) return doc.querySelector("[role='main']");
   return null;
 }
@@ -147,6 +159,7 @@ function readPost(root: Element, commentArticles: Element[], pageUrl: string): C
 
   const message =
     Array.from(root.querySelectorAll("[data-ad-preview='message'], [data-ad-comet-preview='message']")).find(owns) ??
+    Array.from(root.querySelectorAll("[data-ad-rendering-role='story_message']")).find(owns) ??
     null;
   let text = message ? collectText(message) : "";
   if (!text) {
@@ -155,9 +168,13 @@ function readPost(root: Element, commentArticles: Element[], pageUrl: string): C
     text = blocks.map((b) => collectText(b)).sort((a, b) => b.length - a.length)[0] ?? "";
   }
 
-  const headingLink = Array.from(root.querySelectorAll("h2 a, h3 a, h4 a")).find(
-    (a) => owns(a) && normalize(a.textContent) !== "",
-  );
+  // The poster's group-member profile link (/groups/<group>/user/<id>/). On real group posts
+  // the h3 heading link is the group name, so headings are only a fallback.
+  const hasText = (a: Element) => owns(a) && normalize(a.textContent) !== "";
+  const authorLink =
+    Array.from(root.querySelectorAll("a[href*='/user/']")).find(
+      (a) => hasText(a) && /\/groups\/[^/]+\/user\/\d+/.test(a.getAttribute("href") ?? ""),
+    ) ?? Array.from(root.querySelectorAll("h2 a, h3 a, h4 a")).find(hasText);
   const postLink = Array.from(root.querySelectorAll("a[href*='/posts/'], a[href*='/permalink/']")).find(
     (a) => owns(a) && commentIdsFromHref(a.getAttribute("href")).commentId === null,
   );
@@ -167,7 +184,7 @@ function readPost(root: Element, commentArticles: Element[], pageUrl: string): C
 
   return {
     url: pageUrl,
-    author: headingLink ? collectText(headingLink) || null : null,
+    author: authorLink ? collectText(authorLink) || null : null,
     text,
     timeText: postLink ? collectText(postLink) || postLink.getAttribute("aria-label") : null,
     images: photoImages(root, owns),
@@ -179,6 +196,7 @@ export type ExtractContext = {
   pageUrl: string;
   pageLang: string;
   expandClicks: number;
+  expandScrolls?: number;
   expandStoppedBecause: string;
   commentSortAction: SortAction;
   now?: Date;
@@ -254,6 +272,7 @@ export function extractCapture(root: Element, ctx: ExtractContext): PostCapture 
     comments,
     stats: {
       expandClicks: ctx.expandClicks,
+      expandScrolls: ctx.expandScrolls ?? 0,
       expandStoppedBecause: ctx.expandStoppedBecause,
       topLevelComments: comments.length,
       commentsWithImage: comments.filter((c) => c.hasImage).length,
