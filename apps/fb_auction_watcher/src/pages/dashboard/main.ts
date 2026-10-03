@@ -149,26 +149,33 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
   return td;
 }
 
-/** Clicking a row (not its links, photos or buttons) shows or hides its lots. */
-function makeExpandable(tr: HTMLTableRowElement, id: string) {
+/**
+ * Clicking a folded row opens the post in a new tab (read quietly) and expands its lots;
+ * clicking an expanded row just folds it. Links, photos and buttons inside keep their own behaviour.
+ */
+function makeClickable(tr: HTMLTableRowElement, r: Row) {
+  const open = expanded.has(r.id);
   tr.classList.add("expandable");
   tr.tabIndex = 0;
-  tr.setAttribute("aria-expanded", String(expanded.has(id)));
-  tr.title = expanded.has(id) ? "Click to hide the lots" : "Click to show the lots";
-  const toggle = () => {
-    if (expanded.has(id)) expanded.delete(id);
-    else expanded.add(id);
-    render();
+  tr.setAttribute("aria-expanded", String(open));
+  tr.title = open ? "Click to hide the lots" : "Click to open the post and show its lots";
+  const act = () => {
+    if (expanded.has(r.id)) {
+      expanded.delete(r.id);
+      render();
+    } else {
+      openSale(r);
+    }
   };
   tr.addEventListener("click", (e) => {
     if ((e.target as Element).closest("a, button, img, input, summary")) return;
     if (window.getSelection()?.toString()) return; // Selecting text isn't a click.
-    toggle();
+    act();
   });
   tr.addEventListener("keydown", (e) => {
     if (e.target === tr && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
-      toggle();
+      act();
     }
   });
 }
@@ -179,21 +186,31 @@ function titleLink(r: Row): HTMLAnchorElement {
   a.href = r.url;
   a.target = "_blank";
   a.rel = "noopener";
-  a.title = "Open the post and read its bids quietly (Ctrl/Cmd-click: just open it)";
+  a.title = "Open the post, read its bids and show its lots (Ctrl/Cmd-click: just open it)";
   // A plain click opens the post and reads it silently in that tab; the row updates when done.
   a.addEventListener("click", (e) => {
     if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    const msg: QueueReadMessage = { type: MSG_QUEUE_READ, postId: r.id, url: r.url };
-    justClicked.add(r.id); // Shows "Reading…" until the worker's state catches up.
-    setTimeout(() => {
-      justClicked.delete(r.id); // The worker never picked it up: don't show "Reading…" forever.
-      render();
-    }, 60_000);
-    render();
-    void chrome.runtime.sendMessage(msg).catch(() => {});
+    e.stopPropagation(); // The row would do the same again.
+    openSale(r);
   });
   return a;
+}
+
+/**
+ * Opens the post in a new tab, reads it quietly there, and expands its lots in the table
+ * (right away if it has been read before, otherwise as soon as the read is saved).
+ */
+function openSale(r: Row) {
+  const msg: QueueReadMessage = { type: MSG_QUEUE_READ, postId: r.id, url: r.url };
+  expanded.add(r.id);
+  justClicked.add(r.id); // Shows "Reading…" until the worker's state catches up.
+  setTimeout(() => {
+    justClicked.delete(r.id); // The worker never picked it up: don't show "Reading…" forever.
+    render();
+  }, 60_000);
+  render();
+  void chrome.runtime.sendMessage(msg).catch(() => window.open(r.url, "_blank", "noopener"));
 }
 
 /** The title, plus "Reading…" while the post is being read. */
@@ -301,6 +318,20 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
   youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
   return [lotsTd, youTd];
+}
+
+/** Expanded before there are lots to show: say why. */
+function pendingLotsRow(r: Row, columns: number): HTMLTableRowElement {
+  const tr = el("tr", "lots-row");
+  const td = el("td", "muted small");
+  td.colSpan = columns;
+  td.textContent = readState(r.id)
+    ? "Reading the post… its lots show up here when it's done."
+    : r.lots
+      ? "No lots found in this post (a lot is a comment with a photo from the seller)."
+      : "Not read yet. Click the row to fold it, then again to open and read the post.";
+  tr.append(td);
+  return tr;
 }
 
 /** The expanded lots: yours when you have bids, else all; image, highest bid, your bid, status. */
@@ -556,12 +587,12 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.s
       else if (r.summary?.claimed || (r.ended && r.summary?.lead)) tr.classList.add("mine-won");
       else if (r.summary?.lead) tr.classList.add("mine-lead");
       tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), priceCell(r), ...statusCells(r, now));
-      if (r.lots && r.lots.length > 0) makeExpandable(tr, r.id);
+      makeClickable(tr, r);
       const seen = el("td", "seen", ago(r.lastSeenAt, now));
       seen.title = `First seen ${new Date(r.firstSeenAt).toLocaleString("en-GB")}`;
       tr.append(seen);
       table.tBodies[0].append(tr);
-      if (expanded.has(r.id) && r.lots) table.tBodies[0].append(lotsRow(r, headers.length));
+      if (expanded.has(r.id)) table.tBodies[0].append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
     }
     wrap.append(table);
     if (wrap !== section) section.append(wrap);

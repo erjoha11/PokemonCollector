@@ -48,7 +48,9 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 **My Auctions** at the top lists every sale you're bidding or claiming in, soonest ending first, with
 your lots (photo, your bid vs the highest, or what you claimed) and their status: **Leading** (blue),
 **Outbid** (orange), **Won** (green), **Check** (orange: someone claimed the same card first). Finished
-ones fold into **Ended**. Below it are the counters and the full table; click a row to show its lots.
+ones fold into **Ended**. Below it are the counters and the full table. Clicking a row (or its title) opens the post in a new tab,
+reads it quietly there, and expands the row's lots (as soon as the read is saved, if it's new); clicking an
+expanded row folds it again.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
