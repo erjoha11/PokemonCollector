@@ -83,7 +83,8 @@ on, and then every other lot in the sale, Claude reads the photo (prices are usu
 the replies: every card, its price, and who claimed it first. The overview shows what you won and for how
 much ("You won 2 · 400 kr"), and per lot which cards are taken (crossed out) and which are still for sale
 ("4 of 8 available"); a lot stays open until every card is claimed ("Sold out").
-A "." is someone following the lot, not a claim. Click any photo for a bigger picture.
+A "." is someone following the lot, not a claim. Click any photo for a bigger picture; **← / →** (or the
+‹ › buttons) go to the previous / next lot's photo in that sale.
 
 Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
 it every time it loads, so improved rules apply to old posts too.

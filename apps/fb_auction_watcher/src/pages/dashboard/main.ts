@@ -221,7 +221,8 @@ function saleCell(r: Row): HTMLTableCellElement {
     img.alt = "";
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";
-    zoomable(img, r.title);
+    // From the sale's thumbnail, ← / → go on through its lots.
+    zoomable(img, [{ src: img.src, caption: r.title }, ...lotPhotos(r.lots ?? [])], 0);
     wrap.append(img);
   }
   const box = el("div", "sale-text");
@@ -241,25 +242,46 @@ function visiblePostIds(): string[] {
     .map((v) => v.postId);
 }
 
-/** A bigger view of a photo: click a thumbnail or a lot image; Esc, click or × closes it. */
-function showPhoto(src: string, caption: string) {
+/** A photo in the viewer, and the group it belongs to (a sale's lots), for ← / →. */
+type Photo = { src: string; caption: string };
+let gallery: Photo[] = [];
+let galleryIndex = 0;
+
+/** A bigger view of a photo; ← / → (or ‹ ›) step through its group; Esc, × or a click outside closes it. */
+function showPhoto(photos: Photo[], index: number) {
+  gallery = photos;
+  galleryIndex = index;
   const dialog = $<HTMLDialogElement>("#photo");
+  const photo = photos[index];
   const img = dialog.querySelector("img")!;
-  img.src = src;
-  img.alt = caption;
-  dialog.querySelector(".photo-caption")!.textContent = caption;
-  dialog.showModal();
+  img.src = fullSizePhoto(photo.src);
+  img.alt = photo.caption;
+  dialog.querySelector(".photo-caption")!.textContent =
+    photos.length > 1 ? `${photo.caption} · ${index + 1} / ${photos.length}` : photo.caption;
+  dialog.querySelectorAll<HTMLButtonElement>(".photo-nav").forEach((b) => (b.hidden = photos.length < 2));
+  if (!dialog.open) dialog.showModal();
 }
 
-function zoomable(img: HTMLImageElement, caption: string) {
+function stepPhoto(delta: number) {
+  if (gallery.length < 2) return;
+  showPhoto(gallery, (galleryIndex + delta + gallery.length) % gallery.length);
+}
+
+/** The photos of a sale's lots (those that have one), in order. */
+function lotPhotos(lots: Lot[]): Photo[] {
+  return lots.filter((l) => l.imageUrl).map((l) => ({ src: l.imageUrl!, caption: `${l.position}. ${l.title}` }));
+}
+
+/** Makes a photo open in the viewer, at `index` within `photos`. */
+function zoomable(img: HTMLImageElement, photos: Photo[], index: number) {
   img.classList.add("zoomable");
   img.tabIndex = 0;
-  img.title = "Click for a bigger picture";
-  img.addEventListener("click", () => showPhoto(fullSizePhoto(img.src), caption));
+  img.title = photos.length > 1 ? "Click for a bigger picture (← / → for the other lots)" : "Click for a bigger picture";
+  img.addEventListener("click", () => showPhoto(photos, index));
   img.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      showPhoto(fullSizePhoto(img.src), caption);
+      showPhoto(photos, index);
     }
   });
 }
@@ -343,6 +365,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         ? mine
         : (r.lots ?? []);
   const list = el("div", "lot-list");
+  const photos = lotPhotos(lots);
   for (const l of lots) {
     const isClaims = r.type === "claim" || r.type === "fixed";
     const won = isClaims ? l.myClaim === "claimed" : r.ended && l.myStatus === "lead";
@@ -353,7 +376,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       img.alt = "";
       img.loading = "lazy";
       img.referrerPolicy = "no-referrer";
-      zoomable(img, `${l.position}. ${l.title}`);
+      zoomable(img, photos, photos.findIndex((p) => p.src === l.imageUrl));
       item.append(img);
     }
     const body = el("div", "lot-body");
@@ -434,7 +457,7 @@ const mineCount = (r: Row) => (r.summary ? r.summary.lead + r.summary.outbid + r
 const myLots = (r: Row) => (r.lots ?? []).filter((l) => l.myStatus !== "none" || l.myClaim !== "none");
 
 /** One of your lots, compact: photo, name, your bid vs the highest (or what you claimed), status. */
-function myLotChip(r: Row, l: Lot): HTMLDivElement {
+function myLotChip(r: Row, l: Lot, photos: Photo[]): HTMLDivElement {
   const chip = el("div", "mine-lot");
   if (l.imageUrl) {
     const img = el("img");
@@ -442,7 +465,7 @@ function myLotChip(r: Row, l: Lot): HTMLDivElement {
     img.alt = "";
     img.loading = "lazy";
     img.referrerPolicy = "no-referrer";
-    zoomable(img, `${l.position}. ${l.title}`);
+    zoomable(img, photos, photos.findIndex((p) => p.src === l.imageUrl));
     chip.append(img);
   }
   const text = el("div");
@@ -491,7 +514,8 @@ function myAuctionCard(r: Row, now: Date): HTMLDivElement {
   if (r.lastReadAt) head.append(el("span", "muted small", `read ${ago(r.lastReadAt, now)}`));
   card.append(head);
   const list = el("div", "mine-lots");
-  for (const l of lots) list.append(myLotChip(r, l));
+  const photos = lotPhotos(lots);
+  for (const l of lots) list.append(myLotChip(r, l, photos));
   card.append(list);
   return card;
 }
@@ -561,12 +585,7 @@ function render() {
   $("#count-outbid").textContent = String(counts.outbid);
   $("#count-new").textContent = String(counts.isNew);
   $("#last-read").textContent = lastFeedReadAt ? `Feed last read ${ago(lastFeedReadAt, now)}` : "Feed not read yet";
-  {
-  const dialog = $<HTMLDialogElement>("#photo");
-  // A click anywhere (on the backdrop, the photo or ×) closes it; Esc is built in.
-  dialog.addEventListener("click", () => dialog.close());
-}
-document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
+  document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
   renderSettings(now);
   renderMine(now);
 
@@ -621,8 +640,21 @@ function tick() {
 
 {
   const dialog = $<HTMLDialogElement>("#photo");
-  // A click anywhere (on the backdrop, the photo or ×) closes it; Esc is built in.
-  dialog.addEventListener("click", () => dialog.close());
+  // ‹ › step through the sale's lots; any other click (backdrop, photo, ×) closes; Esc is built in.
+  dialog.addEventListener("click", (e) => {
+    const nav = (e.target as Element).closest<HTMLElement>(".photo-nav");
+    if (nav) stepPhoto(nav.dataset.step === "prev" ? -1 : 1);
+    else dialog.close();
+  });
+  dialog.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      stepPhoto(-1);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      stepPhoto(1);
+    }
+  });
 }
 document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) =>
   b.addEventListener("click", () => {
