@@ -34,7 +34,9 @@ export type Panel = {
   onStop(handler: () => void): void;
   showResult(capture: PostCapture, snapshotHtml: string): void;
   showError(text: string): void;
-  showFeedSnapshot(postCount: number, snapshotHtml: string): void;
+  /** Feed recording mode; `sampleHtml` builds the download from everything recorded so far. */
+  showFeedRecorder(sampleHtml: () => string): void;
+  setRecordedCount(count: number): void;
 };
 
 function download(filename: string, content: string, type: string) {
@@ -130,22 +132,25 @@ export function showPanel(): Panel {
       html.addEventListener("click", () => download(`${stem}.html`, snapshotHtml, "text/html"));
       buttons.prepend(json, html);
     },
-    showFeedSnapshot(postCount, snapshotHtml) {
-      stop.remove();
-      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: feed snapshot";
-      status.textContent = `Group feed: ${postCount} posts rendered right now.`;
+    showFeedRecorder(sampleHtml) {
+      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: record feed";
+      stop.textContent = "Stop recording";
       const hint = document.createElement("p");
       hint.textContent =
-        "Saves the feed exactly as rendered, as a sample for samples/. Scroll down slowly first to load more posts; Facebook may drop posts far above the screen. Nothing is clicked.";
+        "Scroll the feed slowly. Each post is saved as it appears, because Facebook empties posts that leave the screen. Nothing is clicked. The file contains other people's names: keep it in samples/, never commit it.";
       body.replaceChildren(hint);
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const html = document.createElement("button");
       html.type = "button";
       html.className = "primary";
-      html.textContent = "Download feed snapshot";
-      html.title = "Contains other people's names: never commit it.";
-      html.addEventListener("click", () => download(`fbaw-feed-${stamp}.html`, snapshotHtml, "text/html"));
+      html.textContent = "Download feed sample";
+      html.addEventListener("click", () => {
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        download(`fbaw-feed-${stamp}.html`, sampleHtml(), "text/html");
+      });
       buttons.prepend(html);
+    },
+    setRecordedCount(count) {
+      status.textContent = `Recording: ${count} post${count === 1 ? "" : "s"} saved.`;
     },
     showError(text) {
       stop.remove();

@@ -219,6 +219,12 @@ DOM findings from the real run (2026-10-03):
   per lot, "Antisnipe 5 min") and "Claim salg" (fixed price per lot, first to claim). Both
   use the group's template ("Sluttid:", "Betalingsalternativ:", …).
 
+- **The group feed is virtualized:** posts that scroll off screen are emptied to
+  `data-virtualized="true"` placeholders, so the DOM only ever holds the 2–3 posts near the
+  viewport. The feed reader has to record each post when it renders (MutationObserver), never
+  read the feed in one pass. The full post text is in the DOM even while Facebook shows
+  "… Se mer", so the feed reader doesn't need to click it.
+
 Findings from a busy live auction (36 lots, 264 replies) and a second claim sale, 2026-10-03:
 
 - **Reply target:** the reply's aria-label says what it answers: "Svar fra A på B sin

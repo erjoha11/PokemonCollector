@@ -43,12 +43,13 @@ Check against what you see on Facebook:
 
 Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/samples/` (gitignored). **Never commit them**: they contain other people's names and comments.
 
-## Capture a feed sample
+## Record a feed sample
 
-For building the overview's feed reader. Open the group's feed (no post open), scroll down slowly
-so a good number of posts load, then click the extension icon. The panel shows how many posts are
-rendered and a **Download feed snapshot** button. Nothing is clicked or scrolled by the extension.
-Move the file to `samples/` like the others, and never commit it.
+For building the overview's feed reader. Open the group's feed (no post open) and click the extension
+icon: the panel starts **recording**. Scroll the feed slowly; the panel counts the posts saved. Facebook
+empties posts once they leave the screen, which is why it records as you go rather than taking one
+snapshot. When you have 20–30 posts, click **Download feed sample**. Nothing is clicked or scrolled by
+the extension. Move the file to `samples/` like the others, and never commit it.
 
 ## What module 1 does not do
 

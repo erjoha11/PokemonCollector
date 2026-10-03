@@ -1,4 +1,5 @@
 import { isReadPostMessage } from "../../shared/messages";
+import { feedSampleHtml, recordFeed } from "../feed/recorder";
 import { expandAll } from "./expand";
 import { extractCapture, findPostRoot } from "./extract";
 import { showPanel } from "./panel";
@@ -9,22 +10,28 @@ import { ensureAllComments } from "./sort";
 // Those are the only clicks; nothing is ever written.
 
 let running = false;
+let activeRecorder: { stop(): void } | null = null;
 
 async function readOpenPost() {
   if (running) return;
   running = true;
+  activeRecorder?.stop();
+  activeRecorder = null;
   const panel = showPanel();
   try {
     const root = findPostRoot(document);
     if (!root) {
       const feed = document.querySelector("[role='feed']");
       if (feed) {
-        // On the group feed with no post open: offer a raw snapshot of the rendered feed, as a
-        // sample for building the feed reader. Read-only: nothing is clicked or scrolled.
-        const posts = Array.from(feed.querySelectorAll("[role='article']")).filter(
-          (a) => !a.parentElement?.closest("[role='article']"),
-        ).length;
-        panel.showFeedSnapshot(posts, `<!doctype html>\n<!-- ${location.href} -->\n${feed.outerHTML}`);
+        // On the group feed with no post open: record posts as they render while the user
+        // scrolls (Facebook empties posts that leave the screen). Observes only; no clicks.
+        const recorder = recordFeed(feed, (n) => panel.setRecordedCount(n));
+        activeRecorder = recorder;
+        panel.onStop(() => {
+          recorder.stop();
+          panel.setStatus(`Stopped: ${recorder.posts().length} posts saved. Download them below.`);
+        });
+        panel.showFeedRecorder(() => feedSampleHtml(location.href, recorder.posts()));
         return;
       }
       panel.showError("No open post found. Open a single post (click its timestamp, or open it in a dialog) and try again.");
