@@ -1,4 +1,5 @@
 import type { PostCapture } from "../../shared/capture";
+import type { ScanProgress, ScanResult } from "../feed/scan";
 
 // Small status panel for the module 1 spike, in a Shadow DOM so Facebook's CSS can't
 // reach it (and ours can't reach Facebook). Its buttons act only on the extension itself.
@@ -36,7 +37,8 @@ export type Panel = {
   showError(text: string): void;
   /** Feed recording mode; `sampleHtml` builds the download from everything recorded so far. */
   showFeedRecorder(sampleHtml: () => string): void;
-  setRecordedCount(count: number): void;
+  setScanProgress(progress: ScanProgress): void;
+  showScanDone(result: ScanResult): void;
 };
 
 function download(filename: string, content: string, type: string) {
@@ -133,11 +135,12 @@ export function showPanel(): Panel {
       buttons.prepend(json, html);
     },
     showFeedRecorder(sampleHtml) {
-      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: record feed";
-      stop.textContent = "Stop recording";
+      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: scan feed";
+      stop.textContent = "Stop scan";
+      status.textContent = "Scanning…";
       const hint = document.createElement("p");
       hint.textContent =
-        "Scroll the feed slowly. Each post is saved as it appears, because Facebook empties posts that leave the screen. Nothing is clicked. The file contains other people's names: keep it in samples/, never commit it.";
+        "Scrolling the feed slowly and saving each post. Clicks only \"Se mer\" on auction and claim-sale posts. Leave this tab alone until it's done, or press Stop. The download contains other people's names: keep it in samples/, never commit it.";
       body.replaceChildren(hint);
       const html = document.createElement("button");
       html.type = "button";
@@ -149,8 +152,19 @@ export function showPanel(): Panel {
       });
       buttons.prepend(html);
     },
-    setRecordedCount(count) {
-      status.textContent = `Recording: ${count} post${count === 1 ? "" : "s"} saved.`;
+    setScanProgress({ posts, scrolls, seeMoreClicks }) {
+      status.textContent = `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
+    },
+    showScanDone({ posts, scrolls, seeMoreClicks, stoppedBecause }) {
+      stop.remove();
+      const why: Record<ScanResult["stoppedBecause"], string> = {
+        "end-of-feed": "reached the end of what the feed loads",
+        "max-posts": "reached the post limit",
+        "max-scrolls": "reached the scroll limit",
+        aborted: "stopped",
+        "dialog-opened": "stopped: a \"Se mer\" click opened a dialog instead of expanding the text",
+      };
+      status.textContent = `Done (${why[stoppedBecause]}): ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
     },
     showError(text) {
       stop.remove();

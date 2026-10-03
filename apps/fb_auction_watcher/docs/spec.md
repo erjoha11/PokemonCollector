@@ -264,6 +264,11 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
 - **Other chatter:** top-level comments that are only a person's name (tagging a friend),
   "Sjekk pm", and the seller's own notices ("Da var alle kortene ute!", "starter om 6 min").
 
+Decided (2026-10-03): the feed scan clicks "Se mer" on auction and claim-sale posts (only in
+the post's own text) to get the full text with the end time, and scrolls the feed itself. For
+now the scan is started by hand from the toolbar icon; the scheduled scan with idle pause
+(module 4) comes with storage.
+
 Decided (2026-10-03): "See more" and switching the comment sort to "All comments" were
 added to the allowed clicks, since long rules get cut off and "Most relevant" can hide bids.
 

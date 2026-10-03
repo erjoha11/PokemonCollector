@@ -1,5 +1,6 @@
 import { isReadPostMessage } from "../../shared/messages";
 import { feedSampleHtml, recordFeed } from "../feed/recorder";
+import { scanFeed } from "../feed/scan";
 import { expandAll } from "./expand";
 import { extractCapture, findPostRoot } from "./extract";
 import { showPanel } from "./panel";
@@ -23,15 +24,20 @@ async function readOpenPost() {
     if (!root) {
       const feed = document.querySelector("[role='feed']");
       if (feed) {
-        // On the group feed with no post open: record posts as they render while the user
-        // scrolls (Facebook empties posts that leave the screen). Observes only; no clicks.
-        const recorder = recordFeed(feed, (n) => panel.setRecordedCount(n));
+        // On the group feed with no post open: scan it. Scrolls slowly, records each post as
+        // it renders (Facebook empties posts that leave the screen), and clicks "Se mer" on
+        // auction and claim-sale posts for their full text. No other clicks.
+        const controller = new AbortController();
+        const recorder = recordFeed(feed, () => {});
         activeRecorder = recorder;
-        panel.onStop(() => {
-          recorder.stop();
-          panel.setStatus(`Stopped: ${recorder.posts().length} posts saved. Download them below.`);
-        });
+        panel.onStop(() => controller.abort());
         panel.showFeedRecorder(() => feedSampleHtml(location.href, recorder.posts()));
+        const result = await scanFeed(feed, recorder, {
+          signal: controller.signal,
+          onProgress: (p) => panel.setScanProgress(p),
+        });
+        recorder.stop();
+        panel.showScanDone(result);
         return;
       }
       panel.showError("No open post found. Open a single post (click its timestamp, or open it in a dialog) and try again.");

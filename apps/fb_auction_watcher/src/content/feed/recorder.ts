@@ -1,7 +1,7 @@
 // Records group-feed posts as they render. Facebook virtualizes the feed: posts that scroll
 // out of view are emptied to placeholders (data-virtualized="true"), so a one-off snapshot
 // only ever holds the 2-3 posts near the screen. The recorder watches the feed and keeps a
-// copy of each post while it has content (the fullest version seen), while the user scrolls.
+// copy of each post while it has content (the latest rendering seen), while the feed scrolls.
 // Read-only: it observes the DOM, never clicks or scrolls.
 
 export type RecordedPost = { key: string; html: string; text: string };
@@ -41,6 +41,8 @@ export function postKey(post: Element): string {
 
 export type FeedRecorder = {
   posts(): RecordedPost[];
+  /** Record what's rendered right now, without waiting for the observer's batching. */
+  flush(): void;
   stop(): void;
 };
 
@@ -53,8 +55,10 @@ export function recordFeed(feed: Element, onChange: (count: number) => void): Fe
       const text = squash(post.textContent);
       const key = postKey(post);
       const prev = byKey.get(key);
-      // Keep the fullest version: posts fill in progressively (images, comment counts).
-      if (prev && prev.html.length >= post.outerHTML.length) continue;
+      // Keep the latest rendering: posts fill in progressively, and "See more" expands the
+      // text (while removing the button, so it isn't necessarily longer). Emptied posts never
+      // get here, since feedPosts skips them.
+      if (prev && prev.html === post.outerHTML) continue;
       byKey.set(key, { key, html: post.outerHTML, text });
       changed = true;
     }
@@ -76,6 +80,7 @@ export function recordFeed(feed: Element, onChange: (count: number) => void): Fe
 
   return {
     posts: () => Array.from(byKey.values()),
+    flush: scan,
     stop: () => observer.disconnect(),
   };
 }
