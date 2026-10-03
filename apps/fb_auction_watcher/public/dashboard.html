@@ -16,7 +16,19 @@
       <div class="mine-head">
         <h2 id="mine-title">My Auctions</h2>
         <div id="mine-summary" class="mine-summary"></div>
+        <div class="fold-buttons">
+          <button id="fold-all" type="button" class="linkish">Collapse all</button>
+          <button id="unfold-all" type="button" class="linkish">Expand all</button>
+        </div>
       </div>
+      <section id="won" class="won-panel" aria-labelledby="won-title" hidden>
+        <div class="won-head">
+          <h3 id="won-title">Won</h3>
+          <span id="won-summary" class="won-summary"></span>
+          <label id="show-done-label" class="muted small"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label>
+        </div>
+        <div id="won-list" class="won-list"></div>
+      </section>
       <div id="mine-list" class="mine-list"></div>
       <details id="mine-ended" class="mine-ended" hidden>
         <summary>Ended <span id="mine-ended-count" class="group-count"></span></summary>
@@ -27,6 +39,7 @@
       <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
       <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
       <div class="counter outbid" title="Sales where you've been outbid on at least one lot (from posts you've read)"><span id="count-outbid" class="num">–</span><span class="label">Outbid</span></div>
+      <div class="counter won"><span id="count-won" class="num">–</span><span class="label">Won lots</span></div>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
     <div class="controls">

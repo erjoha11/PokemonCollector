@@ -57,3 +57,19 @@ export const getClaudeState = () => read("claudeState", DEFAULT_CLAUDE_STATE);
 export const updateClaudeState = (change: Partial<ClaudeState>) => patch("claudeState", DEFAULT_CLAUDE_STATE, change);
 export const getCleanupState = () => read("cleanupState", DEFAULT_CLEANUP_STATE);
 export const updateCleanupState = (change: Partial<CleanupState>) => patch("cleanupState", DEFAULT_CLEANUP_STATE, change);
+
+/** Your own marks on what you won, per sale (post ID): when you paid, and when it arrived. */
+export type WonMark = { paidAt: string | null; receivedAt: string | null };
+export type WonState = Record<string, WonMark>;
+
+export async function getWonState(): Promise<WonState> {
+  return ((await chrome.storage.local.get("wonState")).wonState as WonState | undefined) ?? {};
+}
+
+/** Marks (or unmarks) these sales as paid / received. */
+export async function markWon(postIds: string[], change: Partial<WonMark>): Promise<void> {
+  const state = await getWonState();
+  const none: WonMark = { paidAt: null, receivedAt: null };
+  for (const id of postIds) state[id] = { ...none, ...state[id], ...change };
+  await chrome.storage.local.set({ wonState: state });
+}

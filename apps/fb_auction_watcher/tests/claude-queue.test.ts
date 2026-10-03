@@ -3,6 +3,9 @@ import {
   describeRun,
   ENDED_GRACE_MS,
   failureStatus,
+  LOT_NAMES_PER_CALL,
+  lotNameBatches,
+  MAX_LOT_NAMES,
   isGlobalError,
   isPhotoError,
   isSaleOver,
@@ -18,7 +21,7 @@ import {
   STALE_AFTER_MS,
   type Failures,
 } from "../src/background/claudeQueue";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey } from "../src/llm/prompts";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey } from "../src/llm/prompts";
 import type { CapturedComment, PostCapture } from "../src/shared/capture";
 import type { StoredPost } from "../src/shared/feed";
 import * as fx from "./fakes/posts";
@@ -240,13 +243,14 @@ describe("describeRun", () => {
   it("says what was read, what failed, what was skipped and why, and the photo limit", () => {
     const photo403 = { task: "claim-lot" as const, attempts: 3, lastError: "host error: HTTP Error 403: Forbidden", lastAt: NOW.toISOString() };
     const timeout = { ...photo403, lastError: "claude -p took more than 180 s" };
-    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 5 }, failed: 0, skipped: [photo403, photo403], photoLimited: true })).toBe(
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 5, lotNames: 0 }, failed: 0, skipped: [photo403, photo403], photoLimited: true })).toBe(
       "Read 5 claim lot photos · 2 skipped (photo unavailable) · photo limit reached, rest later",
     );
-    expect(describeRun({ read: { endTimes: 1, bids: 2, claimLots: 0 }, failed: 1, skipped: [timeout], photoLimited: false })).toBe(
+    expect(describeRun({ read: { endTimes: 1, bids: 2, claimLots: 0, lotNames: 0 }, failed: 1, skipped: [timeout], photoLimited: false })).toBe(
       "Read 1 end time and 2 bids · 1 failed, will retry · 1 skipped (failed 3 times)",
     );
-    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0 }, failed: 2, skipped: [], photoLimited: false })).toBe("Nothing read · 2 failed, will retry");
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, lotNames: 12 }, failed: 0, skipped: [], photoLimited: false })).toBe("Read 12 lot names from photos");
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, lotNames: 0 }, failed: 2, skipped: [], photoLimited: false })).toBe("Nothing read · 2 failed, will retry");
   });
 });
 
@@ -306,5 +310,58 @@ describe("pendingItems: what the rules couldn't read", () => {
     expect(claimLots[0]).toMatchObject({ seller: fx.SELLER, replies: [{ author: fx.ME, text: "claim Pikachu" }] });
     expect((await pendingItems(memoryStore({ captures: [{ postId: "1", capture: sale("1", FIXED) }] }), opts)).claimLots).toHaveLength(3);
     expect((await pendingItems(memoryStore({ captures: [{ postId: "1", capture: sale("1", fx.auctionText()) }] }), opts)).claimLots).toEqual([]);
+  });
+});
+
+// Lot names from photos (#289): lots whose text is only a price ("Mp 20kr") are named by Claude
+// from the photo, batched, under the same failure tracking, ended-sale rule and photo cap.
+describe("pendingItems: lot names", () => {
+  const AT = new Date("2026-10-04T12:00:00Z"); // The auction ends 19:00 UTC.
+  const untitled = (id: number, replies: ReturnType<typeof fx.reply>[] = []) => fx.lot(id, replies, "Mp 20kr");
+  const auction = (postId: string, lots: ReturnType<typeof fx.lot>[]) => ({ postId, capture: fx.capture(postId, fx.auctionText(), lots) });
+  const urls = (items: { imageUrl: string }[]) => items.map((i) => i.imageUrl.match(/lot\d+/)![0]);
+
+  it("untitled lots only, posts you're in first; named, answered and failed ones are left out", async () => {
+    const store = memoryStore({
+      captures: [
+        auction("a", [untitled(1, [fx.reply("Budgiver Ola", `${fx.SELLER} 100`)]), fx.lot(2, [], "Charizard 4/102\nMp 50kr")]),
+        auction("b", [untitled(3, [fx.reply(fx.ME, `${fx.SELLER} 30`)]), untitled(4)]),
+      ],
+    });
+    const p = await pendingItems(store, { myName: fx.ME, now: AT });
+    expect(urls(p.lotNames)).toEqual(["lot3", "lot4", "lot1"]);
+    expect(p.lotNames.map((l) => l.mine)).toEqual([true, true, false]);
+
+    await store.saveAnswers([{ key: p.lotNames[0].key, value: "Pikachu 58/102", at: AT.toISOString() }]);
+    const failures = recordFailure({}, p.lotNames[1].key, "lot-name", "host error: HTTP Error 403: Forbidden", AT);
+    const again = await pendingItems(store, { myName: fx.ME, now: AT, failures });
+    expect(urls(again.lotNames)).toEqual(["lot1"]);
+    expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl));
+  });
+
+  it("skips sales that ended over a few hours ago", async () => {
+    const store = memoryStore({ captures: [auction("a", [untitled(1)])] });
+    expect((await pendingItems(store, { now: new Date("2026-10-04T20:00:00Z") })).lotNames).toHaveLength(1); // Ended 1 h ago.
+    expect((await pendingItems(store, { now: new Date("2026-10-05T02:00:00Z") })).lotNames).toHaveLength(0); // Ended 7 h ago.
+  });
+
+  it("each photo counts against the hourly cap, after claim lots; at most MAX_LOT_NAMES per run", async () => {
+    const store = memoryStore({ captures: [auction("a", [1, 2, 3, 4, 5].map((n) => untitled(n)))] });
+    const capped = await pendingItems(store, { now: AT, photoCallsLeft: 3 });
+    expect(capped.lotNames).toHaveLength(3);
+    expect(capped).toMatchObject({ photoLimited: true, more: false });
+
+    const many = memoryStore({ captures: [auction("a", Array.from({ length: MAX_LOT_NAMES + 1 }, (_, i) => untitled(i + 1)))] });
+    const r = await pendingItems(many, { now: AT });
+    expect(r.lotNames).toHaveLength(MAX_LOT_NAMES);
+    expect(r).toMatchObject({ photoLimited: false, more: true });
+  });
+
+  it("batches up to LOT_NAMES_PER_CALL photos; a photo that failed before goes on its own", () => {
+    const items = Array.from({ length: 2 * LOT_NAMES_PER_CALL + 3 }, (_, i) => ({ key: `k${i}` }));
+    expect(lotNameBatches(items, {}).map((b) => b.length)).toEqual([LOT_NAMES_PER_CALL, LOT_NAMES_PER_CALL, 3]);
+    const failures = recordFailure({}, "k0", "lot-name", "host error: HTTP Error 404: Not Found", AT);
+    const batches = lotNameBatches(items.slice(0, 5), failures);
+    expect(batches.map((b) => b.map((i) => i.key))).toEqual([["k1", "k2", "k3", "k4"], ["k0"]]);
   });
 });

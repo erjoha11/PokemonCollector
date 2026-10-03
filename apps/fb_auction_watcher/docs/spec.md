@@ -90,8 +90,12 @@ below is kept for reference.
   read after the end, and Won/Lost needs a read after it, so a few hours' grace), and for sales
   with no known end (fixed price, or an end nobody could read) nothing once the post hasn't been
   seen or read for 3 days. The end is the one the overview shows: rules, else Claude's answer.
-- Photo calls (Sonnet, one per lot) are capped at 20 per rolling hour, counted in
-  `chrome.storage.local` so a worker restart doesn't reset it; at most 5 per run.
+- Photos sent to Sonnet are capped at 20 per rolling hour, counted in `chrome.storage.local` so
+  a worker restart doesn't reset it: one per claim lot call (at most 5 per run), and each photo of
+  a lot-name batch (up to 12 per call, at most 24 per run; claim lots go first, lot names get what
+  the cap leaves). A lot-name photo that failed is retried in a call of its own, so one expired
+  photo URL can't keep failing the batch it was in. Lot-name answers are kept by retention for as
+  long as the post read that shows them.
 - A failure that hits everything (bridge not installed, `claude` missing or not logged in, out of
   quota) stops the run and pauses Claude for 10 min. Any other failure (a lot photo the CDN no
   longer serves: signed URLs expire, `oe=`, HTTP 403/404; a timeout; no JSON) counts against
@@ -178,7 +182,9 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 ### Table page (`dashboard.html`)
 
 - Four numbers at the top: active, within 1 h, outbid, new.
-- Groups: within 1 h · today · tomorrow and later · claim/fixed price · ended.
+- Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
+  ended. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
+  red under an hour, and the "Within 1 hour" counter stays.)
 - Columns: Ends · Sale (title, seller, New, +N comments) · Type · Lots · Bids ·
   Your status · Updated.
 - Filters: All / Auction / Claim / Fixed price / My bids / New + search.
@@ -315,6 +321,11 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   as before; "Won"/"Lost" need a complete read after the end. Known limit: a bid the seller
   deletes on Facebook stays in the overview (can't tell it from one a partial read missed),
   which errs towards "Outbid".
+- **Lot names from photos** (2026-10-04): many lots' text is only a price ("Mp 20kr") or empty;
+  the photo is all there is. Facebook's image descriptions don't help ("Kan være et bilde av
+  tekst" on 227 of 272 lot photos, never the text itself), so Claude names the lot from the
+  photo: the seller's text on it if any, else the printed card name and number. Tried on 12 real
+  lots in one call: Sonnet named all 12 with set numbers in 6 s, Haiku without numbers in 20 s.
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.

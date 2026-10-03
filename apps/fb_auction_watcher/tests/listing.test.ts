@@ -75,7 +75,13 @@ describe("table model", () => {
 
   it("groups by end time", () => {
     const g = Object.fromEntries(groupRows(rows, now).map((x) => [x.id, x.rows.map((r) => r.id)]));
-    expect(g).toEqual({ soon: ["7", "1"], today: ["2"], later: ["3"], unknown: ["4"], "claim-fixed": ["5", "6"], ended: ["8"] });
+    expect(g).toEqual({ today: ["7", "1", "2"], later: ["3"], unknown: ["4"], "claim-fixed": ["5", "6"], ended: ["8"] });
+  });
+
+  it("an auction ending within the hour but after midnight is still Today", () => {
+    const lateNight = new Date("2026-10-03T21:50:00Z"); // 23:50 in Oslo.
+    const [r] = buildRows([stored("30", AUCTION.replace("04.10.26 kl 21:00", "04.10.26 kl 00:20"))], lateNight, null);
+    expect(groupRows([r], lateNight).find((x) => x.id === "today")!.rows).toHaveLength(1);
   });
 
   it("marks 'Ended?' inside the antisnipe window", () => {

@@ -117,7 +117,9 @@ def ask_claude(msg):
     if images:
         # Photos go in as content blocks, which needs stream-json in and out.
         blocks = []
-        for url in images:
+        for n, url in enumerate(images, start=1):
+            if len(images) > 1:
+                blocks.append({"type": "text", "text": f"Photo {n}:"})  # So answers can refer to each photo.
             data, mime = download_image(url)
             blocks.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": base64.b64encode(data).decode()}})
         blocks.append({"type": "text", "text": msg["input"]})

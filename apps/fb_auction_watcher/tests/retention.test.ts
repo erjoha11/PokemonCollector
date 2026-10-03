@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { bidAnswerKey, endTimeAnswerKey } from "../src/llm/prompts";
+import { untitledLotPhotos } from "../src/domain/bids";
+import { bidAnswerKey, endTimeAnswerKey, lotNameAnswerKey } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 import type { StoredPost } from "../src/shared/feed";
 import type { Store, StoredAnswer, StoredCapture } from "../src/store";
@@ -127,6 +128,16 @@ describe("planRetention", () => {
     data.answers[0].at = "2025-01-01T00:00:00Z"; // Old, but the read still uses it.
     data.answers.push({ key: "bid:stale-reading", value: 99, at: READ_AFTER_END });
     expect(planRetention(data, ME, afterClose(1)).answers).toEqual(["bid:stale-reading"]);
+  });
+
+  it("a lot name Claude read from the photo stays while the read is kept, and goes with it", () => {
+    const data = someoneElsesSale();
+    const c = data.captures[0].capture;
+    c.comments[0] = { ...c.comments[0], text: "Mp 10kr", rawText: "Mp 10kr" }; // Only a price: named from the photo.
+    const [photo] = untitledLotPhotos(c);
+    data.answers.push({ key: lotNameAnswerKey(photo), value: "Testmon 4/102", at: READ_AFTER_END });
+    expect(planRetention(data, ME, afterClose(1)).answers).toEqual([]);
+    expect(planRetention(data, ME, afterClose(8)).answers).toContain(lotNameAnswerKey(photo));
   });
 });
 

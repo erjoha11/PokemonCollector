@@ -52,6 +52,12 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 
 ## The overview
 
+**Won** (top of My Auctions) lists everything you've won, per seller: the lots or cards with what you pay,
+the total ("400 kr + shipping"), and the seller's shipping and payment lines quoted from the post. Tick
+**Paid** and **Received** as you go; a seller with both ticked folds away ("Show paid & received" brings
+them back). Auctions count once a full read after the end confirms the win; claim lots show "price not read
+yet" until Claude has read the photo. The **Won lots** counter sits next to the others.
+
 **My Auctions** at the top lists every sale you're bidding or claiming in, soonest ending first, with
 your lots (photo, your bid vs the highest, or what you claimed) and their status: **Leading** (blue),
 **Outbid** (orange), **Won** (green), **Check** (orange: someone claimed the same card first). Finished
@@ -59,8 +65,8 @@ ones fold into **Ended**. Below it are the counters and the full table. Clicking
 name opens the post on Facebook in a new tab and reads it quietly there.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
-auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
-and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
+auction and claim sale the scans have saved, grouped by end time (today · tomorrow and later · end time unknown · claim and fixed price ·
+ended; countdowns under an hour turn red), with live countdowns. Each end time shows
 the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
 Claude filled in. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
 ("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
@@ -129,6 +135,10 @@ feed tab and click the icon to catch up.
 End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers
 ("200 sorry mente 250", "580?") are sent to **Claude Code** on this Mac (`claude -p`, your own Claude login,
 no API key), batched, the smallest model (Haiku), no tools, each answer cached so it's asked only once.
+Lots whose text doesn't name them (only "Mp 20kr", or nothing) are named from their photo: the seller's text
+on the photo if there is some, else the card name and number as printed ("Pikachu 74/112"); up to 12 photos
+per call to Sonnet, posts you're in first, not for sales that ended hours ago, each name asked once, and
+each photo counts against the hourly photo cap.
 Claim lots you've claimed on go one at a time with their full-size photo to Sonnet, which reads prices on
 photos reliably (Haiku misread one on a real lot); the bridge downloads photos only from Facebook's CDN. The
 extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
