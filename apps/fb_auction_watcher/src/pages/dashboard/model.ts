@@ -1,8 +1,8 @@
 import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
 export type { Lot } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
-import { osloDate, osloToUtc } from "../../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
+import { osloDate } from "../../domain/endTime";
+import { bidAnswerKey, claimLotAnswerKey, claudeEndsAt, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
@@ -34,12 +34,6 @@ export type RowExtras = {
   answers?: Map<string, unknown>;
   myName?: string;
 };
-
-/** Claude's "YYYY-MM-DD HH:mm" (Oslo) as an ISO timestamp, or null. */
-function claudeEndsAt(value: unknown): string | null {
-  const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/) : null;
-  return m ? osloToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]).toISOString() : null;
-}
 
 export type GroupId = "soon" | "today" | "later" | "unknown" | "claim-fixed" | "ended";
 export type Group = { id: GroupId; label: string; rows: Row[] };
