@@ -17,6 +17,16 @@ async function readOpenPost() {
   try {
     const root = findPostRoot(document);
     if (!root) {
+      const feed = document.querySelector("[role='feed']");
+      if (feed) {
+        // On the group feed with no post open: offer a raw snapshot of the rendered feed, as a
+        // sample for building the feed reader. Read-only: nothing is clicked or scrolled.
+        const posts = Array.from(feed.querySelectorAll("[role='article']")).filter(
+          (a) => !a.parentElement?.closest("[role='article']"),
+        ).length;
+        panel.showFeedSnapshot(posts, `<!doctype html>\n<!-- ${location.href} -->\n${feed.outerHTML}`);
+        return;
+      }
       panel.showError("No open post found. Open a single post (click its timestamp, or open it in a dialog) and try again.");
       return;
     }

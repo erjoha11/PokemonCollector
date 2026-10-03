@@ -34,6 +34,7 @@ export type Panel = {
   onStop(handler: () => void): void;
   showResult(capture: PostCapture, snapshotHtml: string): void;
   showError(text: string): void;
+  showFeedSnapshot(postCount: number, snapshotHtml: string): void;
 };
 
 function download(filename: string, content: string, type: string) {
@@ -128,6 +129,23 @@ export function showPanel(): Panel {
       html.title = "The post's DOM as rendered now, for samples/. Contains other people's names: never commit it.";
       html.addEventListener("click", () => download(`${stem}.html`, snapshotHtml, "text/html"));
       buttons.prepend(json, html);
+    },
+    showFeedSnapshot(postCount, snapshotHtml) {
+      stop.remove();
+      shadow.querySelector("h1")!.textContent = "FB Auction Watcher: feed snapshot";
+      status.textContent = `Group feed: ${postCount} posts rendered right now.`;
+      const hint = document.createElement("p");
+      hint.textContent =
+        "Saves the feed exactly as rendered, as a sample for samples/. Scroll down slowly first to load more posts; Facebook may drop posts far above the screen. Nothing is clicked.";
+      body.replaceChildren(hint);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const html = document.createElement("button");
+      html.type = "button";
+      html.className = "primary";
+      html.textContent = "Download feed snapshot";
+      html.title = "Contains other people's names: never commit it.";
+      html.addEventListener("click", () => download(`fbaw-feed-${stamp}.html`, snapshotHtml, "text/html"));
+      buttons.prepend(html);
     },
     showError(text) {
       stop.remove();

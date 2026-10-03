@@ -43,6 +43,13 @@ Check against what you see on Facebook:
 
 Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/samples/` (gitignored). **Never commit them**: they contain other people's names and comments.
 
+## Capture a feed sample
+
+For building the overview's feed reader. Open the group's feed (no post open), scroll down slowly
+so a good number of posts load, then click the extension icon. The panel shows how many posts are
+rendered and a **Download feed snapshot** button. Nothing is clicked or scrolled by the extension.
+Move the file to `samples/` like the others, and never commit it.
+
 ## What module 1 does not do
 
 - No interpretation: no amounts, bid validity, or end times. That's module 3.
