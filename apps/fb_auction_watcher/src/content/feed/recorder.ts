@@ -18,11 +18,11 @@ export function feedPosts(feed: Element): Element[] {
   return Array.from(feed.children).filter((c) => c.querySelector(POST_PART));
 }
 
-/** The post's ID: from a /posts/<id> link (comment permalinks), else a photo link's set=gm.<id>. */
+/** The post's ID: from a /posts/<id> link (comment permalinks), else a photo link's set=gm.<id> (one photo) or set=pcb.<id> (several). */
 export function postId(post: Element): string | null {
   for (const a of Array.from(post.querySelectorAll("a[href]"))) {
     const href = a.getAttribute("href")!;
-    const id = href.match(/\/(?:posts|permalink)\/(\d+)/)?.[1] ?? href.match(/[?&]set=gm\.(\d+)/)?.[1];
+    const id = href.match(/\/(?:posts|permalink)\/(\d+)/)?.[1] ?? href.match(/[?&]set=(?:gm|pcb)\.(\d+)/)?.[1];
     if (id) return id;
   }
   return null;

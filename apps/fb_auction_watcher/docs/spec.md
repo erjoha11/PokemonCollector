@@ -228,7 +228,13 @@ DOM findings from the real run (2026-10-03):
 - **A feed post has no `role="article"`;** only the preview comments under it do. A post is a
   direct child of the feed holding `data-ad-rendering-role` parts (`profile_name`,
   `story_message`, `description`, `title`, `meta`). Its ID is in comment permalinks
-  (`/posts/<id>/?comment_id=…`) or photo links (`set=gm.<id>`).
+  (`/posts/<id>/?comment_id=…`) or photo links (`set=gm.<id>` for one photo,
+  `set=pcb.<id>` for several).
+- **The full text (`description`) is usually scrambled** in the feed (random characters, like
+  the timestamp), readable in only a few posts. The visible `story_message` is real but cut
+  at "… Se mer". In a 52-post sample: 26 auctions, 4 claim sales, 16 fixed price, 6 wanted or
+  trade posts. The end time was visible before the cut in 12 of 26 auctions and 3 of 4 claim
+  sales; in the rest it sits just past "Se mer".
 - Saved snapshots don't round-trip through an HTML5 parser (happy-dom, browsers): Facebook
   nests links inside links, and re-parsing moves content around. Check feed structure on
   the saved file with a non-fixing parser (Python `html.parser`), not by re-loading it.

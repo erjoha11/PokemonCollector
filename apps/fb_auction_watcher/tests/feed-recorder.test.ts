@@ -37,6 +37,11 @@ describe("feed recorder", () => {
     expect(postKey(feedPosts(feed)[0])).toBe("post:111");
   });
 
+  it("keys a multi-photo post by set=pcb.<id>", () => {
+    feed.querySelector(".slot1")!.innerHTML = post("333", "FASTPRIS-annonse").replace("set=gm.333", "set=pcb.333");
+    expect(postKey(feedPosts(feed)[0])).toBe("post:333");
+  });
+
   it("keeps posts after Facebook virtualizes them away", async () => {
     const counts: number[] = [];
     const rec = recordFeed(feed, (n) => counts.push(n));
