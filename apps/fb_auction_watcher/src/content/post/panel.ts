@@ -41,15 +41,6 @@ export type Panel = {
   showScanDone(result: ScanResult): void;
 };
 
-/** For background reads: the same calls, nothing shown. */
-export function silentPanel(): Panel {
-  const none = () => {};
-  return {
-    setStatus: none, onStop: none, showResult: none, showError: none,
-    showFeedRecorder: none, setScanProgress: none, showScanDone: none,
-  };
-}
-
 function download(filename: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement("a");

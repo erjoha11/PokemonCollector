@@ -49,8 +49,10 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
 and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
 the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
-Claude filled in. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids; no
-panel) and the row updates with lots and your status. Ctrl/Cmd-click just opens it. **My bids** filters to sales you're
+Claude filled in. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
+small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
+saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and
+the overview row says **Just read**. Ctrl/Cmd-click just opens the post. **My bids** filters to sales you're
 bidding in.
 
 **Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the

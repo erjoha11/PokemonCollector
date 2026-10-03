@@ -124,11 +124,17 @@ export async function openAndReadVisible(url: string, postId: string): Promise<v
   const tabId = tab.id;
   const state = await getReaderState();
   await setReaderState({ visible: { ...state.visible, [tabId]: { postId, startedAt: new Date().toISOString() } } });
+  await setTabBadge(tabId, "…", "#2457D6");
   await chrome.alarms.create(`${READER_ALARM}-visible-${tabId}`, { when: Date.now() + VISIBLE_TIMEOUT_MS + 5000 });
   const loaded = await waitForTabLoad(tabId);
   if (!loaded) return finishRead(tabId, false, "the post didn't load");
   const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true, silent: true };
   await chrome.tabs.sendMessage(tabId, msg).catch(() => finishRead(tabId, false, "no content script in the tab"));
+}
+
+async function setTabBadge(tabId: number, text: string, color: string) {
+  await chrome.action.setBadgeBackgroundColor({ tabId, color }).catch(() => {});
+  await chrome.action.setBadgeText({ tabId, text }).catch(() => {});
 }
 
 /** A read finished (reported by the content script, or timed out): close its tab, go on. */
@@ -139,6 +145,9 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
     const visible = { ...state.visible };
     delete visible[tabId];
     void chrome.alarms.clear(`${READER_ALARM}-visible-${tabId}`);
+    // Done: a ✓ (or !) on the toolbar icon in that tab, for a little while.
+    await setTabBadge(tabId, ok ? "✓" : "!", ok ? "#1a7f37" : "#B42318");
+    setTimeout(() => void setTabBadge(tabId, "", "#2457D6"), 20_000);
     await setReaderState({ visible, lastAt: new Date().toISOString(), lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}` });
     return;
   }

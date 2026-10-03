@@ -19,7 +19,8 @@ import { feedPosts, feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
 import { expandAll } from "./expand";
 import { extractCapture, findPostRoot } from "./extract";
-import { showPanel, silentPanel, type Panel } from "./panel";
+import { showPanel, type Panel } from "./panel";
+import { showStatusPill } from "./pill";
 import { ensureAllComments } from "./sort";
 
 // Content script on facebook.com. Two jobs, both read-only:
@@ -80,7 +81,8 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
   running = true;
   activeRecorder?.stop();
   activeRecorder = null;
-  const panel = silent ? silentPanel() : showPanel();
+  // A quiet read (from the overview) shows a small status overlay instead of the full panel.
+  const panel = silent ? showStatusPill() : showPanel();
   try {
     // Opened from the overview: Facebook renders the post a moment after the page loads.
     if (waitForPost) {
@@ -111,7 +113,11 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     const result = await expandAll(root, {
       signal: controller.signal,
       onProgress: ({ clicks, scrolls, lastLabel }) =>
-        panel.setStatus(`Expanding… ${clicks} clicked, ${scrolls} scrolled (last: "${lastLabel}")`),
+        panel.setStatus(
+          silent
+            ? `Loading comments and bids… ${clicks + scrolls} step${clicks + scrolls === 1 ? "" : "s"}`
+            : `Expanding… ${clicks} clicked, ${scrolls} scrolled (last: "${lastLabel}")`,
+        ),
     });
     if (cap) clearTimeout(cap);
     panel.setStatus("Reading…");

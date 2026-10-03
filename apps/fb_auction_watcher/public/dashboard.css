@@ -120,3 +120,4 @@ tr.lots-row > td { background: var(--bg); }
 .open-link { font-size: 12px; color: var(--muted); text-decoration: none; }
 .open-link:hover { color: var(--lead); text-decoration: underline; }
 .badge.reading { color: var(--lead); border: 1px solid var(--lead); }
+.badge.just-read { display: inline-block; margin-top: 2px; color: #fff; background: var(--new); }

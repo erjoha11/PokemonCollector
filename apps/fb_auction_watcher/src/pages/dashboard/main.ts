@@ -215,7 +215,8 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   if (s.lead + s.outbid === 0) youTd.append(el("span", "muted", "No bids"));
   if (s.lead) youTd.append(el("span", "status lead", `Leading ${s.lead}`));
   if (s.outbid) youTd.append(el("span", "status outbid", `Outbid ${s.outbid}`));
-  youTd.append(el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
+  const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
+  youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
   if (s.lead + s.outbid > 0 || s.lots > 0) {
     const toggle = el("button", "linkish", expanded.has(r.id) ? "Hide lots" : s.lead + s.outbid > 0 ? "Your lots" : "Lots");
     toggle.type = "button";
