@@ -9,8 +9,8 @@ import { waitForTabLoad } from "./tabs";
 // - only ever the one pinned group-feed tab: never opens tabs, never two at once;
 // - skipped when you're looking at that tab (a reload would yank it from under you);
 // - off unless switched on in the overview (Settings.autoScan), the off switch.
-// The run itself: reload the tab (the newest posts render at the top), then ask its content
-// script to scan in background mode. It reports back with MSG_AUTO_SCAN_DONE.
+// The run itself: load the tab's group feed sorted by "New posts" (the newest posts render at
+// the top), then ask its content script to scan in background mode. It reports back with MSG_AUTO_SCAN_DONE.
 
 export const AUTO_SCAN_ALARM = "fbaw-auto-scan";
 /** A run that hasn't reported back after this long is considered dead. */
@@ -38,6 +38,15 @@ export function isGroupFeedUrl(url: string | undefined): boolean {
   if (!url) return false;
   const m = url.match(/^https:\/\/www\.facebook\.com\/groups\/[^/?#]+\/?(\?[^#]*)?(#.*)?$/);
   return !!m;
+}
+
+/** The group's feed sorted by "New posts": its URL with sorting_setting=CHRONOLOGICAL. */
+export function newPostsUrl(feedUrl: string): string {
+  const url = new URL(feedUrl);
+  url.search = "";
+  url.hash = "";
+  url.searchParams.set("sorting_setting", "CHRONOLOGICAL");
+  return url.toString();
 }
 
 async function findFeedTab(): Promise<chrome.tabs.Tab | null> {
@@ -71,8 +80,10 @@ export async function runAutoScan(): Promise<void> {
     }
 
     await updateAutoScanState({ lastAt: new Date().toISOString(), lastOutcome: "Scanning…", running: true });
-    await chrome.tabs.reload(tab.id);
-    await new Promise((r) => setTimeout(r, 500)); // Let the reload start, so "complete" is the new page.
+    // Always "New posts" order (newest first): "caught up" (5 saved posts in a row) only means
+    // nothing new when the feed is sorted by when posts were made, not by recent activity.
+    await chrome.tabs.update(tab.id, { url: newPostsUrl(tab.url!) });
+    await new Promise((r) => setTimeout(r, 500)); // Let the load start, so "complete" is the new page.
     if (!(await waitForTabLoad(tab.id, 30_000))) return await skip("Failed: the feed tab didn't finish loading");
     const msg: AutoScanMessage = { type: MSG_AUTO_SCAN };
     await chrome.tabs.sendMessage(tab.id, msg).catch(async () => {

@@ -76,8 +76,8 @@ it every time it loads, so improved rules apply to old posts too.
 ## Automatic scan
 
 Under **Settings** in the overview: **Scan the feed automatically every 10–15 min**. It needs a **pinned**
-tab with the group's feed (right-click the tab → Pin). Every 10–15 min (±20 %) it reloads that tab in
-the background, saves the newest posts and opens their "Se mer", and stops once it reaches posts it already
+tab with the group's feed (right-click the tab → Pin). Every 10–15 min (±20 %) it loads that tab's group
+feed sorted by **New posts** (`?sorting_setting=CHRONOLOGICAL`, whatever sort the tab had) in the background, saves the newest posts and opens their "Se mer", and stops once it reaches posts it already
 has. While it's on, auctions you're bidding in are also re-read every 15 min in a background tab that
 opens and closes by itself, one at a time and never during a feed scan. It never uses more than one tab
 at a time, skips a round while your screen is locked, you're
