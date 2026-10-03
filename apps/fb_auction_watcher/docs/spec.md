@@ -134,6 +134,25 @@ the interval is fixed at 10–15 min ±20 %. Originally planned: `groupUrl`, `sc
 
 **userState:** `lastDashboardVisitAt`, `seenListingIds`
 
+### Retention (privacy)
+
+Decided 2026-10-03 (review M6): stored data is mostly other people's (sellers' posts, bidders'
+names and replies), so it's kept only while useful, by a daily cleanup in the service worker
+(`src/store/retention.ts`, pure and tested; reuses the overview's listing/lot rules):
+
+- Post reads (captures): deleted 7 days after the sale closed (end time + antisnipe), 30 days if
+  it's in My Auctions (you bid or claimed). No end time (fixed price, unread end): counted from
+  when it was last seen or read, 14 days (30 if yours).
+- Posts: deleted once their read is gone, unseen in the feed for 14 days, and ended over 7 days
+  ago (or no end time). Until then the slim row (text, seller, link) stays as history.
+- Claude's answers: deleted when nothing kept refers to them (keys from `endTimeAnswerKey`,
+  `bidAnswerKey`, `claimLotAnswerKey`); no age limit on answers still in use, since deleting one
+  would only re-ask Claude.
+- A sale that hasn't ended is never touched.
+- "Clear stored data" in the overview's Settings empties the store (posts, reads, answers, meta)
+  after a confirm step; settings in `chrome.storage.local` stay. The last cleanup's result is
+  shown next to it (`cleanupState` in `chrome.storage.local`).
+
 ## Statuses
 
 Per listing:

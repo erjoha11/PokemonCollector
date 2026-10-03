@@ -1,6 +1,7 @@
 import { claimLotsToRead, unsureReplies, type ClaimLotInput } from "../domain/bids";
 import { interpretListing } from "../domain/listing";
-import { bidAnswerKey, claimLotAnswerKey, claudeEndsAt, endTimeAnswerKey, type BidItem, type ClaudeRequest, type EndTimeItem } from "../llm/prompts";
+import { claudeEndsAt } from "../domain/endTime";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type BidItem, type ClaudeRequest, type EndTimeItem } from "../llm/prompts";
 import type { Store } from "../store";
 
 // What to send to Claude, and what to leave alone: pure decisions, no chrome.* and no bridge,

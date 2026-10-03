@@ -56,6 +56,12 @@ export function osloToUtc(year: number, month: number, day: number, hour: number
   return new Date(t);
 }
 
+/** Claude's end-time answer, "YYYY-MM-DD HH:mm" (Oslo), as an ISO timestamp, or null. */
+export function claudeEndsAt(value: unknown): string | null {
+  const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/) : null;
+  return m ? osloToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]).toISOString() : null;
+}
+
 /** The Oslo calendar date of a moment. */
 export function osloDate(at: Date): { year: number; month: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(at);

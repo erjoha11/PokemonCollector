@@ -93,6 +93,25 @@ A "." is someone following the lot, not a claim. Click any photo for a bigger pi
 Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
 it every time it loads, so improved rules apply to old posts too.
 
+### Stored data and retention
+
+What's stored is mostly other people's data (sellers' posts, bidders' names and replies), so it's kept
+only as long as it's useful. Once a day (a `chrome.alarms` alarm) the service worker deletes
+(`src/store/retention.ts`):
+
+- a sale's **post read** (comments, replies, names) 7 days after the sale ended, or **30 days** if you
+  bid or claimed in it (so My Auctions' "Ended" list lasts long enough to pay and follow up). A sale
+  with no end time (fixed price, or an end nobody could read) counts from when it was last seen or read,
+  with a 14-day window (30 if yours);
+- a **post** once its read is gone, it hasn't been seen in the feed for 14 days, and it ended over 7 days
+  ago (or has no end time);
+- **Claude's answers** nothing kept refers to any more (answers still in use stay whatever their age:
+  deleting one would only ask Claude the same question again).
+
+A sale that hasn't ended is never touched. The last cleanup's result shows under **Settings → Stored
+data**, next to **Clear stored data**, which (after an "Are you sure?") empties posts, post reads,
+Claude's answers and the last-read time, and keeps your settings.
+
 ## Automatic scan
 
 Under **Settings** in the overview: **Scan the feed automatically every 10–15 min**. It needs a **pinned**

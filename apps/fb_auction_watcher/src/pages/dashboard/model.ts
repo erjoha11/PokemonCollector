@@ -1,8 +1,8 @@
 import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
 export type { Lot } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
-import { osloDate } from "../../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, claudeEndsAt, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
+import { claudeEndsAt, osloDate } from "../../domain/endTime";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 

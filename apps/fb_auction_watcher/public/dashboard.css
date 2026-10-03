@@ -116,6 +116,9 @@ tr.lots-row > td { background: var(--bg); }
 .setting { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
 .setting label { font-weight: 600; }
 .setting input[type="text"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }
+.clear-data { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.clear-data button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+.clear-data button.danger { background: var(--soon); border-color: var(--soon); color: #fff; }
 .title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
 .open-link { font-size: 12px; color: var(--muted); text-decoration: none; }
 .open-link:hover { color: var(--lead); text-decoration: underline; }
