@@ -289,3 +289,64 @@ export function wonBySeller(rows: Row[]): WonSeller[] {
   const latest = (g: WonSeller) => Math.max(...g.rows.map((r) => r.endsAtMs ?? Date.parse(r.lastSeenAt)));
   return [...bySeller.values()].sort((a, b) => latest(b) - latest(a));
 }
+
+// ── My Auctions (2026-10-04 redesign) ─────────────────────────────────────────────────────────
+// Its purpose, in order of urgency: 1. do I need to act now (outbid, "Leading?", a claim someone
+// was earlier on)? 2. am I fine (leading; what it costs if it holds)? 3. what do I owe (won, per
+// seller, until paid and received)? Lost lots and finished sales live in the table, not here.
+
+/** A lot that needs you: you can still act on it (a running auction, or a claim). */
+export type NeedsYouItem = {
+  row: Row;
+  lot: Lot;
+  status: LotStatus;
+  /** The lowest bid that would count now: highest + minimum raise (or the start bid); null for claims. */
+  nextBid: number | null;
+};
+
+const NEEDS_YOU: LotStatus["key"][] = ["outbid", "unclear", "check"];
+
+/** Every lot that needs you, across sales, the one ending soonest first. */
+export function needsYou(rows: Row[]): NeedsYouItem[] {
+  const items: NeedsYouItem[] = [];
+  for (const row of rows) {
+    if (row.ended) continue;
+    for (const lot of row.lots ?? []) {
+      const status = lotStatus(row, lot);
+      if (!NEEDS_YOU.includes(status.key)) continue;
+      const nextBid =
+        status.key === "check" ? null : lot.highestBid !== null ? lot.highestBid + (lot.increment ?? 1) : (lot.startBid ?? null);
+      items.push({ row, lot, status, nextBid });
+    }
+  }
+  const end = (i: NeedsYouItem) => i.row.endsAtMs ?? Infinity;
+  return items.sort((a, b) => end(a) - end(b) || a.lot.position - b.lot.position);
+}
+
+/** A sale where you're leading on some lots: what you'd pay if they hold. */
+export type LeadingSale = {
+  row: Row;
+  lots: Lot[];
+  kr: number;
+  /** Ended, but not read since: it's "Leading at last read" until a final read confirms it. */
+  awaitingFinalRead: boolean;
+};
+
+export function leadingBySale(rows: Row[]): LeadingSale[] {
+  const sales: LeadingSale[] = [];
+  for (const row of rows) {
+    const lots = (row.lots ?? []).filter((l) => {
+      const k = lotStatus(row, l).key;
+      return k === "leading" || k === "leading-at-last-read";
+    });
+    if (lots.length === 0) continue;
+    sales.push({ row, lots, kr: lots.reduce((n, l) => n + (l.myHighestBid ?? 0), 0), awaitingFinalRead: row.ended });
+  }
+  return sales.sort((a, b) => (a.row.endsAtMs ?? Infinity) - (b.row.endsAtMs ?? Infinity));
+}
+
+/** A link to the lot's own comment on Facebook (where you'd bid), else to the post. */
+export function lotUrl(row: Pick<Row, "url">, lot: Pick<Lot, "commentId">): string {
+  if (!lot.commentId) return row.url;
+  return `${row.url}${row.url.includes("?") ? "&" : "?"}comment_id=${lot.commentId}`;
+}

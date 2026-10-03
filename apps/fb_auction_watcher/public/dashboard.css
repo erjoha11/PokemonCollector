@@ -142,7 +142,6 @@ img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px
 .mine-head h2 { font-size: 17px; margin: 0; }
 .mine-summary { display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; }
 .mine-summary .status { font-size: 13px; }
-.mine-list { display: grid; gap: 8px; margin-top: 10px; }
 .mine-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
 .mine-card.outbid { border-left: 4px solid var(--outbid); }
 .mine-card.lead { border-left: 4px solid var(--lead); }
@@ -156,8 +155,6 @@ img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px
 .mine-lot .lot-name { font-weight: 600; }
 .mine-lot .status { font-size: 11px; margin: 2px 0 0; }
 .mine-empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
-.mine-ended { margin-top: 10px; }
-.mine-ended summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
 /* Won = green; clickable rows */
 .status.won { background: var(--new); }
@@ -247,3 +244,46 @@ td.type, td.price, td.seen, td.lots, td.you { font-size: 12px; }
 td.you .status, td.lots .status { font-size: 11px; }
 td.you .small, td.you .muted { font-size: 11px; }
 td.ends > div:first-child { white-space: nowrap; }
+
+/* My Auctions (2026-10-04 redesign): Needs you · Leading · To pay, one line per item */
+.mine-head { align-items: baseline; }
+.mine-summary { margin: 0; font-size: 14px; font-weight: 600; }
+.mine-section { margin-top: 12px; }
+.mine-section h3 { font-size: 14px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+#needs h3 { color: var(--outbid); }
+#leading h3 { color: var(--lead); }
+#topay h3 { color: var(--new); }
+.show-done { margin-left: auto; font-weight: 400; cursor: pointer; }
+.lot-lines, .lead-lots, .pay-items { list-style: none; margin: 0; padding: 0; }
+.lot-line {
+  display: grid; grid-template-columns: 30px minmax(0, 1fr) 90px minmax(150px, auto) auto;
+  gap: 10px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 13px;
+}
+.lot-line:last-child { border-bottom: none; }
+.lot-lines .lot-line { border-left: 3px solid var(--outbid); }
+.lot-lines .lot-line.check { border-left-color: var(--outbid); }
+.line-thumb { width: 30px; height: 40px; object-fit: cover; border-radius: 3px; background: var(--border); display: block; }
+.line-thumb.empty { display: inline-block; }
+.line-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.line-sale { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lot-line .countdown { font-size: 13px; }
+.line-price { white-space: nowrap; }
+.line-act { white-space: nowrap; font-weight: 600; color: var(--lead); text-decoration: none; border: 1px solid var(--lead); border-radius: 6px; padding: 2px 8px; }
+.line-act:hover { background: var(--lead); color: #fff; }
+.lead-lots .lot-line, .pay-items .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
+.lead-card, .pay-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); margin-bottom: 6px; padding: 4px 8px; }
+.lead-card { border-left: 4px solid var(--lead); }
+.pay-card { border-left: 4px solid var(--new); }
+.pay-card.done { opacity: .6; border-left-color: var(--border); }
+.lead-head, .pay-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 2px 0; }
+.lead-head .title-line { flex: 1; min-width: 160px; }
+.pay-seller { min-width: 140px; }
+.pay-how { flex: 1; min-width: 120px; }
+.lead-card[open] .lead-lots, .pay-card[open] .pay-items { margin-top: 4px; }
+.pay-card .won-terms { margin: 4px 0 2px; }
+@media (max-width: 720px) {
+  .lot-lines .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto; }
+  .lot-lines .line-price { grid-column: 2; }
+  .lot-lines .line-act { grid-column: 3; }
+  .lead-lots .lot-line, .pay-items .lot-line { gap: 6px; }
+}

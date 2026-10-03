@@ -15,30 +15,28 @@
     <section id="my-auctions" class="mine-panel" aria-labelledby="mine-title">
       <div class="mine-head">
         <h2 id="mine-title">My Auctions</h2>
-        <div id="mine-summary" class="mine-summary"></div>
-        <div class="fold-buttons">
-          <button id="fold-all" type="button" class="linkish">Collapse all</button>
-          <button id="unfold-all" type="button" class="linkish">Expand all</button>
-        </div>
+        <p id="mine-summary" class="mine-summary"></p>
       </div>
-      <section id="won" class="won-panel" aria-labelledby="won-title" hidden>
-        <div class="won-head">
-          <h3 id="won-title">Won</h3>
-          <span id="won-summary" class="won-summary"></span>
-          <label id="show-done-label" class="muted small"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label>
-        </div>
-        <div id="won-list" class="won-list"></div>
+      <section id="needs" class="mine-section" aria-labelledby="needs-title">
+        <h3 id="needs-title">Needs you <span id="needs-count" class="group-count"></span> <span class="muted small">soonest first</span></h3>
+        <ol id="needs-list" class="lot-lines"></ol>
+        <p id="needs-empty" class="mine-empty" hidden>Nothing needs you right now.</p>
+        <button id="needs-more" type="button" class="linkish" hidden></button>
       </section>
-      <div id="mine-list" class="mine-list"></div>
-      <details id="mine-ended" class="mine-ended" hidden>
-        <summary>Ended <span id="mine-ended-count" class="group-count"></span></summary>
-        <div id="mine-ended-list" class="mine-list"></div>
-      </details>
+      <section id="leading" class="mine-section" aria-labelledby="leading-title" hidden>
+        <h3 id="leading-title">Leading <span id="leading-sum" class="muted small"></span></h3>
+        <div id="leading-list"></div>
+      </section>
+      <section id="topay" class="mine-section" aria-labelledby="topay-title" hidden>
+        <h3 id="topay-title">To pay <span id="topay-sum" class="muted small"></span>
+          <label id="show-done-label" class="muted small show-done"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label></h3>
+        <div id="topay-list"></div>
+      </section>
     </section>
     <div class="counters">
       <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
       <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
-      <div class="counter outbid" title="Sales where you've been outbid on at least one lot (from posts you've read)"><span id="count-outbid" class="num">–</span><span class="label">Outbid</span></div>
+      <div class="counter outbid" title="Lots where you've been outbid, might have been, or someone claimed first"><span id="count-needs" class="num">–</span><span class="label">Need you</span></div>
       <div class="counter won"><span id="count-won" class="num">–</span><span class="label">Won lots</span></div>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
