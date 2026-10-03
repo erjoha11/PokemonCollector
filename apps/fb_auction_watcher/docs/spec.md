@@ -3,7 +3,7 @@
 - **Id:** `fb-auction-watcher`
 - **Type:** Chrome extension (Manifest V3)
 - **Owner/user:** Erik Johansen
-- **Status:** spec only, no functionality built yet
+- **Status:** module 1 (spike) built, untested against real Facebook
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
@@ -170,6 +170,29 @@ One module at a time; I test between each.
 
 Build order in practice: 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7 (interpretation is tested against
 the spike's JSON before storage is wired in).
+
+## Module 1 status (spike)
+
+Built, unit-tested against a synthetic fixture, smoke-tested in Chromium. **Not yet run
+against real Facebook**: the selectors below are informed guesses until checked against
+`samples/`.
+
+- Trigger: toolbar icon → service worker → content script in the active tab.
+- Post root: the topmost `role="dialog"` holding a `role="article"`, else `role="main"` on a
+  `/groups/<g>/posts/<id>` or `/permalink/<id>` URL.
+- Comment vs. reply: the timestamp link's `comment_id` / `reply_comment_id` query params
+  (language-independent), falling back to the article's aria-label ("Comment by" / "Kommentar
+  fra", "Reply by" / "Svar fra"). Replies attach to their parent by `comment_id`.
+- Lot candidate: top-level comment with a photo (`img` ≥ 64 px, or inside a photo link).
+- Output: `PostCapture` JSON (`src/shared/capture.ts`) + an HTML snapshot of the post for `samples/`.
+
+Open questions for the user:
+
+- **"See more" / "Se mer"** isn't on the allowed-click list, so long post/comment text stays cut
+  off (flagged `truncated`). Long auction rules are likely to be cut off. Add it to the list?
+  It's read-only like the other expanders.
+- **Comment sort.** "Most relevant" can hide comments, and changing it isn't allowed, so the
+  user has to switch to "All comments" by hand. Allow the extension to switch it?
 
 ## Risks
 

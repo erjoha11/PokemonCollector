@@ -8,7 +8,22 @@ App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.
 
 It is independent of the other apps in `apps/`: no imports to or from them, no shared database.
 
-**Status:** scaffold only. No functionality is built yet — don't add any until the user asks.
+**Status:** module 1 (spike) built — `src/content/post/` reads one open post and exports raw JSON. Modules 2–7 are not built; show a plan and wait for the go-ahead before starting one.
+
+## Commands
+
+From `apps/fb_auction_watcher/` (Node 22.12+):
+
+```bash
+npm ci              # install
+npm run build       # → dist/ (load unpacked in chrome://extensions)
+npm test            # Vitest + happy-dom, offline
+npm run typecheck
+```
+
+CI runs all of these in the `fb_auction_watcher` job of `.github/workflows/tests.yml`. Build is two Vite passes into `dist/` (`vite.config.ts`): the content script as an IIFE (content scripts can't be ES modules), the service worker as an ES module.
+
+The click allowlist lives in `src/content/post/patterns.ts` (`isExpanderLabel`) and the last-moment guard in `expand.ts` (`isSafeToClick`). Any change there needs matching allow/reject cases in `tests/patterns.test.ts` — the reject list (Reply/Svar, Like/Liker, See more, comment sort, text boxes) must stay.
 
 ## Non-negotiable rules
 
@@ -34,7 +49,7 @@ These override convenience. Don't relax any of them without the user's explicit 
 | Shared | `src/shared/` | Types and messaging between contexts |
 | Static | `public/` | `manifest.json`, icons |
 
-Stack: TypeScript, Vite, Preact, idb, zod. The Anthropic API key lives in `chrome.storage.local`, never in the repo.
+Stack: TypeScript, Vite, Preact, idb, zod (added per module as needed; module 1 uses none of Preact/idb/zod). The Anthropic API key lives in `chrome.storage.local`, never in the repo.
 
 ## Working style
 
@@ -45,6 +60,7 @@ Stack: TypeScript, Vite, Preact, idb, zod. The Anthropic API key lives in `chrom
 
 ## Repo conventions that apply here
 
-- This is the repo's first non-Python app. Root `python -m pytest` and `ruff` don't cover it; its own build/test commands go here once `package.json` exists.
+- This is the repo's first non-Python app. Root `python -m pytest` and `ruff` don't cover it; use the commands above.
+- `tests/fixtures/post-dialog.html` is synthetic (invented names, hand-written markup). Real Facebook markup may differ — calibrate against `samples/` and keep any committed fixture anonymized.
 - `samples/` (saved Facebook posts — "Webpage, complete" + screenshots — at `apps/fb_auction_watcher/samples/`) is gitignored — it contains other people's names and comments. Never commit it, and test fixtures derived from it must be anonymized.
 - Notes, handoff logs, and plans go in `notes/fb_auction_watcher/`, not in this folder (see root `CLAUDE.md`).
