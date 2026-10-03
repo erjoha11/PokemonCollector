@@ -18,3 +18,8 @@ export type StoredPost = FeedPost & {
   firstSeenAt: string;
   lastSeenAt: string;
 };
+
+/** The group's slug from a Facebook URL ("pokemonkortnorge" from /groups/pokemonkortnorge/...). */
+export function groupSlug(pageUrl: string): string | null {
+  return pageUrl.match(/\/groups\/([^/?#]+)/)?.[1] ?? null;
+}

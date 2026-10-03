@@ -27,3 +27,16 @@ Automatic feed scan, overlay, side panel, any LLM.
 ## Order
 
 Feed snapshot → user captures → feed reader + rules + storage → table page → user tests.
+
+## Built (2026-10-03)
+
+- Feed scan by hand (icon on the feed) and automatic (pinned tab, alarms, `chrome.idle`,
+  background mode: reload + read the top posts + "Se mer"), stopping when caught up.
+- Rule-based interpretation: listings (`src/domain/listing.ts`, `endTime.ts`), lots and bids
+  (`src/domain/bids.ts`), tested on real samples.
+- Claude Code bridge for what the rules can't read: `native/fbaw_claude_host.py` + `install.sh`,
+  `src/background/claude.ts`, prompts in `src/llm/prompts.ts` (23/23 on `src/llm/cases.ts`).
+- Overview: groups, countdowns, Leading/Outbid, lots, settings (auto-scan, Claude, your name).
+
+Not built: automatic re-reads of posts you've bid on (spec: every 15 min), the overlay, the side
+panel, notifications.

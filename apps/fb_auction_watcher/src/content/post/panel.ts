@@ -167,6 +167,7 @@ export function showPanel(): Panel {
       stop.remove();
       const why: Record<ScanResult["stoppedBecause"], string> = {
         "caught-up": "caught up: reached posts saved in an earlier scan",
+        hidden: "the tab went to the background",
         "end-of-feed": "reached the end of what the feed loads",
         "max-posts": "reached the post limit",
         "max-scrolls": "reached the scroll limit",

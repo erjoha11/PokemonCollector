@@ -5,7 +5,10 @@
   "version": "0.1.0",
   "description": "Read-only overview of auctions in a Facebook buy/sell group.",
   "permissions": [
+    "alarms",
     "contextMenus",
+    "idle",
+    "nativeMessaging",
     "storage"
   ],
   "host_permissions": [

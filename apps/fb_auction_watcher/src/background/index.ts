@@ -1,19 +1,35 @@
+import { capturePostId } from "../domain/bids";
 import {
+  isAutoScanDoneMessage,
   isGetKnownPostsMessage,
   isOpenOverviewMessage,
   isSaveFeedPostsMessage,
+  isSavePostCaptureMessage,
   MSG_READ_POST,
   MSG_STORE_UPDATED,
   type KnownPosts,
   type ReadPostMessage,
   type StoreUpdatedMessage,
 } from "../shared/messages";
+import { groupSlug } from "../shared/feed";
+import { getAutoScanState, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
+import { AUTO_SCAN_ALARM, describeAutoScan, runAutoScan, scheduleAutoScan } from "./autoScan";
+import { scheduleClaude } from "./claude";
+
+// Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
+// between the toolbar icon, the content script and the overview page.
 
 const store = idbStore();
 
-// Module 1 spike: clicking the toolbar icon asks the content script in the active tab
-// to read the open post.
+/** Tells open overview pages to re-read the store. No listener (no page open) is fine. */
+function broadcastUpdate(added = 0, updated = 0) {
+  const msg: StoreUpdatedMessage = { type: MSG_STORE_UPDATED, added, updated };
+  chrome.runtime.sendMessage(msg).catch(() => {});
+}
+const askClaudeSoon = () => scheduleClaude(store, () => broadcastUpdate());
+
+// Toolbar icon: read the open post, or scan the feed (the content script decides which).
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id === undefined) return;
   const tabId = tab.id;
@@ -26,7 +42,7 @@ chrome.action.onClicked.addListener((tab) => {
   });
 });
 
-// Dev convenience: right-click the toolbar icon → "Reload extension and Facebook tabs".
+// Right-click menu on the icon: the overview, and (dev) reload extension + Facebook tabs.
 // Reloading the extension orphans the content script in open tabs, so after the reload the
 // new service worker reloads every Facebook tab. A flag in storage carries that intent
 // across the reload (the old worker is gone by then).
@@ -43,7 +59,9 @@ chrome.runtime.onInstalled.addListener(() => {
       contexts: ["action"],
     });
   });
+  void scheduleAutoScan();
 });
+chrome.runtime.onStartup.addListener(() => void scheduleAutoScan());
 
 chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId === OVERVIEW_MENU_ID) void openOverview();
@@ -58,6 +76,18 @@ void (async () => {
   const tabs = await chrome.tabs.query({ url: "https://www.facebook.com/*" });
   for (const tab of tabs) if (tab.id !== undefined) void chrome.tabs.reload(tab.id);
 })();
+
+// The automatic scan: alarm → run; switching it on/off in the overview reschedules.
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes.settings) return;
+  const before = changes.settings.oldValue as { autoScan?: boolean; useClaude?: boolean } | undefined;
+  const after = changes.settings.newValue as { autoScan?: boolean; useClaude?: boolean } | undefined;
+  if (before?.autoScan !== after?.autoScan) void scheduleAutoScan();
+  if (after?.useClaude && !before?.useClaude) askClaudeSoon();
+});
 
 // The overview (table page): focus an open one rather than opening another.
 async function openOverview() {
@@ -90,10 +120,46 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     void store.savePosts(msg.posts, new Date(msg.seenAt)).then(async (result) => {
       await store.setMeta("lastFeedReadAt", msg.seenAt);
       sendResponse(result);
-      const update: StoreUpdatedMessage = { type: MSG_STORE_UPDATED, ...result };
-      // No open table page means no listener; that's fine.
-      chrome.runtime.sendMessage(update).catch(() => {});
+      broadcastUpdate(result.added, result.updated);
+      askClaudeSoon();
     });
-    return true; // Responds asynchronously.
+    return true;
+  }
+  if (isSavePostCaptureMessage(msg)) {
+    void (async () => {
+      const { capture } = msg;
+      const id = capturePostId(capture);
+      if (!id) return;
+      await store.saveCapture(id, capture);
+      // A post read directly also belongs in the overview, even if no scan has seen it.
+      const slug = groupSlug(capture.pageUrl);
+      await store.savePosts(
+        [
+          {
+            id,
+            url: slug ? `https://www.facebook.com/groups/${slug}/posts/${id}/` : capture.pageUrl,
+            groupSlug: slug,
+            sellerName: capture.post.author,
+            text: capture.post.text,
+            textComplete: !capture.post.truncated && capture.post.text.length > 0,
+            thumbnailUrl: capture.post.images[0]?.src ?? null,
+          },
+        ],
+        new Date(capture.capturedAt),
+      );
+      broadcastUpdate();
+      askClaudeSoon();
+    })();
+    return;
+  }
+  if (isAutoScanDoneMessage(msg)) {
+    void (async () => {
+      const state = await getAutoScanState();
+      const since = state.lastAt ? Date.parse(state.lastAt) : Date.now();
+      const added = (await store.allPosts()).filter((p) => Date.parse(p.firstSeenAt) >= since).length;
+      await updateAutoScanState({ running: false, lastOutcome: describeAutoScan(msg.stoppedBecause, msg.posts, added) });
+      broadcastUpdate(added);
+    })();
+    return;
   }
 });

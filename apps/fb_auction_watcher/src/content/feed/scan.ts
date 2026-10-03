@@ -54,10 +54,16 @@ export type ScanOptions = {
   stopAfterKnown?: number;
   /** Whether the page is hidden (a background tab). Defaults to document.hidden. */
   isHidden?: () => boolean;
+  /**
+   * What to do when the tab is hidden and it's time to scroll. "pause" (a scan you started)
+   * waits until you come back; "stop" (the automatic scan in a background tab) records what's
+   * rendered, opens its "Se mer", and stops, since a hidden tab won't load more posts.
+   */
+  whenHidden?: "pause" | "stop";
 };
 
 export type ScanResult = ScanProgress & {
-  stoppedBecause: "caught-up" | "end-of-feed" | "max-posts" | "max-scrolls" | "aborted" | "dialog-opened";
+  stoppedBecause: "caught-up" | "hidden" | "end-of-feed" | "max-posts" | "max-scrolls" | "aborted" | "dialog-opened";
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -83,6 +89,7 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     completeIds = new Set<string>(),
     stopAfterKnown = 5,
     isHidden = () => document.hidden,
+    whenHidden = "pause",
   } = options;
   const clicked = new WeakSet<Element>();
   let scrolls = 0;
@@ -113,7 +120,7 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
   const done = (stoppedBecause: ScanResult["stoppedBecause"]): ScanResult => ({ ...progress(), stoppedBecause });
 
   while (true) {
-    await waitWhileHidden();
+    if (whenHidden === "pause") await waitWhileHidden();
     if (signal?.aborted) return done("aborted");
 
     // First open up any cut-off sale post on screen, one at a time.
@@ -137,6 +144,7 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     }
 
     if (knownIds.size > 0 && knownRun() >= stopAfterKnown) return done("caught-up");
+    if (whenHidden === "stop" && isHidden()) return done("hidden");
     if (count() >= maxPosts) return done("max-posts");
     if (scrolls >= maxScrolls) return done("max-scrolls");
 
@@ -147,7 +155,8 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     onProgress?.(progress());
     if (count() > before) idle = 0;
     // A tab hidden mid-wait loads nothing; that's not the end of the feed.
-    else if (await waitWhileHidden()) continue;
+    else if (whenHidden === "pause" && (await waitWhileHidden())) continue;
+    else if (whenHidden === "stop" && isHidden()) return done("hidden");
     else if (++idle >= idleRounds) return done("end-of-feed");
   }
 }

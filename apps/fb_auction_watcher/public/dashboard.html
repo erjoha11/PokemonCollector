@@ -15,7 +15,7 @@
     <div class="counters">
       <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
       <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
-      <div class="counter outbid" title="Comes with post reads (your bids)"><span class="num">–</span><span class="label">Outbid</span></div>
+      <div class="counter outbid" title="Sales where you've been outbid on at least one lot (from posts you've read)"><span id="count-outbid" class="num">–</span><span class="label">Outbid</span></div>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
     <div class="controls">
@@ -24,9 +24,26 @@
         <button type="button" data-filter="auction">Auction</button>
         <button type="button" data-filter="claim">Claim</button>
         <button type="button" data-filter="fixed">Fixed price</button>
+        <button type="button" data-filter="mine">My bids</button>
       </div>
       <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
     </div>
+    <details class="settings">
+      <summary>Settings</summary>
+      <div class="setting">
+        <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
+        <div id="auto-scan-status" class="muted small"></div>
+        <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab.</div>
+      </div>
+      <div class="setting">
+        <label><input id="use-claude" type="checkbox"> Ask Claude about what the rules can't read</label>
+        <div id="claude-status" class="muted small"></div>
+      </div>
+      <div class="setting">
+        <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
+        <input id="my-name" type="text" autocomplete="off">
+      </div>
+    </details>
   </header>
   <main id="groups"></main>
   <script type="module" src="dashboard.js"></script>

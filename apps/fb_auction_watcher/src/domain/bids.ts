@@ -1,0 +1,268 @@
+import type { CapturedComment, CapturedReply, PostCapture } from "../shared/capture";
+import { parseAmount } from "./amount";
+
+// Lots and bids from a post read with the toolbar icon (module 1's capture), by rules, with
+// optional answers from Claude for replies the rules can't read. Findings this relies on are in
+// docs/spec.md: a lot is a top-level comment with an image from the seller; bids are replies;
+// reply IDs increase with time (Facebook shows them out of order); a reply's aria-label says
+// whether it answers the lot ("… sin kommentar") or another reply ("… sitt svar"); the seller's
+// own replies are never bids; most bids are "<Seller> 250", "250kr" or a bare number.
+
+export type BidReading =
+  | { kind: "bid"; amount: number }
+  /** Probably a bid, but the rules aren't sure (e.g. "580?", or a number in other text). */
+  | { kind: "unsure"; amount: number | null }
+  | { kind: "none" };
+
+export type Bid = {
+  replyId: string | null;
+  bidder: string;
+  amount: number | null;
+  rawText: string;
+  timeText: string | null;
+  isMe: boolean;
+  /** Counts toward the highest bid. */
+  valid: boolean;
+  /** Why it doesn't count, or what to double-check. */
+  note: string | null;
+  /** Placed as a reply to another reply, not to the lot itself; sellers may not accept it. */
+  underReply: boolean;
+  /** The amount came from Claude, not the rules. */
+  viaClaude: boolean;
+};
+
+export type MyStatus = "none" | "lead" | "outbid";
+
+export type Lot = {
+  commentId: string | null;
+  position: number;
+  title: string;
+  rawText: string;
+  imageUrl: string | null;
+  startBid: number | null;
+  increment: number | null;
+  bids: Bid[];
+  highestBid: number | null;
+  highestBidder: string | null;
+  myHighestBid: number | null;
+  myStatus: MyStatus;
+  /** Replies that may be bids but couldn't be read (shown with "?", sent to Claude). */
+  unsureCount: number;
+  /** No bid reached the start bid; the highest is shown anyway (sellers sometimes accept it). */
+  belowStart: boolean;
+};
+
+export const normalizeName = (s: string | null | undefined) =>
+  (s ?? "").normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** Removes a leading tag of the seller ("Ola Nordmann 250" → "250"); also the first name alone. */
+function stripSellerTag(text: string, seller: string | null): string {
+  let t = text.trim();
+  if (!seller) return t;
+  const full = seller.trim();
+  const first = full.split(/\s+/)[0];
+  for (const name of [full, first]) {
+    if (name && t.toLowerCase().startsWith(name.toLowerCase())) {
+      t = t.slice(name.length).replace(/^[\s,:;-]+/, "");
+      break;
+    }
+  }
+  return t;
+}
+
+const AMOUNT = String.raw`\d{1,3}(?:[ .]\d{3})+|\d+(?:[.,]\d+)?\s*k|\d+`;
+const PLAIN_BID = new RegExp(String.raw`^(?:bud\s*:?\s*)?(${AMOUNT})\s*(?:kr\.?|,-|nok|kroner)?\s*[!.]*$`, "i");
+const QUESTION_BID = new RegExp(String.raw`^(?:bud\s*:?\s*)?(${AMOUNT})\s*(?:kr\.?|,-|nok|kroner)?\s*\?+$`, "i");
+
+/** Reads one reply's text as a bid, by rules only. */
+export function readBid(text: string, seller: string | null): BidReading {
+  const t = stripSellerTag(text, seller);
+  if (!t || /^[.\s]+$/.test(t)) return { kind: "none" };
+  const plain = t.match(PLAIN_BID);
+  if (plain) {
+    const amount = parseAmount(plain[1]);
+    return amount !== null ? { kind: "bid", amount } : { kind: "none" };
+  }
+  const question = t.match(QUESTION_BID);
+  if (question) return { kind: "unsure", amount: parseAmount(question[1]) };
+  return /\d/.test(t) ? { kind: "unsure", amount: null } : { kind: "none" };
+}
+
+/** Reply IDs are large numbers that increase with time; compare without losing precision. */
+function compareIds(a: string | null, b: string | null): number {
+  if (a === null || b === null) return 0;
+  if (a.length !== b.length) return a.length - b.length;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** "MP: 1400", "Mp 10kr", "Minstepris 500", or a bare "700kr" on its own line. */
+function lotStartBid(text: string): number | null {
+  const m = text.match(/(?:^|\n)\s*(?:mp|minstepris|startbud|start)\s*:?\s*([^\n]+)/i);
+  if (m) return parseAmount(m[1]);
+  const bare = text.match(/(?:^|\n)\s*(\d[\d .]*)\s*(?:kr|,-)\s*(?:\n|$)/i);
+  return bare ? parseAmount(bare[1]) : null;
+}
+
+/** "MB: 10" (minimum increment for this lot). */
+function lotIncrement(text: string): number | null {
+  const m = text.match(/(?:^|\n)\s*(?:mb|min(?:imum)?\.?\s*bud(?:økning)?)\s*:?\s*([^\n]+)/i);
+  return m ? parseAmount(m[1]) : null;
+}
+
+export type LotOptions = {
+  myName: string;
+  /** From the post: used when a lot doesn't state its own. */
+  listingIncrement: number | null;
+  listingMinPrice: number | null;
+  /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
+  answer?: (seller: string | null, text: string) => number | null | undefined;
+};
+
+function isLot(c: CapturedComment, seller: string | null): boolean {
+  if (!c.hasImage) return false;
+  return !seller || normalizeName(c.author) === normalizeName(seller);
+}
+
+/**
+ * The seller: the post's author, unless nobody by that name posted an image comment (e.g. a
+ * capture taken before the author fix named the group). Then whoever posted most of them.
+ */
+export function sellerOf(capture: PostCapture): string | null {
+  const author = capture.post.author;
+  const withImage = capture.comments.filter((c) => c.hasImage && c.author);
+  if (!author || withImage.some((c) => normalizeName(c.author) === normalizeName(author))) return author;
+  const counts = new Map<string, number>();
+  for (const c of withImage) counts.set(c.author!, (counts.get(c.author!) ?? 0) + 1);
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? author;
+}
+
+export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] {
+  const seller = sellerOf(capture);
+  const me = normalizeName(options.myName);
+  const lots: Lot[] = [];
+  for (const c of capture.comments) {
+    if (!isLot(c, seller)) continue;
+    const startBid = lotStartBid(c.text) ?? options.listingMinPrice;
+    const increment = lotIncrement(c.text) ?? options.listingIncrement;
+    const replies = [...c.replies].sort((a, b) => compareIds(a.id, b.id));
+    const bids: Bid[] = [];
+    let unsureCount = 0;
+    for (const r of replies) {
+      const bid = toBid(r, seller, me, options);
+      if (bid === "unsure") unsureCount++;
+      else if (bid) bids.push(bid);
+    }
+    // Validity, in the order bids were placed: on the lot itself (sellers reject bids placed
+    // under another reply: "bud blir bare godtatt under hovedbildet"), at least the start bid,
+    // and at least the current highest plus the increment (above it when none is stated).
+    let highest: Bid | null = null;
+    for (const b of bids) {
+      if (b.amount === null) continue;
+      if (b.underReply) {
+        b.valid = false;
+      } else if (startBid !== null && b.amount < startBid) {
+        b.valid = false;
+        b.note = `below the start bid (${startBid})`;
+      } else if (highest && b.amount < (highest.amount ?? 0) + (increment ?? 1)) {
+        b.valid = false;
+        b.note = increment ? `less than ${increment} over the highest bid` : "not over the highest bid";
+      } else {
+        highest = b;
+      }
+    }
+    // Nobody reached the start bid: take the best of the rest, flagged, since sellers sometimes
+    // accept it ("den er grei"). Same order and increment rule, without the start bid.
+    const belowStart = !highest && bids.some((b) => b.amount !== null && !b.underReply);
+    if (belowStart) {
+      for (const b of bids) {
+        if (b.amount === null || b.underReply) continue;
+        if (!highest || b.amount >= (highest.amount ?? 0) + (increment ?? 1)) {
+          highest = b;
+          b.valid = true;
+          b.note = `below the start bid (${startBid})`;
+        }
+      }
+    }
+    const mine = bids.filter((b) => b.isMe && b.amount !== null);
+    const myHighestBid = mine.length ? Math.max(...mine.map((b) => b.amount!)) : null;
+    lots.push({
+      commentId: c.id,
+      position: lots.length + 1,
+      title: c.text.split("\n")[0]?.trim() || `Lot ${lots.length + 1}`,
+      rawText: c.text,
+      imageUrl: c.images[0]?.src ?? null,
+      startBid,
+      increment,
+      bids,
+      highestBid: highest?.amount ?? null,
+      highestBidder: highest?.bidder ?? null,
+      myHighestBid,
+      myStatus: mine.length === 0 ? "none" : highest?.isMe ? "lead" : "outbid",
+      unsureCount,
+      belowStart,
+    });
+  }
+  return lots;
+}
+
+function toBid(r: CapturedReply, seller: string | null, me: string, options: LotOptions): Bid | "unsure" | null {
+  const bidder = r.author ?? "";
+  if (seller && normalizeName(bidder) === normalizeName(seller)) return null; // The seller never bids.
+  const reading = readBid(r.text, seller);
+  if (reading.kind === "none") return null;
+  let amount: number | null = reading.kind === "bid" ? reading.amount : null;
+  let viaClaude = false;
+  if (reading.kind === "unsure") {
+    const answer = options.answer?.(seller, r.text);
+    if (answer === undefined) return "unsure";
+    if (answer === null) return null;
+    amount = answer;
+    viaClaude = true;
+  }
+  // "Svar fra A på B sitt svar" (to a reply) vs "… sin kommentar" (to the lot).
+  const underReply = /\bsitt svar\b|'s reply\b/i.test(r.ariaLabel ?? "");
+  return {
+    replyId: r.id,
+    bidder,
+    amount,
+    rawText: r.text,
+    timeText: r.timeText,
+    isMe: !!me && normalizeName(bidder) === me,
+    valid: true,
+    note: underReply ? "placed under another reply, not the lot (sellers usually don't count these)" : null,
+    underReply,
+    viaClaude,
+  };
+}
+
+/** Unsure replies (for Claude), with the seller they tag. */
+export function unsureReplies(capture: PostCapture): { seller: string | null; text: string }[] {
+  const seller = sellerOf(capture);
+  const out: { seller: string | null; text: string }[] = [];
+  for (const c of capture.comments) {
+    if (!isLot(c, seller)) continue;
+    for (const r of c.replies) {
+      if (seller && normalizeName(r.author) === normalizeName(seller)) continue;
+      if (readBid(r.text, seller).kind === "unsure") out.push({ seller, text: r.text });
+    }
+  }
+  return out;
+}
+
+export type LotSummary = { lots: number; bids: number; lead: number; outbid: number; unsure: number };
+
+export function summarizeLots(lots: Lot[]): LotSummary {
+  return {
+    lots: lots.length,
+    bids: lots.reduce((n, l) => n + l.bids.length, 0),
+    lead: lots.filter((l) => l.myStatus === "lead").length,
+    outbid: lots.filter((l) => l.myStatus === "outbid").length,
+    unsure: lots.reduce((n, l) => n + l.unsureCount, 0),
+  };
+}
+
+/** The post ID a capture belongs to, from its URL or its comments' permalinks. */
+export function capturePostId(capture: PostCapture): string | null {
+  const fromUrl = (u: string | null | undefined) => u?.match(/\/(?:posts|permalink)\/(\d+)/)?.[1] ?? null;
+  return fromUrl(capture.pageUrl) ?? fromUrl(capture.post.url) ?? capture.comments.map((c) => fromUrl(c.url)).find(Boolean) ?? null;
+}

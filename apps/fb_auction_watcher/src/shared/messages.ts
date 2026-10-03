@@ -1,4 +1,5 @@
 // Messages between the service worker and content scripts.
+import type { PostCapture } from "./capture";
 import type { FeedPost } from "./feed";
 
 export const MSG_READ_POST = "fbaw/read-post" as const;
@@ -33,3 +34,18 @@ export const MSG_GET_KNOWN_POSTS = "fbaw/get-known-posts" as const;
 export type GetKnownPostsMessage = { type: typeof MSG_GET_KNOWN_POSTS };
 export type KnownPosts = { ids: string[]; completeIds: string[] };
 export const isGetKnownPostsMessage = (m: unknown): m is GetKnownPostsMessage => hasType(m, MSG_GET_KNOWN_POSTS);
+
+/** Service worker → content script in the pinned feed tab: run an automatic (background) scan. */
+export const MSG_AUTO_SCAN = "fbaw/auto-scan" as const;
+export type AutoScanMessage = { type: typeof MSG_AUTO_SCAN };
+export const isAutoScanMessage = (m: unknown): m is AutoScanMessage => hasType(m, MSG_AUTO_SCAN);
+
+/** Content script → service worker: an automatic scan finished. */
+export const MSG_AUTO_SCAN_DONE = "fbaw/auto-scan-done" as const;
+export type AutoScanDoneMessage = { type: typeof MSG_AUTO_SCAN_DONE; stoppedBecause: string; posts: number };
+export const isAutoScanDoneMessage = (m: unknown): m is AutoScanDoneMessage => hasType(m, MSG_AUTO_SCAN_DONE);
+
+/** Content script → service worker: a post read with the icon (comments, replies), to store. */
+export const MSG_SAVE_POST_CAPTURE = "fbaw/save-post-capture" as const;
+export type SavePostCaptureMessage = { type: typeof MSG_SAVE_POST_CAPTURE; capture: PostCapture };
+export const isSavePostCaptureMessage = (m: unknown): m is SavePostCaptureMessage => hasType(m, MSG_SAVE_POST_CAPTURE);

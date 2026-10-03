@@ -158,4 +158,17 @@ describe("scanFeed", () => {
     expect(result.posts).toBe(4); // Kept going after the tab came back.
     expect(result.stoppedBecause).toBe("end-of-feed");
   });
+
+  it("in a background tab, records and expands what's rendered, then stops instead of waiting", async () => {
+    let scrolled = 0;
+    const rec = recordFeed(feed, () => {});
+    const result = await scanFeed(feed, rec, {
+      ...FAST, whenHidden: "stop", isHidden: () => true, scrollStep: () => scrolled++,
+    });
+    rec.stop();
+    expect(result.stoppedBecause).toBe("hidden");
+    expect(scrolled).toBe(0);
+    expect(clicked).toEqual(["Se mer@1"]);
+    expect(rec.posts()).toHaveLength(2);
+  });
 });

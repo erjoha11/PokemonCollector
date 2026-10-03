@@ -1,5 +1,12 @@
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
+import type { PostCapture } from "../shared/capture";
 import type { FeedPost, StoredPost } from "../shared/feed";
+
+/** A post read with the toolbar icon (comments and replies), latest read per post. */
+export type StoredCapture = { postId: string; capture: PostCapture };
+
+/** An answer from Claude for one item the rules couldn't read, keyed by task + a hash of the input. */
+export type StoredAnswer = { key: string; value: unknown; at: string };
 
 // Persistence behind a small interface (swappable for Supabase later, per docs/spec.md).
 // IndexedDB in the extension's own origin: the service worker writes, the table page reads.
@@ -9,6 +16,10 @@ export interface Store {
   /** Inserts new posts and updates known ones (text, thumbnail, lastSeenAt). Returns how many were new. */
   savePosts(posts: FeedPost[], seenAt: Date): Promise<{ added: number; updated: number }>;
   allPosts(): Promise<StoredPost[]>;
+  saveCapture(postId: string, capture: PostCapture): Promise<void>;
+  allCaptures(): Promise<StoredCapture[]>;
+  saveAnswers(answers: StoredAnswer[]): Promise<void>;
+  allAnswers(): Promise<StoredAnswer[]>;
   getMeta(key: string): Promise<string | null>;
   setMeta(key: string, value: string): Promise<void>;
 }
@@ -16,18 +27,31 @@ export interface Store {
 interface Schema extends DBSchema {
   posts: { key: string; value: StoredPost };
   meta: { key: string; value: string };
+  captures: { key: string; value: StoredCapture };
+  answers: { key: string; value: StoredAnswer };
 }
 
 const DB_NAME = "fb-auction-watcher";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 export function idbStore(): Store {
   let db: Promise<IDBPDatabase<Schema>> | null = null;
   const open = () =>
     (db ??= openDB<Schema>(DB_NAME, DB_VERSION, {
-      upgrade(d) {
-        d.createObjectStore("posts", { keyPath: "id" });
-        d.createObjectStore("meta");
+      upgrade(d, oldVersion) {
+        if (oldVersion < 1) {
+          d.createObjectStore("posts", { keyPath: "id" });
+          d.createObjectStore("meta");
+        }
+        if (oldVersion < 2) {
+          d.createObjectStore("captures", { keyPath: "postId" });
+          d.createObjectStore("answers", { keyPath: "key" });
+        }
+      },
+      // A newer version (after an extension update) wants to upgrade: let it, reopen next time.
+      blocking(_current, _blocked, event) {
+        (event.target as IDBDatabase).close();
+        db = null;
       },
     }));
 
@@ -58,6 +82,20 @@ export function idbStore(): Store {
     },
     async allPosts() {
       return (await open()).getAll("posts");
+    },
+    async saveCapture(postId, capture) {
+      await (await open()).put("captures", { postId, capture });
+    },
+    async allCaptures() {
+      return (await open()).getAll("captures");
+    },
+    async saveAnswers(answers) {
+      const tx = (await open()).transaction("answers", "readwrite");
+      for (const a of answers) await tx.store.put(a);
+      await tx.done;
+    },
+    async allAnswers() {
+      return (await open()).getAll("answers");
     },
     async getMeta(key) {
       return (await (await open()).get("meta", key)) ?? null;

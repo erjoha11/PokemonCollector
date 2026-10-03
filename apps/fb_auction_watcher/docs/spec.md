@@ -3,9 +3,12 @@
 - **Id:** `fb-auction-watcher`
 - **Type:** Chrome extension (Manifest V3)
 - **Owner/user:** Erik Johansen
-- **Status:** module 1 (spike) built and run on real posts; overview v1 built (feed scan by hand,
-  rule-based listing interpretation, IndexedDB store of raw posts, table page). See
-  `notes/fb_auction_watcher/overview-plan.md`.
+- **Status:** module 1 (spike) built and run on real posts; overview built: feed scan by hand
+  and automatic (pinned tab, background), rule-based listing and bid interpretation, Claude
+  Code (`claude -p`) through a native-messaging bridge for what the rules can't read, IndexedDB
+  store of raw posts and post reads, table page with your Leading/Outbid status. See
+  `notes/fb_auction_watcher/overview-plan.md`. Not built: overlay, side panel, automatic
+  re-reads of posts you've bid on.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
@@ -75,6 +78,12 @@ Post = listing: overview photos of the whole auction, rules, end time
   auctions I have bid on. Everything else is not read until opened.
 
 ## Interpretation (LLM)
+
+**Decided 2026-10-03:** no Claude API and no downloaded models. Rules in code
+(`src/domain/`) interpret everything they can; only what they mark unsure goes to Claude Code
+on the user's Mac (`claude -p`, their own login) through Chrome native messaging
+(`native/fbaw_claude_host.py`), batched, Haiku, no tools, answers cached. The original design
+below is kept for reference.
 
 - **Feed call:** post text → `type`, `title`, `endsAt` (ISO), `endsAtText`, `closeRule`,
   `softCloseMinutes`, `closeRuleText`, `increment`, `price`, `shippingText`, `soldOrWithdrawn`.
@@ -248,6 +257,10 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   (typically the seller's photo reply under the lot). Sellers can reject bids placed under the
   wrong reply ("kan du legge det under hovedbudet"), so the target matters for validity. The
   capture keeps it in `ariaLabel`; module 3 must use it.
+- **Bids under another reply don't count:** sellers reject them ("bud blir bare godtatt under
+  hovedbildet"), so the overview shows them but leaves them out of the highest bid. When no
+  bid reaches a lot's start bid, the highest is still shown, flagged: a seller accepted one
+  ("den er grei").
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.
@@ -265,6 +278,11 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   images can't be read from text.
 - **Other chatter:** top-level comments that are only a person's name (tagging a friend),
   "Sjekk pm", and the seller's own notices ("Da var alle kortene ute!", "starter om 6 min").
+
+Automatic scan (2026-10-03): Chrome doesn't render background tabs, so the feed doesn't load
+more posts there. The automatic scan reloads the pinned feed tab instead, records the newest
+posts that render at the top, opens their "Se mer", and stops (`whenHidden: "stop"`); a
+foreground scan catches up if more came in than that.
 
 Decided (2026-10-03): the feed scan clicks "Se mer" on auction and claim-sale posts (only in
 the post's own text) to get the full text with the end time, and scrolls the feed itself. For

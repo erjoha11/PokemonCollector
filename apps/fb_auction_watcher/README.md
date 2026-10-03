@@ -48,11 +48,47 @@ Downloads land in your Downloads folder. Move them to `apps/fb_auction_watcher/s
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
 and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
-the seller's original text next to it; a "?" means the rules weren't sure. Click a title to open the post.
+the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
+Claude filled in. Click a title to open the post. **My bids** filters to sales you're bidding in.
 
-Posts are saved while a scan runs (IndexedDB, in the extension). Only raw text is stored; the overview
-interprets it every time it loads, so improved rules apply to old posts too. Bids and your Leading/Outbid
-status are not in it yet.
+**Bids and your status:** open a post on Facebook and click the icon (it reads every comment and reply).
+The overview then shows its lots and bids, and **Leading / Outbid** per lot (blue / orange edge on the
+row; **Your lots** expands them). Rules: a lot is a comment with a photo from the seller; bids are replies
+to it, in the order they were placed; the seller's own replies never count; a bid has to beat the highest
+by the increment; bids placed under another reply (e.g. under the seller's photo) are shown but not
+counted, since sellers reject them. Set your Facebook name under **Settings** if it isn't Erik Johansen.
+
+Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
+it every time it loads, so improved rules apply to old posts too.
+
+## Automatic scan
+
+Under **Settings** in the overview: **Scan the feed automatically every 10–15 min**. It needs a **pinned**
+tab with the group's feed (right-click the tab → Pin). Every 10–15 min (±20 %) it reloads that tab in
+the background, saves the newest posts and opens their "Se mer", and stops once it reaches posts it already
+has. It never opens tabs or uses more than that one, skips a round while your screen is locked, you're
+away, or you're looking at that tab, and is off until you switch it on. A background tab only shows the
+first few posts, so if more were posted than that since the last round, the status says so: open the
+feed tab and click the icon to catch up.
+
+## Claude for what the rules can't read
+
+End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers
+("200 sorry mente 250", "580?") are sent to **Claude Code** on this Mac (`claude -p`, your own Claude login,
+no API key), batched, the smallest model, no tools, each answer cached so it's asked only once. The
+extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
+which only passes the text to `claude -p` and the answer back.
+
+One-time setup:
+
+```bash
+apps/fb_auction_watcher/native/install.sh            # or: install.sh <extension ID from chrome://extensions>
+apps/fb_auction_watcher/native/install.sh --uninstall
+```
+
+It writes one file, `~/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.erjoha.fbaw.claude.json`,
+telling Chrome where the script is and that only this extension may start it. Switch it off under
+**Settings** in the overview; then those items just stay marked unsure.
 
 ## Scan the feed
 

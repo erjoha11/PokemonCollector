@@ -1,4 +1,4 @@
-import type { FeedPost } from "../../shared/feed";
+import { groupSlug, type FeedPost } from "../../shared/feed";
 import { collectText } from "../post/extract";
 import { isSeeMoreLabel } from "../post/patterns";
 import { postId } from "./recorder";
@@ -12,10 +12,6 @@ const part = (post: Element, role: string) => post.querySelector(`[data-ad-rende
 function looksLikeText(s: string): boolean {
   const words = s.split(/\s+/).filter(Boolean);
   return words.length >= 4 && s.length / words.length < 15;
-}
-
-export function groupSlug(pageUrl: string): string | null {
-  return pageUrl.match(/\/groups\/([^/?#]+)/)?.[1] ?? null;
 }
 
 export function extractFeedPost(post: Element, pageUrl: string): FeedPost | null {

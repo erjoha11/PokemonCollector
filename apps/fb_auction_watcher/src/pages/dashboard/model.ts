@@ -1,5 +1,8 @@
+import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
-import { osloDate } from "../../domain/endTime";
+import { osloDate, osloToUtc } from "../../domain/endTime";
+import { bidAnswerKey, endTimeAnswerKey } from "../../llm/prompts";
+import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
 // The table's logic, without any DOM: stored raw posts → interpreted rows → groups.
@@ -14,7 +17,26 @@ export type Row = StoredPost &
     /** End time passed, but within the antisnipe window: bids may still extend it. */
     maybeEnded: boolean;
     ended: boolean;
+    /** The end time came from Claude (the rules couldn't read it). */
+    endsViaClaude: boolean;
+    /** From the latest post read with the icon, if any. */
+    lots: Lot[] | null;
+    summary: LotSummary | null;
+    lastReadAt: string | null;
   };
+
+/** Post reads, Claude's cached answers, and your name, for lots, bids and your status. */
+export type RowExtras = {
+  captures?: Map<string, PostCapture>;
+  answers?: Map<string, unknown>;
+  myName?: string;
+};
+
+/** Claude's "YYYY-MM-DD HH:mm" (Oslo) as an ISO timestamp, or null. */
+function claudeEndsAt(value: unknown): string | null {
+  const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/) : null;
+  return m ? osloToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]).toISOString() : null;
+}
 
 export type GroupId = "soon" | "today" | "later" | "unknown" | "claim-fixed" | "ended";
 export type Group = { id: GroupId; label: string; rows: Row[] };
@@ -22,11 +44,33 @@ export type Group = { id: GroupId; label: string; rows: Row[] };
 const HOUR = 3_600_000;
 
 /** Sales only: wanted, trade and unrecognized posts are left out of the table. */
-export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null): Row[] {
+export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
+  const { captures = new Map(), answers = new Map(), myName = "" } = extras;
   const rows: Row[] = [];
   for (const p of posts) {
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
     if (i.type === "wanted" || i.type === "trade" || i.type === "other") continue;
+    let endsViaClaude = false;
+    if (!i.endsAt) {
+      const fromClaude = claudeEndsAt(answers.get(endTimeAnswerKey(p.text)));
+      if (fromClaude) {
+        i.endsAt = fromClaude;
+        i.sure = true;
+        endsViaClaude = true;
+      }
+    }
+    const capture = captures.get(p.id) ?? null;
+    const lots = capture
+      ? interpretLots(capture, {
+          myName,
+          listingIncrement: i.increment,
+          listingMinPrice: i.minPrice,
+          answer: (seller, text) => {
+            const key = bidAnswerKey(seller, text);
+            return answers.has(key) ? (answers.get(key) as number | null) : undefined;
+          },
+        })
+      : null;
     const endsAtMs = i.endsAt ? Date.parse(i.endsAt) : null;
     const softMs = (i.softCloseMinutes ?? 0) * 60_000;
     const t = now.getTime();
@@ -37,6 +81,10 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
       isNew: lastVisit !== null && Date.parse(p.firstSeenAt) > lastVisit.getTime(),
       maybeEnded: endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
       ended: endsAtMs !== null && t >= endsAtMs + softMs,
+      endsViaClaude,
+      lots,
+      summary: lots ? summarizeLots(lots) : null,
+      lastReadAt: capture?.capturedAt ?? null,
     });
   }
   return rows;
@@ -79,7 +127,7 @@ export function groupRows(rows: Row[], now: Date): Group[] {
   return (Object.keys(groups) as GroupId[]).map((id) => ({ id, label: labels[id], rows: groups[id] }));
 }
 
-export type Counts = { active: number; withinHour: number; isNew: number };
+export type Counts = { active: number; withinHour: number; outbid: number; isNew: number };
 
 export function countRows(rows: Row[], now: Date): Counts {
   const t = now.getTime();
@@ -87,6 +135,7 @@ export function countRows(rows: Row[], now: Date): Counts {
   return {
     active: active.length,
     withinHour: active.filter((r) => r.endsAtMs !== null && (r.maybeEnded || r.endsAtMs - t < HOUR)).length,
+    outbid: active.filter((r) => (r.summary?.outbid ?? 0) > 0).length,
     isNew: rows.filter((r) => r.isNew && !r.ended).length,
   };
 }

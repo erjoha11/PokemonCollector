@@ -92,3 +92,27 @@ td.type, td.price, td.seen { white-space: nowrap; color: var(--muted); font-size
   td { border: none; padding: 2px 10px; }
   td.ends { width: auto; }
 }
+
+/* Your status, lots, settings */
+.small { font-size: 12px; }
+.status { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 4px; padding: 0 6px; margin-right: 4px; color: #fff; }
+.status.lead { background: var(--lead); }
+.status.outbid { background: var(--outbid); }
+tr.mine-lead > td:first-child { box-shadow: inset 4px 0 0 var(--lead); }
+tr.mine-outbid > td:first-child { box-shadow: inset 4px 0 0 var(--outbid); }
+td.lots, td.you { font-size: 13px; white-space: nowrap; }
+.via { font-size: 11px; color: var(--lead); margin-top: 2px; }
+.linkish { font: inherit; font-size: 12px; background: none; border: none; color: var(--lead); padding: 0; cursor: pointer; text-decoration: underline; }
+tr.lots-row > td { background: var(--bg); }
+.lot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.lot { display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 13px; }
+.lot.lot-lead { border-left: 4px solid var(--lead); }
+.lot.lot-outbid { border-left: 4px solid var(--outbid); }
+.lot-img { width: 56px; height: 76px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
+.lot-title { font-weight: 600; }
+.lot .status { margin-top: 2px; }
+.settings { margin: 4px 0 8px; }
+.settings summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.setting { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.setting label { font-weight: 600; }
+.setting input[type="text"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }

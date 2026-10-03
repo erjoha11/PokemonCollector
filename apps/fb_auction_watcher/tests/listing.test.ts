@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { interpretListing, saleTitle, saleType } from "../src/domain/listing";
 import { buildRows, countdown, countRows, groupRows } from "../src/pages/dashboard/model";
+import { endTimeAnswerKey } from "../src/llm/prompts";
 import type { StoredPost } from "../src/shared/feed";
 
 // Post texts shaped like real ones in samples/ (no names).
@@ -76,7 +77,7 @@ describe("table model", () => {
   });
 
   it("counts", () => {
-    expect(countRows(rows, now)).toEqual({ active: 6, withinHour: 2, isNew: 7 });
+    expect(countRows(rows, now)).toEqual({ active: 6, withinHour: 2, outbid: 0, isNew: 7 });
   });
 
   it("formats countdowns", () => {
@@ -85,5 +86,11 @@ describe("table model", () => {
     expect(countdown(t + 5 * 3_600_000 + 12 * 60_000, now)).toBe("5 h 12 min");
     expect(countdown(t + 50 * 3_600_000, now)).toBe("2 d 2 h");
     expect(countdown(t - 1, now)).toBe("ended");
+  });
+
+  it("uses Claude's end time when the rules found none, and marks it", () => {
+    const text = "AUKSJON\nAuksjonen avsluttes søndag kveld klokka ni";
+    const [r] = buildRows([stored("20", text)], now, null, { answers: new Map([[endTimeAnswerKey(text), "2026-10-04 21:00"]]) });
+    expect(r).toMatchObject({ endsAt: "2026-10-04T19:00:00.000Z", endsViaClaude: true, sure: true });
   });
 });
