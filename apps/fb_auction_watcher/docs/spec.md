@@ -5,7 +5,9 @@
 - **Owner/user:** Erik Johansen
 - **Status:** spec only, no functionality built yet
 
-UI strings are in Norwegian and quoted as-is (e.g. "Leder", "Overbudt"); everything else is in English.
+The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
+input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
+Amounts are NOK (kr); times are 24-hour, `Europe/Oslo`.
 
 ## Problem
 
@@ -16,7 +18,7 @@ of what ends when, and where I'm leading or have been outbid.
 ## v1 goals
 
 - One table of every sale in the group, grouped and sorted by end time, with a live countdown.
-- Lots I have bid on are highlighted ("Leder" / "Overbudt" – leading / outbid).
+- Lots I have bid on are highlighted (Leading / Outbid).
 - Open an auction and see its lots and bids in a clean overlay instead of the comment thread.
 - Chrome on PC/Mac only. No mobile, no server, no webapp.
 
@@ -38,8 +40,9 @@ Post = listing: overview photos of the whole auction, rules, end time
 ## Non-negotiable rules
 
 - **READ-ONLY.** The extension never bids, claims, comments, or likes. The only clicks
-  allowed: "Vis flere kommentarer" (view more comments), "Vis N svar" (view N replies),
-  and the feed sort order. (The highest bid is binding.)
+  allowed: "View more comments", "View N replies", and the feed sort order. (The highest
+  bid is binding.) Facebook shows these labels in the account's language (Norwegian for me:
+  "Vis flere kommentarer", "Vis N svar"), so matching must not assume English.
 - No headless/server-side scraping. Everything runs in my own logged-in Chrome.
 - Slow pacing: feed scan every 10–15 min ±20 %, pause while the PC is locked (`chrome.idle`),
   never parallel tabs against Facebook. Must be possible to turn off.
@@ -58,9 +61,9 @@ Post = listing: overview photos of the whole auction, rules, end time
 
 ## Population
 
-- **First-time backfill:** sort by "Nye innlegg" (new posts), scroll slowly, save each post as
+- **First-time backfill:** sort by "New posts" ("Nye innlegg"), scroll slowly, save each post as
   it renders, stop at posts 3 days old. After that, incremental: stop at the first known post.
-- A less frequent pass sorted by "Ny aktivitet" (new activity) catches older posts with new bids.
+- A less frequent pass sorted by "New activity" ("Ny aktivitet") catches older posts with new bids.
 - **Detail reads (lots/bids)** only: when I open a post, and automatically every 15 min for
   auctions I have bid on. Everything else is not read until opened.
 
@@ -105,22 +108,21 @@ Per listing:
 
 | UI label | Meaning |
 |---|---|
-| Ny | First seen after my last visit to the table page |
-| Aktivitet | More comments than last time (`commentCount` > `commentCountPrev`) |
-| Slutter snart | Less than 1 hour left |
-| Ukjent sluttid | End time could not be interpreted |
-| Avsluttet? | End time passed, but the soft close window is not over |
-| Avsluttet | End time (and any soft close window) passed |
-| Solgt/trukket | Seller marked the sale as sold or withdrawn |
+| New | First seen after my last visit to the table page |
+| Activity | More comments than last time (`commentCount` > `commentCountPrev`) |
+| Ending soon | Less than 1 hour left |
+| Unknown end time | End time could not be interpreted |
+| Ended? | End time passed, but the soft close window is not over |
+| Ended | End time (and any soft close window) passed |
+| Sold/withdrawn | Seller marked the sale as sold or withdrawn |
 
-Per lot: **Leder** (leading) / **Overbudt** (outbid). A listing shows a summary, e.g.
-"Leder 2 · overbudt 1".
+Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 · outbid 1".
 
 ## Design
 
-- **Colors:** blue `#2457D6` = Leder, orange `#C2570C` = Overbudt, red `#B42318` = under 1 h.
+- **Colors:** blue `#2457D6` = Leading, orange `#C2570C` = Outbid, red `#B42318` = under 1 h.
 - **Fonts:** IBM Plex Sans / IBM Plex Mono.
-- **Language:** Norwegian UI.
+- **Language:** English UI.
 
 ### Table page (`dashboard.html`)
 
@@ -129,13 +131,13 @@ Per lot: **Leder** (leading) / **Overbudt** (outbid). A listing shows a summary,
 - Columns: Ends · Sale (title, seller, New, +N comments) · Type · Lots · Bids ·
   Your status · Updated.
 - Filters: All / Auction / Claim / Fixed price / My bids / New + search.
-- Rows I'm active in get a colored left border and can expand to "Dine lots i denne
-  auksjonen" (your lots in this auction: image, highest bid, my bid, status).
+- Rows I'm active in get a colored left border and can expand to "Your lots in this
+  auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.
 
 ### Side panel
 
-- Toggle "Fanger" / "Pauset" (capturing / paused).
+- Toggle Capturing / Paused.
 - Counters: within 1 h, outbid, new.
 - Filters: All / My bids / Within 1 h.
 - Compact list + link to the full table.
@@ -143,13 +145,12 @@ Per lot: **Leder** (leading) / **Overbudt** (outbid). A listing shows a summary,
 ### Overlay on the post
 
 - Header: seller, title, large countdown, close rule, the seller's rules verbatim +
-  interpretation, shipping, "Les på nytt" (re-read).
-- Selector: "Alle lots" / "Bare mine" (all lots / mine only).
-- "Dine lots" (your lots) first (outbid first, blue/orange border, my bid shown), then
-  "Andre lots" (other lots).
-- Selected lot: bid list, highest and next valid bid, a "By på Facebook" (bid on Facebook)
+  interpretation, shipping, "Re-read".
+- Selector: "All lots" / "Mine only".
+- "Your lots" first (outbid first, blue/orange border, my bid shown), then "Other lots".
+- Selected lot: bid list, highest and next valid bid, a "Bid on Facebook"
   button that hides the overlay and scrolls to the reply field under the lot (never types).
-- "Vis Facebook-siden" (show the Facebook page).
+- "Show Facebook page".
 
 ## Plan
 
@@ -182,5 +183,5 @@ the spike's JSON before storage is wired in).
 ## Working style
 
 - Show a plan before code for each module.
-- Code and commits in English, UI in Norwegian.
+- Everything in English: code, commits, docs, and UI.
 - After each session: update this spec with what we've learned, and commit.
