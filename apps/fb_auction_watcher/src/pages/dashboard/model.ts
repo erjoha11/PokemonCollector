@@ -1,7 +1,7 @@
 import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
 import { interpretListing, type Interpretation } from "../../domain/listing";
 import { osloDate, osloToUtc } from "../../domain/endTime";
-import { bidAnswerKey, endTimeAnswerKey } from "../../llm/prompts";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
@@ -66,6 +66,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
           claims: i.type === "claim" || i.type === "fixed",
           listingIncrement: i.increment,
           listingMinPrice: i.minPrice,
+          claimAnswer: (input) => answers.get(claimLotAnswerKey(input)) as ClaimLotAnswer | undefined,
           answer: (seller, text) => {
             const key = bidAnswerKey(seller, text);
             return answers.has(key) ? (answers.get(key) as number | null) : undefined;

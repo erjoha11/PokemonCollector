@@ -4,7 +4,11 @@
 
 export type ClaudeRequest = {
   /** A short name for logs. */
-  task: "end-time" | "bid";
+  task: "end-time" | "bid" | "claim-lot";
+  /** Haiku unless set; photos need Sonnet (Haiku misread prices on a real lot). */
+  model?: "haiku" | "sonnet";
+  /** Photo URLs (Facebook's CDN) the bridge downloads and sends along. */
+  images?: string[];
   system: string;
   input: string;
   /** JSON Schema for the structured output. */
@@ -79,3 +83,37 @@ export function hashText(s: string): string {
 
 export const endTimeAnswerKey = (text: string) => `end-time:${hashText(text)}`;
 export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hashText(`${seller ?? ""}\n${text}`)}`;
+
+/** One claim-sale lot: its full-size photo and the replies under it, oldest first. */
+export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[] };
+export type ClaimLotAnswer = { claimed: { card: string; price: number | null; claimedBy: string }[] };
+
+// Tried 2026-10-03 on a real lot (8 cards, prices on notes, 2 claimers): Sonnet 4/4, Haiku 3/4.
+export function claimLotRequest(item: ClaimLotItem): ClaudeRequest {
+  return {
+    task: "claim-lot",
+    model: "sonnet",
+    images: [item.imageUrl],
+    system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards with each price written on a note, and the replies under it, oldest first. Replies claim cards by name (often tagging the seller first, sometimes misspelled, e.g. "feraligator"), or "alle" for everything.
+First to claim a card gets it. Only consider cards someone claimed. For each claimed card, give its name as printed on the card, the price written next to it on the photo, and who claimed it first. Use null for a price you can't read.`,
+    input: `Seller: ${item.seller ?? "unknown"}\nReplies (oldest first):\n${item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n")}`,
+    schema: {
+      type: "object",
+      properties: {
+        claimed: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { card: { type: "string" }, price: { type: ["integer", "null"] }, claimedBy: { type: "string" } },
+            required: ["card", "price", "claimedBy"],
+          },
+        },
+      },
+      required: ["claimed"],
+    },
+  };
+}
+
+/** Same photo and same replies → same answer; a new reply asks again. The URL's query changes per read, so only its path counts. */
+export const claimLotAnswerKey = (item: ClaimLotItem) =>
+  `claim-lot:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;

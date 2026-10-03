@@ -64,8 +64,10 @@ by the increment; bids placed under another reply (e.g. under the seller's photo
 counted, since sellers reject them. Set your Facebook name under **Settings** if it isn't Erik Johansen.
 
 **Claim sales and fixed price:** replies are read as claims ("claim Persian og Clefairy", "<seller>
-marowak og feraligatr", "claim alle"). You get **Claimed** when nobody claimed the same card (or
-everything) before you, and **Check** when someone was earlier: first come wins, so you may not get it.
+marowak og feraligatr", "claim alle"). First to claim a card gets it: you get **Won** when nobody claimed
+the same card (or everything) before you, and **Check** when someone was earlier. For lots you've claimed
+on, Claude also reads the photo (prices are usually written on it) and the replies, and the overview
+shows what you won and for how much ("You won 2 · 400 kr: Marowak 200, Feraligatr 200").
 A "." is someone following the lot, not a claim. Click any photo for a bigger picture.
 
 Posts and reads are saved in the extension (IndexedDB). Only raw text is stored; the overview interprets
@@ -87,7 +89,9 @@ feed tab and click the icon to catch up.
 
 End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers
 ("200 sorry mente 250", "580?") are sent to **Claude Code** on this Mac (`claude -p`, your own Claude login,
-no API key), batched, the smallest model, no tools, each answer cached so it's asked only once. The
+no API key), batched, the smallest model (Haiku), no tools, each answer cached so it's asked only once.
+Claim lots you've claimed on go one at a time with their full-size photo to Sonnet, which reads prices on
+photos reliably (Haiku misread one on a real lot); the bridge downloads photos only from Facebook's CDN. The
 extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
 which only passes the text to `claude -p` and the answer back.
 

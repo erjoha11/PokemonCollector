@@ -48,8 +48,11 @@ export type Claim = {
   underReply: boolean;
 };
 
-/** Your claim on a lot: first on what you named, someone was earlier, or no claim. */
+/** Your claim on a lot: first on what you named (you won it), someone was earlier, or no claim. */
 export type MyClaim = "none" | "claimed" | "check";
+
+/** Claude's reading of a claim lot (photo + replies): who got which card, at what price. */
+export type ClaimCards = { card: string; price: number | null; claimedBy: string; isMe: boolean }[];
 
 export type Lot = {
   commentId: string | null;
@@ -71,6 +74,8 @@ export type Lot = {
   /** Claim-sale and fixed-price lots: claims instead of bids. */
   claims: Claim[];
   myClaim: MyClaim;
+  /** From Claude, when asked: every claimed card with its price from the photo and who got it. */
+  claimCards: ClaimCards | null;
 };
 
 export const normalizeName = (s: string | null | undefined) =>
@@ -144,6 +149,8 @@ export type LotOptions = {
   /** From the post: used when a lot doesn't state its own. */
   listingIncrement: number | null;
   listingMinPrice: number | null;
+  /** Claude's reading of a claim lot (see claimLotInput), or undefined when not asked yet. */
+  claimAnswer?: (input: ClaimLotInput) => { claimed: { card: string; price: number | null; claimedBy: string }[] } | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
   answer?: (seller: string | null, text: string) => number | null | undefined;
 };
@@ -179,7 +186,15 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     let unsureCount = 0;
     const claims = options.claims ? readClaims(replies, seller, me) : [];
     const mineClaims = claims.filter((x) => x.isMe);
-    const myClaim: MyClaim = mineClaims.length === 0 ? "none" : mineClaims.some((x) => !x.contested) ? "claimed" : "check";
+    let myClaim: MyClaim = mineClaims.length === 0 ? "none" : mineClaims.some((x) => !x.contested) ? "claimed" : "check";
+    // Claude has read the photo and replies: it decides who got what (and the prices).
+    let claimCards: ClaimCards | null = null;
+    const lotInput = options.claims ? claimLotInput(c, seller) : null;
+    const answer = lotInput ? options.claimAnswer?.(lotInput) : undefined;
+    if (answer) {
+      claimCards = answer.claimed.map((x) => ({ ...x, isMe: !!me && normalizeName(x.claimedBy) === me }));
+      if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
+    }
     for (const r of options.claims ? [] : replies) {
       const bid = toBid(r, seller, me, options);
       if (bid === "unsure") unsureCount++;
@@ -235,6 +250,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       belowStart,
       claims,
       myClaim,
+      claimCards,
     });
   }
   return lots;
@@ -254,6 +270,31 @@ export function claimItems(text: string, seller: string | null): { items: string
     .map((x) => x.trim().toLowerCase())
     .filter(Boolean);
   return { items, all: false };
+}
+
+export type ClaimLotInput = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[] };
+
+/** The full-size version of a Facebook CDN photo: the `ctp` parameter asks for a small crop. */
+export const fullSizePhoto = (url: string) => url.replace(/([?&])ctp=[^&]*&?/, "$1").replace(/[?&]$/, "");
+
+/** What Claude needs for a claim lot: its full-size photo and the replies (not the seller's), oldest first. */
+export function claimLotInput(c: CapturedComment, seller: string | null): ClaimLotInput | null {
+  const photo = c.images[0]?.src;
+  if (!photo) return null;
+  const replies = [...c.replies]
+    .sort((a, b) => compareIds(a.id, b.id))
+    .filter((r) => !seller || normalizeName(r.author) !== normalizeName(seller))
+    .map((r) => ({ author: r.author ?? "", text: r.text }));
+  return { seller, imageUrl: fullSizePhoto(photo), replies };
+}
+
+/** Claim lots you've claimed on that Claude should read (photo prices, who got what). */
+export function myClaimLots(capture: PostCapture, myName: string): ClaimLotInput[] {
+  const seller = sellerOf(capture);
+  const me = normalizeName(myName);
+  return capture.comments
+    .filter((c) => isLot(c, seller) && c.replies.some((r) => normalizeName(r.author) === me && claimItems(r.text, seller)))
+    .flatMap((c) => claimLotInput(c, seller) ?? []);
 }
 
 const sameItem = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);

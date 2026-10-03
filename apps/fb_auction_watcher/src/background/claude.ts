@@ -1,8 +1,10 @@
-import { unsureReplies } from "../domain/bids";
+import { myClaimLots, unsureReplies, type ClaimLotInput } from "../domain/bids";
 import { interpretListing } from "../domain/listing";
 import {
   bidAnswerKey,
   bidRequest,
+  claimLotAnswerKey,
+  claimLotRequest,
   endTimeAnswerKey,
   endTimeRequest,
   type BidItem,
@@ -21,8 +23,12 @@ const DEBOUNCE_MS = 5_000;
 const ERROR_COOLDOWN_MS = 10 * 60_000;
 const MAX_END_TIMES = 20;
 const MAX_BIDS = 40;
+/** Photo questions are one call each (Sonnet), so fewer per run. */
+const MAX_CLAIM_LOTS = 5;
 
-type HostReply = { ok: true; result: { results: { id: number; [k: string]: unknown }[] }; durationMs?: number } | { ok: false; error: string };
+type HostReply =
+  | { ok: true; result: { results: { id: number; [k: string]: unknown }[]; claimed?: unknown }; durationMs?: number }
+  | { ok: false; error: string };
 
 let timer: ReturnType<typeof setTimeout> | null = null;
 let running = false;
@@ -52,7 +58,7 @@ async function ask(request: ClaudeRequest): Promise<HostReply> {
 }
 
 /** What still needs Claude: end times the rules couldn't find in complete text, and unsure bids. */
-export async function pendingItems(store: Store) {
+export async function pendingItems(store: Store, myName = "") {
   const [posts, captures, answers] = await Promise.all([store.allPosts(), store.allCaptures(), store.allAnswers()]);
   const answered = new Set(answers.map((a) => a.key));
   const endTimes: (EndTimeItem & { key: string })[] = [];
@@ -74,7 +80,17 @@ export async function pendingItems(store: Store) {
       bids.push({ id: bids.length, seller: u.seller, text: u.text, key });
     }
   }
-  return { endTimes: endTimes.slice(0, MAX_END_TIMES), bids: bids.slice(0, MAX_BIDS) };
+  // Claim and fixed-price lots you've claimed on: who got which card, and the price on the photo.
+  const claimLots: (ClaimLotInput & { key: string })[] = [];
+  for (const { capture } of captures) {
+    const type = interpretListing(capture.post.text, new Date(capture.capturedAt)).type;
+    if (type !== "claim" && type !== "fixed") continue;
+    for (const lot of myClaimLots(capture, myName)) {
+      const key = claimLotAnswerKey(lot);
+      if (!answered.has(key) && !claimLots.some((x) => x.key === key)) claimLots.push({ ...lot, key });
+    }
+  }
+  return { endTimes: endTimes.slice(0, MAX_END_TIMES), bids: bids.slice(0, MAX_BIDS), claimLots: claimLots.slice(0, MAX_CLAIM_LOTS) };
 }
 
 async function run(store: Store, onAnswered: () => void) {
@@ -84,12 +100,13 @@ async function run(store: Store, onAnswered: () => void) {
   }
   running = true;
   try {
-    if (!(await getSettings()).useClaude) return;
+    const settings = await getSettings();
+    if (!settings.useClaude) return;
     const state = await getClaudeState();
     if (state.error && state.lastAt && Date.now() - Date.parse(state.lastAt) < ERROR_COOLDOWN_MS) return;
 
-    const { endTimes, bids } = await pendingItems(store);
-    if (endTimes.length === 0 && bids.length === 0) return;
+    const { endTimes, bids, claimLots } = await pendingItems(store, settings.myName);
+    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0) return;
 
     const at = new Date().toISOString();
     const saved: StoredAnswer[] = [];
@@ -110,6 +127,16 @@ async function run(store: Store, onAnswered: () => void) {
       }
       done.push(`${items.length} ${label}${items.length === 1 ? "" : "s"}`);
     }
+    for (const lot of claimLots) {
+      const reply = await ask(claimLotRequest(lot));
+      if (!reply.ok) {
+        await store.saveAnswers(saved); // Keep what was answered before the failure.
+        await updateClaudeState({ lastAt: at, error: reply.error, lastOutcome: `Failed: ${reply.error}` });
+        return;
+      }
+      saved.push({ key: lot.key, value: reply.result, at });
+    }
+    if (claimLots.length) done.push(`${claimLots.length} claim lot photo${claimLots.length === 1 ? "" : "s"}`);
     await store.saveAnswers(saved);
     await updateClaudeState({ lastAt: at, error: null, lastOutcome: `Read ${done.join(" and ")}` });
     onAnswered();

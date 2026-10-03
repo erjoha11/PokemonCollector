@@ -269,6 +269,10 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   eevee, slowbro og slowpoke"), "alle", or nothing (the lot). One photo often holds several
   cards claimed by different people, so a claim is only contested by an earlier claim of the
   same card, of "alle", or of the unnamed lot.
+- **Prices on photos** (claim sales, fixed price): the price is often a note on the photo, one
+  per card. Only a model can read it: Claude via the bridge, with the full-size photo (the CDN
+  URL's `ctp=p240x240` asks for a 240 px crop; without it the photo is 540×960). Tried on a
+  real lot: Sonnet 4/4 cards and prices right in 7 s, Haiku 3/4 in 56 s.
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.

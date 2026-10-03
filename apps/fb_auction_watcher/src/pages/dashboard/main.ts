@@ -1,4 +1,4 @@
-import type { Lot } from "../../domain/bids";
+import { fullSizePhoto, type Lot } from "../../domain/bids";
 import type { PostCapture } from "../../shared/capture";
 import { isStoreUpdatedMessage, MSG_QUEUE_READ, type QueueReadMessage } from "../../shared/messages";
 import type { ReaderState } from "../../background/reader";
@@ -204,11 +204,11 @@ function zoomable(img: HTMLImageElement, caption: string) {
   img.classList.add("zoomable");
   img.tabIndex = 0;
   img.title = "Click for a bigger picture";
-  img.addEventListener("click", () => showPhoto(img.src, caption));
+  img.addEventListener("click", () => showPhoto(fullSizePhoto(img.src), caption));
   img.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      showPhoto(img.src, caption);
+      showPhoto(fullSizePhoto(img.src), caption);
     }
   });
 }
@@ -242,7 +242,12 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   if (mineCount === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
   if (s.lead) youTd.append(el("span", "status lead", `Leading ${s.lead}`));
   if (s.outbid) youTd.append(el("span", "status outbid", `Outbid ${s.outbid}`));
-  if (s.claimed) youTd.append(el("span", "status lead", `Claimed ${s.claimed}`));
+  if (s.claimed) {
+    // What you won, with the prices Claude read off the photos (when it has).
+    const mine = (r.lots ?? []).flatMap((l) => l.claimCards?.filter((x) => x.isMe) ?? []);
+    const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
+    youTd.append(el("span", "status lead", mine.length ? `Won ${mine.length} · ${total} kr` : `Won ${s.claimed}`));
+  }
   if (s.check) {
     const check = el("span", "status outbid", `Check ${s.check}`);
     check.title = "Someone claimed the same before you: first come wins";
@@ -288,8 +293,24 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     body.append(el("div", "lot-title", `${l.position}. ${l.title}`));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
+      if (l.claimCards) {
+        // Claude read the photo and the replies: who got which card, at what price.
+        const mine = l.claimCards.filter((x) => x.isMe);
+        const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
+        if (mine.length) {
+          body.append(el("div", "status lead", `You won ${mine.length} · ${total} kr`));
+          for (const x of mine) body.append(el("div", "small", `${x.card}: ${x.price ?? "?"} kr`));
+        } else if (l.myClaim !== "none") {
+          body.append(el("div", "status outbid", "Someone claimed it before you"));
+        }
+        for (const x of l.claimCards.filter((y) => !y.isMe)) body.append(el("div", "small muted", `${x.claimedBy}: ${x.card} ${x.price ?? "?"} kr`));
+        body.append(el("div", "via", "Cards and prices read by Claude from the photo"));
+        item.append(body);
+        list.append(item);
+        continue;
+      }
       if (l.myClaim !== "none") {
-        body.append(el("div", `status ${l.myClaim === "claimed" ? "lead" : "outbid"}`, l.myClaim === "claimed" ? "You claimed first" : "Someone claimed the same before you"));
+        body.append(el("div", `status ${l.myClaim === "claimed" ? "lead" : "outbid"}`, l.myClaim === "claimed" ? "You claimed first (prices: waiting for Claude)" : "Someone claimed the same before you"));
       }
       if (l.claims.length === 0) body.append(el("div", "muted small", "No claims"));
       for (const c of l.claims) {

@@ -52,7 +52,7 @@ async function summary(capture: PostCapture): Promise<{ text: string; lead: numb
   const count = claims ? `${s.claims} claim${s.claims === 1 ? "" : "s"}` : `${s.bids} bid${s.bids === 1 ? "" : "s"}`;
   const parts = [`${s.lots} lot${s.lots === 1 ? "" : "s"}`, count];
   return claims
-    ? { text: parts.join(" · "), lead: s.claimed, outbid: s.check, labels: ["Claimed", "Check"] }
+    ? { text: parts.join(" · "), lead: s.claimed, outbid: s.check, labels: ["Won", "Check"] }
     : { text: parts.join(" · "), lead: s.lead, outbid: s.outbid, labels: ["Leading", "Outbid"] };
 }
 
