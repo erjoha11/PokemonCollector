@@ -59,8 +59,14 @@ status are not in it yet.
 Open the group's feed (no post open) and click the extension icon. The extension then scrolls the
 feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
 screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is
-saved. Those are its only clicks. It stops at the end of what the feed loads, after 150 posts, or
-when you press **Stop scan**. Leave the tab alone while it runs.
+saved. Those are its only clicks. It stops when it reaches 5 posts in a row that an earlier scan
+already saved ("caught up"), at the end of what the feed loads, after 150 posts, or when you press
+**Stop scan**. Posts are saved as it goes, so the overview fills in while it runs.
+
+Start from the top of the feed (reload the tab) to pick up the newest posts. Keep the Facebook tab
+visible while it scans: Chrome barely runs background tabs, so the scan **pauses** while the tab is
+hidden and continues when you come back. To watch the overview at the same time, open it in a
+separate window.
 
 **Download feed sample** saves everything scanned so far as one HTML file. Move it to `samples/`
 like the others, and never commit it.

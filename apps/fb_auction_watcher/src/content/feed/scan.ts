@@ -1,11 +1,13 @@
 import { isSafeToClick } from "../post/expand";
 import { isSeeMoreLabel } from "../post/patterns";
-import { feedPosts, type FeedRecorder } from "./recorder";
+import { feedPosts, postId, type FeedRecorder } from "./recorder";
 
 // On-demand feed scan: scrolls the group feed slowly while the recorder saves each post, and
 // clicks "Se mer" / "See more" on auction and claim-sale posts so their full text (with the
 // end time) is captured. Those "See more" clicks are the only clicks; everything else is
 // scrolling. Started by the user from the toolbar icon, stopped by the panel's Stop button.
+// A repeat scan stops once it reaches posts already saved, and the scan pauses while its tab
+// is hidden (Chrome barely runs hidden tabs, so the feed wouldn't load and it'd stop early).
 
 /** Auction and claim-sale posts, by the group template's headline words. */
 export function isSaleText(text: string | null | undefined): boolean {
@@ -16,9 +18,11 @@ export function isSaleText(text: string | null | undefined): boolean {
  * "See more" buttons on sale posts' own text (data-ad-rendering-role="story_message"),
  * never in comments or elsewhere in the post.
  */
-export function findSaleSeeMore(feed: Element): Element[] {
+export function findSaleSeeMore(feed: Element, skipIds: ReadonlySet<string> = new Set()): Element[] {
   const buttons: Element[] = [];
   for (const post of feedPosts(feed)) {
+    const id = postId(post);
+    if (id && skipIds.has(id)) continue; // Full text already saved.
     const message = post.querySelector("[data-ad-rendering-role='story_message']");
     if (!message || !isSaleText(message.textContent)) continue;
     for (const b of Array.from(message.querySelectorAll("[role='button']"))) {
@@ -28,7 +32,7 @@ export function findSaleSeeMore(feed: Element): Element[] {
   return buttons;
 }
 
-export type ScanProgress = { posts: number; scrolls: number; seeMoreClicks: number };
+export type ScanProgress = { posts: number; scrolls: number; seeMoreClicks: number; paused: boolean };
 
 export type ScanOptions = {
   signal?: AbortSignal;
@@ -43,10 +47,17 @@ export type ScanOptions = {
   maxDelayMs?: number;
   /** One scroll step. Defaults to most of a screen height on the page. */
   scrollStep?: () => void;
+  /** Post IDs already saved: a run of `stopAfterKnown` of them in a row means caught up. */
+  knownIds?: ReadonlySet<string>;
+  /** Saved posts whose full text is stored: no need to open their "Se mer" again. */
+  completeIds?: ReadonlySet<string>;
+  stopAfterKnown?: number;
+  /** Whether the page is hidden (a background tab). Defaults to document.hidden. */
+  isHidden?: () => boolean;
 };
 
 export type ScanResult = ScanProgress & {
-  stoppedBecause: "end-of-feed" | "max-posts" | "max-scrolls" | "aborted" | "dialog-opened";
+  stoppedBecause: "caught-up" | "end-of-feed" | "max-posts" | "max-scrolls" | "aborted" | "dialog-opened";
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -68,6 +79,10 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     minDelayMs = 1500,
     maxDelayMs = 3500,
     scrollStep = defaultScrollStep,
+    knownIds = new Set<string>(),
+    completeIds = new Set<string>(),
+    stopAfterKnown = 5,
+    isHidden = () => document.hidden,
   } = options;
   const clicked = new WeakSet<Element>();
   let scrolls = 0;
@@ -77,14 +92,32 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     recorder.flush();
     return recorder.posts().length;
   };
-  const progress = (): ScanProgress => ({ posts: count(), scrolls, seeMoreClicks });
+  let paused = false;
+  const progress = (): ScanProgress => ({ posts: count(), scrolls, seeMoreClicks, paused });
+  /** Known posts at the end of what's been recorded so far, in feed order (newest first). */
+  const knownRun = () => {
+    let run = 0;
+    for (const p of recorder.posts()) run = p.key.startsWith("post:") && knownIds.has(p.key.slice(5)) ? run + 1 : 0;
+    return run;
+  };
+  /** Waits while the tab is hidden. Returns true if it had to wait. */
+  const waitWhileHidden = async () => {
+    if (!isHidden()) return false;
+    paused = true;
+    onProgress?.(progress());
+    while (isHidden() && !signal?.aborted) await sleep(500);
+    paused = false;
+    onProgress?.(progress());
+    return true;
+  };
   const done = (stoppedBecause: ScanResult["stoppedBecause"]): ScanResult => ({ ...progress(), stoppedBecause });
 
   while (true) {
+    await waitWhileHidden();
     if (signal?.aborted) return done("aborted");
 
     // First open up any cut-off sale post on screen, one at a time.
-    const seeMore = findSaleSeeMore(feed).find((b) => !clicked.has(b));
+    const seeMore = findSaleSeeMore(feed, completeIds).find((b) => !clicked.has(b));
     if (seeMore) {
       clicked.add(seeMore);
       seeMore.scrollIntoView?.({ block: "center" });
@@ -103,6 +136,7 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
       continue;
     }
 
+    if (knownIds.size > 0 && knownRun() >= stopAfterKnown) return done("caught-up");
     if (count() >= maxPosts) return done("max-posts");
     if (scrolls >= maxScrolls) return done("max-scrolls");
 
@@ -112,6 +146,8 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     await sleep(jitter(minDelayMs, maxDelayMs));
     onProgress?.(progress());
     if (count() > before) idle = 0;
+    // A tab hidden mid-wait loads nothing; that's not the end of the feed.
+    else if (await waitWhileHidden()) continue;
     else if (++idle >= idleRounds) return done("end-of-feed");
   }
 }

@@ -109,4 +109,53 @@ describe("scanFeed", () => {
     rec.stop();
     expect(result.stoppedBecause).toBe("dialog-opened");
   });
+
+  it("stops once it reaches a run of posts saved in an earlier scan", async () => {
+    // Feed (newest first): 1 and 2 are on screen; scrolling loads 3..9. 3..9 are already saved.
+    let next = 3;
+    const scrollStep = () => {
+      if (next > 9) return;
+      feed.insertAdjacentHTML("beforeend", post(String(next++), "FASTPRIS-annonse"));
+    };
+    const known = new Set(["3", "4", "5", "6", "7", "8", "9"]);
+    const rec = recordFeed(feed, () => {});
+    const result = await scanFeed(feed, rec, { ...FAST, knownIds: known, stopAfterKnown: 3, scrollStep });
+    rec.stop();
+    expect(result.stoppedBecause).toBe("caught-up");
+    expect(rec.posts().map((p) => p.key)).toEqual(["post:1", "post:2", "post:3", "post:4", "post:5"]);
+  });
+
+  it("doesn't reopen 'Se mer' on a post whose full text is already saved", async () => {
+    const rec = recordFeed(feed, () => {});
+    await scanFeed(feed, rec, { ...FAST, completeIds: new Set(["1"]), idleRounds: 1, scrollStep: () => {} });
+    rec.stop();
+    expect(clicked).toEqual([]);
+  });
+
+  it("pauses while the tab is hidden instead of taking it as the end of the feed", async () => {
+    let hidden = false;
+    let scrollsWhileHidden = 0;
+    let n = 3;
+    const scrollStep = () => {
+      if (hidden) {
+        scrollsWhileHidden++;
+        return; // A hidden tab loads nothing.
+      }
+      if (n <= 4) feed.insertAdjacentHTML("beforeend", post(String(n++), "FASTPRIS-annonse"));
+    };
+    // Hide the tab after the first scroll, show it again a moment later.
+    setTimeout(() => (hidden = true), 5);
+    setTimeout(() => (hidden = false), 1200);
+    const pausedStates: boolean[] = [];
+    const rec = recordFeed(feed, () => {});
+    const result = await scanFeed(feed, rec, {
+      minDelayMs: 20, maxDelayMs: 20, idleRounds: 2, scrollStep, isHidden: () => hidden,
+      onProgress: (p) => pausedStates.push(p.paused),
+    });
+    rec.stop();
+    expect(pausedStates).toContain(true);
+    expect(scrollsWhileHidden).toBeLessThanOrEqual(1);
+    expect(result.posts).toBe(4); // Kept going after the tab came back.
+    expect(result.stoppedBecause).toBe("end-of-feed");
+  });
 });

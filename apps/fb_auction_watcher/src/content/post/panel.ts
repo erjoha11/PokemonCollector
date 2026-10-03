@@ -158,12 +158,15 @@ export function showPanel(): Panel {
       html.className = "";
       buttons.prepend(overview, html);
     },
-    setScanProgress({ posts, scrolls, seeMoreClicks }) {
-      status.textContent = `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
+    setScanProgress({ posts, scrolls, seeMoreClicks, paused }) {
+      status.textContent = paused
+        ? `Paused while this tab is in the background (${posts} posts so far). Come back to this tab to continue.`
+        : `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
     },
     showScanDone({ posts, scrolls, seeMoreClicks, stoppedBecause }) {
       stop.remove();
       const why: Record<ScanResult["stoppedBecause"], string> = {
+        "caught-up": "caught up: reached posts saved in an earlier scan",
         "end-of-feed": "reached the end of what the feed loads",
         "max-posts": "reached the post limit",
         "max-scrolls": "reached the scroll limit",

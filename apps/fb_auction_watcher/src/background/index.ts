@@ -1,8 +1,10 @@
 import {
+  isGetKnownPostsMessage,
   isOpenOverviewMessage,
   isSaveFeedPostsMessage,
   MSG_READ_POST,
   MSG_STORE_UPDATED,
+  type KnownPosts,
   type ReadPostMessage,
   type StoreUpdatedMessage,
 } from "../shared/messages";
@@ -73,6 +75,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (isOpenOverviewMessage(msg)) {
     void openOverview();
     return;
+  }
+  if (isGetKnownPostsMessage(msg)) {
+    void store.allPosts().then((posts) => {
+      const known: KnownPosts = {
+        ids: posts.map((p) => p.id),
+        completeIds: posts.filter((p) => p.textComplete).map((p) => p.id),
+      };
+      sendResponse(known);
+    });
+    return true; // Responds asynchronously.
   }
   if (isSaveFeedPostsMessage(msg)) {
     void store.savePosts(msg.posts, new Date(msg.seenAt)).then(async (result) => {

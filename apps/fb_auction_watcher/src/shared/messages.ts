@@ -27,3 +27,9 @@ function hasType<T extends string>(msg: unknown, type: T): boolean {
 export const isSaveFeedPostsMessage = (m: unknown): m is SaveFeedPostsMessage => hasType(m, MSG_SAVE_FEED_POSTS);
 export const isOpenOverviewMessage = (m: unknown): m is OpenOverviewMessage => hasType(m, MSG_OPEN_OVERVIEW);
 export const isStoreUpdatedMessage = (m: unknown): m is StoreUpdatedMessage => hasType(m, MSG_STORE_UPDATED);
+
+/** Content script → service worker: which posts are already stored (for stopping a scan early). */
+export const MSG_GET_KNOWN_POSTS = "fbaw/get-known-posts" as const;
+export type GetKnownPostsMessage = { type: typeof MSG_GET_KNOWN_POSTS };
+export type KnownPosts = { ids: string[]; completeIds: string[] };
+export const isGetKnownPostsMessage = (m: unknown): m is GetKnownPostsMessage => hasType(m, MSG_GET_KNOWN_POSTS);

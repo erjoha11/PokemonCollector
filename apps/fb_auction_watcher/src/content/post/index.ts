@@ -1,5 +1,12 @@
 import type { FeedPost } from "../../shared/feed";
-import { isReadPostMessage, MSG_OPEN_OVERVIEW, MSG_SAVE_FEED_POSTS, type SaveFeedPostsMessage } from "../../shared/messages";
+import {
+  isReadPostMessage,
+  MSG_GET_KNOWN_POSTS,
+  MSG_OPEN_OVERVIEW,
+  MSG_SAVE_FEED_POSTS,
+  type KnownPosts,
+  type SaveFeedPostsMessage,
+} from "../../shared/messages";
 import { extractFeedPost } from "../feed/extract";
 import { feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed } from "../feed/scan";
@@ -44,8 +51,14 @@ async function readOpenPost() {
           () => feedSampleHtml(location.href, recorder.posts()),
           () => void chrome.runtime.sendMessage({ type: MSG_OPEN_OVERVIEW }).catch(() => {}),
         );
+        // Posts saved by earlier scans: stop once caught up, and don't reopen their "Se mer".
+        const known: KnownPosts = await chrome.runtime
+          .sendMessage({ type: MSG_GET_KNOWN_POSTS })
+          .catch(() => ({ ids: [], completeIds: [] }));
         const result = await scanFeed(feed, recorder, {
           signal: controller.signal,
+          knownIds: new Set(known?.ids ?? []),
+          completeIds: new Set(known?.completeIds ?? []),
           onProgress: (p) => {
             panel.setScanProgress(p);
             saveChanged();
