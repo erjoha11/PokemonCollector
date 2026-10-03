@@ -30,6 +30,7 @@ const STYLE = `
 .title { font-weight: 600; font-size: 12px; color: #59636e; }
 .lead { color: #2457D6; font-weight: 600; }
 .outbid { color: #C2570C; font-weight: 600; }
+.won { color: #1a7f37; font-weight: 600; }
 button { font: inherit; font-size: 12px; background: none; border: none; color: #59636e; cursor: pointer; padding: 0 2px; }
 button:hover { color: #1b1f24; text-decoration: underline; }
 @media (prefers-color-scheme: dark) {
@@ -40,6 +41,7 @@ button:hover { color: #1b1f24; text-decoration: underline; }
   button:hover { color: #e6edf3; }
   .lead { color: #6d9bff; }
   .outbid { color: #f0883e; }
+  .won { color: #3fb950; }
 }
 `;
 
@@ -110,7 +112,7 @@ export function showStatusPill(): Panel {
       line.textContent = `Read ${s.topLevelComments} comments, ${s.replies} replies`;
       void summary(capture).then(({ text, lead, outbid, labels }) => {
         line.textContent = `Saved · ${text}`;
-        if (lead) line.append(" · ", Object.assign(document.createElement("span"), { className: "lead", textContent: `${labels[0]} ${lead}` }));
+        if (lead) line.append(" · ", Object.assign(document.createElement("span"), { className: labels[0] === "Won" ? "won" : "lead", textContent: `${labels[0]} ${lead}` }));
         if (outbid) line.append(" · ", Object.assign(document.createElement("span"), { className: "outbid", textContent: `${labels[1]} ${outbid}` }));
       });
       fadeSoon(10_000);

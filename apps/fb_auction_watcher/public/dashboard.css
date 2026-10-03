@@ -131,3 +131,36 @@ img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px
 .photo-caption { color: #fff; font-size: 13px; margin-top: 6px; text-align: center; }
 .photo-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #1b1f24; font-size: 20px; line-height: 1; cursor: pointer; }
 .lot-terms { font-size: 12px; color: var(--muted); }
+
+/* My Auctions: the top panel */
+.mine-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 14px 0 6px; }
+.mine-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mine-head h2 { font-size: 17px; margin: 0; }
+.mine-summary { display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+.mine-summary .status { font-size: 13px; }
+.mine-list { display: grid; gap: 8px; margin-top: 10px; }
+.mine-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+.mine-card.outbid { border-left: 4px solid var(--outbid); }
+.mine-card.lead { border-left: 4px solid var(--lead); }
+.mine-card-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.mine-card-head .countdown { font-size: 15px; min-width: 88px; }
+.mine-card-head .title { font-size: 14px; }
+.mine-card-head .seller { font-size: 12px; }
+.mine-lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; margin-top: 6px; }
+.mine-lot { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-size: 12px; }
+.mine-lot img { width: 34px; height: 46px; object-fit: cover; border-radius: 3px; flex: none; background: var(--border); }
+.mine-lot .lot-name { font-weight: 600; }
+.mine-lot .status { font-size: 11px; margin: 2px 0 0; }
+.mine-empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.mine-ended { margin-top: 10px; }
+.mine-ended summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+
+/* Won = green; clickable rows */
+.status.won { background: var(--new); }
+tr.mine-won > td:first-child { box-shadow: inset 4px 0 0 var(--new); }
+.lot.lot-won { border-left: 4px solid var(--new); }
+.mine-card.won { border-left: 4px solid var(--new); }
+tr.expandable { cursor: pointer; }
+tr.expandable:hover > td { background: color-mix(in srgb, var(--lead) 5%, var(--surface)); }
+tr.expandable:focus-visible { outline: 2px solid var(--lead); outline-offset: -2px; }
+tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--lead) 7%, var(--surface)); }

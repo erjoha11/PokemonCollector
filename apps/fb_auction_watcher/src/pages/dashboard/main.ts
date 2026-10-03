@@ -138,20 +138,32 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
   return td;
 }
 
-function saleCell(r: Row): HTMLTableCellElement {
-  const td = el("td", "sale");
-  const wrap = el("div", "sale-wrap");
-  td.append(wrap);
-  if (r.thumbnailUrl) {
-    const img = el("img", "thumb");
-    img.src = r.thumbnailUrl;
-    img.alt = "";
-    img.loading = "lazy";
-    img.referrerPolicy = "no-referrer";
-    zoomable(img, r.title);
-    wrap.append(img);
-  }
-  const box = el("div", "sale-text");
+/** Clicking a row (not its links, photos or buttons) shows or hides its lots. */
+function makeExpandable(tr: HTMLTableRowElement, id: string) {
+  tr.classList.add("expandable");
+  tr.tabIndex = 0;
+  tr.setAttribute("aria-expanded", String(expanded.has(id)));
+  tr.title = expanded.has(id) ? "Click to hide the lots" : "Click to show the lots";
+  const toggle = () => {
+    if (expanded.has(id)) expanded.delete(id);
+    else expanded.add(id);
+    render();
+  };
+  tr.addEventListener("click", (e) => {
+    if ((e.target as Element).closest("a, button, img, input, summary")) return;
+    if (window.getSelection()?.toString()) return; // Selecting text isn't a click.
+    toggle();
+  });
+  tr.addEventListener("keydown", (e) => {
+    if (e.target === tr && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+}
+
+/** A sale's title: a click opens the post and reads it quietly; Ctrl/Cmd-click just opens it. */
+function titleLink(r: Row): HTMLAnchorElement {
   const a = el("a", "title", r.title);
   a.href = r.url;
   a.target = "_blank";
@@ -170,11 +182,33 @@ function saleCell(r: Row): HTMLTableCellElement {
     render();
     void chrome.runtime.sendMessage(msg).catch(() => {});
   });
-  const titleLine = el("div", "title-line");
-  titleLine.append(a);
+  return a;
+}
+
+/** The title, plus "Reading…" while the post is being read. */
+function titleLine(r: Row): HTMLDivElement {
+  const line = el("div", "title-line");
+  line.append(titleLink(r));
   const state = readState(r.id);
-  if (state) titleLine.append(" ", el("span", "badge reading", state));
-  box.append(titleLine);
+  if (state) line.append(" ", el("span", "badge reading", state));
+  return line;
+}
+
+function saleCell(r: Row): HTMLTableCellElement {
+  const td = el("td", "sale");
+  const wrap = el("div", "sale-wrap");
+  td.append(wrap);
+  if (r.thumbnailUrl) {
+    const img = el("img", "thumb");
+    img.src = r.thumbnailUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    zoomable(img, r.title);
+    wrap.append(img);
+  }
+  const box = el("div", "sale-text");
+  box.append(titleLine(r));
   if (r.description && r.description !== r.title) box.append(el("div", "desc", r.description));
   const meta = el("div", "seller", r.sellerName ?? "Unknown seller");
   if (r.isNew) meta.append(" ", el("span", "badge new", "New"));
@@ -238,15 +272,15 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   const count = isClaims ? `${s.claims} claim${s.claims === 1 ? "" : "s"}` : `${s.bids} bid${s.bids === 1 ? "" : "s"}`;
   lotsTd.append(el("div", undefined, `${s.lots} lot${s.lots === 1 ? "" : "s"} · ${count}`));
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
-  const mineCount = s.lead + s.outbid + s.claimed + s.check;
-  if (mineCount === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
+  const mineTotal = s.lead + s.outbid + s.claimed + s.check;
+  if (mineTotal === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
   if (s.lead) youTd.append(el("span", "status lead", `Leading ${s.lead}`));
   if (s.outbid) youTd.append(el("span", "status outbid", `Outbid ${s.outbid}`));
   if (s.claimed) {
     // What you won, with the prices Claude read off the photos (when it has).
     const mine = (r.lots ?? []).flatMap((l) => l.claimCards?.filter((x) => x.isMe) ?? []);
     const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
-    youTd.append(el("span", "status lead", mine.length ? `Won ${mine.length} · ${total} kr` : `Won ${s.claimed}`));
+    youTd.append(el("span", "status won", mine.length ? `Won ${mine.length} · ${total} kr` : `Won ${s.claimed}`));
   }
   if (s.check) {
     const check = el("span", "status outbid", `Check ${s.check}`);
@@ -255,17 +289,6 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   }
   const justRead = now.getTime() - Date.parse(r.lastReadAt!) < 60_000;
   youTd.append(justRead ? el("div", "badge just-read", "Just read") : el("div", "muted small", `Read ${ago(r.lastReadAt!, now)}`));
-  if (mineCount > 0 || s.lots > 0) {
-    const toggle = el("button", "linkish", expanded.has(r.id) ? "Hide lots" : mineCount > 0 ? "Your lots" : "Lots");
-    toggle.type = "button";
-    toggle.setAttribute("aria-expanded", String(expanded.has(r.id)));
-    toggle.addEventListener("click", () => {
-      if (expanded.has(r.id)) expanded.delete(r.id);
-      else expanded.add(r.id);
-      render();
-    });
-    youTd.append(toggle);
-  }
   return [lotsTd, youTd];
 }
 
@@ -279,7 +302,8 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   const list = el("div", "lot-list");
   for (const l of lots) {
     const isClaims = r.type === "claim" || r.type === "fixed";
-    const item = el("div", `lot lot-${isClaims ? { none: "none", claimed: "lead", check: "outbid" }[l.myClaim] : l.myStatus}`);
+    const won = isClaims ? l.myClaim === "claimed" : r.ended && l.myStatus === "lead";
+    const item = el("div", `lot lot-${won ? "won" : isClaims ? { none: "none", claimed: "lead", check: "outbid" }[l.myClaim] : l.myStatus}`);
     if (l.imageUrl) {
       const img = el("img", "lot-img");
       img.src = l.imageUrl;
@@ -298,7 +322,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         const mine = l.claimCards.filter((x) => x.isMe);
         const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
         if (mine.length) {
-          body.append(el("div", "status lead", `You won ${mine.length} · ${total} kr`));
+          body.append(el("div", "status won", `You won ${mine.length} · ${total} kr`));
           for (const x of mine) body.append(el("div", "small", `${x.card}: ${x.price ?? "?"} kr`));
         } else if (l.myClaim !== "none") {
           body.append(el("div", "status outbid", "Someone claimed it before you"));
@@ -310,7 +334,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         continue;
       }
       if (l.myClaim !== "none") {
-        body.append(el("div", `status ${l.myClaim === "claimed" ? "lead" : "outbid"}`, l.myClaim === "claimed" ? "You claimed first (prices: waiting for Claude)" : "Someone claimed the same before you"));
+        body.append(el("div", `status ${l.myClaim === "claimed" ? "won" : "outbid"}`, l.myClaim === "claimed" ? "You claimed first: won (prices: waiting for Claude)" : "Someone claimed the same before you"));
       }
       if (l.claims.length === 0) body.append(el("div", "muted small", "No claims"));
       for (const c of l.claims) {
@@ -330,7 +354,10 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         ? "No bids yet"
         : `Highest ${l.highestBid} kr (${l.highestBidder})${l.belowStart ? ` · below the start bid ${l.startBid} kr` : ""}`;
     body.append(el("div", l.belowStart ? "flag" : undefined, hi));
-    if (l.myStatus !== "none") body.append(el("div", `status ${l.myStatus}`, `${l.myStatus === "lead" ? "Leading" : "Outbid"} · your bid ${l.myHighestBid} kr`));
+    if (l.myStatus !== "none") {
+      const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
+      body.append(el("div", `status ${won ? "won" : l.myStatus}`, `${label} · your bid ${l.myHighestBid} kr`));
+    }
     // Details only where they matter to you: your own bids' notes and Claude's readings.
     for (const b of l.bids.filter((x) => (x.isMe && x.note && !x.valid) || x.viaClaude)) {
       body.append(el("div", "small muted", `${b.isMe ? "You" : b.bidder}: "${b.rawText}" → ${b.amount ?? "?"}${b.viaClaude ? " (read by Claude)" : ""}${b.note ? ` · ${b.note}` : ""}`));
@@ -347,6 +374,98 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   td.append(list);
   tr.append(td);
   return tr;
+}
+
+const isClaimType = (r: Row) => r.type === "claim" || r.type === "fixed";
+const mineCount = (r: Row) => (r.summary ? r.summary.lead + r.summary.outbid + r.summary.claimed + r.summary.check : 0);
+/** Your lots in a sale: bid on or claimed. */
+const myLots = (r: Row) => (r.lots ?? []).filter((l) => l.myStatus !== "none" || l.myClaim !== "none");
+
+/** One of your lots, compact: photo, name, your bid vs the highest (or what you claimed), status. */
+function myLotChip(r: Row, l: Lot): HTMLDivElement {
+  const chip = el("div", "mine-lot");
+  if (l.imageUrl) {
+    const img = el("img");
+    img.src = l.imageUrl;
+    img.alt = "";
+    img.loading = "lazy";
+    img.referrerPolicy = "no-referrer";
+    zoomable(img, `${l.position}. ${l.title}`);
+    chip.append(img);
+  }
+  const text = el("div");
+  text.append(el("div", "lot-name", `${l.position}. ${l.title}`));
+  if (isClaimType(r)) {
+    const mine = l.claimCards?.filter((x) => x.isMe) ?? [];
+    if (mine.length) {
+      const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
+      text.append(el("div", undefined, `${mine.map((x) => `${x.card} ${x.price ?? "?"} kr`).join(", ")}${mine.length > 1 ? ` = ${total} kr` : ""}`));
+    } else {
+      const named = l.claims.filter((x) => x.isMe).flatMap((x) => (x.all ? ["everything"] : x.items));
+      text.append(el("div", undefined, named.length ? `Claimed: ${named.join(", ")}` : "Claimed"));
+    }
+    text.append(el("div", `status ${l.myClaim === "claimed" ? "won" : "outbid"}`, l.myClaim === "claimed" ? "Won" : "Check: someone was earlier"));
+  } else {
+    const hi = l.highestBid !== null ? `highest ${l.highestBid} kr` : "no valid bids";
+    text.append(el("div", undefined, `Your bid ${l.myHighestBid ?? "?"} kr · ${hi}`));
+    const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
+    text.append(el("div", `status ${l.myStatus === "lead" ? (r.ended ? "won" : "lead") : "outbid"}`, label));
+  }
+  chip.append(text);
+  return chip;
+}
+
+function myAuctionCard(r: Row, now: Date): HTMLDivElement {
+  const lots = myLots(r);
+  const bad = lots.some((l) => l.myStatus === "outbid" || l.myClaim === "check");
+  const allWon = lots.every((l) => l.myClaim === "claimed" || (r.ended && l.myStatus === "lead"));
+  const card = el("div", `mine-card ${bad ? "outbid" : allWon ? "won" : "lead"}`);
+  const head = el("div", "mine-card-head");
+  if (r.endsAtMs !== null) {
+    const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : r.ended ? "Ended" : countdown(r.endsAtMs, now));
+    if (!r.ended) cd.dataset.ends = String(r.endsAtMs);
+    if (!r.ended && r.endsAtMs - now.getTime() < 3_600_000) cd.classList.add("soon");
+    head.append(cd);
+  } else {
+    head.append(el("div", "countdown unknown", r.type === "fixed" ? "No end" : "Unknown"));
+  }
+  head.append(titleLine(r), el("span", "seller", `${r.sellerName ?? ""}${r.endsAtMs !== null ? ` · ends ${endLabel(r.endsAtMs, now)}` : ""}`));
+  if (r.lastReadAt) head.append(el("span", "muted small", `read ${ago(r.lastReadAt, now)}`));
+  card.append(head);
+  const list = el("div", "mine-lots");
+  for (const l of lots) list.append(myLotChip(r, l));
+  card.append(list);
+  return card;
+}
+
+/** The top panel: every sale you're bidding or claiming in, soonest ending first. */
+function renderMine(now: Date) {
+  const mine = rows.filter((r) => mineCount(r) > 0);
+  const active = mine.filter((r) => !r.ended).sort((a, b) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity));
+  const ended = mine.filter((r) => r.ended).sort((a, b) => (b.endsAtMs ?? 0) - (a.endsAtMs ?? 0));
+
+  const lots = active.flatMap((r) => myLots(r).map((l) => ({ r, l })));
+  const leading = lots.filter(({ l }) => l.myStatus === "lead").length;
+  const outbid = lots.filter(({ l }) => l.myStatus === "outbid").length;
+  const won = lots.filter(({ l }) => l.myClaim === "claimed").length;
+  const check = lots.filter(({ l }) => l.myClaim === "check").length;
+  const wonKr = lots.flatMap(({ l }) => l.claimCards?.filter((x) => x.isMe) ?? []).reduce((n, x) => n + (x.price ?? 0), 0);
+  const summary = $("#mine-summary");
+  summary.replaceChildren();
+  if (outbid) summary.append(el("span", "status outbid", `Outbid ${outbid}`));
+  if (leading) summary.append(el("span", "status lead", `Leading ${leading}`));
+  if (won) summary.append(el("span", "status won", `Won ${won}${wonKr ? ` · ${wonKr} kr` : ""}`));
+  if (check) summary.append(el("span", "status outbid", `Check ${check}`));
+
+  const list = $("#mine-list");
+  list.replaceChildren(...active.map((r) => myAuctionCard(r, now)));
+  if (active.length === 0) {
+    list.append(el("p", "mine-empty", "No active bids or claims. Click a sale's title below to read it; sales where you've bid or claimed show up here."));
+  }
+  const endedBox = $<HTMLDetailsElement>("#mine-ended");
+  endedBox.hidden = ended.length === 0;
+  $("#mine-ended-count").textContent = String(ended.length);
+  $("#mine-ended-list").replaceChildren(...ended.map((r) => myAuctionCard(r, now)));
 }
 
 function renderSettings(now: Date) {
@@ -391,6 +510,7 @@ function render() {
 }
 document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.filter === filter)));
   renderSettings(now);
+  renderMine(now);
 
   const main = $<HTMLElement>("#groups");
   main.replaceChildren();
@@ -414,8 +534,10 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.s
     for (const r of g.rows) {
       const tr = el("tr");
       if (r.summary?.outbid || r.summary?.check) tr.classList.add("mine-outbid");
-      else if (r.summary?.lead || r.summary?.claimed) tr.classList.add("mine-lead");
+      else if (r.summary?.claimed || (r.ended && r.summary?.lead)) tr.classList.add("mine-won");
+      else if (r.summary?.lead) tr.classList.add("mine-lead");
       tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), el("td", "price", priceText(r)), ...statusCells(r, now));
+      if (r.lots && r.lots.length > 0) makeExpandable(tr, r.id);
       const seen = el("td", "seen", ago(r.lastSeenAt, now));
       seen.title = `First seen ${new Date(r.firstSeenAt).toLocaleString("en-GB")}`;
       tr.append(seen);
