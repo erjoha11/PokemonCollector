@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import base64
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -32,7 +33,13 @@ MODELS = {"haiku", "sonnet"}
 IMAGE_HOSTS = (".fbcdn.net",)
 # Chrome starts hosts with a minimal PATH; look where Claude Code is usually installed too.
 EXTRA_PATHS = ["/opt/homebrew/bin", "/usr/local/bin", os.path.expanduser("~/.local/bin"), os.path.expanduser("~/.claude/local")]
+# Defence in depth: the main guard is NO_TOOL_FLAGS (nothing at all), this list is a second layer.
 NO_TOOLS = "Bash,Read,Edit,Write,Glob,Grep,WebFetch,WebSearch,Agent,Task,NotebookEdit"
+# The text Claude reads is written by strangers on Facebook, so it must not be able to act on
+# anything (prompt injection). Allow nothing rather than forbid a list: no built-in tools, no
+# MCP servers or claude.ai connectors, and no user/project settings (allow rules, hooks, skills).
+NO_TOOL_FLAGS = ["--tools", "", "--strict-mcp-config", "--restricted"]
+MAX_IMAGE_BYTES = 15 * 1024 * 1024
 
 
 def read_message():
@@ -55,29 +62,58 @@ def find_claude():
     return shutil.which("claude", path=path)
 
 
+def is_allowed_image_url(url):
+    """Only https URLs on Facebook's image CDN (*.fbcdn.net)."""
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.hostname or ""
+    return parsed.scheme == "https" and (host.endswith(IMAGE_HOSTS) or host in {h.lstrip(".") for h in IMAGE_HOSTS})
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect could lead off Facebook's CDN; refuse it instead of following."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(req.full_url, code, f"redirect to {newurl} refused", headers, fp)
+
+
 def download_image(url):
-    host = urllib.parse.urlparse(url).hostname or ""
-    if not url.startswith("https://") or not host.endswith(IMAGE_HOSTS):
-        raise ValueError(f"not a Facebook image URL: {host}")
+    if not is_allowed_image_url(url):
+        raise ValueError(f"not a Facebook image URL: {urllib.parse.urlparse(url).hostname}")
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read(), r.headers.get_content_type() or "image/jpeg"
+    opener = urllib.request.build_opener(_NoRedirect)
+    with opener.open(req, timeout=30) as r:
+        data = r.read(MAX_IMAGE_BYTES + 1)
+        if len(data) > MAX_IMAGE_BYTES:
+            raise ValueError("image too large")
+        return data, r.headers.get_content_type() or "image/jpeg"
+
+
+def build_command(claude, msg, has_images):
+    """The `claude -p` command line for one request. Pure, so it can be tested."""
+    model = msg.get("model") if msg.get("model") in MODELS else MODEL
+    cmd = [
+        claude, "-p",
+        "--model", model,
+        "--system-prompt", msg["system"],
+        "--json-schema", json.dumps(msg["schema"]),
+        *NO_TOOL_FLAGS,
+        "--disallowedTools", NO_TOOLS,
+        # Structured output takes two turns (the answer, then the schema-checked result).
+        "--max-turns", "2",
+    ]
+    if has_images:
+        cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+    else:
+        cmd += ["--output-format", "json"]
+    return cmd
 
 
 def ask_claude(msg):
     claude = find_claude()
     if not claude:
         return {"ok": False, "error": "Claude Code (claude) not found on this Mac"}
-    model = msg.get("model") if msg.get("model") in MODELS else MODEL
     images = msg.get("images") or []
-    cmd = [
-        claude, "-p",
-        "--model", model,
-        "--system-prompt", msg["system"],
-        "--json-schema", json.dumps(msg["schema"]),
-        "--disallowedTools", NO_TOOLS,
-        "--max-turns", "3",
-    ]
+    cmd = build_command(claude, msg, bool(images))
     if images:
         # Photos go in as content blocks, which needs stream-json in and out.
         blocks = []
@@ -85,10 +121,8 @@ def ask_claude(msg):
             data, mime = download_image(url)
             blocks.append({"type": "image", "source": {"type": "base64", "media_type": mime, "data": base64.b64encode(data).decode()}})
         blocks.append({"type": "text", "text": msg["input"]})
-        cmd += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
         stdin = json.dumps({"type": "user", "message": {"role": "user", "content": blocks}}) + "\n"
     else:
-        cmd += ["--output-format", "json"]
         stdin = msg["input"]
     # Claude Code reads its login from the macOS keychain, which needs the user's name; Chrome
     # usually passes USER/LOGNAME on, but fill them in if not.
