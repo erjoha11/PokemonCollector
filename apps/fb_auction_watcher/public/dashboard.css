@@ -164,3 +164,8 @@ tr.expandable { cursor: pointer; }
 tr.expandable:hover > td { background: color-mix(in srgb, var(--lead) 5%, var(--surface)); }
 tr.expandable:focus-visible { outline: 2px solid var(--lead); outline-offset: -2px; }
 tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--lead) 7%, var(--surface)); }
+
+/* Prices stand out */
+.kr { font-weight: 700; font-size: 1.1em; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.lot-terms .kr, td.price .kr { font-size: 1.05em; }
+.mine-lot .kr { font-size: 1.12em; }

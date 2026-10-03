@@ -31,6 +31,15 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 };
 
+/** An amount in kr, emphasized ("?" when unknown). */
+const kr = (n: number | null | undefined) => el("strong", "kr", n === null || n === undefined ? "? kr" : `${n} kr`);
+/** A line mixing plain text and emphasized amounts: line("div", "Your bid ", kr(20), " · highest ", kr(40)). */
+function line(tag: "div" | "span", ...parts: (string | Node)[]) {
+  const e = document.createElement(tag);
+  e.append(...parts);
+  return e;
+}
+
 // Per-viewer conveniences only; the page works without them (private windows etc.).
 const local = {
   get(key: string): string | null {
@@ -102,13 +111,15 @@ function matches(r: Row): boolean {
   return [r.title, r.sellerName ?? "", r.text, r.description ?? ""].some((s) => s.toLowerCase().includes(q));
 }
 
-function priceText(r: Row): string {
+function priceCell(r: Row): HTMLTableCellElement {
+  const td = el("td", "price");
   if (r.type === "auction") {
-    const min = r.minPrice !== null ? `Min ${r.minPrice} kr` : "Min per lot";
-    const inc = r.increment !== null ? ` · +${r.increment}` : "";
-    return min + inc;
+    td.append(...(r.minPrice !== null ? ["Min ", kr(r.minPrice)] : ["Min per lot"]));
+    if (r.increment !== null) td.append(` · +${r.increment}`);
+  } else {
+    td.append(r.fixedPrice !== null ? kr(r.fixedPrice) : "Price per item");
   }
-  return r.fixedPrice !== null ? `${r.fixedPrice} kr` : "Price per item";
+  return td;
 }
 
 const TYPE_LABEL: Record<Row["type"], string> = {
@@ -323,7 +334,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
         if (mine.length) {
           body.append(el("div", "status won", `You won ${mine.length} · ${total} kr`));
-          for (const x of mine) body.append(el("div", "small", `${x.card}: ${x.price ?? "?"} kr`));
+          for (const x of mine) body.append(line("div", `${x.card}: `, kr(x.price)));
         } else if (l.myClaim !== "none") {
           body.append(el("div", "status outbid", "Someone claimed it before you"));
         }
@@ -346,14 +357,16 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       continue;
     }
     // The lot's start bid (minimum price) and minimum raise, from the lot's own text or the post's.
-    const start = l.startBid !== null ? `Start bid ${l.startBid} kr` : "Start bid not stated";
-    const raise = l.increment !== null ? ` · min. raise +${l.increment} kr` : "";
-    body.append(el("div", "lot-terms", start + raise));
+    const terms = line("div", ...(l.startBid !== null ? ["Start bid ", kr(l.startBid)] : ["Start bid not stated"]));
+    terms.className = "lot-terms";
+    if (l.increment !== null) terms.append(` · min. raise +${l.increment} kr`);
+    body.append(terms);
     const hi =
       l.highestBid === null
-        ? "No bids yet"
-        : `Highest ${l.highestBid} kr (${l.highestBidder})${l.belowStart ? ` · below the start bid ${l.startBid} kr` : ""}`;
-    body.append(el("div", l.belowStart ? "flag" : undefined, hi));
+        ? line("div", "No bids yet")
+        : line("div", "Highest ", kr(l.highestBid), ` (${l.highestBidder})`, l.belowStart ? ` · below the start bid ${l.startBid} kr` : "");
+    if (l.belowStart) hi.className = "flag";
+    body.append(hi);
     if (l.myStatus !== "none") {
       const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
       body.append(el("div", `status ${won ? "won" : l.myStatus}`, `${label} · your bid ${l.myHighestBid} kr`));
@@ -399,15 +412,21 @@ function myLotChip(r: Row, l: Lot): HTMLDivElement {
     const mine = l.claimCards?.filter((x) => x.isMe) ?? [];
     if (mine.length) {
       const total = mine.reduce((n, x) => n + (x.price ?? 0), 0);
-      text.append(el("div", undefined, `${mine.map((x) => `${x.card} ${x.price ?? "?"} kr`).join(", ")}${mine.length > 1 ? ` = ${total} kr` : ""}`));
+      const parts: (string | Node)[] = [];
+      mine.forEach((x, i) => parts.push(i ? ", " : "", `${x.card} `, kr(x.price)));
+      if (mine.length > 1) parts.push(" = ", kr(total));
+      text.append(line("div", ...parts));
     } else {
       const named = l.claims.filter((x) => x.isMe).flatMap((x) => (x.all ? ["everything"] : x.items));
       text.append(el("div", undefined, named.length ? `Claimed: ${named.join(", ")}` : "Claimed"));
     }
     text.append(el("div", `status ${l.myClaim === "claimed" ? "won" : "outbid"}`, l.myClaim === "claimed" ? "Won" : "Check: someone was earlier"));
   } else {
-    const hi = l.highestBid !== null ? `highest ${l.highestBid} kr` : "no valid bids";
-    text.append(el("div", undefined, `Your bid ${l.myHighestBid ?? "?"} kr · ${hi}`));
+    text.append(
+      l.highestBid !== null
+        ? line("div", "Your bid ", kr(l.myHighestBid), " · highest ", kr(l.highestBid))
+        : line("div", "Your bid ", kr(l.myHighestBid), " · no valid bids"),
+    );
     const label = l.myStatus === "lead" ? (r.ended ? "Won" : "Leading") : r.ended ? "Lost" : "Outbid";
     text.append(el("div", `status ${l.myStatus === "lead" ? (r.ended ? "won" : "lead") : "outbid"}`, label));
   }
@@ -536,7 +555,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) => b.s
       if (r.summary?.outbid || r.summary?.check) tr.classList.add("mine-outbid");
       else if (r.summary?.claimed || (r.ended && r.summary?.lead)) tr.classList.add("mine-won");
       else if (r.summary?.lead) tr.classList.add("mine-lead");
-      tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), el("td", "price", priceText(r)), ...statusCells(r, now));
+      tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), priceCell(r), ...statusCells(r, now));
       if (r.lots && r.lots.length > 0) makeExpandable(tr, r.id);
       const seen = el("td", "seen", ago(r.lastSeenAt, now));
       seen.title = `First seen ${new Date(r.firstSeenAt).toLocaleString("en-GB")}`;
