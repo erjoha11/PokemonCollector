@@ -13,3 +13,33 @@ chrome.action.onClicked.addListener((tab) => {
     void chrome.action.setTitle({ tabId, title: "Open a Facebook post and reload the tab, then try again." });
   });
 });
+
+// Dev convenience: right-click the toolbar icon → "Reload extension and Facebook tabs".
+// Reloading the extension orphans the content script in open tabs, so after the reload the
+// new service worker reloads every Facebook tab. A flag in storage carries that intent
+// across the reload (the old worker is gone by then).
+const RELOAD_MENU_ID = "fbaw-reload";
+const RELOAD_TABS_FLAG = "fbaw-reload-tabs-pending";
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    chrome.contextMenus.create({
+      id: RELOAD_MENU_ID,
+      title: "Reload extension and Facebook tabs",
+      contexts: ["action"],
+    });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId !== RELOAD_MENU_ID) return;
+  void chrome.storage.local.set({ [RELOAD_TABS_FLAG]: true }).then(() => chrome.runtime.reload());
+});
+
+void (async () => {
+  const stored = await chrome.storage.local.get(RELOAD_TABS_FLAG);
+  if (!stored[RELOAD_TABS_FLAG]) return;
+  await chrome.storage.local.remove(RELOAD_TABS_FLAG);
+  const tabs = await chrome.tabs.query({ url: "https://www.facebook.com/*" });
+  for (const tab of tabs) if (tab.id !== undefined) void chrome.tabs.reload(tab.id);
+})();
