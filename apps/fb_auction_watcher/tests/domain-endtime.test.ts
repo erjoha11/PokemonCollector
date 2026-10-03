@@ -79,4 +79,14 @@ describe("parseEndTime", () => {
     expect(parseEndTime("Sluttid: når jeg har lyst", REF).endsAt).toBeNull();
     expect(parseEndTime(null, REF).endsAt).toBeNull();
   });
+
+  it("'ikveld' without a date is the day first seen, but unsure (review L1)", () => {
+    const r = parseEndTime("Sluttid: ikveld kl 22", REF);
+    expect(r.endsAt).toBe(oslo(2026, 10, 3, 22, 0));
+    expect(r.sure).toBe(false);
+  });
+
+  it("'ti dager' is not 'i dag'", () => {
+    expect(parseEndTime("Sluttid: om ti dager", REF).endsAt).toBeNull();
+  });
 });

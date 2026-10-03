@@ -64,6 +64,17 @@ describe("expandAll", () => {
     expect(progress).toHaveBeenCalledTimes(4);
   });
 
+  it("never clicks an expander-looking label inside a real link (review L14)", () => {
+    const link = document.createElement("a");
+    link.href = "https://www.facebook.com/somewhere";
+    const trap = document.createElement("div");
+    trap.setAttribute("role", "button");
+    trap.textContent = "Se mer";
+    link.appendChild(trap);
+    root().appendChild(link);
+    expect(findExpanders(root())).not.toContain(trap);
+  });
+
   it("never treats an expander-looking label inside a form as clickable", () => {
     const form = document.querySelector("form")!;
     const trap = document.createElement("div");

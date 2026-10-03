@@ -100,13 +100,16 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
         await sleep(500);
         feed = document.querySelector("[role='feed']");
       }
-      if (feed) {
+      // Only a group's feed: never the home feed or a profile (review M5).
+      if (feed && /^\/groups\/[^/]+\/?$/.test(location.pathname)) {
         const controller = new AbortController();
         panel.onStop(() => controller.abort());
         panel.showScanDone(await runFeedScan(feed, { panel, signal: controller.signal }));
         return;
       }
-      panel.showError("No open post found. Open a single post (click its timestamp, or open it in a dialog) and try again.");
+      panel.showError(
+        "No open post found here. Open a single post from the group (click its timestamp, or open it in a dialog), or the group's feed, and try again.",
+      );
       return;
     }
     const controller = new AbortController();

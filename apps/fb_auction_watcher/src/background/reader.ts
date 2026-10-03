@@ -46,21 +46,35 @@ export async function getReaderState(): Promise<ReaderState> {
   );
   return state;
 }
-async function setReaderState(change: Partial<ReaderState>): Promise<ReaderState> {
-  const next = { ...(await getReaderState()), ...change };
-  await chrome.storage.local.set({ readerState: next });
-  return next;
+/**
+ * Every change to the reader state goes through this one queue (review M1): a read-modify-write
+ * that interleaves with another at an `await` would otherwise lose `current`, open a second tab,
+ * and leave the first one open. `change` may be a function of the state at that moment.
+ */
+let stateQueue: Promise<unknown> = Promise.resolve();
+function setReaderState(change: Partial<ReaderState> | ((s: ReaderState) => Partial<ReaderState>)): Promise<ReaderState> {
+  const run = async () => {
+    const current = await getReaderState();
+    const next = { ...current, ...(typeof change === "function" ? change(current) : change) };
+    await chrome.storage.local.set({ readerState: next });
+    return next;
+  };
+  const result = stateQueue.then(run, run);
+  stateQueue = result.catch(() => {});
+  return result;
 }
 
 /** Adds posts to the queue (skipping ones already queued or being read) and starts if idle. */
 export async function enqueueReads(jobs: ReadJob[]): Promise<void> {
-  const state = await getReaderState();
-  const busy = new Set([...state.queue.map((j) => j.postId), state.current?.postId].filter(Boolean));
-  const fresh = jobs.filter((j) => !busy.has(j.postId) && /^https:\/\/www\.facebook\.com\//.test(j.url));
-  if (fresh.length === 0) return;
-  // Your clicks go first; automatic re-reads after.
-  const queue = [...state.queue, ...fresh].sort((a, b) => (a.reason === b.reason ? 0 : a.reason === "click" ? -1 : 1));
-  await setReaderState({ queue });
+  let added = 0;
+  await setReaderState((state) => {
+    const busy = new Set([...state.queue.map((j) => j.postId), state.current?.postId].filter(Boolean));
+    const fresh = jobs.filter((j) => !busy.has(j.postId) && /^https:\/\/www\.facebook\.com\//.test(j.url));
+    added = fresh.length;
+    // Your clicks go first; automatic re-reads after.
+    return { queue: [...state.queue, ...fresh].sort((a, b) => (a.reason === b.reason ? 0 : a.reason === "click" ? -1 : 1)) };
+  });
+  if (added === 0) return;
   await kickReader();
 }
 
@@ -90,7 +104,9 @@ async function kickOnce(): Promise<void> {
   }
   if (state.queue.length === 0) return;
   const auto = await getAutoScanState();
-  if (auto.running) return later(60_000); // The feed scan has the Facebook tab slot.
+  // The feed scan has the Facebook tab slot; a "running" flag older than 10 min is stale (review L10).
+  const scanRunning = auto.running && auto.lastAt !== null && Date.now() - Date.parse(auto.lastAt) < 10 * 60_000;
+  if (scanRunning) return later(60_000);
   if (state.lastAt && Date.now() - Date.parse(state.lastAt) < GAP_MS[0]) {
     return later(GAP_MS[0] - (Date.now() - Date.parse(state.lastAt)) + 1000);
   }
@@ -124,8 +140,7 @@ export async function openAndReadVisible(url: string, postId: string): Promise<v
   const tab = await chrome.tabs.create({ url, active: true });
   if (tab.id === undefined) return;
   const tabId = tab.id;
-  const state = await getReaderState();
-  await setReaderState({ visible: { ...state.visible, [tabId]: { postId, startedAt: new Date().toISOString() } } });
+  await setReaderState((state) => ({ visible: { ...state.visible, [tabId]: { postId, startedAt: new Date().toISOString() } } }));
   await setTabBadge(tabId, "…", "#2457D6");
   await chrome.alarms.create(`${READER_ALARM}-visible-${tabId}`, { when: Date.now() + VISIBLE_TIMEOUT_MS + 5000 });
   const loaded = await waitForTabLoad(tabId);
@@ -144,13 +159,15 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
   const state = await getReaderState();
   if (state.visible[tabId] !== undefined) {
     // Your own tab: leave it open, just record the result.
-    const visible = { ...state.visible };
-    delete visible[tabId];
     void chrome.alarms.clear(`${READER_ALARM}-visible-${tabId}`);
     // Done: a ✓ (or !) on the toolbar icon in that tab, for a little while.
     await setTabBadge(tabId, ok ? "✓" : "!", ok ? "#1a7f37" : "#B42318");
     setTimeout(() => void setTabBadge(tabId, "", "#2457D6"), 20_000);
-    await setReaderState({ visible, lastAt: new Date().toISOString(), lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}` });
+    await setReaderState((st) => {
+      const visible = { ...st.visible };
+      delete visible[tabId];
+      return { visible, lastAt: new Date().toISOString(), lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}` };
+    });
     return;
   }
   if (!state.current || state.current.tabId !== tabId) return;

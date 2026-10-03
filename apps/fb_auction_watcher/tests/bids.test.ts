@@ -126,6 +126,11 @@ describe("interpretLots", () => {
     expect(interpretLots(old, OPTS)).toHaveLength(3);
   });
 
+  it("reads the minimum raise mid-line too (review L3)", () => {
+    const c3 = capture([lot(0, "Holo, mp 30kr, mb 20", [])]);
+    expect(interpretLots(c3, OPTS)[0]).toMatchObject({ startBid: 30, increment: 20 });
+  });
+
   it("reads a start bid mid-line, and titles a price-only lot by its number", () => {
     const c2 = capture([lot(0, "Holo, mp 30kr", []), lot(1, "Mp 15kr", []), lot(2, "Holo ( promo) mp 40", [])]);
     expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid])).toEqual([

@@ -45,6 +45,8 @@ export function isSafeToClick(el: Element): boolean {
   if (el.querySelector("[contenteditable='true'], [role='textbox'], textarea, input")) return false;
   const tag = el.tagName.toLowerCase();
   if (tag === "a" && el.getAttribute("href") && !el.getAttribute("href")!.startsWith("#")) return false;
+  // Nor anything inside a real link: clicking it would follow the link (review L14).
+  if (el.parentElement?.closest("a[href]:not([href^='#'])")) return false;
   return true;
 }
 

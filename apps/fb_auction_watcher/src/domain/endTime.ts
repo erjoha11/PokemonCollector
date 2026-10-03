@@ -110,7 +110,7 @@ export function parseEndTime(line: string | null, ref: Date): EndTime {
   const date = findDate(s);
   const time = findTime(date ? s.replace(date.match, " ") : s);
   const weekdayName = Object.keys(WEEKDAYS).find((w) => s.includes(w));
-  const tonight = /i\s?kveld|i\s?dag/.test(s);
+  const tonight = /\bi\s?kveld\b|\bi\s?dag\b/.test(s);
 
   let year: number;
   let month: number;
@@ -126,7 +126,10 @@ export function parseEndTime(line: string | null, ref: Date): EndTime {
     }
     if (weekdayName && weekdayOf(year, month, day) !== WEEKDAYS[weekdayName]) sure = false;
   } else if (tonight) {
+    // "Tonight" means the day it was posted, but we only know when it was first seen, which can
+    // be later: plausible, not sure (review L1).
     ({ year, month, day } = today);
+    sure = false;
   } else if (weekdayName) {
     // Weekday only: the next such day, counting today.
     const base = new Date(Date.UTC(today.year, today.month - 1, today.day));

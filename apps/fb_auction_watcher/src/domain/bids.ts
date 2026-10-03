@@ -142,9 +142,9 @@ function lotTitle(text: string, position: number): string {
   return first && !onlyPrice ? first : `Lot ${position}`;
 }
 
-/** "MB: 10" (minimum increment for this lot). */
+/** "MB: 10", also mid-line ("Holo, mp 30kr, mb 20"): the minimum increment for this lot. */
 function lotIncrement(text: string): number | null {
-  const m = text.match(/(?:^|\n)\s*(?:mb|min(?:imum)?\.?\s*bud(?:økning)?)\s*:?\s*([^\n]+)/i);
+  const m = text.match(/(?<![\p{L}\d])(?:mb|min(?:imum)?\.?\s*bud(?:økning)?)\s*:?\s*(\d[^\n]*)/iu);
   return m ? parseAmount(m[1]) : null;
 }
 

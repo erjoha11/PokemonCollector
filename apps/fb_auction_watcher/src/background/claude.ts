@@ -125,6 +125,7 @@ async function run(store: Store, onAnswered: () => void) {
       if (!request) continue;
       const reply = await ask(request);
       if (!reply.ok) {
+        await store.saveAnswers(saved); // Keep what earlier batches answered (review M3).
         await updateClaudeState({ lastAt: at, error: reply.error, lastOutcome: `Failed: ${reply.error}` });
         return;
       }

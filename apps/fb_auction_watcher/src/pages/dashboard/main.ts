@@ -82,6 +82,13 @@ function rebuild() {
   rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName });
 }
 
+/** The small status objects: auto-scan, Claude, the reader. */
+async function loadStatus() {
+  [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
+  reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
+  for (const id of justClicked) if (visiblePostIds().includes(id)) justClicked.delete(id);
+}
+
 async function load() {
   const [posts, captures, answers, readAt] = await Promise.all([
     store.allPosts(),
@@ -89,9 +96,7 @@ async function load() {
     store.allAnswers(),
     store.getMeta("lastFeedReadAt"),
   ]);
-  [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
-  reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
-  for (const id of justClicked) if (visiblePostIds().includes(id)) justClicked.delete(id);
+  await loadStatus();
   source = {
     posts,
     captures: new Map(captures.map((c) => [c.postId, c.capture])),
@@ -708,8 +713,15 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (isStoreUpdatedMessage(msg)) void load();
 });
 // Settings and scan/Claude status live in chrome.storage; re-read when they change.
-chrome.storage.onChanged.addListener((_changes, area) => {
-  if (area === "local") void load();
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  // Your name changes how every lot reads: rebuild. Status ticks (scan, reader, Claude) only
+  // need their own small state, not a reload of every post from the database (review M6).
+  if ("settings" in changes) {
+    void load();
+  } else if (["autoScanState", "claudeState", "readerState"].some((k) => k in changes)) {
+    void loadStatus().then(render);
+  }
 });
 setInterval(tick, 1000);
 setInterval(() => {
