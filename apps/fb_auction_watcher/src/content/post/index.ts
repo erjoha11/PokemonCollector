@@ -2,6 +2,7 @@ import type { FeedPost } from "../../shared/feed";
 import {
   isAutoScanMessage,
   isReadPostMessage,
+  MSG_ACTIVITY_DONE,
   MSG_AUTO_SCAN_DONE,
   MSG_GET_KNOWN_POSTS,
   MSG_READ_DONE,
@@ -77,7 +78,11 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     const msg: ReadDoneMessage = { type: MSG_READ_DONE, ok, outcome };
     chrome.runtime.sendMessage(msg).catch(() => {});
   };
-  if (running) return report(false, "busy");
+  if (running) {
+    // Already reading or scanning here: report back so whoever asked frees the Facebook slot.
+    if (!silent) chrome.runtime.sendMessage({ type: MSG_ACTIVITY_DONE }).catch(() => {});
+    return report(false, "busy");
+  }
   running = true;
   activeRecorder?.stop();
   activeRecorder = null;
@@ -155,6 +160,8 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     panel.showError(`Failed: ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     running = false;
+    // Started from the menu (not a quiet read, which reports MSG_READ_DONE): free the Facebook slot.
+    if (!silent) chrome.runtime.sendMessage({ type: MSG_ACTIVITY_DONE }).catch(() => {});
   }
 }
 

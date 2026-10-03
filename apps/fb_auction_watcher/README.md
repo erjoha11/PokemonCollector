@@ -62,7 +62,8 @@ name opens the post on Facebook in a new tab and reads it quietly there.
 auction and claim sale the scans have saved, grouped by end time (within 1 hour · later today · tomorrow
 and later · end time unknown · claim and fixed price · ended), with live countdowns. Each end time shows
 the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
-Claude filled in. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
+Claude filled in. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
+("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
 small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
 saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and
 the overview row says **Just read**. Ctrl/Cmd-click just opens the post. **My bids** filters to sales you're

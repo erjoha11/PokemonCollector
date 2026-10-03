@@ -2,43 +2,43 @@ import { interpretLots, summarizeLots } from "../domain/bids";
 import { interpretListing } from "../domain/listing";
 import { bidAnswerKey } from "../llm/prompts";
 import { MSG_READ_POST, type ReadPostMessage } from "../shared/messages";
-import { getAutoScanState, getSettings } from "../shared/settings";
+import { getSettings } from "../shared/settings";
 import type { ReaderState, ReadJob } from "../shared/reader";
 import type { Store } from "../store";
+import { facebookSlot } from "./slot";
 import { waitForTabLoad } from "./tabs";
 
-// Post reads without the panel. A click in the overview opens the post in a normal tab and
-// reads it silently there (openAndReadVisible). Automatic re-reads of auctions you're bidding
-// in (while auto-scan is on; docs/spec.md: every 15 min) go through a queue: a background tab,
-// read, closed. Paced like the feed
-// scan: one at a time, a pause between reads, never while the automatic feed scan runs (one tab
-// talking to Facebook), automatic re-reads skipped while the screen is locked or you're away.
+// Post reads without the panel, one queue for all of them. Your clicks in the overview open the
+// post as a normal tab you see and read it quietly there (the tab stays open); they go first and
+// skip the pause. Automatic re-reads of auctions you're in (while auto-scan is on; docs/spec.md:
+// every 15 min, plus one after the end) use a hidden tab that's closed after. Every read takes
+// the one Facebook slot first (slot.ts, review H6), so it never runs alongside the automatic
+// scan or a scan/read started from the toolbar menu. Automatic re-reads are paced (30-45 s
+// apart) and skipped while the screen is locked or you're away.
 
 export type { ReaderState, ReadJob } from "../shared/reader";
 
 export const READER_ALARM = "fbaw-reader";
-/** Alarms for the reader: the queue's own, and per-tab timeouts for visible reads. */
+/** Alarms for the reader. */
 export const isReaderAlarm = (name: string) => name === READER_ALARM || name.startsWith(`${READER_ALARM}-`);
-/** Pause between reads. chrome.alarms can't go below 30 s. */
+/** Pause between automatic reads. chrome.alarms can't go below 30 s. */
 const GAP_MS = [30_000, 45_000] as const;
-/** A read that hasn't reported back by then has failed; close its tab and move on. */
+/** A read that hasn't reported back by then has failed (hidden tab: closed; your tab: left open). */
 const READ_TIMEOUT_MS = 3 * 60_000;
+const VISIBLE_TIMEOUT_MS = 5 * 60_000;
+/** Waiting for the slot: try again this soon. */
+const SLOT_RETRY_MS = 30_000;
 const REREAD_AFTER_MS = 15 * 60_000;
 /** After an auction ends, one final read is still worth it this long (for "Won" vs "Lost"). */
 const FINAL_READ_WITHIN_MS = 2 * 60 * 60_000;
-/** A visible read that hasn't reported back by then has failed (its tab stays open). */
-const VISIBLE_TIMEOUT_MS = 5 * 60_000;
 
-const DEFAULT_STATE: ReaderState = { visible: {}, queue: [], current: null, lastAt: null, lastOutcome: null };
+const DEFAULT_STATE: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 
 export async function getReaderState(): Promise<ReaderState> {
   const s = await chrome.storage.local.get("readerState");
-  const state = { ...DEFAULT_STATE, ...(s.readerState as Partial<ReaderState> | undefined) };
-  // Entries saved by an older version (a bare post ID, no start time) can't time out: drop them.
-  state.visible = Object.fromEntries(
-    Object.entries(state.visible ?? {}).filter(([, v]) => typeof v === "object" && v !== null && typeof v.startedAt === "string"),
-  );
-  return state;
+  const { queue, current, lastAt, lastOutcome } = { ...DEFAULT_STATE, ...(s.readerState as Partial<ReaderState> | undefined) };
+  // (Older versions also kept a separate "visible" map; it's dropped here.)
+  return { queue: queue ?? [], current: current ?? null, lastAt: lastAt ?? null, lastOutcome: lastOutcome ?? null };
 }
 /**
  * Every change to the reader state goes through this one queue (review M1): a read-modify-write
@@ -58,18 +58,32 @@ function setReaderState(change: Partial<ReaderState> | ((s: ReaderState) => Part
   return result;
 }
 
-/** Adds posts to the queue (skipping ones already queued or being read) and starts if idle. */
+/**
+ * Adds posts to the queue and starts if idle. A post already queued or being read isn't added
+ * again, except that your click upgrades a queued background re-read to a visible read.
+ */
 export async function enqueueReads(jobs: ReadJob[]): Promise<void> {
   let added = 0;
   await setReaderState((state) => {
-    const busy = new Set([...state.queue.map((j) => j.postId), state.current?.postId].filter(Boolean));
-    const fresh = jobs.filter((j) => !busy.has(j.postId) && /^https:\/\/www\.facebook\.com\//.test(j.url));
-    added = fresh.length;
+    let queue = [...state.queue];
+    for (const job of jobs) {
+      if (!/^https:\/\/www\.facebook\.com\//.test(job.url) || state.current?.postId === job.postId) continue;
+      const i = queue.findIndex((q) => q.postId === job.postId);
+      if (i >= 0 && !(job.reason === "click" && queue[i].reason === "auto")) continue;
+      if (i >= 0) queue.splice(i, 1);
+      queue.push(job);
+      added++;
+    }
     // Your clicks go first; automatic re-reads after.
-    return { queue: [...state.queue, ...fresh].sort((a, b) => (a.reason === b.reason ? 0 : a.reason === "click" ? -1 : 1)) };
+    queue = queue.sort((a, b) => (a.reason === b.reason ? 0 : a.reason === "click" ? -1 : 1));
+    return { queue };
   });
-  if (added === 0) return;
-  await kickReader();
+  if (added > 0) await kickReader();
+}
+
+/** A post you clicked in the overview: opened in a normal tab and read quietly there (queued). */
+export function openAndReadVisible(url: string, postId: string): Promise<void> {
+  return enqueueReads([{ postId, url, reason: "click", visible: true }]);
 }
 
 async function later(ms: number) {
@@ -86,27 +100,21 @@ export function kickReader(): Promise<void> {
 }
 
 async function kickOnce(): Promise<void> {
-  // Visible reads that never reported back: give up on them (their tabs stay open).
-  for (const [tabId, v] of Object.entries((await getReaderState()).visible)) {
-    if (Date.now() - Date.parse(v.startedAt) > VISIBLE_TIMEOUT_MS) await finishRead(Number(tabId), false, "it took too long");
-  }
   let state = await getReaderState();
   if (state.current) {
-    if (Date.now() - Date.parse(state.current.startedAt) < READ_TIMEOUT_MS) return;
-    await finishRead(state.current.tabId, false, "timed out");
+    const limit = state.current.visible ? VISIBLE_TIMEOUT_MS : READ_TIMEOUT_MS;
+    if (Date.now() - Date.parse(state.current.startedAt) < limit) return;
+    await finishRead(state.current.tabId, false, "it took too long");
     state = await getReaderState();
   }
   if (state.queue.length === 0) return;
-  const auto = await getAutoScanState();
-  // The feed scan has the Facebook tab slot; a "running" flag older than 10 min is stale (review L10).
-  const scanRunning = auto.running && auto.lastAt !== null && Date.now() - Date.parse(auto.lastAt) < 10 * 60_000;
-  if (scanRunning) return later(60_000);
-  if (state.lastAt && Date.now() - Date.parse(state.lastAt) < GAP_MS[0]) {
-    return later(GAP_MS[0] - (Date.now() - Date.parse(state.lastAt)) + 1000);
-  }
 
   const [job, ...rest] = state.queue;
   if (job.reason === "auto") {
+    // Pace the automatic ones; your clicks don't wait for this.
+    if (state.lastAt && Date.now() - Date.parse(state.lastAt) < GAP_MS[0]) {
+      return later(GAP_MS[0] - (Date.now() - Date.parse(state.lastAt)) + 1000);
+    }
     const idle = await chrome.idle.queryState(120);
     if (idle !== "active") {
       // Don't read in the background while you're away; drop the automatic ones.
@@ -114,31 +122,23 @@ async function kickOnce(): Promise<void> {
       return kickOnce();
     }
   }
-  const tab = await chrome.tabs.create({ url: job.url, active: false });
-  if (tab.id === undefined) return;
-  await setReaderState({ queue: rest, current: { ...job, tabId: tab.id, startedAt: new Date().toISOString() } });
-  await later(READ_TIMEOUT_MS + 5000); // Safety net if the read never reports back.
 
-  const loaded = await waitForTabLoad(tab.id);
-  if (!loaded) return finishRead(tab.id, false, "the post didn't load");
-  const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true, silent: true };
-  await chrome.tabs.sendMessage(tab.id, msg).catch(() => finishRead(tab.id!, false, "no content script in the tab"));
-}
-
-/**
- * A post you clicked in the overview: open it in a normal tab for you to look at, and read it
- * silently in that same tab (no panel; the tab stays open). Not queued: you asked for it now.
- */
-export async function openAndReadVisible(url: string, postId: string): Promise<void> {
-  if (!/^https:\/\/www\.facebook\.com\//.test(url)) return;
-  const tab = await chrome.tabs.create({ url, active: true });
-  if (tab.id === undefined) return;
+  // One tab talking to Facebook at a time: wait for the slot (review H6). It's taken before the
+  // tab exists (tab ID -1), then moved to the tab.
+  if (!(await facebookSlot.acquire("reader", -1))) return later(SLOT_RETRY_MS);
+  const tab = await chrome.tabs.create({ url: job.url, active: !!job.visible }).catch(() => null);
+  if (tab?.id === undefined) {
+    await facebookSlot.release("reader", -1);
+    await setReaderState({ queue: rest, lastAt: new Date().toISOString(), lastOutcome: "Couldn't read: no tab" });
+    return;
+  }
   const tabId = tab.id;
-  await setReaderState((state) => ({ visible: { ...state.visible, [tabId]: { postId, startedAt: new Date().toISOString() } } }));
-  await setTabBadge(tabId, "…", "#2457D6");
-  await chrome.alarms.create(`${READER_ALARM}-visible-${tabId}`, { when: Date.now() + VISIBLE_TIMEOUT_MS + 5000 });
-  const loaded = await waitForTabLoad(tabId);
-  if (!loaded) return finishRead(tabId, false, "the post didn't load");
+  await facebookSlot.moveTo("reader", -1, tabId);
+  await setReaderState({ queue: rest, current: { ...job, tabId, startedAt: new Date().toISOString() } });
+  if (job.visible) await setTabBadge(tabId, "…", "#2457D6");
+  await later((job.visible ? VISIBLE_TIMEOUT_MS : READ_TIMEOUT_MS) + 5000); // Safety net if the read never reports back.
+
+  if (!(await waitForTabLoad(tabId))) return finishRead(tabId, false, "the post didn't load");
   const msg: ReadPostMessage = { type: MSG_READ_POST, waitForPost: true, silent: true };
   await chrome.tabs.sendMessage(tabId, msg).catch(() => finishRead(tabId, false, "no content script in the tab"));
 }
@@ -148,31 +148,28 @@ async function setTabBadge(tabId: number, text: string, color: string) {
   await chrome.action.setBadgeText({ tabId, text }).catch(() => {});
 }
 
-/** A read finished (reported by the content script, or timed out): close its tab, go on. */
+/** A read finished (reported by the content script, timed out, or its tab closed): free the slot, go on. */
 export async function finishRead(tabId: number, ok: boolean, outcome: string): Promise<void> {
   const state = await getReaderState();
-  if (state.visible[tabId] !== undefined) {
-    // Your own tab: leave it open, just record the result.
-    void chrome.alarms.clear(`${READER_ALARM}-visible-${tabId}`);
-    // Done: a ✓ (or !) on the toolbar icon in that tab, for a little while.
+  if (!state.current || state.current.tabId !== tabId) return;
+  const job = state.current;
+  if (job.visible) {
+    // Your tab: leave it open; a ✓ (or !) on the toolbar icon there for a little while.
     await setTabBadge(tabId, ok ? "✓" : "!", ok ? "#1a7f37" : "#B42318");
     setTimeout(() => void setTabBadge(tabId, "", "#2457D6"), 20_000);
-    await setReaderState((st) => {
-      const visible = { ...st.visible };
-      delete visible[tabId];
-      return { visible, lastAt: new Date().toISOString(), lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}` };
-    });
-    return;
+  } else {
+    await chrome.tabs.remove(tabId).catch(() => {});
   }
-  if (!state.current || state.current.tabId !== tabId) return;
-  await chrome.tabs.remove(tabId).catch(() => {});
-  const gap = GAP_MS[0] + Math.random() * (GAP_MS[1] - GAP_MS[0]);
-  await setReaderState({
+  await facebookSlot.release("reader", tabId);
+  const next = await setReaderState({
     current: null,
     lastAt: new Date().toISOString(),
     lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}`,
   });
-  if ((await getReaderState()).queue.length > 0) await later(gap);
+  if (next.queue.length === 0) return;
+  // Your next click starts right away; automatic re-reads after the pause.
+  if (next.queue[0].reason === "click") void kickReader();
+  else await later(GAP_MS[0] + Math.random() * (GAP_MS[1] - GAP_MS[0]));
 }
 
 /**

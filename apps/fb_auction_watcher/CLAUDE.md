@@ -8,7 +8,7 @@ App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.
 
 It is independent of the other apps in `apps/`: no imports to or from them, no shared database.
 
-**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store, `dashboard.html` (My Auctions, table, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read. Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Open review items: `notes/fb_auction_watcher/` and the last review (H2 capture merging, H6 one-tab lock, M2, M8 tests).
+**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store, `dashboard.html` (My Auctions, table, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read. Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Open review items: M2 (Claude per-item failures, ended sales), M6 (retention), M8 (tests for the worker and store), M9 (push), and the remaining low items.
 
 ## Commands
 
@@ -41,7 +41,7 @@ These override convenience. Don't relax any of them without the user's explicit 
 |---|---|---|
 | Post content script | `src/content/post/` | Reads one post (sort switch, expanders, extract), the panel and the quiet-read status overlay (Shadow DOM) |
 | Feed content script | `src/content/feed/` | Records posts as the virtualized feed renders them, scrolls and opens "Se mer" (scan), extracts posts |
-| Service worker | `src/background/` | Message routing, automatic scan (`autoScan.ts`), post-read queue (`reader.ts`), Claude bridge client (`claude.ts`) |
+| Service worker | `src/background/` | Message routing, the one Facebook slot (`slot.ts`), automatic scan (`autoScan.ts`), post-read queue (`reader.ts`), Claude bridge client (`claude.ts`) |
 | Store | `src/store/` | `Store` interface over IndexedDB (`idb`): raw posts, post reads, Claude's answers; swappable for Supabase later |
 | LLM | `src/llm/` | Prompts and JSON schemas for `claude -p`; `cases.ts` evaluation set (`npm run eval:claude`) |
 | Domain | `src/domain/` | Pure rules: amounts, Oslo end times, listing type and terms, lots/bids/claims, your status |

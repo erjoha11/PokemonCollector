@@ -1,6 +1,7 @@
 import { capturePostId } from "../domain/bids";
 import { mergeCaptures } from "../domain/captures";
 import {
+  isActivityDoneMessage,
   isAutoScanDoneMessage,
   isGetKnownPostsMessage,
   isReloadFbTabsMessage,
@@ -23,6 +24,7 @@ import { AUTO_SCAN_ALARM, describeAutoScan, isGroupFeedUrl, newPostsUrl, runAuto
 import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
 import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, queueMyAuctionRereads } from "./reader";
+import { facebookSlot } from "./slot";
 
 // Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
 // between the toolbar icon, the content script and the overview page.
@@ -40,6 +42,15 @@ const askClaudeSoon = () => scheduleClaude(store, () => broadcastUpdate());
 async function startInTab(tabId: number, kind: "read" | "scan") {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   if (!tab) return;
+  // One tab talking to Facebook at a time (review H6): wait for whatever runs now to finish.
+  const holder = kind === "scan" ? "menu-scan" : "menu-read";
+  void chrome.action.setBadgeText({ tabId, text: "…" });
+  if (!(await facebookSlot.acquireWhenFree(holder, tabId))) {
+    void chrome.action.setBadgeText({ tabId, text: "!" });
+    void chrome.action.setTitle({ tabId, title: "Facebook was busy for too long (another read or scan). Try again." });
+    return;
+  }
+  void chrome.action.setBadgeText({ tabId, text: "" });
   // The feed scan always runs on "New posts", so "caught up" means caught up.
   if (kind === "scan" && isGroupFeedUrl(tab.url) && tab.url !== newPostsUrl(tab.url!)) {
     await chrome.tabs.update(tabId, { url: newPostsUrl(tab.url!) });
@@ -49,6 +60,7 @@ async function startInTab(tabId: number, kind: "read" | "scan") {
   }
   const msg: ReadPostMessage = { type: MSG_READ_POST };
   await chrome.tabs.sendMessage(tabId, msg).catch(() => {
+    void facebookSlot.release(holder, tabId);
     // The tab was open before the extension was (re)loaded: no content script yet.
     void chrome.action.setBadgeText({ tabId, text: "!" });
     void chrome.action.setTitle({ tabId, title: "Reload this Facebook tab, then try again." });
@@ -91,11 +103,13 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
   if (isReaderAlarm(alarm.name)) void kickReader();
 });
-// You closed the background reader's tab: count that read as done and go on.
+// A tab was closed: if a read was running there, count it as done and go on; if it held the
+// Facebook slot (a scan from the menu, say), free it.
 chrome.tabs.onRemoved.addListener((tabId) => {
   void getReaderState().then((s) => {
-    if (s.current?.tabId === tabId || s.visible[tabId] !== undefined) void finishRead(tabId, false, "its tab was closed");
+    if (s.current?.tabId === tabId) void finishRead(tabId, false, "its tab was closed");
   });
+  void facebookSlot.releaseTab(tabId);
 });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes.settings) return;
@@ -185,7 +199,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })();
     return;
   }
+  if (isActivityDoneMessage(msg)) {
+    // A scan or read you started from the menu finished: free the Facebook slot.
+    const tabId = sender.tab?.id;
+    if (tabId !== undefined) void facebookSlot.release("menu-scan", tabId).then(() => facebookSlot.release("menu-read", tabId));
+    return;
+  }
   if (isAutoScanDoneMessage(msg)) {
+    if (sender.tab?.id !== undefined) void facebookSlot.release("auto-scan", sender.tab.id);
     void (async () => {
       const state = await getAutoScanState();
       const since = state.lastAt ? Date.parse(state.lastAt) : Date.now();

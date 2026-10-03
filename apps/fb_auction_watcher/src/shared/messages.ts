@@ -74,3 +74,7 @@ export const isStartMessage = (m: unknown): m is StartMessage => hasType(m, MSG_
 /** Toolbar menu → service worker: reload every Facebook tab (e.g. after reloading the extension). */
 export const MSG_RELOAD_FB_TABS = "fbaw/reload-fb-tabs" as const;
 export const isReloadFbTabsMessage = (m: unknown): m is { type: typeof MSG_RELOAD_FB_TABS } => hasType(m, MSG_RELOAD_FB_TABS);
+
+/** Content script → service worker: a scan or read started from the toolbar menu has finished (frees the Facebook slot). */
+export const MSG_ACTIVITY_DONE = "fbaw/activity-done" as const;
+export const isActivityDoneMessage = (m: unknown): m is { type: typeof MSG_ACTIVITY_DONE } => hasType(m, MSG_ACTIVITY_DONE);

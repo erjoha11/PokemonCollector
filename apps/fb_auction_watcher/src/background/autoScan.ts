@@ -1,7 +1,7 @@
 import { MSG_AUTO_SCAN, type AutoScanMessage } from "../shared/messages";
 import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
 import { isGroupFeedUrl, newPostsUrl } from "../shared/urls";
-import { getReaderState } from "./reader";
+import { facebookSlot } from "./slot";
 import { waitForTabLoad } from "./tabs";
 
 // The automatic feed scan (docs/spec.md "Slow pacing"):
@@ -56,25 +56,33 @@ export async function runAutoScan(): Promise<void> {
     const idle = await chrome.idle.queryState(120);
     if (idle !== "active") return await skip(idle === "locked" ? "Skipped: screen locked" : "Skipped: you're away (idle)");
 
-    // One tab talking to Facebook at a time: not while a post is being read in the background.
-    if ((await getReaderState()).current) return await skip("Skipped: a post was being read");
-
     const tab = await findFeedTab();
     if (!tab?.id) return await skip("Skipped: no pinned tab with the group feed");
     if (tab.active) {
       const win = await chrome.windows.get(tab.windowId);
       if (win.focused) return await skip("Skipped: you're looking at the feed tab");
     }
+    // One tab talking to Facebook at a time (review H6): skip this round if anything else is.
+    if (!(await facebookSlot.acquire("auto-scan", tab.id))) {
+      const busy = await facebookSlot.holder();
+      const what = busy?.holder === "reader" ? "a post is being read" : busy?.holder?.startsWith("menu") ? "a scan or read you started" : "another activity";
+      return await skip(`Skipped: Facebook is busy (${what})`);
+    }
+    const tabId = tab.id;
+    const fail = async (outcome: string) => {
+      await facebookSlot.release("auto-scan", tabId);
+      await skip(outcome);
+    };
 
     await updateAutoScanState({ lastAt: new Date().toISOString(), lastOutcome: "Scanning…", running: true });
     // Always "New posts" order (newest first): "caught up" (5 saved posts in a row) only means
     // nothing new when the feed is sorted by when posts were made, not by recent activity.
     await chrome.tabs.update(tab.id, { url: newPostsUrl(tab.url!) });
     await new Promise((r) => setTimeout(r, 500)); // Let the load start, so "complete" is the new page.
-    if (!(await waitForTabLoad(tab.id, 30_000))) return await skip("Failed: the feed tab didn't finish loading");
+    if (!(await waitForTabLoad(tab.id, 30_000))) return await fail("Failed: the feed tab didn't finish loading");
     const msg: AutoScanMessage = { type: MSG_AUTO_SCAN };
     await chrome.tabs.sendMessage(tab.id, msg).catch(async () => {
-      await skip("Failed: no content script in the feed tab");
+      await fail("Failed: no content script in the feed tab");
     });
   } finally {
     await scheduleAutoScan();

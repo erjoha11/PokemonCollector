@@ -69,7 +69,7 @@ let lastFeedReadAt: string | null = null;
 let settings: Settings;
 let autoScan: AutoScanState;
 let claude: ClaudeState;
-let reader: ReaderState = { visible: {}, queue: [], current: null, lastAt: null, lastOutcome: null };
+let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
 const justClicked = new Set<string>();
 let source: { posts: Awaited<ReturnType<typeof store.allPosts>>; captures: Map<string, PostCapture>; answers: Map<string, unknown> } = {
@@ -86,7 +86,7 @@ function rebuild() {
 async function loadStatus() {
   [settings, autoScan, claude] = await Promise.all([getSettings(), getAutoScanState(), getClaudeState()]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
-  for (const id of justClicked) if (visiblePostIds().includes(id)) justClicked.delete(id);
+  for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
 }
 
 async function load() {
@@ -240,13 +240,6 @@ function saleCell(r: Row): HTMLTableCellElement {
   return td;
 }
 
-/** Posts being read in a tab you opened, leaving out ones the worker will time out anyway. */
-function visiblePostIds(): string[] {
-  return Object.values(reader.visible ?? {})
-    .filter((v) => typeof v === "object" && Date.now() - Date.parse(v.startedAt) < 5 * 60_000)
-    .map((v) => v.postId);
-}
-
 /** A photo in the viewer, and the group it belongs to (a sale's lots), for ← / →. */
 type Photo = { src: string; caption: string };
 let gallery: Photo[] = [];
@@ -293,7 +286,7 @@ function zoomable(img: HTMLImageElement, photos: Photo[], index: number) {
 
 /** "Reading…" / "Queued" while the reader has this post. */
 function readState(postId: string): string | null {
-  if (reader.current?.postId === postId || visiblePostIds().includes(postId) || justClicked.has(postId)) return "Reading…";
+  if (reader.current?.postId === postId || justClicked.has(postId)) return "Reading…";
   if (reader.queue.some((j) => j.postId === postId)) return "Queued";
   return null;
 }
@@ -607,7 +600,7 @@ function renderSettings(now: Date) {
       : "Asks Claude Code (claude -p, your login) only about what the rules can't read.";
 
   $("#reader-status").textContent =
-    (reader.current || visiblePostIds().length ? "Reading a post now. " : "") +
+    (reader.current ? "Reading a post now. " : "") +
     (reader.queue.length ? `${reader.queue.length} queued. ` : "") +
     (reader.lastAt && reader.lastOutcome ? `Last ${ago(reader.lastAt, now)}: ${reader.lastOutcome}` : "No background reads yet.");
 

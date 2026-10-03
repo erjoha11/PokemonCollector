@@ -300,6 +300,13 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
 - **Other chatter:** top-level comments that are only a person's name (tagging a friend),
   "Sjekk pm", and the seller's own notices ("Da var alle kortene ute!", "starter om 6 min").
 
+One Facebook slot (2026-10-03, review H6): every activity that talks to Facebook (the automatic
+scan, post reads from the overview or background re-reads, scans and reads started from the
+toolbar menu) takes one slot in the service worker first (`src/background/slot.ts`,
+`chrome.storage.session`) and frees it when done, when its tab closes, or after a time limit
+(10 min; 25 for a scan from the menu). The automatic scan skips a round when it's busy; reads
+queue (your clicks first, no pause); menu actions wait up to 5 min.
+
 Automatic scan (2026-10-03): Chrome doesn't render background tabs, so the feed doesn't load
 more posts there. The automatic scan reloads the pinned feed tab instead, records the newest
 posts that render at the top, opens their "Se mer", and stops (`whenHidden: "stop"`); a
