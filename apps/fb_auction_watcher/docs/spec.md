@@ -8,7 +8,8 @@
   Code (`claude -p`) through a native-messaging bridge for what the rules can't read, IndexedDB
   store of raw posts and post reads, table page with your Leading/Outbid status. See
   `notes/fb_auction_watcher/overview-plan.md`. Automatic re-reads of auctions you're in
-  (every 15 min, plus one after the end) are built. Not built: overlay, side panel.
+  (every 15 min, plus a final read on its own alarm 2 min after the close) and desktop notifications
+  (outbid, ends in 10 min, won/lost; `src/background/watch.ts`, `notify.ts`) are built. Not built: overlay, side panel.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).

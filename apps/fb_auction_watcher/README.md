@@ -154,6 +154,18 @@ away, or you're looking at that tab, and is off until you switch it on. A backgr
 first few posts, so if more were posted than that since the last round, the status says so: open the
 feed tab and click the icon to catch up.
 
+**Final read on time.** While auto-scan is on, each auction you're bidding in is read once more
+2 minutes after it closes (its end plus antisnipe), on its own alarm rather than at the next scan, so
+**Leading** turns into **Won** or **Lost** by itself. If you're away then, the next scan round tries
+again (for up to 2 hours). With auto-scan off, the overview says "open it to see the result".
+
+**Desktop notifications** (Settings, on by default): **Outbid** when a read finds someone has bid over
+you (with the next valid bid), **Ends in 10 min** for a sale you're bidding in, and **Won N lots ·
+X kr / Lost** once its final read is in. Each shows once; clicking it opens the lot (or the post) on
+Facebook, nothing more. Outbid and Won/Lost come from reads, so they arrive by themselves only while
+auto-scan is on; background re-reads run every 15 min, so an outbid can show up to 15 min late. On
+macOS, Chrome must be allowed to show notifications (System Settings → Notifications → Google Chrome).
+
 ## Claude for what the rules can't read
 
 End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers

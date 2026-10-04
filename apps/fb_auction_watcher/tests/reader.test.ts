@@ -261,7 +261,7 @@ describe("while you're away", () => {
   });
 });
 
-describe("queueMyAuctionRereads", () => {
+describe("watchMyAuctions (re-reads)", () => {
   // You lead lot 1 (40 over 10).
   const leading = (id: string, over: Parameters<typeof capture>[3] = {}) =>
     capture(id, auctionText(), [lot(1, [reply("Bidder A", `${SELLER} 10`), reply(ME, `${SELLER} 40`)])], over);
@@ -270,7 +270,7 @@ describe("queueMyAuctionRereads", () => {
   async function rereads(store: Store, autoScan = true) {
     await fake.local.set({ settings: { autoScan, myName: ME, useClaude: false } });
     await blockSlot(); // Keep the jobs in the queue so the test can see them.
-    await reader.queueMyAuctionRereads(store);
+    await reader.watchMyAuctions(store);
     return (await state()).queue.map((j) => j.postId);
   }
 

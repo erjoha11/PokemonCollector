@@ -1,5 +1,7 @@
 import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../domain/bids";
 export type { Lot } from "../../domain/bids";
+export { saleLines } from "../../domain/saleLines";
+export { lotUrl } from "../../shared/urls";
 import { interpretListing, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, osloDate } from "../../domain/endTime";
 import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
@@ -373,32 +375,7 @@ export function leadingBySale(rows: Row[]): LeadingSale[] {
 }
 
 /** A link to the lot's own comment on Facebook (where you'd bid), else to the post. */
-export function lotUrl(row: Pick<Row, "url">, lot: Pick<Lot, "commentId">): string {
-  if (!lot.commentId) return row.url;
-  return `${row.url}${row.url.includes("?") ? "&" : "?"}comment_id=${lot.commentId}`;
-}
 
-// The group's posting template puts the sale type in the title ("AUKSJON/BUDRUNDE", "FASTPRIS",
-// "Claim salg"); the Type is shown on its own, so the table leaves those words out.
-const TEMPLATE_WORDS = /\b(?:lyn)?auksjon(?:en)?\b|\bbudrunde\b|\bclaim[\s-]*salg(?:et)?\b|\bfastpris\b/gi;
-// Leading and trailing separators; a trailing ".-" / ",-" is a price ("800.-"), kept.
-const SEPARATORS = /^[\s\-–—:/|,.!]+|(?<![.,])[\s\-–—:/|,!]+$/g;
-
-/**
- * A sale's two lines for the table: its title without the template words, then its description.
- * When nothing is left of the title (it was only "AUKSJON/BUDRUNDE"), the description moves up.
- */
-export function saleLines(title: string, description: string | null): { title: string; detail: string | null } {
-  const cleaned = title
-    .replace(TEMPLATE_WORDS, " ")
-    .replace(/\s*([\-–—:/|])(?:\s*[\-–—:/|])+\s*/g, " $1 ") // "Slab Claim salg - Etter" → one separator.
-    .replace(/\s+/g, " ")
-    .replace(SEPARATORS, "")
-    .trim();
-  const detail = description && description.trim() !== title.trim() ? description.trim() : null;
-  if (cleaned.length >= 3) return { title: cleaned, detail };
-  return detail ? { title: detail, detail: null } : { title: title.trim(), detail: null };
-}
 
 /** Did you bid or claim in this sale (from its latest read)? */
 export const isMine = (r: Pick<Row, "summary">): boolean =>

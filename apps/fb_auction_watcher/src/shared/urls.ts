@@ -15,3 +15,9 @@ export function newPostsUrl(feedUrl: string): string {
   url.searchParams.set("sorting_setting", "CHRONOLOGICAL");
   return url.toString();
 }
+
+/** A lot's own comment on Facebook (where you'd bid), or the post when the lot has no comment ID. */
+export function lotUrl(post: { url: string }, lot: { commentId: string | null }): string {
+  if (!lot.commentId) return post.url;
+  return `${post.url}${post.url.includes("?") ? "&" : "?"}comment_id=${lot.commentId}`;
+}

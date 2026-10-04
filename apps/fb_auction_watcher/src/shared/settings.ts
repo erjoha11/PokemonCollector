@@ -8,9 +8,11 @@ export type Settings = {
   myName: string;
   /** Send what the rules can't read to Claude Code (claude -p) through the native bridge. */
   useClaude: boolean;
+  /** Desktop notifications: outbid, ending in 10 min, won/lost (src/background/notify.ts). */
+  notify: boolean;
 };
 
-export const DEFAULT_SETTINGS: Settings = { autoScan: false, myName: "Erik Johansen", useClaude: true };
+export const DEFAULT_SETTINGS: Settings = { autoScan: false, myName: "Erik Johansen", useClaude: true, notify: true };
 
 export type AutoScanState = {
   /** When the next automatic scan is due (ISO), or null when auto-scan is off. */

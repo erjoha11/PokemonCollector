@@ -94,6 +94,10 @@ export function fakeChrome(options: FakeChromeOptions = {}) {
   /** Every runtime.sendMessage (to extension pages). */
   const runtimeMessages: unknown[] = [];
 
+  /** Every notification shown (chrome.notifications.create), in order. */
+  const notifications: { id: string; title: string; message: string }[] = [];
+  const onNotificationClicked = new FakeEvent<[string]>();
+
   /** Every badge/title call on the toolbar icon. */
   const badges: { call: "text" | "color" | "title"; tabId?: number; value: string }[] = [];
 
@@ -202,6 +206,16 @@ export function fakeChrome(options: FakeChromeOptions = {}) {
       onInstalled: event(),
       onStartup: event(),
     },
+    notifications: {
+      async create(id: string, opts: { title: string; message: string }) {
+        notifications.push({ id, title: opts.title, message: opts.message });
+        return id;
+      },
+      async clear() {
+        return true;
+      },
+      onClicked: onNotificationClicked,
+    },
     contextMenus: {
       removeAll(cb?: () => void) {
         cb?.();
@@ -223,6 +237,11 @@ export function fakeChrome(options: FakeChromeOptions = {}) {
     tabMessages,
     runtimeMessages,
     badges,
+    notifications,
+    /** You click a notification. */
+    clickNotification(id: string) {
+      return Promise.all(onNotificationClicked.dispatch(id));
+    },
     /** Fires an alarm (as Chrome would when it's due) and removes it. */
     fireAlarm(name: string) {
       const alarm = alarms.get(name);

@@ -841,7 +841,14 @@ function renderMine(now: Date) {
       const head = el("summary", "lead-head");
       head.append(countdownEl(s.row, now), titleLine(s.row), el("span", "muted small", s.row.sellerName ?? ""));
       head.append(line("span", `${s.lots.length} lot${s.lots.length === 1 ? "" : "s"} · `, kr(s.kr)));
-      if (s.awaitingFinalRead) head.append(el("span", "flag", "ended: waiting for a final read"));
+      if (s.awaitingFinalRead) {
+        // The worker reads it just after the close while auto-scan is on (src/background/watch.ts).
+        const flag = el("span", "flag", settings.autoScan ? "ended: final read coming" : "ended: open it to see the result");
+        flag.title = settings.autoScan
+          ? "It's read once more in the background just after it closes, and Leading becomes Won or Lost."
+          : "Auto-scan is off, so nothing reads it in the background: click the sale's name to read it now.";
+        head.append(flag);
+      }
       const toggle = endedToggle(s.row);
       if (toggle) head.append(toggle);
       d.append(head);
@@ -896,6 +903,8 @@ function renderSettings(now: Date) {
     (reader.current ? "Reading a post now. " : "") +
     (reader.queue.length ? `${reader.queue.length} queued. ` : "") +
     (reader.lastAt && reader.lastOutcome ? `Last ${ago(reader.lastAt, now)}: ${reader.lastOutcome}` : "No background reads yet.");
+
+  $<HTMLInputElement>("#notify").checked = settings.notify;
 
   const name = $<HTMLInputElement>("#my-name");
   if (document.activeElement !== name) name.value = settings.myName;
@@ -1052,6 +1061,9 @@ $<HTMLInputElement>("#show-done").addEventListener("change", (e) => {
 });
 $<HTMLInputElement>("#auto-scan").addEventListener("change", (e) => {
   void updateSettings({ autoScan: (e.target as HTMLInputElement).checked });
+});
+$<HTMLInputElement>("#notify").addEventListener("change", (e) => {
+  void updateSettings({ notify: (e.target as HTMLInputElement).checked });
 });
 $<HTMLInputElement>("#use-claude").addEventListener("change", (e) => {
   void updateSettings({ useClaude: (e.target as HTMLInputElement).checked });
