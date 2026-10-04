@@ -24,6 +24,54 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-10-04 — Facebook wins inbox → New Order cart (design review, #309)
+
+**Reviewed:** (from source; nothing built or rendered yet) the proposed flow for
+importing Facebook auction wins from `fb_auction_watcher` into the existing New
+Order cart: templates/partials/purchase_cart.html, static/orders-cart.js,
+app.py's purchase routes, templates/dashboard.html. Consulted by `architect`
+during intake of issue #309.
+
+**Found:**
+- **Reuse the New Order cart; don't build a new review page.** A separate page
+  would have to redo Total, Shipping, Remaining, Distribute and validation, which
+  took several rounds to get right (#228, #254). The cart holds one order at a
+  time, and Register replaces `#main-content`. So the list of imported wins must
+  come from the server, or it's wiped after each seller.
+- **Keep suggested cards outside the form.** As hidden inputs inside it,
+  unticked suggestions either get registered by mistake or trip the
+  `require_same_length` check (card/price lists), which shows a confusing error.
+  Linked items should become normal cart rows. Any new per-row field (item ID,
+  note) must stay lined up with `card_id`/`price`.
+- **Searching from an item needs to know which item it's for.** The current
+  search buttons (`addCardToCart(id)`) add a card with no item attached, so the
+  item would quietly come back on the next send.
+- **Existing rounding bug:** `distributeRemaining()` (static/orders-cart.js
+  ~183–197) rounds each share on its own: 100 kr over 3 cards becomes
+  33.33 × 3, leaving 0.01 kr under Remaining. The last row should take the
+  rounding.
+- **Unlinked items must never vanish silently.** Show "N of M items not linked
+  (kr X)" above Register and ask for confirmation. When imported items are
+  unlinked or unpriced, require a Total or warn, because with no Total there's
+  no Remaining figure. Remaining is Total minus prices minus shipping (app.py
+  ~1946), so the prefilled Total must agree with how shipping is entered.
+- **Each item needs "Ignore permanently"** (a cancelled or duplicate win). A lot
+  linked to fewer cards than it holds needs a way to stay pending.
+- **Upload vs. paste:** if a file is ever used, a file picker beats a paste box.
+  Moot while the extension sends directly.
+- **Dashboard:** don't show Incoming as a collection row; show one "On the way"
+  line that links to the existing Inventory filter. On the Purchased tab, add
+  "Incoming cards not on any order: N" to catch a forgotten registration.
+- **Minor:** a cart that was only prefilled still asks "Discard the in-progress
+  order?" when switching seller (`cartHasUnsavedWork()`). "Start new order" on
+  Edit order uses an order number fixed when the page loads (already noted
+  2026-09-20).
+- **Follow-up:** `ux` wants to see the item panel once it's built, especially
+  with 10+ items from one seller.
+
+**Status:** Open (design input for #309; the rounding bug is independent and
+could be fixed on its own).
+
 ## 2026-09-20 — Transactions page layout redesign
 
 **Reviewed:** templates/transactions.html, partials/{purchase_cart,
