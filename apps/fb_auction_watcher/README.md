@@ -167,6 +167,17 @@ Facebook, nothing more. Outbid and Won/Lost come from reads, so they arrive by t
 auto-scan is on; background re-reads run every 15 min, so an outbid can show up to 15 min late. On
 macOS, Chrome must be allowed to show notifications (System Settings → Notifications → Google Chrome).
 
+**Send wins to inventory** (under To pay, #309) sends what you've won to your tcg_inventory, where
+each won sale waits under Orders → Purchased → "Facebook wins to register" until you register it.
+Only your own wins leave the browser: seller, lot label, price, links, dates, the seller's shipping
+and payment terms, and your Paid/Received marks; never post reads, other people's names or comments.
+Set it up once under **Settings → Send wins to tcg_inventory**: the app's address (https, or
+http://localhost for a local one) and the same token as its `INBOX_TOKEN`, then **Save** (Chrome
+asks for permission to reach that address). Sending again is safe: nothing is duplicated, prices that
+weren't known yet are filled in, and a lot you ignored or registered there stays as it is. The
+result of the last send shows next to the button. Contract: `docs/spec.md` "Sending wins to
+tcg_inventory".
+
 ## Claude for what the rules can't read
 
 End times written as free text ("avsluttes søndag kveld klokka ni") and bids that aren't plain numbers

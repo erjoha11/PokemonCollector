@@ -11,6 +11,7 @@ import {
   isOpenOverviewMessage,
   isSaveFeedPostsMessage,
   isSavePostCaptureMessage,
+  isSendWinsMessage,
   MSG_READ_POST,
   MSG_STORE_UPDATED,
   type KnownPosts,
@@ -30,6 +31,7 @@ import { saleLines } from "../domain/saleLines";
 import type { PostCapture } from "../shared/capture";
 import { facebookSlot } from "./slot";
 import { CLEANUP_ALARM, runCleanup, scheduleCleanup } from "./cleanup";
+import { sendWins } from "./inbox";
 
 // Service worker: storage, the automatic scan's schedule, the Claude bridge, and wiring
 // between the toolbar icon, the content script and the overview page.
@@ -241,6 +243,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await watchMyAuctions(store);
     })();
     return;
+  }
+  if (isSendWinsMessage(msg)) {
+    // "Send wins to inventory" (#309): your own wins to your tcg_inventory, nothing else.
+    void sendWins(store).then(sendResponse);
+    return true;
   }
   if (isActivityDoneMessage(msg)) {
     // A scan or read you started from the menu finished: free the Facebook slot.

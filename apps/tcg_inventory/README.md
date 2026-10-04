@@ -233,6 +233,16 @@ run).
   collapsible "View charts" section with the value-growth and cash-flow
   charts (formerly the standalone Analyse page).
 
+  **Facebook wins to register** (#309) sits between the KPI cards and Order
+  history whenever the inbox holds pending items (see "Facebook wins inbox"
+  below): one entry per won sale (a sale becomes one order, so it's keyed by
+  sale, not seller; the seller is shown for context), with its end date,
+  item count, the known total plus "+ ?" when some prices aren't known, the
+  seller's shipping/payment terms, and each lot linked to its Facebook
+  comment. Each lot has **Ignore** (a cancelled or duplicate win): it leaves
+  the list for good, and later sends never bring it back. Registering a sale
+  as an order from here ("Open in cart") is the next slice of #309.
+
   **Order history** is the page's primary content, directly under the KPI
   cards: one row per order with the numbers that describe the deal — Order
   #, Date, Qty, Value (sum of recorded per-card prices, trades excluded),
@@ -626,8 +636,9 @@ table `sets` replaces — kept in place, unused going forward), `releases`
 (the removed in-app Release Notes page's table, unused since #264 and kept
 so its rows aren't lost — `notes/CHANGELOG.md` is the record of changes
 now), `import_log` (one row per background-job run, see "Sync status"), `master_cards`/`master_card_ids`
-(masterdata, see below), and `card_prices`/`fx_rates` (per-source prices
-and stored exchange rates, see "Pricing" below).
+(masterdata, see below), `card_prices`/`fx_rates` (per-source prices
+and stored exchange rates, see "Pricing" below), and `won_items` (Facebook
+wins waiting to be registered, see "Facebook wins inbox" below).
 
 ### Masterdata (card identity across catalogs)
 
@@ -1154,6 +1165,49 @@ To turn it on:
 Keep your Dropbox folder holding the *current* full set of exports (main
 collection + Vintage + whatever else you track) — each cron run syncs
 whatever's in there at the time.
+
+### Facebook wins inbox (issue #309)
+
+`apps/fb_auction_watcher` (the Chrome extension) can send the lots you've
+won on Facebook to `POST /inbox/fb-wins` ("Send wins to inventory" under
+its To pay list). They're staged in the `won_items` table (`won_inbox.py`,
+schema version 13) and listed on Orders → Purchased under "Facebook wins to
+register" until you register them. The endpoint never writes transactions
+or cards — only you do, in the cart.
+
+- **Contract:** the versioned JSON `{"format": "fbaw-won", "version": 1,
+  "sent_at", "items": [...]}`, defined by the producer in
+  `apps/fb_auction_watcher/docs/spec.md` "Sending wins to tcg_inventory".
+  One item per won lot, keyed `external_ref` (`fbaw:<postId>:<commentId>`,
+  or `fbaw:<postId>:pos<n>`). An unknown major version is refused with a
+  readable error. The root test `tests/test_cross_app_won_inbox.py` runs
+  `won_inbox.parse_payload` over the extension's committed fixture
+  (`tests/fixtures/won-inbox.v1.json`), so the two can't drift apart
+  silently.
+- **Upsert by `external_ref`:** a new ref becomes a `pending` row; a
+  pending row is refreshed (e.g. a price that was unknown becomes known);
+  a `registered` or `ignored` row is never changed. Re-sending is always
+  safe. Totals are computed from the items, never stored.
+- **Auth: `INBOX_TOKEN`, fail-closed.** The route skips the login (the
+  extension has no session; it's in `_PUBLIC_PATHS` like the cron routes)
+  and takes only `Authorization: Bearer <INBOX_TOKEN>`, compared in
+  constant time — never a query-string secret. It's a separate secret from
+  `CRON_SECRET` on purpose: a leaked token can only add or refresh pending
+  inbox rows. With login configured (`SUPABASE_*`) and `INBOX_TOKEN`
+  unset, the endpoint refuses everything (503); only a local no-login run
+  accepts sends without a token, and if you set one locally it's required
+  there too. (This is the design #226 targets for the `/cron/*` routes.)
+- **Limits:** bodies over 512 KB are refused (413), as is anything that
+  isn't valid JSON (400) or any item that doesn't check out (422: unknown
+  sale type, a non-Facebook or non-https link, a negative price, a bad
+  date, a duplicate ref, more than 1000 items). Any refusal writes nothing.
+- **RLS:** `won_items` gets row-level security from `init_db()` like every
+  table (see "Database access hardening"); grants stay as they are.
+
+To turn it on in prod: set `INBOX_TOKEN` in Vercel (a long random string,
+e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`),
+redeploy, then in the extension's Settings enter the app's address and the
+same token, and Save (Chrome asks for permission to reach that address).
 
 ### Pricing
 
@@ -1799,6 +1853,8 @@ file locally following the steps above and add a dated line here.
 - `masterdata.py` — canonical card identity + external ID mapping (see
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
+- `won_inbox.py` — the Facebook wins inbox: checks fb_auction_watcher's
+  payload and stages it in `won_items` (see "Facebook wins inbox" above).
 - `sync_status.py` — records background-job runs in `import_log` and builds
   the `/sync-status` at-a-glance block (see "Sync status").
 - `pricing.py` — per-source prices (`card_prices`) and the resolver that

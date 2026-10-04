@@ -6,9 +6,9 @@ App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.
 
 "FB Auction Watcher" (`fb-auction-watcher`), a Manifest V3 Chrome extension for one user (Erik Johansen). It reads a single Facebook buy/sell group for Pokémon cards and shows every sale in one table sorted by end time, with live countdowns and Lead/Outbid status on lots the user has bid on. Chrome on desktop only — no mobile, no server, no webapp.
 
-It is independent of the other apps in `apps/`: no imports to or from them, no shared database.
+It is independent of the other apps in `apps/`: no imports to or from them, no shared database. The one exception to "no server" (#309): it may send **the user's own wins, and nothing else**, to his own `tcg_inventory` (`POST /inbox/fb-wins`, on his click), through a versioned JSON contract documented in `docs/spec.md` "Sending wins to tcg_inventory" and guarded by the committed fixture `tests/fixtures/won-inbox.v1.json` at the repo root. Never raw captures, other people's names or comments, and never the database directly (no Supabase client).
 
-**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store with retention and "Clear stored data", `dashboard.html` (My Auctions as Needs you · Leading · To pay, the table in tabs New · Today · Upcoming · No end · My bids · Ended, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read (end times, odd bids, claim-lot photos, and lot names read from photos), with per-item failure tracking and an hourly photo cap, a final read on time after each of your auctions closes, and desktop notifications (outbid, ends in 10 min, won/lost). Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Review items M2, M6 and M8 are done (#286-#288); what's left from the review are the remaining low items.
+**Status:** the overview is built: post reader, feed scan (by hand and automatic), rule-based interpretation of listings, bids and claims, IndexedDB store with retention and "Clear stored data", `dashboard.html` (My Auctions as Needs you · Leading · To pay, the table in tabs New · Today · Upcoming · No end · My bids · Ended, lots), toolbar menu, and Claude Code (`claude -p`) through a native-messaging bridge for what the rules can't read (end times, odd bids, claim-lot photos, and lot names read from photos), with per-item failure tracking and an hourly photo cap, a final read on time after each of your auctions closes, desktop notifications (outbid, ends in 10 min, won/lost), and "Send wins to inventory" under To pay (your wins to tcg_inventory's inbox, #309). Not built: the in-post overlay (module 6) and the side panel (module 7); show a plan and wait for the go-ahead before starting one. Review items M2, M6 and M8 are done (#286-#288); what's left from the review are the remaining low items.
 
 ## Commands
 
@@ -41,7 +41,8 @@ These override convenience. Don't relax any of them without the user's explicit 
 |---|---|---|
 | Post content script | `src/content/post/` | Reads one post (sort switch, expanders, extract), the panel and the quiet-read status overlay (Shadow DOM) |
 | Feed content script | `src/content/feed/` | Records posts as the virtualized feed renders them, scrolls and opens "Se mer" (scan), extracts posts |
-| Service worker | `src/background/` | Message routing, the one Facebook slot (`slot.ts`), automatic scan (`autoScan.ts`), post-read queue (`reader.ts`), Claude bridge client (`claude.ts`) |
+| Service worker | `src/background/` | Message routing, the one Facebook slot (`slot.ts`), automatic scan (`autoScan.ts`), post-read queue (`reader.ts`), Claude bridge client (`claude.ts`), sending your wins to tcg_inventory (`inbox.ts`) |
+| Inbox payload | `src/inbox/` | `buildWonPayload()`: the pure v1 `fbaw-won` payload of your own wins (`payload.ts`); its test writes the cross-app fixture |
 | Store | `src/store/` | `Store` interface over IndexedDB (`idb`): raw posts, post reads, Claude's answers; swappable for Supabase later |
 | LLM | `src/llm/` | Prompts and JSON schemas for `claude -p`; `cases.ts` evaluation set (`npm run eval:claude`) |
 | Domain | `src/domain/` | Pure rules: amounts, Oslo end times, listing type and terms, lots/bids/claims, your status |
@@ -62,6 +63,7 @@ Stack: TypeScript, Vite, Vitest + happy-dom, `idb`; vanilla DOM (no Preact, no z
 ## Repo conventions that apply here
 
 - This is the repo's first non-Python app. Root `python -m pytest` and `ruff` don't cover it; use the commands above.
+- The wins contract has two sides: `src/inbox/payload.ts` here and `apps/tcg_inventory/won_inbox.py`. `tests/won-inbox.test.ts` writes the repo-root fixture `tests/fixtures/won-inbox.v1.json` (a Vitest file snapshot; in CI a stale fixture fails), and the root `tests/test_cross_app_won_inbox.py` parses it with tcg_inventory. Change the payload → rerun `npm test` locally to rewrite the fixture, commit it, and bump `version` for any breaking change (tcg_inventory refuses unknown major versions).
 - `tests/fixtures/post-dialog.html` is synthetic (invented names, hand-written markup). Real Facebook markup may differ — calibrate against `samples/` and keep any committed fixture anonymized.
 - `samples/` (saved Facebook posts — "Webpage, complete" + screenshots — at `apps/fb_auction_watcher/samples/`) is gitignored — it contains other people's names and comments. Never commit it, and test fixtures derived from it must be anonymized.
 - Notes, handoff logs, and plans go in `notes/fb_auction_watcher/`, not in this folder (see root `CLAUDE.md`).

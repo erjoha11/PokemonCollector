@@ -76,6 +76,10 @@ export const isStartMessage = (m: unknown): m is StartMessage => hasType(m, MSG_
 export const MSG_RELOAD_FB_TABS = "fbaw/reload-fb-tabs" as const;
 export const isReloadFbTabsMessage = (m: unknown): m is { type: typeof MSG_RELOAD_FB_TABS } => hasType(m, MSG_RELOAD_FB_TABS);
 
+/** Overview → service worker: send your wins to tcg_inventory now (#309). Answers with the new InboxState. */
+export const MSG_SEND_WINS = "fbaw/send-wins" as const;
+export const isSendWinsMessage = (m: unknown): m is { type: typeof MSG_SEND_WINS } => hasType(m, MSG_SEND_WINS);
+
 /** Content script → service worker: a scan or read started from the toolbar menu has finished (frees the Facebook slot). */
 export const MSG_ACTIVITY_DONE = "fbaw/activity-done" as const;
 export const isActivityDoneMessage = (m: unknown): m is { type: typeof MSG_ACTIVITY_DONE } => hasType(m, MSG_ACTIVITY_DONE);

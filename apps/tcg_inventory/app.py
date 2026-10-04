@@ -10,6 +10,7 @@ external services, no build step (server-rendered HTML + HTMX).
 from __future__ import annotations
 
 import datetime as dt
+import hmac
 import json
 import os
 import threading
@@ -26,7 +27,9 @@ from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+from starlette.concurrency import run_in_threadpool
 
 APP_DIR = Path(__file__).resolve().parent
 load_dotenv(APP_DIR / ".env")
@@ -43,6 +46,7 @@ import sync_status
 import queries
 import snapshots
 import tcgdex_prices
+import won_inbox
 import constants
 import form_validation
 from constants import CARD_CONDITIONS
@@ -235,7 +239,11 @@ templates.env.globals["type_filter_url"] = _type_filter_url
 # /cron/dropbox-sync and /cron/price-refresh have their own separate auth
 # (CRON_SECRET) -- a scheduled job has no browser session to log in with.
 # /cron/image-backfill (a manual catch-up pass) and /cron/set-sync too, same secret.
-_PUBLIC_PATHS = {"/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync"}
+# /inbox/fb-wins (fb_auction_watcher sending your Facebook wins, #309) has its
+# own secret, INBOX_TOKEN, and fails closed -- see _inbox_auth_error.
+_PUBLIC_PATHS = {
+    "/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync", "/inbox/fb-wins",
+}
 
 
 @app.middleware("http")
@@ -2133,6 +2141,8 @@ def _transactions_context(
         "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
         "purchase_groups": purchase_groups,
         "ungrouped_transactions": ungrouped_transactions,
+        # "Facebook wins to register" (#309): pending inbox items, one entry per sale.
+        "fb_wins": won_inbox.pending_sales(db),
         "gsort": gsort,
         "gdir": gdir,
         "usort": usort,
@@ -3469,6 +3479,122 @@ def cron_set_sync(request: Request, secret: str = ""):
             message=f"{exc.__class__.__name__}: {exc}",
         )
         raise
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Facebook wins inbox (#309) -- fb_auction_watcher sends the lots you won;
+# they wait in `won_items` (won_inbox.py) until registered as an order. The
+# endpoint skips the login (the extension has no session) and is guarded by
+# its own INBOX_TOKEN, never CRON_SECRET: a leaked token can only add or
+# refresh pending inbox rows, never reach transactions or cards.
+# --------------------------------------------------------------------------
+def _inbox_auth_error(request: Request) -> JSONResponse | None:
+    """None if the request may write to the inbox, else the refusal.
+
+    Fails closed (the design #226 targets for the cron routes): with
+    INBOX_TOKEN set, only `Authorization: Bearer <INBOX_TOKEN>` is accepted,
+    compared in constant time, and never a query-string secret. With it
+    unset, the endpoint is refused whenever login is configured (a deploy
+    missing the variable), and open only when login isn't (local dev)."""
+    token = os.environ.get("INBOX_TOKEN", "").strip()
+    if not token:
+        if auth.is_configured():
+            return JSONResponse(
+                {"status": "error", "error": "The inbox is off: INBOX_TOKEN isn't set on this server."},
+                status_code=503,
+            )
+        return None
+    header = request.headers.get("authorization", "")
+    scheme, _, given = header.partition(" ")
+    if scheme.lower() != "bearer" or not hmac.compare_digest(given.strip().encode(), token.encode()):
+        return JSONResponse(
+            {"status": "error", "error": "Missing or wrong token: send Authorization: Bearer <INBOX_TOKEN>."},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return None
+
+
+def _inbox_error(message: str, status_code: int) -> JSONResponse:
+    return JSONResponse({"status": "error", "error": message}, status_code=status_code)
+
+
+async def _read_capped_body(request: Request, limit: int) -> bytes | None:
+    """The body, or None once it passes `limit` bytes (checked on the
+    declared length first, then while reading, for a chunked body)."""
+    declared = request.headers.get("content-length")
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                return None
+        except ValueError:
+            return None
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+def _store_won_items(items: list[won_inbox.WonItemIn]) -> dict:
+    db = get_db_session()
+    try:
+        result = won_inbox.upsert_items(db, items)
+        db.commit()
+        return result.as_dict()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@app.post("/inbox/fb-wins")
+async def inbox_fb_wins(request: Request):
+    """Receives `{"format": "fbaw-won", "version": 1, ...}` from
+    fb_auction_watcher (contract: that app's docs/spec.md "Sending wins to
+    tcg_inventory") and upserts it into `won_items` by external_ref.
+    Writes nothing at all on any refusal: wrong/missing token, too big,
+    not JSON, unknown version, or any item that doesn't check out."""
+    refused = _inbox_auth_error(request)
+    if refused is not None:
+        return refused
+    body = await _read_capped_body(request, won_inbox.MAX_BODY_BYTES)
+    if body is None:
+        return _inbox_error(f"The body is larger than {won_inbox.MAX_BODY_BYTES // 1024} KB.", 413)
+    try:
+        data = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return _inbox_error("The body isn't valid JSON.", 400)
+    try:
+        items = won_inbox.parse_payload(data)
+    except won_inbox.PayloadError as exc:
+        return _inbox_error(str(exc), 422)
+    try:
+        counts = await run_in_threadpool(_store_won_items, items)
+    except IntegrityError:
+        # Two sends racing to add the same new ref: nothing was written; the next send is fine.
+        return _inbox_error("Another send was writing the same items. Send again.", 409)
+    return {"status": "ok", "received": len(items), **counts}
+
+
+@app.post("/orders/fb-wins/{item_id}/ignore")
+def ignore_fb_win(request: Request, item_id: int):
+    """Ignore one pending inbox item (a cancelled or duplicate win): it
+    leaves the list and later sends never bring it back. Behind the normal
+    login (not under /inbox/, which skips it)."""
+    db = get_db_session()
+    try:
+        won_inbox.ignore_item(db, item_id)
+        db.commit()
+        if request.headers.get("hx-request"):
+            return templates.TemplateResponse(
+                request, "partials/fb_wins_inbox.html", {"fb_wins": won_inbox.pending_sales(db)}
+            )
+        return RedirectResponse("/orders/purchased#fb-wins", status_code=303)
     finally:
         db.close()
 

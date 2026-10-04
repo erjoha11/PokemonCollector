@@ -56,6 +56,14 @@ def no_cron_secret_from_dotenv(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_inbox_token_from_dotenv(monkeypatch):
+    """Same as above for INBOX_TOKEN (POST /inbox/fb-wins, #309): a real one
+    in a developer's .env must not leak into the suite. Tests of the token
+    gate setenv their own."""
+    monkeypatch.setenv("INBOX_TOKEN", "")
+
+
+@pytest.fixture(autouse=True)
 def no_card_image_network_calls(monkeypatch):
     """Every CSV import calls card_images.fetch_card_data for cards missing
     an image or with a stale price (see importer.py), which otherwise hits

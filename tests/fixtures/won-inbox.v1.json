@@ -1,0 +1,63 @@
+{
+  "format": "fbaw-won",
+  "version": 1,
+  "sent_at": "2026-10-04T20:00:00.000Z",
+  "items": [
+    {
+      "external_ref": "fbaw:1001:9001",
+      "seller": "Selger Testesen",
+      "sale_type": "auction",
+      "ended_on": "2026-10-04",
+      "post_url": "https://www.facebook.com/groups/g/posts/1001/",
+      "lot_url": "https://www.facebook.com/groups/g/posts/1001/?comment_id=9001",
+      "label": "1. Gengar 151 reverse holo",
+      "price": 50,
+      "shipping_text": "50kr med sporing",
+      "payment_text": "Vipps eller bank",
+      "paid_at": "2026-10-04T21:00:00.000Z",
+      "received_at": null
+    },
+    {
+      "external_ref": "fbaw:1001:pos3",
+      "seller": "Selger Testesen",
+      "sale_type": "auction",
+      "ended_on": "2026-10-04",
+      "post_url": "https://www.facebook.com/groups/g/posts/1001/",
+      "lot_url": "https://www.facebook.com/groups/g/posts/1001/",
+      "label": "3. Charizard",
+      "price": 20,
+      "shipping_text": "50kr med sporing",
+      "payment_text": "Vipps eller bank",
+      "paid_at": "2026-10-04T21:00:00.000Z",
+      "received_at": null
+    },
+    {
+      "external_ref": "fbaw:1002:9011",
+      "seller": "Selger Testesen",
+      "sale_type": "claim",
+      "ended_on": "2026-10-03",
+      "post_url": "https://www.facebook.com/groups/g/posts/1002/",
+      "lot_url": "https://www.facebook.com/groups/g/posts/1002/?comment_id=9011",
+      "label": "1. Eevee",
+      "price": 25,
+      "shipping_text": "50kr med sporing",
+      "payment_text": "Vipps eller bank",
+      "paid_at": null,
+      "received_at": null
+    },
+    {
+      "external_ref": "fbaw:1002:9013",
+      "seller": "Selger Testesen",
+      "sale_type": "claim",
+      "ended_on": "2026-10-03",
+      "post_url": "https://www.facebook.com/groups/g/posts/1002/",
+      "lot_url": "https://www.facebook.com/groups/g/posts/1002/?comment_id=9013",
+      "label": "3. Mew",
+      "price": null,
+      "shipping_text": "50kr med sporing",
+      "payment_text": "Vipps eller bank",
+      "paid_at": null,
+      "received_at": null
+    }
+  ]
+}

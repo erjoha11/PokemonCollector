@@ -1,0 +1,48 @@
+{% from "partials/macros.html" import info %}
+{# "Facebook wins to register" (#309, slice 1): pending won_items sent by
+   fb_auction_watcher, one entry per won sale (a sale becomes one order, so
+   it's grouped by sale, not by seller; the seller is shown for context).
+   Read-only apart from Ignore. Registering a sale through the New Order cart
+   is a later slice. The section is always rendered (hidden when empty) so
+   Ignore's hx-target exists. #}
+<section id="fb-wins" class="orders-section fb-wins"{% if not fb_wins %} hidden{% endif %}>
+  {% if fb_wins %}
+  <div class="section-head">
+    <h2>Facebook wins to register {{ info("Lots you won on Facebook, sent from the FB Auction Watcher extension (“Send wins to inventory” under To pay). They wait here until you register them as an order. Sending again updates prices that weren't known yet and never brings back an item you ignored.") }}</h2>
+  </div>
+  {% set type_labels = {'auction': 'Auction', 'claim': 'Claim sale', 'fixed': 'Fixed price'} %}
+  <ul class="fb-wins-list">
+    {% for sale in fb_wins %}
+    <li class="fb-win-sale">
+      <div class="fb-win-head">
+        <strong>{{ sale.seller or 'Unknown seller' }}</strong>
+        <span class="muted">{{ type_labels.get(sale.sale_type, sale.sale_type) }}{% if sale.ended_on %} · ended {{ sale.ended_on.isoformat() }}{% else %} · no end date{% endif %}</span>
+        <span>{{ sale.items | length }} item{{ 's' if sale.items | length != 1 }}</span>
+        <span class="num">{{ sale.known_total | kr }}{% if sale.unknown_count %} <span title="{{ sale.unknown_count }} item{{ 's' if sale.unknown_count != 1 }} without a known price">+ ?</span>{% endif %}</span>
+        <a href="{{ sale.post_url }}" target="_blank" rel="noopener">Facebook post ↗</a>
+      </div>
+      {% if sale.shipping_text or sale.payment_text %}
+      <div class="muted small fb-win-terms">
+        {% if sale.shipping_text %}Shipping: {{ sale.shipping_text }}{% endif %}
+        {% if sale.shipping_text and sale.payment_text %} · {% endif %}
+        {% if sale.payment_text %}Pay: {{ sale.payment_text }}{% endif %}
+      </div>
+      {% endif %}
+      <ul class="fb-win-items">
+        {% for item in sale.items %}
+        <li class="fb-win-item">
+          <a href="{{ item.lot_url }}" target="_blank" rel="noopener" title="Open this lot's comment on Facebook">{{ item.label }}</a>
+          <span class="num">{% if item.price is not none %}{{ item.price | kr }}{% else %}<span class="muted">price unknown</span>{% endif %}</span>
+          <form method="post" action="/orders/fb-wins/{{ item.id }}/ignore"
+                hx-post="/orders/fb-wins/{{ item.id }}/ignore" hx-target="#fb-wins" hx-swap="outerHTML"
+                hx-confirm="Ignore “{{ item.label }}”? It leaves this list for good; sending wins again won't bring it back.">
+            <button type="submit" class="secondary">Ignore</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
