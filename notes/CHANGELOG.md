@@ -130,6 +130,18 @@ yet.
   split: Claim sorted by end time, Fixed price newest first and folded by
   default.
 
+**Ended group shows results, your sales first (#297)**
+- Ended sales are split under "Yours" then "Everyone else", newest first in
+  each (`splitEnded`, `isMine` in `model.ts`). Lost lots now live here.
+- A Result column replaces Price for ended sales (`saleResult`): "9 of 12
+  sold", then the total marked "final", or "at last read <time>" when the
+  post wasn't read in full after the end; "Not read" if never read.
+- The Ends cell says "Ended 3 h ago" in muted text instead of the red
+  "under an hour" the per-second ticker showed for a past end time.
+- Expanded lots show "Sold <price> · <buyer>" or "Unsold", your lots first
+  with Won/Lost; start bid and raise are hidden. The You column shows "–"
+  when you weren't in the sale. Tested in `tests/ended.test.ts`.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
