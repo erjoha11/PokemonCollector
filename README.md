@@ -9,6 +9,7 @@ testable.
 | Folder | Status | What it does |
 |---|---|---|
 | [`apps/finn_ad_scraper/`](apps/finn_ad_scraper) | In progress | Opens a finn.no ad, extracts its title/description/price/photos, and identifies the Pokemon cards visible in the photos (via Claude vision). |
+| [`apps/fb_auction_watcher/`](apps/fb_auction_watcher) | In progress | Read-only Chrome extension for one Facebook buy/sell group: an overview of every auction and claim sale by end time, your bids (Needs you · Leading · To pay), background re-reads with a final read after each close, and desktop notifications. Uses your own Claude Code login (`claude -p`) for what its rules can't read. Node/TypeScript: `npm ci && npm run build` in its folder, then load `dist/` unpacked. |
 | [`apps/tcg_inventory/`](apps/tcg_inventory) | In progress | FastAPI webapp that replaces an Excel workbook for tracking a physical Pokémon card collection: dashboard, inventory table, transaction log, Dex CSV import/sync (manual or from Dropbox). Runs locally (`python app.py`, SQLite) or deployed (Vercel + Supabase, with login). |
 
 Notes and reports written by Claude agents (changelog, handoff log, UX
@@ -40,8 +41,9 @@ Dependencies come in pairs:
 
 The locks are made with [uv](https://docs.astral.sh/uv/) (`pip install uv`)
 in universal mode for the pinned Python version, so the same file installs
-on Linux (Vercel, CI), Windows and macOS. A package used by both apps gets
-the same pin in every lockfile.
+on Linux (Vercel, CI), Windows and macOS. A package used by both Python apps
+gets the same pin in every lockfile. (`fb_auction_watcher` is Node: its
+`package-lock.json` is managed with `npm` in its own folder.)
 
 To add or upgrade a dependency:
 

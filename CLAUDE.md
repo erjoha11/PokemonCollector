@@ -8,7 +8,7 @@ This is a monorepo of small, independent apps for buying and collecting Pokemon 
 
 - `apps/finn_ad_scraper/` — scrapes a finn.no ad (title/description/price/photos) and identifies Pokemon cards in the photos via Claude vision.
 - `apps/tcg_inventory/` — FastAPI + Jinja2/HTMX webapp tracking a physical card collection (replaces an Excel workbook). Runs locally on SQLite or deployed on Vercel + Supabase.
-- `apps/fb_auction_watcher/` — read-only Chrome extension (MV3, TypeScript) that tracks auctions in a Facebook buy/sell group, sorted by end time. Not Python: outside root `pytest`/`ruff`, with its own npm build/test and CI job (its `native/` Python bridge host is tested by the root `pytest`). Overview built (feed scans, post reads, bid/claim status, Claude via `claude -p`); see its `CLAUDE.md` and `docs/spec.md`.
+- `apps/fb_auction_watcher/` — read-only Chrome extension (MV3, TypeScript) that watches auctions and claim sales in one Facebook buy/sell group: an overview page (My Auctions, tabs New/Today/Upcoming/No end/My bids/Ended), background re-reads and desktop notifications, Claude via the local `claude -p` CLI. Not Python: outside root `pytest`/`ruff`, with its own npm build/test and CI job (its `native/` Python bridge host is tested by the root `pytest`). See its `CLAUDE.md` and `docs/spec.md`.
 - `notes/` — agent/skill-written notes and reports, not code: `CHANGELOG.md`, `REVIEW.md`, and per-app `notes/<app>/HANDOFF.md` / `UX_NOTES.md`. See "Where agent- and skill-written files go" below.
 
 ## Setup and common commands
@@ -17,15 +17,30 @@ From repo root:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt      # installs both apps' requirements + pytest
+pip install -r requirements-dev.txt      # installs the Python apps' requirements + pytest
 playwright install chromium              # only needed for finn_ad_scraper's headless-browser fallback
 cp .env.example .env                     # then fill in ANTHROPIC_API_KEY
 ```
 
-Run the whole suite (both apps, offline — no network, API keys, or Playwright install required):
+`fb_auction_watcher` is Node (22.12+), set up from its own folder:
+
+```bash
+cd apps/fb_auction_watcher && npm ci
+```
+
+Run the whole Python suite (finn_ad_scraper, tcg_inventory, fb_auction_watcher's `native/` host, and the root `tests/` — offline, no network, API keys, or Playwright install required):
 
 ```bash
 python -m pytest
+```
+
+`fb_auction_watcher`'s own checks (CI's `fb_auction_watcher` job runs all four), from `apps/fb_auction_watcher/`:
+
+```bash
+npm run typecheck
+npm test                 # Vitest + happy-dom, offline
+npx vitest run tests/watch.test.ts    # one file
+npm run build            # → dist/
 ```
 
 Run a single app's tests, or a single test file/case:
@@ -56,7 +71,11 @@ Run each app directly:
 ```bash
 python -m finn_ad_scraper.cli "https://www.finn.no/recommerce/forsale/item/123456789"   # from apps/finn_ad_scraper's parent on the path, or via the package
 cd apps/tcg_inventory && python app.py    # serves http://localhost:8000, SQLite auto-created
+cd apps/fb_auction_watcher && npm run build   # then load dist/ unpacked in chrome://extensions
+apps/fb_auction_watcher/native/install.sh     # once: registers the claude -p bridge for that extension ID
 ```
+
+Chrome runs `fb_auction_watcher` from the main checkout's `dist/`, which is built locally and not tracked: after merging or switching branches, run `npm run build` there and reload the extension, or Chrome keeps running the old build.
 
 ## Architecture notes
 
@@ -66,6 +85,16 @@ cd apps/tcg_inventory && python app.py    # serves http://localhost:8000, SQLite
 
 1. `fetch_finn_ad(url)` (`finn_ad.py`) — plain HTTP GET first (finn.no embeds a JSON-LD `Product` block that needs no JS); falls back to headless Chromium via Playwright only if that response has no structured data. `parse_ad` reads JSON-LD, then Open Graph/meta tags.
 2. `identify_cards(images, ad_context)` (`card_identifier.py`) — one Claude vision request per ad (photos by URL, structured outputs against `CARD_SCHEMA`, server-side refusal fallback). Each card comes back in tcg_inventory's masterdata vocabulary (language, set code, number, variant) plus its Dex card ID; those rules live in `card_ids.py` as a copy of `tcg_inventory/masterdata.py`'s, so keep the two in sync.
+
+### fb_auction_watcher
+
+Read `apps/fb_auction_watcher/CLAUDE.md` and `docs/spec.md` first: they hold its non-negotiable rules — **read-only on Facebook** (never bid, claim, comment or react; only an allowlist of expand/sort clicks), no headless or server-side scraping, slow pacing (one Facebook tab at a time, auto-scan every 10–15 min, background re-reads every 15 min), no CSS class selectors, and keep raw text. Layout:
+
+- `src/content/` — content scripts: the post reader and the feed scanner.
+- `src/background/` — the MV3 service worker: message routing, the one Facebook slot (`slot.ts`), auto-scan, the read queue (`reader.ts`), your auctions' re-reads and final reads (`watch.ts`, `reader.watchMyAuctions`), desktop notifications (`notify.ts`), the Claude queue, retention.
+- `src/domain/` — pure parsing rules (amounts, Oslo end times, listings, lots/bids/claims); `src/pages/dashboard/model.ts` — the overview's statuses and tabs, also pure. `src/store/` — IndexedDB.
+- `native/` — `fbaw_claude_host.py`, a native-messaging host that runs the user's `claude -p` with no tools; **no Claude API key or API calls** in this app (decided by the user).
+- `samples/` holds saved Facebook posts with other people's names: gitignored, never commit it; test fixtures derived from it must be anonymized.
 
 ### tcg_inventory
 
@@ -99,8 +128,8 @@ An already-registered order can be edited (retype/relink/move/merge/split/add no
 Besides the default coding agent, project-scoped agents live in `.claude/agents/`. Claude Code supports subagents spawning further subagents (up to 3 layers deep by default, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` in `.claude/settings.json` to change it), and this repo's agents deliberately use that: it's not just the user driving every step.
 
 - **architect** — the entry point for developing a feature or a bigger/new idea, as well as standalone system-architecture-level thinking: module/app boundaries, data flow, deployment topology, coupling, design tradeoffs. It spawns `ux` itself when an idea touches `tcg_inventory`'s UI, and files the resulting ticket on GitHub itself (`gh issue create` — its only GitHub access). From there it either hands the ticket to `project-manager` or reports it back to the user, whichever fits. Consult before a change that ripples across the system, touches a documented decision (see e.g. the computed-vs-stored discussion above), or when an idea needs to be thought through before anyone writes code. Invoked directly, or via `/new_feature`.
-- **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`, not `finn_ad_scraper`): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish. Spawnable by anyone — the user, `architect`, `project-manager`, or `developer` — though `architect` spawning it during feature intake is the standard path. Can read and comment on issues (`gh issue view`/`gh issue comment`) but never create, edit, or close.
-- **project-manager** — the project-management assistant: maintains an overview of everything in flight across both apps (open issues, open/draft PRs, CI status, stale branches), triages and prioritizes the backlog, turns ideas or bug reports into tracked GitHub issues, and is the **only** agent allowed to spawn `developer` to actually build tracked work. Has full issue admin (create/edit/label/close/delete) and can merge (a PR it judges genuinely ready — checks green, no unresolved review comments, not a draft) or close PRs — still short of `developer`'s force-push/branch-delete/repo-settings access. Consult for a status/standup-style read of the project (`/pm_report`), for backlog triage, for merging a ready PR, for a bug/small change that should be tracked and built (`/new_fix`), or when a feature idea needs shaping into a concrete plan before `developer` builds it.
+- **ux** — usability, functional, and visual-design review of `tcg_inventory`'s Jinja2/HTMX templates and CSS (scoped exclusively to `tcg_inventory`, not `finn_ad_scraper` or `fb_auction_watcher`; UX work on the extension's overview is done in the main session): page flows, interaction consistency, functional correctness (broken/silent-no-op interactions, state loss, mismatched data), accessibility, aesthetic polish. Spawnable by anyone — the user, `architect`, `project-manager`, or `developer` — though `architect` spawning it during feature intake is the standard path. Can read and comment on issues (`gh issue view`/`gh issue comment`) but never create, edit, or close.
+- **project-manager** — the project-management assistant: maintains an overview of everything in flight across all apps (open issues, open/draft PRs, CI status, stale branches), triages and prioritizes the backlog, turns ideas or bug reports into tracked GitHub issues, and is the **only** agent allowed to spawn `developer` to actually build tracked work. Has full issue admin (create/edit/label/close/delete) and can merge (a PR it judges genuinely ready — checks green, no unresolved review comments, not a draft) or close PRs — still short of `developer`'s force-push/branch-delete/repo-settings access. Consult for a status/standup-style read of the project (`/pm_report`), for backlog triage, for merging a ready PR, for a bug/small change that should be tracked and built (`/new_fix`), or when a feature idea needs shaping into a concrete plan before `developer` builds it.
 - **developer** — full Edit/Write and full GitHub read/write (including merge/close/force-push/delete). Spawnable directly by the user for a quick, untracked fix, or by `project-manager` to build a ticket. Has no `Agent` tool itself — it never spawns `ux`, `architect`, `project-manager`, or another `developer`; if it decides mid-task that it needs one of those, it says so in its report to whoever spawned it instead. When `project-manager` spawned it, it reports back to `project-manager`, not the user.
 - **reviewer** — a professional, senior-engineer-style review of the whole repo or one app/area (correctness risks, security, data safety, testing, maintainability, dependencies, CI/project hygiene), written for a developer with little professional experience: prioritized findings with `path:line`, why each matters, how a professional would fix it, and a suggested learning path. Strictly read-only — no Edit/Write, never commits, GitHub read-only, never touches prod. Runs the offline test suite as part of its review. Invoked directly or via `/repo_review [scope]`; findings worth building go through `/new_fix`.
 
