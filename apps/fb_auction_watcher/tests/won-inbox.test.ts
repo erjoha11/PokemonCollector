@@ -170,6 +170,30 @@ describe("sendWins (service worker)", () => {
     expect((await fake.local.get("inboxState")).inboxState).toEqual(state);
   });
 
+  it("only the won auctions you ticked are sent, and they're remembered as sent", async () => {
+    await configure();
+    const d = deps();
+    const state = await sendWins(memoryStore(seed()), d, ["1002"]);
+    const body = JSON.parse(d.calls[0].init.body as string);
+    expect(body.items.map((i: { external_ref: string }) => i.external_ref.split(":")[1])).toEqual(["1002", "1002"]);
+    expect(state).toMatchObject({ ok: true, count: 2 });
+    expect((await fake.local.get("inboxSent")).inboxSent).toEqual({ "1002": AFTER_END.toISOString() });
+  });
+
+  it("nothing ticked: nothing sent", async () => {
+    await configure();
+    const d = deps();
+    expect(await sendWins(memoryStore(seed()), d, [])).toMatchObject({ ok: false, outcome: "Tick the won auctions to send first." });
+    expect(d.calls).toHaveLength(0);
+  });
+
+  it("a refused send isn't marked as sent", async () => {
+    await configure();
+    const fetch = (async () => new Response("{}", { status: 401 })) as typeof globalThis.fetch;
+    await sendWins(memoryStore(seed()), deps({ fetch }), ["1001"]);
+    expect((await fake.local.get("inboxSent")).inboxSent).toBeUndefined();
+  });
+
   it("not set up, or no permission: nothing is sent, and it says what to do", async () => {
     const d = deps();
     await configure({ inboxUrl: "" });

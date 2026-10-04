@@ -7,6 +7,7 @@ import {
   getClaudeState,
   getCleanupState,
   getEndedMarks,
+  getInboxSent,
   getInboxState,
   getSettings,
   getWonState,
@@ -18,6 +19,7 @@ import {
   type ClaudeState,
   type CleanupState,
   type EndedMarks,
+  type InboxSent,
   type InboxState,
   type Settings,
   type WonState,
@@ -135,6 +137,9 @@ let cleanup: CleanupState;
 let wonState: WonState = {};
 let endedMarks: EndedMarks = {};
 let inbox: InboxState = { lastAt: null, ok: null, count: null, outcome: null };
+/** Won auctions sent to tcg_inventory (post ID → when), and the ones ticked to send next. */
+let inboxSent: InboxSent = {};
+const toSend = new Set<string>();
 let sendingWins = false;
 let showDone = local.get("fbaw-show-done") === "1";
 let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
@@ -152,7 +157,7 @@ function rebuild() {
 
 /** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude, cleanup, wonState, endedMarks, inbox] = await Promise.all([
+  [settings, autoScan, claude, cleanup, wonState, endedMarks, inbox, inboxSent] = await Promise.all([
     getSettings(),
     getAutoScanState(),
     getClaudeState(),
@@ -160,6 +165,7 @@ async function loadStatus() {
     getWonState(),
     getEndedMarks(),
     getInboxState(),
+    getInboxSent(),
   ]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
   for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
@@ -814,6 +820,24 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
   card.append(items);
   for (const r of g.rows) {
     const terms = el("div", "won-terms");
+    // Pick this won auction for "Send selected to inventory"; "sent" once it has been.
+    const pick = el("label", "send-pick");
+    const box = el("input");
+    box.type = "checkbox";
+    box.checked = toSend.has(r.id);
+    box.addEventListener("change", () => {
+      if (box.checked) toSend.add(r.id);
+      else toSend.delete(r.id);
+      renderSendWins(new Date());
+    });
+    pick.append(box, " Send");
+    pick.title = "Tick to send this won auction to tcg_inventory";
+    terms.append(pick, " ");
+    if (inboxSent[r.id]) {
+      const sent = el("span", "sent-mark", `sent ${ago(inboxSent[r.id], now)}`);
+      sent.title = "Already in tcg_inventory's inbox. Sending again only updates what's still pending there.";
+      terms.append(sent, " · ");
+    }
     const link = el("a", "open-link", `${r.title} ↗`);
     link.href = r.url;
     link.target = "_blank";
@@ -916,7 +940,16 @@ function renderMine(now: Date) {
 
 /** "Send wins to inventory" (#309): the button and the last send's result. */
 function renderSendWins(now: Date) {
-  $<HTMLButtonElement>("#send-wins").disabled = sendingWins;
+  // Only auctions still listed count (one ticked, then hidden by "Show paid & received", isn't sent).
+  const listed = new Set(wonBySeller(rows).flatMap((g) => g.rows.map((r) => r.id)));
+  for (const id of toSend) if (!listed.has(id)) toSend.delete(id);
+  const button = $<HTMLButtonElement>("#send-wins");
+  button.disabled = sendingWins || toSend.size === 0;
+  button.textContent = toSend.size ? `Send ${toSend.size} selected to inventory` : "Send selected to inventory";
+  const unsent = [...listed].filter((id) => !inboxSent[id]);
+  const pickUnsent = $<HTMLButtonElement>("#send-pick-unsent");
+  pickUnsent.hidden = unsent.length === 0;
+  pickUnsent.textContent = `Tick all not sent (${unsent.length})`;
   const status = $<HTMLElement>("#send-wins-status");
   status.classList.toggle("error", inbox.ok === false && !sendingWins);
   if (sendingWins) status.textContent = "Sending…";
@@ -1160,13 +1193,18 @@ $<HTMLButtonElement>("#inbox-save").addEventListener("click", () => {
     status.textContent = `Not saved: ${err instanceof Error ? err.message : String(err)}`;
   });
 });
+$<HTMLButtonElement>("#send-pick-unsent").addEventListener("click", () => {
+  for (const g of wonBySeller(rows)) for (const r of g.rows) if (!inboxSent[r.id]) toSend.add(r.id);
+  render();
+});
 $<HTMLButtonElement>("#send-wins").addEventListener("click", () => {
   sendingWins = true;
   renderSendWins(new Date());
   chrome.runtime
-    .sendMessage({ type: MSG_SEND_WINS })
+    .sendMessage({ type: MSG_SEND_WINS, postIds: [...toSend] })
     .then((state: InboxState | undefined) => {
       if (state) inbox = state;
+      if (state?.ok) toSend.clear(); // Sent: nothing ticked any more; "sent" marks show instead.
     })
     .catch((err: unknown) => {
       inbox = { lastAt: new Date().toISOString(), ok: false, count: null, outcome: err instanceof Error ? err.message : String(err) };
@@ -1234,7 +1272,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
       rebuild();
       render();
     });
-  } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState", "inboxState"].some((k) => k in changes)) {
+  } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState", "inboxState", "inboxSent"].some((k) => k in changes)) {
     void loadStatus().then(render);
   }
 });

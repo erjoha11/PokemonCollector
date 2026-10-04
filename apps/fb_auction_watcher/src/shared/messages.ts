@@ -78,7 +78,9 @@ export const isReloadFbTabsMessage = (m: unknown): m is { type: typeof MSG_RELOA
 
 /** Overview → service worker: send your wins to tcg_inventory now (#309). Answers with the new InboxState. */
 export const MSG_SEND_WINS = "fbaw/send-wins" as const;
-export const isSendWinsMessage = (m: unknown): m is { type: typeof MSG_SEND_WINS } => hasType(m, MSG_SEND_WINS);
+/** Overview → service worker: send the won auctions you picked (their post IDs) to tcg_inventory. */
+export type SendWinsMessage = { type: typeof MSG_SEND_WINS; postIds: string[] };
+export const isSendWinsMessage = (m: unknown): m is SendWinsMessage => hasType(m, MSG_SEND_WINS);
 
 /** Content script → service worker: a scan or read started from the toolbar menu has finished (frees the Facebook slot). */
 export const MSG_ACTIVITY_DONE = "fbaw/activity-done" as const;

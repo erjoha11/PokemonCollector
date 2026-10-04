@@ -143,10 +143,12 @@ tr.lots-row > td { background: var(--bg); }
 .setting input[type="password"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }
 .setting .sub-label { display: block; margin-top: 8px; font-weight: 400; font-size: 13px; }
 .send-wins { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.send-wins button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-.send-wins button:hover { border-color: var(--lead); color: var(--lead); }
+.send-wins button:not(.linkish) { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.send-wins button:not(.linkish):hover { border-color: var(--lead); color: var(--lead); }
 .send-wins button:disabled { opacity: 0.6; cursor: default; }
 .send-wins .error { color: var(--soon); }
+.send-pick { font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sent-mark { color: var(--new); font-weight: 600; }
 .clear-data { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .clear-data button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
 .clear-data button.danger { background: var(--soon); border-color: var(--soon); color: #fff; }
