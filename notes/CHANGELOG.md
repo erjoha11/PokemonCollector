@@ -142,6 +142,32 @@ yet.
   with Won/Lost; start bid and raise are hidden. The You column shows "–"
   when you weren't in the sale. Tested in `tests/ended.test.ts`.
 
+**Overview tabs, final read on time, notifications, Open/Read per sale (#299, #300, #301, #302, #303)**
+- #299: tabs replace the stacked groups on the Auction overview: New ·
+  Today · Upcoming · No end · My bids · Ended (`tabs()` in `model.ts`
+  replaces `groupRows`). Counts follow the type filter and search, the last
+  tab is remembered (`fbaw-tab`, default Today), and ← / → move between tabs.
+  My bids (formerly a filter button) splits into Running · Ended. No end
+  splits into End time unknown · Fixed price.
+- #300: Open overview is the first button in the toolbar menu. Read this
+  post / Scan the feed stay highlighted (now matched by ID).
+- #301: a `fbaw-watch` alarm queues a sale's final read 2 min after it
+  closes (end + antisnipe), so Leading becomes Won/Lost without opening the
+  post. It uses the same reader queue and pacing, only while auto-scan is
+  on, with retries for up to 2 h. Desktop notifications (setting, on by
+  default; adds the `notifications` permission and `icon-128.png`) cover
+  outbid, ending in 10 min, and results after the final read. Each one
+  shows once, and clicking only opens a tab. Code: `src/background/watch.ts`
+  and `notify.ts`.
+- #302: Open ↗ and Read buttons on every sale. Read reads the post in a
+  background tab that closes itself, ahead of automatic re-reads. Each lot
+  links to its own comment (`?comment_id=`). Fixed `reader.finishRead`
+  recording a finished background read as "Couldn't read: its tab was
+  closed" (the read is now recorded before the tab closes).
+- #303: fixed-price sales and sales with no known end time show "Added 23 h
+  ago" plus the date in the Ends cell ("Added" is when a scan first saw the
+  post). "Mark as ended" for these moved into the expanded lots.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
