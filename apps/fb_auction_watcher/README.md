@@ -80,10 +80,13 @@ Lost lots and finished sales aren't listed there; they're in the table with thei
 name opens the post on Facebook in a new tab and reads it quietly there.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
-auction and claim sale the scans have saved, grouped by end time (today · tomorrow and later · end time unknown · claim and fixed price ·
-ended; countdowns under an hour turn red), with live countdowns. Each end time shows
-the seller's original text next to it; a "?" means the rules weren't sure, and "read by Claude" marks what
-Claude filled in. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
+auction and claim sale the scans have saved, grouped by end time (today · tomorrow and later · end time unknown · claim sales ·
+fixed price, folded · ended, folded; countdowns under an hour turn red), with live countdowns. Every row is two lines:
+**Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
+"AUKSJON/BUDRUNDE"/"FASTPRIS", then the description, cut with "…"; hover for the full text and when it was
+first seen), **Seller**, **Price** (type, then the terms), **Lots** and **You**. The seller's original end text is
+in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. A
+sale with no readable end time has **Mark as ended** right there; others have it in the row's lots (click the row). Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
 ("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
 small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
 saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and

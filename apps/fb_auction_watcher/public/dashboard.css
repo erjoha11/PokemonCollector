@@ -294,3 +294,31 @@ td.ends > div:first-child { white-space: nowrap; }
   .lot-lines .line-actions { grid-column: 3; }
   .lead-lots .lot-line, .pay-items .lot-line { gap: 6px; }
 }
+
+/* The sales table (2026-10-04 redesign): Seller has its own column, every row is two lines */
+/* Fixed column widths, so every group's table lines up; Sale takes the rest, long text cut with "…". */
+#groups table { table-layout: fixed; }
+#groups th:nth-child(1) { width: 120px; }
+#groups th:nth-child(3) { width: 160px; }
+#groups th:nth-child(4) { width: 130px; }
+#groups th:nth-child(5) { width: 130px; }
+#groups th:nth-child(6) { width: 200px; }
+td.ends { width: auto; overflow: hidden; }
+.sale-text { min-width: 0; flex: 1; }
+.sale .title-line { display: block; }
+.sale .title-line, .sale .desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sale .desc { display: block; color: var(--muted); }
+.sale .badge.new { vertical-align: 1px; }
+td.seller-col { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.price { color: var(--text); }
+td.price .type { color: var(--muted); font-size: 11px; }
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.ends > .countdown { display: block; }
+td.ends .countdown.unknown { font-size: 13px; }
+.table-hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+tr.lots-row .end-toggle { margin-top: 6px; }
+@media (max-width: 720px) {
+  #groups table { table-layout: auto; }
+  .sale .title-line { white-space: normal; }
+  #groups td.unread { display: none; } /* "–" for a sale not read yet: nothing to show on a phone. */
+}

@@ -75,7 +75,7 @@ describe("table model", () => {
 
   it("groups by end time", () => {
     const g = Object.fromEntries(groupRows(rows, now).map((x) => [x.id, x.rows.map((r) => r.id)]));
-    expect(g).toEqual({ today: ["7", "1", "2"], later: ["3"], unknown: ["4"], "claim-fixed": ["5", "6"], ended: ["8"] });
+    expect(g).toEqual({ today: ["7", "1", "2"], later: ["3"], unknown: ["4"], claim: ["5"], fixed: ["6"], ended: ["8"] });
   });
 
   it("an auction ending within the hour but after midnight is still Today", () => {

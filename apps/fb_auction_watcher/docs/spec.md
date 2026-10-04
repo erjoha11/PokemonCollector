@@ -193,11 +193,18 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
   final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
 - Numbers at the top: active, within 1 h, need you (lots), won lots, new.
-- Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
-  ended. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
+- Groups: today (including anything within the hour) · tomorrow and later · end time unknown ·
+  claim sales (by end time) · fixed price (newest first, folded by default) · ended (folded). Claim
+  and fixed price were one group until 2026-10-04. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
   red under an hour, and the "Within 1 hour" counter stays.)
-- Columns: Ends · Sale (title, seller, New, +N comments) · Type · Lots · Bids ·
-  Your status · Updated.
+- Columns (redesigned 2026-10-04: every row two lines, columns line up across groups):
+  Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
+  `saleLines` in `model.ts`, and New / Reading…; description, cut with "…") · Seller · Price (type /
+  terms) · Lots · You. Type and Seen are no longer columns; first seen is in the Sale tooltip.
+- **Seller's original end text** (decided 2026-10-04, relaxing "Keep raw text" for the table): in the
+  Ends tooltip when the rules are sure; in the row, flagged, when they weren't or Claude read it.
+  Raw text is still stored and shown in full in the lots.
+- Mark as ended: in the row for an unknown end time, otherwise in the expanded row.
 - Filters: All / Auction / Claim / Fixed price / My bids / New + search.
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).

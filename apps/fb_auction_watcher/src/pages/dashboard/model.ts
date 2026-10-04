@@ -41,7 +41,7 @@ export type RowExtras = {
   endedMarks?: Record<string, string>;
 };
 
-export type GroupId = "today" | "later" | "unknown" | "claim-fixed" | "ended";
+export type GroupId = "today" | "later" | "unknown" | "claim" | "fixed" | "ended";
 export type Group = { id: GroupId; label: string; rows: Row[] };
 
 const HOUR = 3_600_000;
@@ -114,10 +114,11 @@ const sameOsloDay = (a: Date, b: Date) => {
 
 export function groupRows(rows: Row[], now: Date): Group[] {
   const t = now.getTime();
-  const groups: Record<GroupId, Row[]> = { today: [], later: [], unknown: [], "claim-fixed": [], ended: [] };
+  const groups: Record<GroupId, Row[]> = { today: [], later: [], unknown: [], claim: [], fixed: [], ended: [] };
   for (const r of rows) {
     if (r.ended) groups.ended.push(r);
-    else if (r.type !== "auction") groups["claim-fixed"].push(r);
+    else if (r.type === "fixed") groups.fixed.push(r);
+    else if (r.type === "claim") groups.claim.push(r);
     else if (r.endsAtMs === null) groups.unknown.push(r);
     // Today, or within the hour (just before midnight); the countdown turns red under an hour.
     else if (r.maybeEnded || r.endsAtMs - t < HOUR || sameOsloDay(new Date(r.endsAtMs), now)) groups.today.push(r);
@@ -128,14 +129,16 @@ export function groupRows(rows: Row[], now: Date): Group[] {
   groups.today.sort(byEnd); // "Ended?" (in the antisnipe window) first: their end time has passed.
   groups.later.sort(byEnd);
   groups.unknown.sort(bySeen);
-  // Claim sales by end time first, then fixed-price posts (no end) newest first.
-  groups["claim-fixed"].sort((a, b) => byEnd(a, b) || bySeen(a, b));
+  // Claim sales race against their end time; fixed price is a catalogue, newest first.
+  groups.claim.sort((a, b) => byEnd(a, b) || bySeen(a, b));
+  groups.fixed.sort(bySeen);
   groups.ended.sort((a, b) => endedAtMs(b) - endedAtMs(a));
   const labels: Record<GroupId, string> = {
     today: "Today",
     later: "Tomorrow and later",
     unknown: "End time unknown",
-    "claim-fixed": "Claim and fixed price",
+    claim: "Claim sales",
+    fixed: "Fixed price",
     ended: "Ended",
   };
   return (Object.keys(groups) as GroupId[]).map((id) => ({ id, label: labels[id], rows: groups[id] }));
@@ -364,4 +367,26 @@ export function leadingBySale(rows: Row[]): LeadingSale[] {
 export function lotUrl(row: Pick<Row, "url">, lot: Pick<Lot, "commentId">): string {
   if (!lot.commentId) return row.url;
   return `${row.url}${row.url.includes("?") ? "&" : "?"}comment_id=${lot.commentId}`;
+}
+
+// The group's posting template puts the sale type in the title ("AUKSJON/BUDRUNDE", "FASTPRIS",
+// "Claim salg"); the Type is shown on its own, so the table leaves those words out.
+const TEMPLATE_WORDS = /\b(?:lyn)?auksjon(?:en)?\b|\bbudrunde\b|\bclaim[\s-]*salg(?:et)?\b|\bfastpris\b/gi;
+// Leading and trailing separators; a trailing ".-" / ",-" is a price ("800.-"), kept.
+const SEPARATORS = /^[\s\-–—:/|,.!]+|(?<![.,])[\s\-–—:/|,!]+$/g;
+
+/**
+ * A sale's two lines for the table: its title without the template words, then its description.
+ * When nothing is left of the title (it was only "AUKSJON/BUDRUNDE"), the description moves up.
+ */
+export function saleLines(title: string, description: string | null): { title: string; detail: string | null } {
+  const cleaned = title
+    .replace(TEMPLATE_WORDS, " ")
+    .replace(/\s*([\-–—:/|])(?:\s*[\-–—:/|])+\s*/g, " $1 ") // "Slab Claim salg - Etter" → one separator.
+    .replace(/\s+/g, " ")
+    .replace(SEPARATORS, "")
+    .trim();
+  const detail = description && description.trim() !== title.trim() ? description.trim() : null;
+  if (cleaned.length >= 3) return { title: cleaned, detail };
+  return detail ? { title: detail, detail: null } : { title: title.trim(), detail: null };
 }
