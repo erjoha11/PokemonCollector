@@ -350,6 +350,40 @@ def test_wishlist_and_151_fullarts_are_fully_ignored(db_session):
     assert result.warnings == []  # excluded categories never even attempt to match cards
 
 
+def test_incoming_is_ignored_like_wishlist(db_session):
+    # Dex's "Incoming" folder holds won cards not yet arrived (#311). An
+    # Incoming row is skipped the way a Wishlist row is: no collection, no
+    # card, no warning -- even for a card that isn't in My Collection.
+    incoming = make_csv("Incoming", [{"id": "i1", "name": "Incoming Card", "qty": 1}])
+    wishlist = make_csv("Wishlist", [{"id": "w1", "name": "Wishlist Card"}])
+
+    result = import_dex_csv_files(db_session, [("in.csv", incoming), ("w.csv", wishlist)])
+
+    assert db_session.query(Card).count() == 0
+    assert db_session.query(Collection).count() == 0
+    assert result.warnings == []
+    assert result.collections_touched == set()
+
+
+def test_card_in_incoming_and_my_collection_imports_normally(db_session):
+    main = make_csv("My Collection", [{"id": "a", "name": "Charizard", "qty": 2, "price": "100"}])
+    incoming = make_csv("Incoming", [{"id": "a", "name": "Charizard", "qty": 2}])
+    vintage = make_csv("Vintage Collection", [{"id": "a"}])
+
+    result = import_dex_csv_files(
+        db_session, [("main.csv", main), ("in.csv", incoming), ("v.csv", vintage)]
+    )
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.qty == 2
+    assert card.flagged_missing_since is None
+    assert [c.name for c in card.collections] == ["Vintage Collection"]
+    assert card.primary_collection.name == "Vintage Collection"
+    assert card.binder is None
+    assert db_session.query(Collection).filter(Collection.name == "Incoming").count() == 0
+    assert result.warnings == []
+
+
 def test_binder_category_routes_to_binder_not_collection(db_session):
     main = make_csv("My Collection", [{"id": "a", "name": "Charizard"}])
     binder_csv = make_csv("Illustrator Binder", [{"id": "a"}])

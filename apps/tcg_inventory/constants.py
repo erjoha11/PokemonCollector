@@ -9,8 +9,12 @@ description / app README before changing any of them.
 MY_COLLECTION_CATEGORY = "My Collection"
 
 # Categories that must always be fully ignored on import -- never turned into
-# a collection, a binder, or anything else.
-EXCLUDED_CATEGORIES_EXACT = {"Wishlist"}
+# a collection, a binder, or anything else. "Incoming" is the user's Dex
+# folder of won-but-not-yet-arrived cards (added at qty 0, removed on
+# arrival); Dex doesn't export qty-0 rows, so its only exported rows are cards
+# already in My Collection, and "what's on the way" lives in Dex and the
+# Facebook wins inbox instead (#309, #311).
+EXCLUDED_CATEGORIES_EXACT = {"Wishlist", "Incoming"}
 EXCLUDED_CATEGORIES_PREFIX = ("151 Fullarts",)
 
 # Dex folder names that route to `binder_id` instead of becoming a collection.

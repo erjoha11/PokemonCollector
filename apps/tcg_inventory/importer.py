@@ -389,7 +389,7 @@ def import_dex_csv_files(
 
     for category, rows in rows_by_category.items():
         if constants.is_excluded_category(category):
-            continue  # Wishlist / 151 Fullarts * -- never touched.
+            continue  # Wishlist / Incoming / 151 Fullarts * -- never touched.
 
         row_keys = {
             ((r.get("Id") or "").strip(), (r.get("Variant") or "").strip() or None)
