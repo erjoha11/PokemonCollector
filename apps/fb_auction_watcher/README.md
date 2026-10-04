@@ -57,9 +57,9 @@ line above them ("14 need you · 12 leading (4600 kr if they hold) · 412 kr to 
 
 - **Needs you**: every lot where you have to act, across all sales, soonest ending first. Outbid,
   **Leading?** (a reply couldn't be read) and **Check** (someone claimed the same card first). One
-  line each: photo, lot name, sale and seller, countdown, the highest bid (and yours). The button
-  (**Bid 190+ ↗**) shows the lowest bid that counts now and opens that lot's comment on Facebook in
-  a new tab; you bid there yourself. The first 5 show, then **Show all**.
+  line each: photo, lot name, sale and seller, countdown, the highest bid (and yours). **next 190 kr+**
+  is the lowest bid that counts now; click the lot's name to open its comment on Facebook in a new
+  tab, and bid there yourself. The first 5 show, then **Show all**.
 - **Leading**: one folded line per sale (countdown, title, seller, "12 lots · 4600 kr", which is
   what you pay if they all hold). Unfold it to see the lots. A sale that ended but hasn't been read
   since says "ended: waiting for a final read".
@@ -76,9 +76,9 @@ from its last full read (Leading becomes Won and shows under To pay). **Undo end
 the seller in To pay) takes the mark back. The mark is yours only, stored in the extension.
 
 Lost lots and finished sales aren't listed there; they're in the table with their status. The
-**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. Each
-sale has two buttons: **Open ↗** opens the post on Facebook (so does its name), **Read** reads its lots and bids now.
-Each lot has a **↗** to its own comment on Facebook (where you'd bid), in the table's lots and in To pay.
+**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. A
+sale's name opens the post on Facebook; its **Read** button reads its lots and bids now.
+A lot's name, wherever it shows (Needs you, Leading, To pay, a row's lots), opens its own comment on Facebook (where you'd bid).
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
 auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit) · **Today** ·
@@ -89,9 +89,9 @@ time. Countdowns under an hour turn red. Every row is two lines:
 **Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
 "AUKSJON/BUDRUNDE"/"FASTPRIS", then the description, cut with "…"; hover for the full text and when it was
 first seen), **Seller**, **Price** (type, then the terms), **Lots** and **You**. The seller's original end text is
-in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. A
-sale without an end time (fixed price, or none could be read) shows **Added 23 h ago** and the date instead: when a
-scan first saw it, close to when it was posted while auto-scan runs. **Mark as ended** is in a row's lots (click the row).
+in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. The
+**Added** column shows when each sale was added ("1 d ago", then the date): when a scan first saw it, close to when
+it was posted while auto-scan runs. **Mark as ended** is in a row's lots (click the row).
 **Ended** is for looking back: your sales first ("Yours"), then everyone else's. **Result** shows how
 it went ("9 of 12 sold · 6220 kr") and whether that's **final** (read after the end) or only **at last read**.
 Click a row for each lot: "Sold 1100 kr · buyer" or "Unsold", with your Won/Lost first. Only one thing talks to Facebook at a time: if a scan or another read is running, your **Read** waits

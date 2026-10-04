@@ -283,23 +283,27 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
       .filter(Boolean)
       .join("\n");
   } else {
-    // No end time (fixed price, or one nobody could read): when it was added says how fresh it is.
-    // "Added" is when a scan first saw the post, which is close to when it was posted while
-    // auto-scan runs. Mark as ended is in the row's lots (click the row).
-    const seen = Date.parse(r.firstSeenAt);
+    // No end time: fixed price, or one nobody could read. (When it was added is in its own column.)
     const cutOff = r.type !== "fixed" && !r.textComplete && !r.endsAtText;
-    td.append(
-      el("div", "countdown added", `Added ${ago(r.firstSeenAt, now)}`),
-      line("div", el("span", "when", endLabel(seen, now)), ...(cutOff ? [" · ", el("span", "flag", "cut off")] : [])),
-    );
+    const head = line("div", el("span", "countdown unknown", r.type === "fixed" ? "No end" : "Unknown"));
+    if (cutOff) head.append(" ", el("span", "flag", "cut off"));
+    td.append(head);
     td.title = [
-      `Added ${new Date(seen).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (when a scan first saw it)`,
       r.type === "fixed" ? "Fixed price: no end time." : orig || "No end time in the post's text that the rules or Claude could read.",
-      r.type !== "fixed" && !r.textComplete && !r.endsAtText ? "The post's text was cut off before an end time." : "",
+      cutOff ? "The post's text was cut off before an end time." : "",
     ]
       .filter(Boolean)
       .join("\n");
   }
+  return td;
+}
+
+/** When the sale was added: when a scan first saw the post (close to when it was posted while auto-scan runs). */
+function addedCell(r: Row, now: Date): HTMLTableCellElement {
+  const td = el("td", "added");
+  const seen = Date.parse(r.firstSeenAt);
+  td.append(el("div", undefined, ago(r.firstSeenAt, now)), el("div", "when", endLabel(seen, now)));
+  td.title = `Added ${new Date(seen).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (when a scan first saw it)`;
   return td;
 }
 
@@ -356,14 +360,9 @@ function readSale(r: Row) {
   });
 }
 
-/** The sale's two actions: Open ↗ (the post on Facebook) and Read (its bids and lots, now). */
+/** Read: reads the sale's lots and bids now. (Its name is the link to Facebook.) */
 function saleActions(r: Row): HTMLSpanElement {
   const box = el("span", "sale-actions");
-  const open = el("a", "act-btn", "Open ↗");
-  open.href = r.url;
-  open.target = "_blank";
-  open.rel = "noopener";
-  open.title = "Open the post on Facebook";
   const state = readState(r.id);
   const read = el("button", `act-btn${state ? " busy" : ""}`, state ?? "Read");
   read.type = "button";
@@ -376,7 +375,7 @@ function saleActions(r: Row): HTMLSpanElement {
     e.stopPropagation(); // Inside a table row: don't expand it.
     readSale(r);
   });
-  box.append(open, read);
+  box.append(read);
   return box;
 }
 
@@ -387,8 +386,8 @@ function titleLine(r: Row): HTMLDivElement {
   return line;
 }
 
-/** Photo, then two lines (the sale's name and New; its description), then Open ↗ / Read. */
-function saleCell(r: Row, now: Date): HTMLTableCellElement {
+/** Photo, then two lines (the sale's name, a link to Facebook, and New; its description), then Read. */
+function saleCell(r: Row): HTMLTableCellElement {
   const td = el("td", "sale");
   const wrap = el("div", "sale-wrap");
   td.append(wrap);
@@ -410,7 +409,7 @@ function saleCell(r: Row, now: Date): HTMLTableCellElement {
   if (detail) box.append(el("div", "desc", detail));
   wrap.append(box, saleActions(r));
   // The full text, and when it was first seen (the Seen column until 2026-10-04).
-  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", `First seen ${ago(r.firstSeenAt, now)}`]
+  td.title = [r.title, r.description && r.description !== r.title ? r.description : ""]
     .filter(Boolean)
     .join("\n");
   return td;
@@ -576,10 +575,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       item.append(img);
     }
     const body = el("div", "lot-body");
-    const lotTitleEl = el("div", "lot-title", `${l.position}. ${l.title} `);
-    if (l.namedByClaude) lotTitleEl.title = "Named by Claude from the photo";
-    lotTitleEl.append(lotLink(r, l));
-    body.append(lotTitleEl);
+    body.append(line("div", lotLink(r, l, `${l.position}. ${l.title}`, "lot-title")));
     if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
@@ -722,8 +718,7 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   const { row: r, lot: l, status } = item;
   const li = el("li", `lot-line ${status.key}`);
   li.append(lotThumb(l, photos));
-  const name = el("span", "line-name", l.title);
-  name.title = l.namedByClaude ? `${l.title} (named by Claude from the photo)` : l.title;
+  const name = lotLink(r, l, l.title, "line-name");
   const sale = el("span", "line-sale", `${saleTitle(r)} · ${r.sellerName ?? ""}`);
   sale.title = sale.textContent ?? "";
   li.append(line("span", name, sale), countdownEl(r, now));
@@ -735,39 +730,34 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
     if (status.key === "unclear") price.append(" · a reply couldn't be read");
     li.append(price);
   }
-  // Where you'd act: the lot's own comment on Facebook. The extension never bids or types.
-  const act = el("a", "line-act", item.nextBid !== null ? `Bid ${item.nextBid}+ ↗` : "Open ↗");
-  act.href = lotUrl(r, l);
-  act.target = "_blank";
-  act.rel = "noopener";
-  act.title = item.nextBid !== null ? `The lowest bid that counts now is ${item.nextBid} kr. Opens the lot on Facebook.` : "Opens the lot on Facebook.";
+  // The lowest bid that counts now; you bid on Facebook (the lot's name links there). The extension never bids.
   const actions = el("span", "line-actions");
-  actions.append(act);
+  if (item.nextBid !== null) {
+    const next = line("span", "next ", kr(item.nextBid), "+");
+    next.className = "line-next";
+    next.title = `The lowest bid that counts now is ${item.nextBid} kr. Click the lot's name to bid on Facebook.`;
+    actions.append(next);
+  }
   const toggle = endedToggle(r, "Sale ended");
   if (toggle) actions.append(toggle);
   li.append(actions);
   return li;
 }
 
-/** "↗" to a lot's own comment on Facebook (the post, when the lot has no comment ID). */
-function lotLink(r: Pick<Row, "url">, l: Lot, text = "↗"): HTMLAnchorElement {
-  const a = el("a", "lot-link", text);
+/** A lot's name as a link to its own comment on Facebook (the post, when the lot has no comment ID). */
+function lotLink(r: Pick<Row, "url">, l: Lot, text: string, cls: string): HTMLAnchorElement {
+  const a = el("a", `lot-link ${cls}`, text);
   a.href = lotUrl(r, l);
   a.target = "_blank";
   a.rel = "noopener";
-  a.title = l.commentId ? "Open this lot on Facebook" : "Open the post on Facebook (this lot has no link of its own)";
+  a.title = (l.commentId ? "Open this lot on Facebook" : "Open the post on Facebook (this lot has no link of its own)") + (l.namedByClaude ? " · named by Claude from the photo" : "");
   return a;
 }
 
 /** A lot you're leading, inside its sale. */
 function leadingLine(r: Row, l: Lot, photos: Photo[]): HTMLLIElement {
   const li = el("li", "lot-line lead");
-  li.append(lotThumb(l, photos), el("span", "line-name", l.title), line("span", "Your bid ", kr(l.myHighestBid)));
-  const open = el("a", "line-act", "Open ↗");
-  open.href = lotUrl(r, l);
-  open.target = "_blank";
-  open.rel = "noopener";
-  li.append(open);
+  li.append(lotThumb(l, photos), lotLink(r, l, l.title, "line-name"), line("span", "Your bid ", kr(l.myHighestBid)));
   return li;
 }
 
@@ -808,9 +798,7 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
   const photos = lotPhotos(g.items.map((i) => i.lot));
   for (const item of g.items) {
     const li = el("li", "lot-line");
-    const name = el("span", "line-name", `${item.label} `);
-    name.append(lotLink(item.row, item.lot));
-    li.append(lotThumb(item.lot, photos), name, item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
+    li.append(lotThumb(item.lot, photos), lotLink(item.row, item.lot, item.label, "line-name"), item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
     items.append(li);
   }
   card.append(items);
@@ -987,12 +975,12 @@ function render() {
   );
   main.setAttribute("aria-labelledby", `tab-${tab}`);
   const current = all.find((x) => x.id === tab)!;
-  main.append(el("p", "table-hint", "Open ↗ opens a sale on Facebook · Read reads its lots and bids now · click a row to show its lots"));
+  main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook · Read reads its lots and bids now · click a row to show its lots"));
   if (current.count === 0) {
     main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
     return;
   }
-  const headers = ["Ends", "Sale", "Seller", "Price", "Lots", "You"];
+  const headers = ["Ends", "Added", "Sale", "Seller", "Price", "Lots", "You"];
   const table = el("table");
   const head = el("tr");
   // Ended sales show their result where running ones show their price.
@@ -1014,7 +1002,7 @@ function render() {
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
-      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
+      tr.append(endsCell(r, now), addedCell(r, now), saleCell(r), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
       body.append(tr);
       if (expanded.has(r.id)) body.append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
