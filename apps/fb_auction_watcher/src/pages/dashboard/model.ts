@@ -390,3 +390,42 @@ export function saleLines(title: string, description: string | null): { title: s
   if (cleaned.length >= 3) return { title: cleaned, detail };
   return detail ? { title: detail, detail: null } : { title: title.trim(), detail: null };
 }
+
+/** Did you bid or claim in this sale (from its latest read)? */
+export const isMine = (r: Pick<Row, "summary">): boolean =>
+  !!r.summary && r.summary.lead + r.summary.outbid + r.summary.unclear + r.summary.claimed + r.summary.check > 0;
+
+/** The Ended group in two parts: sales you were in first (where Lost lots live), then the rest. Order kept. */
+export function splitEnded(rows: Row[]): { yours: Row[]; others: Row[] } {
+  return { yours: rows.filter(isMine), others: rows.filter((r) => !isMine(r)) };
+}
+
+/**
+ * How an ended sale went, from its latest read: lots that sold (a valid bid, or a claim) and what
+ * they went for (winning bids; claim cards Claude priced). `final` when it was read in full after
+ * the end; otherwise it's "at last read". Null when the sale was never read.
+ */
+export type SaleResult = { lots: number; sold: number; kr: number; unknownPrices: number; final: boolean; readAt: string | null };
+
+export function saleResult(r: Row): SaleResult | null {
+  if (!r.lots) return null;
+  const claims = r.type === "claim" || r.type === "fixed";
+  let sold = 0;
+  let kr = 0;
+  let unknownPrices = 0;
+  for (const l of r.lots) {
+    if (claims) {
+      const taken = l.claimCards?.filter((x) => x.claimedBy) ?? [];
+      if (taken.length || l.claims.length) sold++;
+      for (const x of taken) {
+        if (x.price === null) unknownPrices++;
+        else kr += x.price;
+      }
+      if (!l.claimCards && l.claims.length) unknownPrices++; // Claimed, but nobody has read the photo's prices yet.
+    } else if (l.highestBid !== null) {
+      sold++;
+      kr += l.highestBid;
+    }
+  }
+  return { lots: r.lots.length, sold, kr, unknownPrices, final: readAfterEnd(r), readAt: r.lastCompleteReadAt };
+}

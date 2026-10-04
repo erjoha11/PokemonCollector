@@ -31,8 +31,12 @@ import {
   leadingBySale,
   lotStatus,
   lotUrl,
+  readAfterEnd,
+  isMine,
   needsYou,
   saleLines,
+  saleResult,
+  splitEnded,
   wonBySeller,
   wonTotal,
   type LotStatus,
@@ -173,7 +177,7 @@ async function load() {
 
 function matches(r: Row): boolean {
   if (filter === "mine") {
-    if (mineCount(r) === 0) return false;
+    if (!isMine(r)) return false;
   } else if (filter !== "all" && r.type !== filter) return false;
   if (!query) return true;
   const q = query.toLowerCase();
@@ -192,6 +196,34 @@ function priceCell(r: Row): HTMLTableCellElement {
     terms.append(r.fixedPrice !== null ? kr(r.fixedPrice) : "Price per item");
   }
   td.append(terms);
+  return td;
+}
+
+/** An ended sale's outcome: "9 of 12 sold · 6220 kr", then "final" or "at last read <when>". */
+function resultCell(r: Row, now: Date): HTMLTableCellElement {
+  const td = el("td", "price result");
+  const res = saleResult(r);
+  if (!res) {
+    td.append(el("span", "muted", "Not read"));
+    td.title = "Never read, so there's no result. Click the sale's name to read it.";
+    return td;
+  }
+  const claims = r.type === "claim" || r.type === "fixed";
+  td.append(el("div", undefined, `${res.sold} of ${res.lots} ${claims ? "claimed" : "sold"}`));
+  // Line 2: what it went for, and whether that's final.
+  const sum = line("div");
+  sum.className = "one-line";
+  if (res.kr || res.unknownPrices) sum.append(kr(res.kr), res.unknownPrices ? " + ?" : "", " · ");
+  if (res.final) sum.append(el("span", "result-final", "final"));
+  else {
+    const note = el("span", "flag", res.readAt ? `at last read ${endLabel(Date.parse(res.readAt), now)}` : "partial read");
+    note.title = "Not read in full after the end: bids may have come in after this. Open the post to see the final result.";
+    sum.append(note);
+  }
+  td.append(sum);
+  td.title = claims
+    ? "Lots someone claimed, and what the claimed cards cost (where Claude has read the prices)"
+    : "Lots with a valid bid, and the sum of the winning bids";
   return td;
 }
 
@@ -231,7 +263,10 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
     td.title = orig;
     return td;
   }
-  if (r.endsAtMs !== null) {
+  if (r.ended && r.endsAtMs !== null) {
+    td.append(el("div", "countdown ended", `Ended ${ago(new Date(r.endsAtMs).toISOString(), now)}`), el("div", "when one-line", endLabel(r.endsAtMs, now)));
+    td.title = [`Ended ${endLabel(r.endsAtMs, now)}`, orig].filter(Boolean).join("\n");
+  } else if (r.endsAtMs !== null) {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : countdown(r.endsAtMs, now));
     cd.dataset.ends = String(r.endsAtMs);
     if (!r.ended && r.endsAtMs - now.getTime() < 3_600_000) cd.classList.add("soon");
@@ -442,7 +477,10 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   }
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
   const counts = statusCounts(r);
-  if (counts.length === 0) youTd.append(el("span", "muted", isClaims ? "No claims" : "No bids"));
+  if (counts.length === 0) {
+    youTd.append(el("span", "muted", "–"));
+    youTd.title = isClaims ? "You didn't claim anything here" : "You didn't bid here";
+  }
   for (const { status, count } of counts) {
     let text = `${status.label} ${count}`;
     if (isClaims && status.key === "won") {
@@ -492,9 +530,11 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
   const lots: Lot[] =
     r.type === "claim" || r.type === "fixed"
       ? [...mine, ...(r.lots ?? []).filter((l) => !mine.includes(l))]
-      : mine.length
-        ? mine
-        : (r.lots ?? []);
+      : r.ended
+        ? [...mine, ...(r.lots ?? []).filter((l) => !mine.includes(l))] // Ended: yours first, then every result.
+        : mine.length
+          ? mine
+          : (r.lots ?? []);
   const list = el("div", "lot-list");
   const photos = lotPhotos(lots);
   for (const l of lots) {
@@ -548,6 +588,19 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
         const what = c.all ? "everything" : c.items.length ? c.items.join(", ") : "the lot";
         body.append(el("div", `small ${c.isMe ? "" : "muted"}`, `${c.isMe ? "You" : c.claimer}: ${what}${c.contested ? " (someone was earlier)" : ""}`));
       }
+      item.append(body);
+      list.append(item);
+      continue;
+    }
+    if (r.ended) {
+      // After the end, the highest bid is what it sold for; the start bid and raise no longer matter.
+      body.append(
+        l.highestBid === null
+          ? el("div", "muted", "Unsold: no valid bids")
+          : line("div", "Sold ", kr(l.highestBid), ` · ${l.highestBidder}`),
+      );
+      if (!readAfterEnd(r)) body.append(el("div", "flag", "at last read: bids may have come in after"));
+      if (status.key !== "none") body.append(el("div", `status ${status.cls}`, `${status.label} · your bid ${l.myHighestBid} kr`));
       item.append(body);
       list.append(item);
       continue;
@@ -608,8 +661,6 @@ function rowTone(r: Row): "outbid" | "won" | "lead" | "lost" | null {
   // Finished: green if you won anything (a lost lot beside it doesn't make it a failure), else grey.
   return keys.includes("won") ? "won" : "lost";
 }
-const mineCount = (r: Row) =>
-  r.summary ? r.summary.lead + r.summary.outbid + r.summary.unclear + r.summary.claimed + r.summary.check : 0;
 const isDone = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.paidAt && wonState[r.id]?.receivedAt);
 const isPaid = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.paidAt);
 const isReceived = (g: WonSeller) => g.rows.every((r) => wonState[r.id]?.receivedAt);
@@ -879,16 +930,27 @@ function render() {
     const heading = el("summary", "group-title", `${g.label} `);
     heading.append(el("span", "group-count", String(g.rows.length)));
     wrap.append(heading);
+    const ended = g.id === "ended";
     const table = el("table");
     const head = el("tr");
-    for (const h of headers) head.append(el("th", undefined, h));
+    for (const h of headers) head.append(el("th", undefined, ended && h === "Price" ? "Result" : h));
     table.append(el("thead"), el("tbody"));
     table.tHead!.append(head);
-    for (const r of g.rows) {
+    // Ended: your sales first (it's where lost lots live), then everyone else's; newest first in each.
+    const parts = ended ? splitEnded(g.rows) : null;
+    const ordered = parts ? [...parts.yours, ...parts.others] : g.rows;
+    for (const r of ordered) {
+      if (parts?.yours.length && (r === parts.yours[0] || r === parts.others[0])) {
+        const sub = el("tr", "subhead");
+        const td = el("td", undefined, r === parts.yours[0] ? `Yours · ${parts.yours.length}` : `Everyone else · ${parts.others.length}`);
+        td.colSpan = headers.length;
+        sub.append(td);
+        table.tBodies[0].append(sub);
+      }
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
-      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), priceCell(r), ...statusCells(r, now));
+      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
       table.tBodies[0].append(tr);
       if (expanded.has(r.id)) table.tBodies[0].append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
