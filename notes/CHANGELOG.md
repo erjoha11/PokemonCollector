@@ -168,6 +168,18 @@ yet.
   ago" plus the date in the Ends cell ("Added" is when a scan first saw the
   post). "Mark as ended" for these moved into the expanded lots.
 
+**Names are links, Read is the one button, Added column (#305)**
+- Lot names link to the lot's own comment (`?comment_id=`) in Needs you,
+  Leading, To pay and expanded lots. Needs you's "Bid N+ ↗", Leading's
+  per-lot "Open ↗" and the "↗" after lot names are removed; Needs you keeps
+  the lowest valid bid as text ("next 190 kr+").
+- Sale names link to the post. The sale's "Open ↗" button is removed, so
+  Read is its only button in table rows and Leading cards.
+- A new Added column, right after Ends, shows for every sale when a scan
+  first saw the post ("1 d ago", then the date). Ends again shows only the
+  end: "No end" for fixed price, "Unknown" (and "cut off") otherwise. This
+  replaces #303's "Added" text in the Ends cell.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
