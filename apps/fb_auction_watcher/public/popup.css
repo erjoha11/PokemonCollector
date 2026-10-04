@@ -14,6 +14,6 @@ h1 { font-size: 14px; margin: 0 0 4px; }
 .actions { display: grid; gap: 6px; margin-bottom: 8px; }
 button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--soft); color: var(--text); cursor: pointer; text-align: left; }
 button:hover { border-color: var(--lead); }
-.actions button:first-child:not([hidden]), #scan:not([hidden]) { background: var(--lead); border-color: var(--lead); color: #fff; }
+#read:not([hidden]), #scan:not([hidden]) { background: var(--lead); border-color: var(--lead); color: #fff; }
 .dev { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
 button.quiet { font-size: 12px; padding: 4px 6px; text-align: center; }

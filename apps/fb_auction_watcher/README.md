@@ -22,8 +22,8 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-**Clicking the icon opens a small menu**; nothing starts until you choose it there: **Read this post** (on a
-post), **Scan the feed** (on the group feed), **Open overview**, and at the bottom **Reload extension** and
+**Clicking the icon opens a small menu**; nothing starts until you choose it there: **Open overview**, then
+**Read this post** (on a post) or **Scan the feed** (on the group feed), and at the bottom **Reload extension** and
 **Reload Facebook tabs**. The right-click menu has **Open overview**, **Reload extension** and **Reload
 Facebook tabs** too.
 
