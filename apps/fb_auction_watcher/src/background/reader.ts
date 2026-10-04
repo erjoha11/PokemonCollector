@@ -1,17 +1,16 @@
-import { interpretLots, summarizeLots } from "../domain/bids";
-import { interpretListing } from "../domain/listing";
-import { bidAnswerKey } from "../llm/prompts";
 import { MSG_READ_POST, type ReadPostMessage } from "../shared/messages";
 import { getSettings } from "../shared/settings";
 import type { ReaderState, ReadJob } from "../shared/reader";
 import type { Store } from "../store";
 import { facebookSlot } from "./slot";
+import { endingSoonNote, showNotes } from "./notify";
 import { waitForTabLoad } from "./tabs";
+import { myAuctions, watchPlan } from "./watch";
 
 // Post reads without the panel, one queue for all of them. Your clicks in the overview open the
 // post as a normal tab you see and read it quietly there (the tab stays open); they go first and
 // skip the pause. Automatic re-reads of auctions you're in (while auto-scan is on; docs/spec.md:
-// every 15 min, plus one after the end) use a hidden tab that's closed after. Every read takes
+// every 15 min, plus one just after the close; see watchMyAuctions) use a hidden tab that's closed after. Every read takes
 // the one Facebook slot first (slot.ts, review H6), so it never runs alongside the automatic
 // scan or a scan/read started from the toolbar menu. Automatic re-reads are paced (30-45 s
 // apart) and skipped while the screen is locked or you're away.
@@ -28,9 +27,6 @@ const READ_TIMEOUT_MS = 3 * 60_000;
 const VISIBLE_TIMEOUT_MS = 5 * 60_000;
 /** Waiting for the slot: try again this soon. */
 const SLOT_RETRY_MS = 30_000;
-const REREAD_AFTER_MS = 15 * 60_000;
-/** After an auction ends, one final read is still worth it this long (for "Won" vs "Lost"). */
-const FINAL_READ_WITHIN_MS = 2 * 60 * 60_000;
 
 const DEFAULT_STATE: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 
@@ -172,45 +168,22 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
   else await later(GAP_MS[0] + Math.random() * (GAP_MS[1] - GAP_MS[0]));
 }
 
+export const WATCH_ALARM = "fbaw-watch";
+
 /**
- * Auctions you're bidding in that haven't ended and weren't read in the last 15 min: re-read
- * them in the background (only while auto-scan is on).
+ * Your auctions (watch.ts): re-read the due ones in the background (only while auto-scan is on:
+ * running ones every 15 min, and one final read just after each closes, so Leading becomes Won
+ * or Lost), notify the ones ending within 10 min, and set an alarm for the next of those moments.
  */
-export async function queueMyAuctionRereads(store: Store): Promise<void> {
+export async function watchMyAuctions(store: Store): Promise<void> {
   const settings = await getSettings();
-  if (!settings.autoScan) return;
   const [posts, captures, answers] = await Promise.all([store.allPosts(), store.allCaptures(), store.allAnswers()]);
-  const byId = new Map(posts.map((p) => [p.id, p]));
-  const answerMap = new Map(answers.map((a) => [a.key, a.value]));
+  const auctions = myAuctions(posts, captures, new Map(answers.map((a) => [a.key, a.value])), settings.myName);
   const now = Date.now();
-  const jobs: ReadJob[] = [];
-  for (const { postId, capture } of captures) {
-    const post = byId.get(postId);
-    if (!post) continue;
-    const listing = interpretListing(post.text, new Date(post.firstSeenAt));
-    if (listing.type !== "auction") continue;
-    // Every 15 min while it runs (a final read after the end doesn't wait for that).
-    const lastRead = Date.parse(capture.capturedAt);
-    const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
-    const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
-    // Ended: one final read just after the end (if the last one was before it), so "Leading"
-    // can become "Won" or "Lost" (review H3). Not for long-gone auctions.
-    const ended = closesAt !== null && now > closesAt;
-    // A complete read after the end settles it; a partial one is tried again (review H2).
-    const lastComplete = capture.completeAt === undefined ? lastRead : capture.completeAt ? Date.parse(capture.completeAt) : 0;
-    if (ended && (lastComplete >= closesAt! || now - closesAt! > FINAL_READ_WITHIN_MS)) continue;
-    if (!ended && now - lastRead < REREAD_AFTER_MS) continue;
-    const lots = interpretLots(capture, {
-      myName: settings.myName,
-      listingIncrement: listing.increment,
-      listingMinPrice: listing.minPrice,
-      answer: (seller, text) => {
-        const key = bidAnswerKey(seller, text);
-        return answerMap.has(key) ? (answerMap.get(key) as number | null) : undefined;
-      },
-    });
-    const s = summarizeLots(lots);
-    if (s.lead + s.outbid + s.unclear > 0) jobs.push({ postId, url: post.url, reason: "auto" });
-  }
-  await enqueueReads(jobs);
+  const plan = watchPlan(auctions, now);
+  if (settings.autoScan) await enqueueReads(plan.due.map((a) => ({ postId: a.postId, url: a.url, reason: "auto" as const })));
+  await showNotes(plan.endingSoon.map((a) => endingSoonNote(a, now)));
+  const next = [settings.autoScan ? plan.nextFinalAt : null, settings.notify ? plan.nextEndingSoonAt : null].filter((t): t is number => t !== null);
+  if (next.length) await chrome.alarms.create(WATCH_ALARM, { when: Math.max(Math.min(...next), now + 30_000) });
+  else await chrome.alarms.clear(WATCH_ALARM);
 }

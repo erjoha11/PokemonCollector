@@ -18,12 +18,16 @@ import {
   type StoreUpdatedMessage,
 } from "../shared/messages";
 import { groupSlug } from "../shared/feed";
-import { getAutoScanState, updateAutoScanState } from "../shared/settings";
+import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
 import { AUTO_SCAN_ALARM, describeAutoScan, isGroupFeedUrl, newPostsUrl, runAutoScan, scheduleAutoScan } from "./autoScan";
 import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
-import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, queueMyAuctionRereads } from "./reader";
+import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, WATCH_ALARM, watchMyAuctions } from "./reader";
+import { listenForNoteClicks, outbidNotes, resultNotes, showNotes, type Note } from "./notify";
+import { isFinal, readLots } from "./watch";
+import { saleLines } from "../domain/saleLines";
+import type { PostCapture } from "../shared/capture";
 import { facebookSlot } from "./slot";
 import { CLEANUP_ALARM, runCleanup, scheduleCleanup } from "./cleanup";
 
@@ -100,12 +104,16 @@ chrome.contextMenus.onClicked.addListener((info) => {
 void kickReader();
 // The daily cleanup of old stored data (review M6): make sure its alarm exists.
 void scheduleCleanup();
+// Your auctions: the next final read / "ends in 10 min", from what's stored now.
+void watchMyAuctions(store);
+listenForNoteClicks();
 
 // The automatic scan: alarm → run; switching it on/off in the overview reschedules.
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === AUTO_SCAN_ALARM) void runAutoScan();
   if (isReaderAlarm(alarm.name)) void kickReader();
   if (alarm.name === CLEANUP_ALARM) void runCleanup(store, () => broadcastUpdate());
+  if (alarm.name === WATCH_ALARM) void watchMyAuctions(store);
 });
 // A tab was closed: if a read was running there, count it as done and go on; if it held the
 // Facebook slot (a scan from the menu, say), free it.
@@ -120,8 +128,34 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const before = changes.settings.oldValue as { autoScan?: boolean; useClaude?: boolean } | undefined;
   const after = changes.settings.newValue as { autoScan?: boolean; useClaude?: boolean } | undefined;
   if (before?.autoScan !== after?.autoScan) void scheduleAutoScan();
+  if (before?.autoScan !== after?.autoScan || (before as { notify?: boolean })?.notify !== (after as { notify?: boolean })?.notify) void watchMyAuctions(store);
   if (after?.useClaude && !before?.useClaude) askClaudeSoon();
 });
+
+/**
+ * After a read of an auction you're in: notify the lots you've been outbid on since the previous
+ * read, or, when this is its first read in full after the close, what you won and lost.
+ */
+async function noticeChanges(postId: string, previous: PostCapture | null, merged: PostCapture): Promise<void> {
+  const [settings, posts, answers] = await Promise.all([getSettings(), store.allPosts(), store.allAnswers()]);
+  if (!settings.notify) return;
+  const post = posts.find((p) => p.id === postId);
+  if (!post) return;
+  const answerMap = new Map(answers.map((a) => [a.key, a.value]));
+  const { listing, lots } = readLots(post, merged, answerMap, settings.myName);
+  if (listing.type !== "auction") return;
+  const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
+  const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
+  const sale = { postId, url: post.url, title: saleLines(listing.title, listing.description).title };
+  let notes: Note[];
+  if (isFinal(merged, closesAt)) {
+    // The result, once: not again for later reads after the close.
+    notes = previous && isFinal(previous, closesAt) ? [] : resultNotes(lots, sale);
+  } else {
+    notes = outbidNotes(previous ? readLots(post, previous, answerMap, settings.myName).lots : null, lots, sale);
+  }
+  await showNotes(notes);
+}
 
 // The overview (table page): focus an open one rather than opening another.
 async function openOverview() {
@@ -181,7 +215,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const id = capturePostId(capture);
       if (!id) return;
       // Merge with what earlier reads saw: a partial read must not hide a bid (review H2).
-      await store.saveCapture(id, mergeCaptures(await store.getCapture(id), capture));
+      const previous = await store.getCapture(id);
+      const merged = mergeCaptures(previous, capture);
+      await store.saveCapture(id, merged);
       // A post read directly also belongs in the overview, even if no scan has seen it.
       const slug = groupSlug(capture.pageUrl);
       await store.savePosts(
@@ -200,6 +236,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       );
       broadcastUpdate();
       askClaudeSoon();
+      await noticeChanges(id, previous, merged);
+      // A read can settle a sale or change what's next: reschedule.
+      await watchMyAuctions(store);
     })();
     return;
   }
@@ -218,7 +257,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       await updateAutoScanState({ running: false, lastOutcome: describeAutoScan(msg.stoppedBecause, msg.posts, added) });
       broadcastUpdate(added);
       // While auto-scan is on, keep your auctions fresh: re-read the ones you're bidding in.
-      await queueMyAuctionRereads(store);
+      await watchMyAuctions(store);
     })();
     return;
   }
