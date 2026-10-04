@@ -23,7 +23,7 @@ import { idbStore } from "../store";
 import { AUTO_SCAN_ALARM, describeAutoScan, isGroupFeedUrl, newPostsUrl, runAutoScan, scheduleAutoScan } from "./autoScan";
 import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
-import { finishRead, getReaderState, isReaderAlarm, kickReader, openAndReadVisible, WATCH_ALARM, watchMyAuctions } from "./reader";
+import { finishRead, getReaderState, isReaderAlarm, kickReader, readNow, WATCH_ALARM, watchMyAuctions } from "./reader";
 import { listenForNoteClicks, outbidNotes, resultNotes, showNotes, type Note } from "./notify";
 import { isFinal, readLots } from "./watch";
 import { saleLines } from "../domain/saleLines";
@@ -183,7 +183,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return;
   }
   if (isQueueReadMessage(msg)) {
-    void openAndReadVisible(msg.url, msg.postId);
+    void readNow(msg.url, msg.postId, !!msg.visible);
     return;
   }
   if (isReadDoneMessage(msg)) {

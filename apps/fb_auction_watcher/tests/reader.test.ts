@@ -76,13 +76,21 @@ describe("enqueueReads", () => {
 
 describe("one read at a time", () => {
   it("a click opens a visible tab, takes the slot, and asks the content script for a quiet read", async () => {
-    await reader.openAndReadVisible(fbUrl("1"), "1");
+    await reader.readNow(fbUrl("1"), "1", true);
     const s = await state();
     expect(fake.created).toEqual([{ url: fbUrl("1"), active: true }]);
     expect(s.current).toMatchObject({ postId: "1", tabId: 100, startedAt: new Date(NOW).toISOString() });
     expect(await slot.holder()).toMatchObject({ holder: "reader", tabId: 100 });
     expect(fake.tabMessages).toEqual([{ tabId: 100, message: { type: "fbaw/read-post", waitForPost: true, silent: true } }]);
     expect(fake.badges).toContainEqual({ call: "text", tabId: 100, value: "…" });
+  });
+
+  it("Read (the default): a background tab, ahead of the queue, closed when the read is done", async () => {
+    await reader.readNow(fbUrl("1"), "1");
+    expect(fake.created).toEqual([{ url: fbUrl("1"), active: false }]);
+    expect((await state()).current).toMatchObject({ postId: "1", reason: "click", tabId: 100 });
+    await reader.finishRead(100, true, "3 lots");
+    expect(fake.tabs.has(100)).toBe(false);
   });
 
   it("a second job waits for the first: one tab talking to Facebook", async () => {
@@ -120,7 +128,7 @@ describe("one read at a time", () => {
 
 describe("finishRead", () => {
   it("leaves your (visible) tab open with a mark on the icon, frees the slot, records the outcome", async () => {
-    await reader.openAndReadVisible(fbUrl("1"), "1");
+    await reader.readNow(fbUrl("1"), "1", true);
     await reader.finishRead(100, true, "3 lots");
     expect(fake.tabs.has(100)).toBe(true);
     expect(fake.badges).toContainEqual({ call: "text", tabId: 100, value: "✓" });
@@ -190,7 +198,7 @@ describe("failures and timeouts", () => {
   });
 
   it("your visible read gets 5 min, and its tab stays open when it times out", async () => {
-    await reader.openAndReadVisible(fbUrl("1"), "1");
+    await reader.readNow(fbUrl("1"), "1", true);
     await advance(4 * 60_000);
     await reader.kickReader();
     expect((await state()).current?.postId).toBe("1");

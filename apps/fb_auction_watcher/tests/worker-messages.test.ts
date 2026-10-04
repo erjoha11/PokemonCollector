@@ -71,6 +71,15 @@ describe("worker messages", () => {
     expect((await reader.getReaderState()).current).toBeNull();
   });
 
+  it("a background read's tab is closed after it's recorded as read (not as 'its tab was closed')", async () => {
+    await fake.sendToWorker({ type: "fbaw/queue-read", postId: "1", url: fbUrl("1") });
+    await vi.waitFor(async () => expect((await reader.getReaderState()).current?.tabId).toBe(100));
+    expect(fake.created).toEqual([{ url: fbUrl("1"), active: false }]); // Read: a background tab.
+    await fake.sendToWorker({ type: "fbaw/read-done", ok: true, outcome: "2 lots" }, 100);
+    await vi.waitFor(() => expect(fake.tabs.has(100)).toBe(false));
+    expect((await reader.getReaderState()).lastOutcome).toBe("Read: 2 lots");
+  });
+
   it("closing the reader's tab counts the read as done and frees the slot", async () => {
     await fake.sendToWorker({ type: "fbaw/queue-read", postId: "1", url: fbUrl("1") });
     await vi.waitFor(async () => expect((await reader.getReaderState()).current?.tabId).toBe(100));
