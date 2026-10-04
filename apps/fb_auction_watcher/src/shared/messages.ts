@@ -63,7 +63,8 @@ export const isReadDoneMessage = (m: unknown): m is ReadDoneMessage => hasType(m
 
 /** Overview → service worker: open this post in a tab and read it silently there. */
 export const MSG_QUEUE_READ = "fbaw/queue-read" as const;
-export type QueueReadMessage = { type: typeof MSG_QUEUE_READ; postId: string; url: string };
+/** Read a post now (your click): in a background tab that closes itself, or `visible` in a tab you see. */
+export type QueueReadMessage = { type: typeof MSG_QUEUE_READ; postId: string; url: string; visible?: boolean };
 export const isQueueReadMessage = (m: unknown): m is QueueReadMessage => hasType(m, MSG_QUEUE_READ);
 
 /** Toolbar menu → service worker: start reading the post, or scanning the feed, in this tab. */

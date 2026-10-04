@@ -323,27 +323,21 @@ function makeExpandable(tr: HTMLTableRowElement, id: string) {
   });
 }
 
-/** A sale's title: a click opens the post and reads it quietly; Ctrl/Cmd-click just opens it. */
 /** The sale's name without the template's type words ("AUKSJON/BUDRUNDE"); see `saleLines`. */
 const saleTitle = (r: Row) => saleLines(r.title, r.description).title;
 
+/** A sale's name: a plain link to the post on Facebook (it opens it, nothing else). */
 function titleLink(r: Row): HTMLAnchorElement {
   const a = el("a", "title", saleTitle(r));
   a.href = r.url;
   a.target = "_blank";
   a.rel = "noopener";
-  a.title = "Open the post on Facebook and read its bids (Ctrl/Cmd-click: just open it)";
-  // A plain click opens the post and reads it silently in that tab; the row updates when done.
-  a.addEventListener("click", (e) => {
-    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    e.preventDefault();
-    openSale(r);
-  });
+  a.title = "Open the post on Facebook";
   return a;
 }
 
-/** Opens the post in a new tab and reads it quietly there (bids, claims, your status). */
-function openSale(r: Row) {
+/** Reads a sale now in a background tab that closes itself; the row updates when it's done. */
+function readSale(r: Row) {
   const msg: QueueReadMessage = { type: MSG_QUEUE_READ, postId: r.id, url: r.url };
   justClicked.add(r.id); // Shows "Reading…" until the worker's state catches up.
   setTimeout(() => {
@@ -351,19 +345,44 @@ function openSale(r: Row) {
     render();
   }, 60_000);
   render();
-  void chrome.runtime.sendMessage(msg).catch(() => window.open(r.url, "_blank", "noopener"));
+  void chrome.runtime.sendMessage(msg).catch(() => {
+    justClicked.delete(r.id);
+    render();
+  });
 }
 
-/** The title, plus "Reading…" while the post is being read. */
+/** The sale's two actions: Open ↗ (the post on Facebook) and Read (its bids and lots, now). */
+function saleActions(r: Row): HTMLSpanElement {
+  const box = el("span", "sale-actions");
+  const open = el("a", "act-btn", "Open ↗");
+  open.href = r.url;
+  open.target = "_blank";
+  open.rel = "noopener";
+  open.title = "Open the post on Facebook";
+  const state = readState(r.id);
+  const read = el("button", `act-btn${state ? " busy" : ""}`, state ?? "Read");
+  read.type = "button";
+  read.disabled = !!state;
+  read.title = state
+    ? "Reading this post in a background tab"
+    : `Read its lots and bids now, in a background tab that closes itself${r.lastReadAt ? ` (last read ${ago(r.lastReadAt, new Date())})` : ""}`;
+  read.addEventListener("click", (e) => {
+    e.preventDefault(); // Inside a Leading card's <summary>: don't fold it.
+    e.stopPropagation(); // Inside a table row: don't expand it.
+    readSale(r);
+  });
+  box.append(open, read);
+  return box;
+}
+
+/** The sale's name as a link. */
 function titleLine(r: Row): HTMLDivElement {
   const line = el("div", "title-line");
   line.append(titleLink(r));
-  const state = readState(r.id);
-  if (state) line.append(" ", el("span", "badge reading", state));
   return line;
 }
 
-/** Photo, then two lines: the sale's name (and New / Reading…), and its description. */
+/** Photo, then two lines (the sale's name and New; its description), then Open ↗ / Read. */
 function saleCell(r: Row, now: Date): HTMLTableCellElement {
   const td = el("td", "sale");
   const wrap = el("div", "sale-wrap");
@@ -384,7 +403,7 @@ function saleCell(r: Row, now: Date): HTMLTableCellElement {
   box.append(title);
   const { detail } = saleLines(r.title, r.description);
   if (detail) box.append(el("div", "desc", detail));
-  wrap.append(box);
+  wrap.append(box, saleActions(r));
   // The full text, and when it was first seen (the Seen column until 2026-10-04).
   td.title = [r.title, r.description && r.description !== r.title ? r.description : "", `First seen ${ago(r.firstSeenAt, now)}`]
     .filter(Boolean)
@@ -459,7 +478,7 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   if (!r.summary) {
     lotsTd.append(el("span", "muted", "–"));
     youTd.append(readState(r.id) ? el("span", "muted small", "Reading…") : el("span", "muted", "–"));
-    lotsTd.title = youTd.title = "Not read yet: click the sale's name to read its lots and bids";
+    lotsTd.title = youTd.title = "Not read yet: click Read to read its lots and bids";
     lotsTd.classList.add("unread");
     youTd.classList.add("unread");
     return [lotsTd, youTd];
@@ -514,7 +533,7 @@ function pendingLotsRow(r: Row, columns: number): HTMLTableRowElement {
     ? "Reading the post… its lots show up here when it's done."
     : r.lots
       ? "No lots found in this post (a lot is a comment with a photo from the seller)."
-      : "Not read yet: click the name to open and read it.";
+      : "Not read yet: click Read to read its lots and bids.";
   const toggle = endedToggle(r);
   if (toggle) td.append(" · ", toggle);
   tr.append(td);
@@ -552,8 +571,9 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       item.append(img);
     }
     const body = el("div", "lot-body");
-    const lotTitleEl = el("div", "lot-title", `${l.position}. ${l.title}`);
+    const lotTitleEl = el("div", "lot-title", `${l.position}. ${l.title} `);
     if (l.namedByClaude) lotTitleEl.title = "Named by Claude from the photo";
+    lotTitleEl.append(lotLink(r, l));
     body.append(lotTitleEl);
     if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
@@ -724,6 +744,16 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   return li;
 }
 
+/** "↗" to a lot's own comment on Facebook (the post, when the lot has no comment ID). */
+function lotLink(r: Pick<Row, "url">, l: Lot, text = "↗"): HTMLAnchorElement {
+  const a = el("a", "lot-link", text);
+  a.href = lotUrl(r, l);
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.title = l.commentId ? "Open this lot on Facebook" : "Open the post on Facebook (this lot has no link of its own)";
+  return a;
+}
+
 /** A lot you're leading, inside its sale. */
 function leadingLine(r: Row, l: Lot, photos: Photo[]): HTMLLIElement {
   const li = el("li", "lot-line lead");
@@ -773,7 +803,9 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
   const photos = lotPhotos(g.items.map((i) => i.lot));
   for (const item of g.items) {
     const li = el("li", "lot-line");
-    li.append(lotThumb(item.lot, photos), el("span", "line-name", item.label), item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
+    const name = el("span", "line-name", `${item.label} `);
+    name.append(lotLink(item.row, item.lot));
+    li.append(lotThumb(item.lot, photos), name, item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
     items.append(li);
   }
   card.append(items);
@@ -839,14 +871,14 @@ function renderMine(now: Date) {
     ...leading.map((s) => {
       const d = foldable(`lead:${s.row.id}`, "lead-card");
       const head = el("summary", "lead-head");
-      head.append(countdownEl(s.row, now), titleLine(s.row), el("span", "muted small", s.row.sellerName ?? ""));
+      head.append(countdownEl(s.row, now), titleLine(s.row), el("span", "muted small", s.row.sellerName ?? ""), saleActions(s.row));
       head.append(line("span", `${s.lots.length} lot${s.lots.length === 1 ? "" : "s"} · `, kr(s.kr)));
       if (s.awaitingFinalRead) {
         // The worker reads it just after the close while auto-scan is on (src/background/watch.ts).
         const flag = el("span", "flag", settings.autoScan ? "ended: final read coming" : "ended: open it to see the result");
         flag.title = settings.autoScan
           ? "It's read once more in the background just after it closes, and Leading becomes Won or Lost."
-          : "Auto-scan is off, so nothing reads it in the background: click the sale's name to read it now.";
+          : "Auto-scan is off, so nothing reads it in the background: click Read to read it now.";
         head.append(flag);
       }
       const toggle = endedToggle(s.row);
@@ -950,7 +982,7 @@ function render() {
   );
   main.setAttribute("aria-labelledby", `tab-${tab}`);
   const current = all.find((x) => x.id === tab)!;
-  main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook and read its bids · click a row to show its lots"));
+  main.append(el("p", "table-hint", "Open ↗ opens a sale on Facebook · Read reads its lots and bids now · click a row to show its lots"));
   if (current.count === 0) {
     main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
     return;

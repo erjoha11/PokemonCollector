@@ -76,8 +76,9 @@ from its last full read (Leading becomes Won and shows under To pay). **Undo end
 the seller in To pay) takes the mark back. The mark is yours only, stored in the extension.
 
 Lost lots and finished sales aren't listed there; they're in the table with their status. The
-**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots; clicking a sale's
-name opens the post on Facebook in a new tab and reads it quietly there.
+**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. Each
+sale has two buttons: **Open ↗** opens the post on Facebook (so does its name), **Read** reads its lots and bids now.
+Each lot has a **↗** to its own comment on Facebook (where you'd bid), in the table's lots and in To pay.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
 auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit) · **Today** ·
@@ -92,11 +93,10 @@ in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?
 sale with no readable end time has **Mark as ended** right there; others have it in the row's lots (click the row).
 **Ended** is for looking back: your sales first ("Yours"), then everyone else's. **Result** shows how
 it went ("9 of 12 sold · 6220 kr") and whether that's **final** (read after the end) or only **at last read**.
-Click a row for each lot: "Sold 1100 kr · buyer" or "Unsold", with your Won/Lost first. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
-("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
-small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
-saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and
-the overview row says **Just read**. Ctrl/Cmd-click just opens the post. The **My bids** tab lists the sales you're
+Click a row for each lot: "Sold 1100 kr · buyer" or "Unsold", with your Won/Lost first. Only one thing talks to Facebook at a time: if a scan or another read is running, your **Read** waits
+("Queued") and starts as soon as it's done, ahead of the automatic re-reads. It reads the post (comments,
+replies, bids) in a background tab that closes itself; the button says **Reading…** and the row updates
+when it's done. The **My bids** tab lists the sales you're
 bidding or claiming in.
 
 **Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the

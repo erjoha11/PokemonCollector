@@ -338,3 +338,14 @@ tr.subhead td { background: var(--bg); color: var(--muted); font-size: 11px; fon
 #groups > table { margin-top: 6px; }
 td.lots { overflow: hidden; }
 td.lots > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Open ↗ / Read on each sale (2026-10-04) and links to lots */
+.sale-actions { display: flex; gap: 4px; flex: none; align-items: center; }
+.act-btn { font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.act-btn:hover:not(:disabled) { border-color: var(--lead); color: var(--lead); }
+a.act-btn { color: var(--lead); }
+.act-btn.busy, .act-btn:disabled { color: var(--muted); cursor: default; }
+.lead-head .sale-actions { margin-left: auto; }
+.lot-link { color: var(--lead); text-decoration: none; font-weight: 600; }
+.lot-link:hover { text-decoration: underline; }
+@media (max-width: 720px) { .sale-wrap { flex-wrap: wrap; } }

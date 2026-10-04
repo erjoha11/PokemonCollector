@@ -77,9 +77,12 @@ export async function enqueueReads(jobs: ReadJob[]): Promise<void> {
   if (added > 0) await kickReader();
 }
 
-/** A post you clicked in the overview: opened in a normal tab and read quietly there (queued). */
-export function openAndReadVisible(url: string, postId: string): Promise<void> {
-  return enqueueReads([{ postId, url, reason: "click", visible: true }]);
+/**
+ * A post you asked to read (the overview's Read button): ahead of the automatic re-reads and
+ * without their pause. In a background tab that closes itself, or `visible` in a tab you see.
+ */
+export function readNow(url: string, postId: string, visible = false): Promise<void> {
+  return enqueueReads([{ postId, url, reason: "click", visible }]);
 }
 
 async function later(ms: number) {
@@ -149,6 +152,13 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
   const state = await getReaderState();
   if (!state.current || state.current.tabId !== tabId) return;
   const job = state.current;
+  // Done first, then close the tab: closing it fires tabs.onRemoved, which would otherwise find
+  // this read still current and record it as "its tab was closed".
+  const next = await setReaderState({
+    current: null,
+    lastAt: new Date().toISOString(),
+    lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}`,
+  });
   if (job.visible) {
     // Your tab: leave it open; a ✓ (or !) on the toolbar icon there for a little while.
     await setTabBadge(tabId, ok ? "✓" : "!", ok ? "#1a7f37" : "#B42318");
@@ -157,11 +167,6 @@ export async function finishRead(tabId: number, ok: boolean, outcome: string): P
     await chrome.tabs.remove(tabId).catch(() => {});
   }
   await facebookSlot.release("reader", tabId);
-  const next = await setReaderState({
-    current: null,
-    lastAt: new Date().toISOString(),
-    lastOutcome: `${ok ? "Read" : "Couldn't read"}: ${outcome}`,
-  });
   if (next.queue.length === 0) return;
   // Your next click starts right away; automatic re-reads after the pause.
   if (next.queue[0].reason === "click") void kickReader();
