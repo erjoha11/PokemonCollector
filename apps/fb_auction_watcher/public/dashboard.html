@@ -32,6 +32,10 @@
         <h3 id="topay-title">To pay <span id="topay-sum" class="muted small"></span>
           <label id="show-done-label" class="muted small show-done"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label></h3>
         <div id="topay-list"></div>
+        <div class="send-wins">
+          <button id="send-wins" type="button" title="Sends what you've won (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory. Nothing else leaves this computer.">Send wins to inventory</button>
+          <span id="send-wins-status" class="muted small" role="status"></span>
+        </div>
       </section>
     </section>
     <div class="counters">
@@ -79,6 +83,18 @@
       <div class="setting">
         <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
         <input id="my-name" type="text" autocomplete="off">
+      </div>
+      <div class="setting">
+        <label>Send wins to tcg_inventory</label>
+        <div class="muted small">"Send wins to inventory" under To pay sends your own wins (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory, where they wait to be registered as orders. Nothing else is sent: no post reads, other people's names or comments.</div>
+        <label for="inbox-url" class="sub-label">Address</label>
+        <input id="inbox-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://your-app.vercel.app">
+        <label for="inbox-token" class="sub-label">Inbox token (INBOX_TOKEN on the server)</label>
+        <input id="inbox-token" type="password" autocomplete="off" spellcheck="false">
+        <div class="clear-data">
+          <button type="button" id="inbox-save">Save</button>
+          <span id="inbox-save-status" class="muted small" role="status"></span>
+        </div>
       </div>
       <div class="setting">
         <label>Stored data</label>

@@ -26,7 +26,9 @@ of what ends when, and where I'm leading or have been outbid.
 - One table of every sale in the group, grouped and sorted by end time, with a live countdown.
 - Lots I have bid on are highlighted (Leading / Outbid).
 - Open an auction and see its lots and bids in a clean overlay instead of the comment thread.
-- Chrome on PC/Mac only. No mobile, no server, no webapp.
+- Chrome on PC/Mac only. No mobile, no server, no webapp. One exception (2026-10-04, #309): it
+  may send **my own wins, nothing else**, to my own tcg_inventory (see "Sending wins to
+  tcg_inventory").
 
 ## Domain
 
@@ -133,7 +135,9 @@ below is kept for reference.
 `parseStatus`, `parseError`
 
 **settings** (as built, `src/shared/settings.ts`): `autoScan` (the off switch, default off),
-`myName` (default "Erik Johansen"), `useClaude` (default on). The group is the pinned feed tab;
+`myName` (default "Erik Johansen"), `useClaude` (default on), `notify` (default on), `inboxUrl`
+and `inboxToken` (tcg_inventory's address and its `INBOX_TOKEN`, empty until set up; see
+"Sending wins to tcg_inventory"). The group is the pinned feed tab;
 the interval is fixed at 10–15 min ±20 %. Originally planned: `groupUrl`, `scanIntervalMin`,
 `backfillDays`, `captureEnabled`, `apiKey` (no API key is used).
 
@@ -157,6 +161,87 @@ names and replies), so it's kept only while useful, by a daily cleanup in the se
 - "Clear stored data" in the overview's Settings empties the store (posts, reads, answers, meta)
   after a confirm step; settings in `chrome.storage.local` stay. The last cleanup's result is
   shown next to it (`cleanupState` in `chrome.storage.local`).
+
+## Sending wins to tcg_inventory
+
+Decided 2026-10-04 (#309): what I win should reach `apps/tcg_inventory` and become a normal
+purchase order there, instead of being re-typed from To pay. The extension is the **producer**
+of this contract, so it's defined here; tcg_inventory's reader is `won_inbox.py` (README
+"Facebook wins inbox").
+
+- **What leaves the browser:** only my own wins: one item per won lot, with the seller, sale
+  type, end date, links, the lot's label and price, the seller's quoted shipping/payment text,
+  and my Paid/Received marks. **Never** raw captures (post reads), other bidders' or claimers'
+  names, comments, or photos.
+- **How:** the overview's **Send wins to inventory** (under To pay, by hand for now) asks the
+  service worker (`src/background/inbox.ts`) to POST the payload to `<inboxUrl>/inbox/fb-wins`
+  with `Authorization: Bearer <inboxToken>` (tcg_inventory's `INBOX_TOKEN`), no cookies, no
+  redirects followed, 30 s timeout. The result (when, ok/error, how many, what the server said)
+  is kept as `inboxState` in `chrome.storage.local` and shown next to the button. Nothing here
+  talks to Facebook, so the slot and pacing rules don't apply; nothing is clicked.
+- **Never the database directly:** no Supabase client, no Data API (prod has it off). tcg_inventory
+  stages the items in its own `won_items` table and only the user turns them into orders.
+- **Permission:** `optional_host_permissions` (`https://*/*`, `http://localhost/*`,
+  `http://127.0.0.1/*`), so the extension holds no extra host access until Settings → "Send wins
+  to tcg_inventory" → Save asks Chrome for that one origin (https, or http on localhost for a local
+  `python app.py`). A service-worker fetch to an origin with host permission isn't subject to CORS.
+- **Which lots:** exactly To pay's (`wonBySeller`): auction lots once a complete read after the
+  end confirms the win, claim lots you claimed first. All of them on every send; tcg_inventory
+  upserts, so re-sending is safe and a price that was unknown is filled in later. Retention deletes
+  a sale's read 30 days after it ends, so a win must be sent within that window (once sent, the
+  inbox keeps it).
+
+### Contract, version 1
+
+Built by the pure `buildWonPayload(rows, wonState, sentAt)` (`src/inbox/payload.ts`):
+
+```json
+{
+  "format": "fbaw-won",
+  "version": 1,
+  "sent_at": "2026-10-04T20:00:00.000Z",
+  "items": [
+    {
+      "external_ref": "fbaw:<postId>:<commentId>",
+      "seller": "Selger Testesen",
+      "sale_type": "auction",
+      "ended_on": "2026-10-04",
+      "post_url": "https://www.facebook.com/groups/<g>/posts/<postId>/",
+      "lot_url": "https://www.facebook.com/groups/<g>/posts/<postId>/?comment_id=<commentId>",
+      "label": "1. Gengar 151 reverse holo",
+      "price": 50,
+      "shipping_text": "50kr med sporing",
+      "payment_text": "Vipps eller bank",
+      "paid_at": "2026-10-04T21:00:00.000Z",
+      "received_at": null
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `external_ref` | The item's identity, stable across sends: `fbaw:<postId>:<commentId>`, or `fbaw:<postId>:pos<n>` (the lot's position) when the lot has no comment ID |
+| `seller` | The seller's name, or null |
+| `sale_type` | `auction`, `claim` or `fixed` |
+| `ended_on` | The sale's end date in Europe/Oslo (`YYYY-MM-DD`): its end time, or when I marked it ended if that came first; null when it has neither |
+| `post_url` / `lot_url` | The sale post; the lot's comment (the post when it has no comment ID) |
+| `label` | "`<position>. <lot title>`"; for a claim lot, the cards I got (or named) |
+| `price` | What I pay in kr: the winning bid, or the claimed cards' prices (Claude's reading of the photo, else the lot text's price); **null** when not known yet, never 0 |
+| `shipping_text` / `payment_text` | The seller's own terms from the post ("Sender med post …", "Betalingsalternativ: …"), as written, or null |
+| `paid_at` / `received_at` | My Paid / Received marks (ISO), or null |
+
+- **Claim lots are always one lot-level item**, even when Claude priced each card: per-card refs
+  would change once the photo is read and leave duplicates behind. A multi-card lot is linked to
+  several cards in tcg_inventory.
+- **Versioning:** `version` is the major version. Adding an optional field is compatible
+  (tcg_inventory ignores unknown fields); renaming, removing or changing the meaning of one is a
+  new major version, and tcg_inventory refuses a version it doesn't know with a readable error.
+- **Guard:** `tests/won-inbox.test.ts` builds the payload from invented posts and writes it to
+  `tests/fixtures/won-inbox.v1.json` at the repo root (a Vitest file snapshot: rewritten by a local
+  `npm test`, a mismatch fails in CI); the root `tests/test_cross_app_won_inbox.py` parses it with
+  tcg_inventory and checks it carries exactly these fields. The fixture is anonymized; never
+  build it from `samples/`.
 
 ## Statuses
 
@@ -188,7 +273,8 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   to the lot's comment with the lowest bid that counts, the extension never bids), **Leading** (one
   folded line per sale, what it costs if it holds) and **To pay** (one folded line per seller, with
   Paid / Received). Lost and ended lots live in the table. Rules: `needsYou`, `leadingBySale`,
-  `wonBySeller` in `model.ts`.
+  `wonBySeller` in `model.ts`. Under To pay: **Send wins to inventory** and the last send's
+  result (2026-10-04, #309; see "Sending wins to tcg_inventory").
 - **Mark as ended** (2026-10-04): you can mark a sale as ended yourself (an end time nobody
   could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as

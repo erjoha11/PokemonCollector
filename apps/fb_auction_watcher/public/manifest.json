@@ -15,6 +15,11 @@
   "host_permissions": [
     "https://www.facebook.com/*"
   ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "action": {
     "default_title": "FB Auction Watcher",
     "default_popup": "popup.html"

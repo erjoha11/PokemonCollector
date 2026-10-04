@@ -10,9 +10,13 @@ export type Settings = {
   useClaude: boolean;
   /** Desktop notifications: outbid, ending in 10 min, won/lost (src/background/notify.ts). */
   notify: boolean;
+  /** Your tcg_inventory's address (https://…, or http://localhost for local dev), for "Send wins to inventory" (#309). Empty = not set up. */
+  inboxUrl: string;
+  /** The INBOX_TOKEN set on that tcg_inventory, sent as a Bearer token. */
+  inboxToken: string;
 };
 
-export const DEFAULT_SETTINGS: Settings = { autoScan: false, myName: "Erik Johansen", useClaude: true, notify: true };
+export const DEFAULT_SETTINGS: Settings = { autoScan: false, myName: "Erik Johansen", useClaude: true, notify: true, inboxUrl: "", inboxToken: "" };
 
 export type AutoScanState = {
   /** When the next automatic scan is due (ISO), or null when auto-scan is off. */
@@ -41,6 +45,10 @@ export const DEFAULT_CLAUDE_STATE: ClaudeState = { lastAt: null, lastOutcome: nu
 export type CleanupState = { lastAt: string | null; lastOutcome: string | null };
 export const DEFAULT_CLEANUP_STATE: CleanupState = { lastAt: null, lastOutcome: null };
 
+/** The last "Send wins to inventory" (src/background/inbox.ts): when, whether it worked, how many wins, and what came back. */
+export type InboxState = { lastAt: string | null; ok: boolean | null; count: number | null; outcome: string | null };
+export const DEFAULT_INBOX_STATE: InboxState = { lastAt: null, ok: null, count: null, outcome: null };
+
 async function read<T extends object>(key: string, defaults: T): Promise<T> {
   const stored = await chrome.storage.local.get(key);
   return { ...defaults, ...(stored[key] as Partial<T> | undefined) };
@@ -59,6 +67,25 @@ export const getClaudeState = () => read("claudeState", DEFAULT_CLAUDE_STATE);
 export const updateClaudeState = (change: Partial<ClaudeState>) => patch("claudeState", DEFAULT_CLAUDE_STATE, change);
 export const getCleanupState = () => read("cleanupState", DEFAULT_CLEANUP_STATE);
 export const updateCleanupState = (change: Partial<CleanupState>) => patch("cleanupState", DEFAULT_CLEANUP_STATE, change);
+export const getInboxState = () => read("inboxState", DEFAULT_INBOX_STATE);
+export const setInboxState = (state: InboxState) => chrome.storage.local.set({ inboxState: state });
+
+/**
+ * Checks a tcg_inventory address and returns its origin ("https://host[:port]"), or null.
+ * https only, except http on localhost / 127.0.0.1 for a local `python app.py`.
+ */
+export function inboxOrigin(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) return null;
+  if (url.username || url.password) return null;
+  return url.origin;
+}
 
 /** Your own marks on what you won, per sale (post ID): when you paid, and when it arrived. */
 export type WonMark = { paidAt: string | null; receivedAt: string | null };

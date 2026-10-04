@@ -423,3 +423,26 @@ def test_init_db_chain_runs_rls_step_after_create_all(monkeypatch):
     db_module.init_db()
 
     assert calls == ["create_all", "rls"]
+
+
+def test_migration_from_v12_creates_won_items_with_rls(monkeypatch):
+    """#309: an already-migrated (v12) database gets the won_items table on
+    the next init_db(), and the RLS step covers it on Postgres."""
+    from sqlalchemy import inspect
+
+    engine = _fresh_engine()
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", sessionmaker(bind=engine))
+    db_module.init_db()
+    with engine.begin() as conn:
+        conn.execute(text("DROP TABLE won_items"))
+    db_module._set_schema_version(12)
+
+    db_module.init_db()
+
+    assert inspect(engine).has_table("won_items")
+    assert db_module._get_schema_version() == 13
+    fake = _FakePostgresEngine()
+    monkeypatch.setattr(db_module, "engine", fake)
+    db_module._enable_row_level_security()
+    assert 'ALTER TABLE public."won_items" ENABLE ROW LEVEL SECURITY' in fake.statements

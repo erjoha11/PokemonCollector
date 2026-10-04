@@ -1985,3 +1985,13 @@ html.card-modal-open { overflow: hidden; }
 .missing-card-delete form { display: flex; flex-direction: column; align-items: flex-start; gap: 0.4rem; margin-top: 0.4rem; max-width: 22rem; }
 .missing-card-delete label { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.85rem; }
 .card-delete-missing { margin: 0.75rem 0; }
+
+/* "Facebook wins to register" on the Purchased tab (#309): one block per
+   won sale, its lots underneath with Ignore. */
+.fb-wins-list, .fb-win-items { list-style: none; margin: 0; padding: 0; }
+.fb-win-sale { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 0.6rem 0.8rem; margin-bottom: 0.6rem; }
+.fb-win-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1rem; }
+.fb-win-terms { font-size: 0.85rem; margin-top: 0.25rem; overflow-wrap: anywhere; }
+.fb-win-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.3rem 0; border-top: 1px solid var(--border); margin-top: 0.3rem; }
+.fb-win-item > a { flex: 1 1 16rem; overflow-wrap: anywhere; }
+.fb-win-item form { margin: 0; }

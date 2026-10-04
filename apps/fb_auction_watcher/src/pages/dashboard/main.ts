@@ -1,14 +1,16 @@
 import { fullSizePhoto, type Lot } from "../../domain/bids";
 import type { PostCapture } from "../../shared/capture";
-import { isStoreUpdatedMessage, MSG_QUEUE_READ, type QueueReadMessage } from "../../shared/messages";
+import { isStoreUpdatedMessage, MSG_QUEUE_READ, MSG_SEND_WINS, type QueueReadMessage } from "../../shared/messages";
 import type { ReaderState } from "../../shared/reader";
 import {
   getAutoScanState,
   getClaudeState,
   getCleanupState,
   getEndedMarks,
+  getInboxState,
   getSettings,
   getWonState,
+  inboxOrigin,
   markEnded,
   markWon,
   updateSettings,
@@ -16,6 +18,7 @@ import {
   type ClaudeState,
   type CleanupState,
   type EndedMarks,
+  type InboxState,
   type Settings,
   type WonState,
 } from "../../shared/settings";
@@ -130,6 +133,8 @@ let claude: ClaudeState;
 let cleanup: CleanupState;
 let wonState: WonState = {};
 let endedMarks: EndedMarks = {};
+let inbox: InboxState = { lastAt: null, ok: null, count: null, outcome: null };
+let sendingWins = false;
 let showDone = local.get("fbaw-show-done") === "1";
 let reader: ReaderState = { queue: [], current: null, lastAt: null, lastOutcome: null };
 const expanded = new Set<string>();
@@ -146,13 +151,14 @@ function rebuild() {
 
 /** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude, cleanup, wonState, endedMarks] = await Promise.all([
+  [settings, autoScan, claude, cleanup, wonState, endedMarks, inbox] = await Promise.all([
     getSettings(),
     getAutoScanState(),
     getClaudeState(),
     getCleanupState(),
     getWonState(),
     getEndedMarks(),
+    getInboxState(),
   ]);
   reader = { ...reader, ...((await chrome.storage.local.get("readerState")).readerState as Partial<ReaderState> | undefined) };
   for (const id of justClicked) if (reader.current?.postId === id || reader.queue.some((j) => j.postId === id)) justClicked.delete(id);
@@ -901,6 +907,19 @@ function renderMine(now: Date) {
   $("#topay-list").replaceChildren(...(showDone ? groups : open).map((g) => toPayCard(g, now)));
   $("#count-won").textContent = String(groups.reduce((n, g) => n + g.items.length, 0));
   $("#count-needs").textContent = String(needs.length);
+  renderSendWins(now);
+}
+
+/** "Send wins to inventory" (#309): the button and the last send's result. */
+function renderSendWins(now: Date) {
+  $<HTMLButtonElement>("#send-wins").disabled = sendingWins;
+  const status = $<HTMLElement>("#send-wins-status");
+  status.classList.toggle("error", inbox.ok === false && !sendingWins);
+  if (sendingWins) status.textContent = "Sending…";
+  else if (inbox.lastAt && inbox.outcome) {
+    const what = inbox.count ? `${inbox.count} win${inbox.count === 1 ? "" : "s"} · ` : "";
+    status.textContent = `${inbox.ok ? "Sent" : "Failed"} ${ago(inbox.lastAt, now)}: ${what}${inbox.outcome}`;
+  } else status.textContent = inboxOrigin(settings.inboxUrl) ? "Not sent yet." : "Set up the address and token in Settings.";
 }
 
 function renderSettings(now: Date) {
@@ -933,6 +952,13 @@ function renderSettings(now: Date) {
 
   const name = $<HTMLInputElement>("#my-name");
   if (document.activeElement !== name) name.value = settings.myName;
+
+  // Only fill these when nobody is typing in the box, so an edit in progress isn't overwritten.
+  const inboxBox = $<HTMLElement>("#inbox-url").closest(".setting");
+  if (!inboxBox?.contains(document.activeElement)) {
+    $<HTMLInputElement>("#inbox-url").value = settings.inboxUrl;
+    $<HTMLInputElement>("#inbox-token").value = settings.inboxToken;
+  }
 
   $("#cleanup-status").textContent =
     cleanup.lastAt && cleanup.lastOutcome ? `Last cleanup ${ago(cleanup.lastAt, now)}: ${cleanup.lastOutcome}` : "No cleanup has run yet.";
@@ -1097,6 +1123,49 @@ $<HTMLInputElement>("#my-name").addEventListener("change", (e) => {
   const name = (e.target as HTMLInputElement).value.trim();
   if (name) void updateSettings({ myName: name });
 });
+// tcg_inventory's address and token (#309). Saving asks Chrome for permission to reach that
+// one address (an optional host permission, so the extension holds none until you set it up);
+// the request has to come straight from the click, before anything is awaited.
+$<HTMLButtonElement>("#inbox-save").addEventListener("click", () => {
+  const status = $<HTMLElement>("#inbox-save-status");
+  const raw = $<HTMLInputElement>("#inbox-url").value.trim();
+  const token = $<HTMLInputElement>("#inbox-token").value.trim();
+  if (!raw) {
+    void updateSettings({ inboxUrl: "", inboxToken: token }).then(() => (status.textContent = "Saved (no address: sending is off)."));
+    return;
+  }
+  const origin = inboxOrigin(raw);
+  if (!origin) {
+    status.textContent = "Use an https:// address (or http://localhost for a local tcg_inventory).";
+    return;
+  }
+  void chrome.permissions.request({ origins: [`${origin}/*`] }).then(async (granted) => {
+    if (!granted) {
+      status.textContent = `Not saved: Chrome's permission to reach ${origin} wasn't granted.`;
+      return;
+    }
+    await updateSettings({ inboxUrl: origin, inboxToken: token });
+    status.textContent = token ? `Saved: ${origin}` : `Saved: ${origin} (no token yet)`;
+  }, (err: unknown) => {
+    status.textContent = `Not saved: ${err instanceof Error ? err.message : String(err)}`;
+  });
+});
+$<HTMLButtonElement>("#send-wins").addEventListener("click", () => {
+  sendingWins = true;
+  renderSendWins(new Date());
+  chrome.runtime
+    .sendMessage({ type: MSG_SEND_WINS })
+    .then((state: InboxState | undefined) => {
+      if (state) inbox = state;
+    })
+    .catch((err: unknown) => {
+      inbox = { lastAt: new Date().toISOString(), ok: false, count: null, outcome: err instanceof Error ? err.message : String(err) };
+    })
+    .finally(() => {
+      sendingWins = false;
+      renderSendWins(new Date());
+    });
+});
 // "Clear stored data" (review M6): asks first, inline, then empties the store (posts, post
 // reads, Claude's answers, meta) and shows the empty overview. Settings are in chrome.storage
 // and stay. A scan or read still running will store what it finds after this, as usual.
@@ -1155,7 +1224,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
       rebuild();
       render();
     });
-  } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState"].some((k) => k in changes)) {
+  } else if (["autoScanState", "claudeState", "readerState", "cleanupState", "wonState", "inboxState"].some((k) => k in changes)) {
     void loadStatus().then(render);
   }
 });

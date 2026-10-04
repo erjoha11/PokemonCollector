@@ -778,3 +778,51 @@ class PokemonAlias(Base):
 
     name: Mapped[str] = mapped_column(String, primary_key=True)
     canonical_name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+
+class WonItem(Base):
+    """One lot won on Facebook, sent by `fb_auction_watcher` to
+    `POST /inbox/fb-wins` (issue #309): a staging row waiting to be
+    registered as a purchase, never a transaction or a card itself.
+
+    Keyed by `external_ref` (`fbaw:<postId>:<commentId>`, or
+    `fbaw:<postId>:pos<n>` for a lot without a comment ID). A re-send
+    refreshes a `pending` row (e.g. a price that was unknown becomes known)
+    and never touches a `registered` or `ignored` one -- see won_inbox.py.
+    The contract is defined on the producer side, in
+    `apps/fb_auction_watcher/docs/spec.md` "Sending wins to tcg_inventory".
+
+    Totals per sale are computed from the items, never stored.
+    `purchase_id` is the Order ID the item gets registered under (the link
+    flow, a later slice of #309); a plain label like
+    `Transaction.purchase_id`, so it can point at an order that was later
+    deleted or split.
+    """
+
+    __tablename__ = "won_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    external_ref: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    # Which producer sent it: "fbaw" (fb_auction_watcher) for now.
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    seller: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "auction" | "claim" | "fixed"
+    sale_type: Mapped[str] = mapped_column(String, nullable=False)
+    # The sale's end date in Europe/Oslo; NULL when it has none (fixed price).
+    ended_on: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    post_url: Mapped[str] = mapped_column(String, nullable=False)
+    lot_url: Mapped[str] = mapped_column(String, nullable=False)
+    label: Mapped[str] = mapped_column(String, nullable=False)
+    # What the lot costs in kr, or NULL when it isn't known yet.
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The seller's own shipping / payment terms, as written in the post.
+    shipping_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payment_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The user's own Paid / Received marks in the extension.
+    paid_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    received_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+    # "pending" | "registered" | "ignored"
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
+    purchase_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
