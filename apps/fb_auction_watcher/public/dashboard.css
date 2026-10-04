@@ -112,8 +112,13 @@ tr.lots-row > td { background: var(--bg); }
 .lot-img { width: 56px; height: 76px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
 .lot-title { font-weight: 600; }
 .lot .status { margin-top: 2px; }
-.settings { margin: 4px 0 8px; }
-.settings summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.settings-button { margin-left: auto; font: inherit; font-size: 13px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.settings-button:hover { border-color: var(--lead); color: var(--lead); }
+#settings { width: min(640px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); padding: 16px; }
+#settings::backdrop { background: rgb(0 0 0 / .4); }
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-head h2 { margin: 0; font-size: 18px; }
+.settings-close { font-size: 22px; line-height: 1; background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
 .setting { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
 .setting label { font-weight: 600; }
 .setting input[type="text"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }

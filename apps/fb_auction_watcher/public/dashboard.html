@@ -11,6 +11,7 @@
     <div class="top">
       <h1>Auction overview</h1>
       <span id="last-read" class="muted"></span>
+      <button id="open-settings" type="button" class="settings-button" aria-haspopup="dialog" aria-controls="settings">⚙ Settings</button>
     </div>
     <section id="my-auctions" class="mine-panel" aria-labelledby="mine-title">
       <div class="mine-head">
@@ -50,8 +51,13 @@
       </div>
       <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
     </div>
-    <details class="settings">
-      <summary>Settings</summary>
+  </header>
+  <main id="groups"></main>
+  <dialog id="settings" class="settings" aria-labelledby="settings-title">
+    <div class="settings-head">
+      <h2 id="settings-title">Settings</h2>
+      <button type="button" class="settings-close" aria-label="Close">×</button>
+    </div>
       <div class="setting">
         <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
         <div id="auto-scan-status" class="muted small"></div>
@@ -84,9 +90,7 @@
           <span id="clear-done" class="muted small" role="status"></span>
         </div>
       </div>
-    </details>
-  </header>
-  <main id="groups"></main>
+  </dialog>
   <dialog id="photo" aria-label="Photo">
     <button type="button" class="photo-close" aria-label="Close">×</button>
     <button type="button" class="photo-nav prev" data-step="prev" aria-label="Previous lot">‹</button>
