@@ -32,6 +32,7 @@ import {
   lotStatus,
   lotUrl,
   needsYou,
+  saleLines,
   wonBySeller,
   wonTotal,
   type LotStatus,
@@ -88,7 +89,7 @@ const local = {
  * What you've folded away (table groups "group:<id>", sale cards "sale:<post id>", Won sellers
  * "won:<seller>"), remembered in this browser. Keys in `foldedByDefault` start folded.
  */
-const foldedByDefault = new Set(["group:ended"]);
+const foldedByDefault = new Set(["group:ended", "group:fixed"]);
 const folds: Record<string, boolean> = (() => {
   try {
     return JSON.parse(local.get("fbaw-folds") ?? "{}") as Record<string, boolean>;
@@ -179,14 +180,18 @@ function matches(r: Row): boolean {
   return [r.title, r.sellerName ?? "", r.text, r.description ?? ""].some((s) => s.toLowerCase().includes(q));
 }
 
+/** The sale type, then its price terms: "Auction / Min 10 kr · +5", "Fixed price / 2000 kr". */
 function priceCell(r: Row): HTMLTableCellElement {
   const td = el("td", "price");
+  td.append(el("div", "type", TYPE_LABEL[r.type]));
+  const terms = el("div");
   if (r.type === "auction") {
-    td.append(...(r.minPrice !== null ? ["Min ", kr(r.minPrice)] : ["Min per lot"]));
-    if (r.increment !== null) td.append(` · +${r.increment}`);
+    terms.append(...(r.minPrice !== null ? ["Min ", kr(r.minPrice)] : ["Min per lot"]));
+    if (r.increment !== null) terms.append(` · +${r.increment}`);
   } else {
-    td.append(r.fixedPrice !== null ? kr(r.fixedPrice) : "Price per item");
+    terms.append(r.fixedPrice !== null ? kr(r.fixedPrice) : "Price per item");
   }
+  td.append(terms);
   return td;
 }
 
@@ -213,32 +218,49 @@ function endedToggle(r: Row, label = "Mark as ended"): HTMLButtonElement | null 
   return button;
 }
 
+/**
+ * Ends, in two lines: the countdown, then the end time and antisnipe. The seller's own words go in
+ * the tooltip, and take line 2 when the rules weren't sure or Claude read the time (decided
+ * 2026-10-04: the original text is shown in the row whenever there's reason to check it).
+ */
 function endsCell(r: Row, now: Date): HTMLTableCellElement {
   const td = el("td", "ends");
+  const orig = r.endsAtText ? `The seller's text: ${r.endsAtText}` : "";
   if (r.endedByYouAt) {
-    td.append(line("div", el("span", "countdown", "Ended"), el("span", "when", `marked by you ${ago(r.endedByYouAt, now)}`)));
-  } else if (r.endsAtMs !== null) {
+    td.append(el("div", "countdown", "Ended"), line("div", el("span", "when", `marked by you ${ago(r.endedByYouAt, now)} · `), endedToggle(r)!));
+    td.title = orig;
+    return td;
+  }
+  if (r.endsAtMs !== null) {
     const cd = el("div", "countdown", r.maybeEnded ? "Ended?" : countdown(r.endsAtMs, now));
     cd.dataset.ends = String(r.endsAtMs);
     if (!r.ended && r.endsAtMs - now.getTime() < 3_600_000) cd.classList.add("soon");
-    const when = el("span", "when", endLabel(r.endsAtMs, now) + (r.softCloseMinutes ? ` · +${r.softCloseMinutes}m` : ""));
-    if (r.softCloseMinutes) when.title = `Antisnipe: a late bid extends the end by ${r.softCloseMinutes} min`;
-    td.append(line("div", cd, when));
+    td.append(cd);
+    const when = endLabel(r.endsAtMs, now) + (r.softCloseMinutes ? ` · +${r.softCloseMinutes}m` : "");
+    if (r.endsViaClaude) td.append(el("div", "via one-line", `Claude read: ${r.endsAtText ?? when}`));
+    else if (!r.sure) td.append(el("div", "flag one-line", `? ${r.endsAtText ?? when}`));
+    else td.append(el("div", "when one-line", when));
+    td.title = [
+      `Ends ${when}`,
+      r.softCloseMinutes ? `Antisnipe: a late bid extends the end by ${r.softCloseMinutes} min` : "",
+      orig,
+      r.endsViaClaude ? "The rules couldn't read it; Claude did." : !r.sure ? "The rules weren't sure: check the seller's text." : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
   } else if (r.type === "fixed") {
     td.append(el("div", "when", "No end time"));
   } else {
-    td.append(el("div", "countdown unknown", "Unknown"));
+    // Unknown: say why, and let you end it by hand when it's over.
+    const head = line("div", el("span", "countdown unknown", "Unknown"));
+    if (!r.textComplete && !r.endsAtText) head.append(" ", el("span", "flag", "cut off"));
+    td.append(head);
+    const toggle = endedToggle(r);
+    if (toggle) td.append(line("div", toggle));
+    td.title = [orig || "No end time in the post's text that the rules or Claude could read.", !r.textComplete && !r.endsAtText ? "The post's text was cut off before an end time." : ""]
+      .filter(Boolean)
+      .join("\n");
   }
-  if (r.endsAtText) {
-    const orig = el("div", "orig", r.endsAtText);
-    orig.title = `The seller's original text: ${r.endsAtText}`;
-    td.append(orig);
-  }
-  if (r.endsViaClaude) td.append(el("div", "via", "End time read by Claude"));
-  else if (r.endsAt && !r.sure) td.append(el("div", "flag", "? check the original text"));
-  if (!r.textComplete && !r.endsAtText && r.type !== "fixed") td.append(el("div", "flag", "Text was cut off"));
-  const toggle = endedToggle(r);
-  if (toggle) td.append(el("div", undefined), toggle);
   return td;
 }
 
@@ -268,8 +290,11 @@ function makeExpandable(tr: HTMLTableRowElement, id: string) {
 }
 
 /** A sale's title: a click opens the post and reads it quietly; Ctrl/Cmd-click just opens it. */
+/** The sale's name without the template's type words ("AUKSJON/BUDRUNDE"); see `saleLines`. */
+const saleTitle = (r: Row) => saleLines(r.title, r.description).title;
+
 function titleLink(r: Row): HTMLAnchorElement {
-  const a = el("a", "title", r.title);
+  const a = el("a", "title", saleTitle(r));
   a.href = r.url;
   a.target = "_blank";
   a.rel = "noopener";
@@ -304,7 +329,8 @@ function titleLine(r: Row): HTMLDivElement {
   return line;
 }
 
-function saleCell(r: Row): HTMLTableCellElement {
+/** Photo, then two lines: the sale's name (and New / Reading…), and its description. */
+function saleCell(r: Row, now: Date): HTMLTableCellElement {
   const td = el("td", "sale");
   const wrap = el("div", "sale-wrap");
   td.append(wrap);
@@ -319,16 +345,22 @@ function saleCell(r: Row): HTMLTableCellElement {
     wrap.append(img);
   }
   const box = el("div", "sale-text");
-  box.append(titleLine(r));
-  if (r.description && r.description !== r.title) {
-    const desc = el("div", "desc", r.description);
-    desc.title = r.description;
-    box.append(desc);
-  }
-  const meta = el("div", "seller", r.sellerName ?? "Unknown seller");
-  if (r.isNew) meta.append(" ", el("span", "badge new", "New"));
-  box.append(meta);
+  const title = titleLine(r);
+  if (r.isNew) title.prepend(el("span", "badge new", "New"), " ");
+  box.append(title);
+  const { detail } = saleLines(r.title, r.description);
+  if (detail) box.append(el("div", "desc", detail));
   wrap.append(box);
+  // The full text, and when it was first seen (the Seen column until 2026-10-04).
+  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", `First seen ${ago(r.firstSeenAt, now)}`]
+    .filter(Boolean)
+    .join("\n");
+  return td;
+}
+
+function sellerCell(r: Row): HTMLTableCellElement {
+  const td = el("td", "seller-col", r.sellerName ?? "Unknown");
+  if (r.sellerName) td.title = r.sellerName;
   return td;
 }
 
@@ -392,11 +424,10 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   const youTd = el("td", "you");
   if (!r.summary) {
     lotsTd.append(el("span", "muted", "–"));
-    if (r.type === "auction" && !r.ended) {
-      const hint = el("span", "muted small", "Click the title to read bids");
-      if (readState(r.id)) hint.textContent = "Reading in the background…";
-      youTd.append(hint);
-    }
+    youTd.append(readState(r.id) ? el("span", "muted small", "Reading…") : el("span", "muted", "–"));
+    lotsTd.title = youTd.title = "Not read yet: click the sale's name to read its lots and bids";
+    lotsTd.classList.add("unread");
+    youTd.classList.add("unread");
     return [lotsTd, youTd];
   }
   const s = r.summary;
@@ -445,6 +476,8 @@ function pendingLotsRow(r: Row, columns: number): HTMLTableRowElement {
     : r.lots
       ? "No lots found in this post (a lot is a comment with a photo from the seller)."
       : "Not read yet: click the name to open and read it.";
+  const toggle = endedToggle(r);
+  if (toggle) td.append(" · ", toggle);
   tr.append(td);
   return tr;
 }
@@ -545,6 +578,8 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     list.append(item);
   }
   td.append(list);
+  const toggle = endedToggle(r);
+  if (toggle) td.append(line("div", toggle));
   tr.append(td);
   return tr;
 }
@@ -612,7 +647,7 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   li.append(lotThumb(l, photos));
   const name = el("span", "line-name", l.title);
   name.title = l.namedByClaude ? `${l.title} (named by Claude from the photo)` : l.title;
-  const sale = el("span", "line-sale", `${r.title} · ${r.sellerName ?? ""}`);
+  const sale = el("span", "line-sale", `${saleTitle(r)} · ${r.sellerName ?? ""}`);
   sale.title = sale.textContent ?? "";
   li.append(line("span", name, sale), countdownEl(r, now));
   if (status.key === "check") {
@@ -835,7 +870,8 @@ function render() {
     main.append(el("p", "empty", "No sales yet. Open the group's feed on Facebook and click the extension icon to scan it."));
     return;
   }
-  const headers = ["Ends", "Sale", "Type", "Price", "Lots", "You", "Seen"];
+  main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook and read its bids · click a row to show its lots"));
+  const headers = ["Ends", "Sale", "Seller", "Price", "Lots", "You"];
   for (const g of groupRows(visible, now)) {
     if (g.rows.length === 0) continue;
     const section = el("section", `group group-${g.id}`);
@@ -852,11 +888,8 @@ function render() {
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
-      tr.append(endsCell(r, now), saleCell(r), el("td", "type", TYPE_LABEL[r.type]), priceCell(r), ...statusCells(r, now));
+      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
-      const seen = el("td", "seen", ago(r.lastSeenAt, now));
-      seen.title = `First seen ${new Date(r.firstSeenAt).toLocaleString("en-GB")}`;
-      tr.append(seen);
       table.tBodies[0].append(tr);
       if (expanded.has(r.id)) table.tBodies[0].append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
     }
