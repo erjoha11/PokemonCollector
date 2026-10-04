@@ -7,8 +7,65 @@
 <div class="card mb-15">
   {# The Order ID is assigned when the cart is registered, not reserved
      when it opens (issue #228 b), so another tab can't take the same one. #}
-  <h2>{{ 'New sale' if type == 'sale' else 'New Order' }} <span class="muted">(Order ID assigned on Register)</span></h2>
-  <form method="post" action="/transactions/purchase" class="{{ 'cart-is-trade' if type == 'trade' }}{{ ' cart-is-ripped' if type == 'ripped' }}"
+  <h2>{{ 'New sale' if type == 'sale' else 'New Order' }}{% if imported %} from Facebook{% if imported.sale.seller %}: {{ imported.sale.seller }}{% endif %}{% endif %} <span class="muted">(Order ID assigned on Register)</span></h2>
+  {% if imported %}
+  {# "Open in cart" from Facebook wins to register (#309 slice 2). This
+     panel is deliberately outside the <form>: its checkboxes have no name
+     and are never submitted, so an unticked suggestion can't be registered
+     by mistake or knock card_id/price out of line. "Link selected" turns
+     the ticked cards into normal cart rows (carrying the item's ref, note
+     and price). The only thing here the form does submit is "Lot not
+     complete" (form="purchase-cart-form"), per item, not per row. #}
+  {% set sale = imported.sale %}
+  <section class="fb-import" data-imported-sale aria-labelledby="fb-import-title">
+    <h3 id="fb-import-title">Imported items
+      <span class="muted small">· {{ sale.items | length }} from <a href="{{ sale.post_url }}" target="_blank" rel="noopener">this Facebook post ↗</a>{% if sale.ended_on %}, ended {{ sale.ended_on.isoformat() }}{% endif %}</span>
+    </h3>
+    {% if sale.payment_text %}<p class="muted small fb-win-terms">Pay: {{ sale.payment_text }}</p>{% endif %}
+    {% if imported.registered_orders %}
+    <p class="muted small">Other items from this sale are already on order{{ 's' if imported.registered_orders | length > 1 }}
+      {% for pid in imported.registered_orders %}<a href="/orders/purchased?open_order={{ pid }}#order-{{ pid }}">#{{ pid }}</a>{{ ', ' if not loop.last }}{% endfor %}
+      — check this Total doesn't count them twice (or add these cards to that order with Edit order instead).</p>
+    {% endif %}
+    <p class="muted small">Tick the card each item is, then <strong>Link selected</strong>: it's added to the order below with the item's price (a lot's price is split evenly over its cards). Nothing is linked until you do.</p>
+    <ul class="fb-import-items">
+      {% for item in sale.items %}
+      <li class="fb-import-item" id="fb-import-item-{{ item.id }}" data-item-id="{{ item.id }}"
+          data-price="{{ item.price if item.price is not none else '' }}">
+        <div class="fb-import-head">
+          <a href="{{ item.lot_url }}" target="_blank" rel="noopener" title="Open this lot's comment on Facebook">{{ item.label }}</a>
+          <span class="num">{% if item.price is not none %}{{ item.price | kr }}{% else %}<span class="muted">price unknown</span>{% endif %}</span>
+          <span class="fb-import-status muted" data-item-status>Not linked</span>
+          {% if item.purchase_id is not none %}
+          {% if item.purchase_id in sale.missing_orders %}
+          <span class="tx-badge fb-cand-on-order" title="This lot was registered as not complete on order #{{ item.purchase_id }}, which no longer exists.">order #{{ item.purchase_id }} missing</span>
+          {% else %}
+          <span class="tx-badge fb-cand-new" title="Registered as not complete: some of its cards are on order #{{ item.purchase_id }}. Add the rest to that order with Edit order, then click Lot complete in the list.">lot not complete · on order #{{ item.purchase_id }}</span>
+          {% endif %}
+          {% endif %}
+        </div>
+        <div class="fb-import-cands">
+          {% with cands = candidates.get(item.id, []), searched = false %}{% include "partials/fb_win_candidates.html" %}{% endwith %}
+        </div>
+        <div class="fb-import-search">
+          <input type="search" name="q" placeholder="Not listed? Search…" autocomplete="off" aria-label="Search for the card “{{ item.label }}” is"
+                 hx-get="/orders/fb-wins/{{ item.id }}/search" hx-trigger="input changed delay:250ms, search"
+                 hx-target="#fb-import-search-{{ item.id }}">
+          <div id="fb-import-search-{{ item.id }}"></div>
+        </div>
+        <div class="fb-import-actions">
+          <button type="button" class="secondary" onclick="linkSelected(this.closest('.fb-import-item'))">Link selected</button>
+          <label class="fb-keep" hidden>
+            <input type="checkbox" name="keep_pending" value="{{ item.id }}" form="purchase-cart-form">
+            Lot not complete — keep it in the inbox
+          </label>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  <form id="purchase-cart-form" method="post" action="/transactions/purchase" class="{{ 'cart-is-trade' if type == 'trade' }}{{ ' cart-is-ripped' if type == 'ripped' }}"
         hx-post="/transactions/purchase" hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML"
         hx-indicator="#register-order-indicator"
         onsubmit="return confirmRegisterOrder(this)" oninput="updateCartAutoTotal(this)">
@@ -24,15 +81,23 @@
       </select>
       {% endif %}
       <input type="date" name="date" value="{{ today }}" required>
-      <input type="text" name="platform" placeholder="Platform (optional)">
+      <input type="text" name="platform" placeholder="Platform (optional)"{% if imported %} value="Facebook"{% endif %}>
       {# Left blank, Total shows the live card prices + Shipping sum as its
          placeholder (marked "auto", see updateCartAutoTotal) -- a
          placeholder is never submitted, so only a Total you actually type
-         is saved. Clearing the field goes back to the auto sum. #}
+         is saved. Clearing the field goes back to the auto sum.
+         From Facebook (#309) it's prefilled with the sale's known prices
+         (data-prefill-base): Shipping typed while it's untouched is added to
+         it (syncImportedTotal), so Remaining = Total − prices − shipping
+         stays the known price of whatever isn't linked. #}
       <input type="number" step="0.01" name="purchase_total" placeholder="Total (optional)"
+             {% if imported and imported.total is not none %}value="{{ imported.total }}" data-prefill-base="{{ imported.total }}"{% endif %}
              title="{{ 'The full amount you received for the sale.' if type == 'sale' else 'The full amount you paid for the order.' }} Leave blank to use the automatic sum of card prices + shipping (not saved); type a value to override it and track the difference as Remaining.">
       <input type="number" step="0.01" min="0" name="purchase_shipping" placeholder="Shipping (optional)"
              title="Shipping cost for the whole order — on a purchase what you paid, on a sale the shipping you paid as seller (comes off what the sale brought in).">
+      {% if imported and imported.sale.shipping_text %}
+      <span class="muted small fb-ship-terms" title="The seller's shipping terms, as written in the Facebook post">Seller: {{ imported.sale.shipping_text }}</span>
+      {% endif %}
       {# Order-level fees (issue #254): split across the cards by price
          into each row's fees (app.py _split_order_fees). Hidden for
          trade/ripped, which never count fees. #}
@@ -66,6 +131,18 @@
       <button type="button" class="secondary" onclick="distributeRemaining()">Distribute evenly across empty prices</button>
     </div>
 
+    {% if imported %}
+    {# Imported items are never dropped silently (#309): what isn't linked
+       is counted here (kept live by refreshImportedSummary), and Register
+       asks before leaving it in the inbox. Server-rendered first so it
+       reads right before any JS runs. #}
+    {% set sale = imported.sale %}
+    <div class="fb-import-summary" data-import-summary aria-live="polite">
+      <p data-import-unlinked><strong>{{ sale.items | length }} of {{ sale.items | length }} item{{ 's' if sale.items | length != 1 }} not linked ({{ sale.known_total | kr }}{% if sale.unknown_count %} + ?{% endif %})</strong> — they stay in the inbox.</p>
+      <p data-import-remaining class="muted" hidden></p>
+      <p data-import-warning class="tx-diff-flag"{% if not sale.unknown_count and imported.total is not none %} hidden{% endif %}>{% if sale.unknown_count %}{{ sale.unknown_count }} item{{ 's' if sale.unknown_count != 1 }} without a known price: the Total counts only known prices. Set it to what you actually paid.{% endif %}</p>
+    </div>
+    {% endif %}
     {# A rejected Register (422, issue #228) shows here -- static/form-errors.js. #}
     <p class="warnings" role="alert" hidden data-form-error></p>
     <button type="submit">Register</button>

@@ -1782,3 +1782,39 @@ run automatically through `init_db()` on the first start after deploy.
   has no cron of its own (the daily price refresh runs a small image pass,
   counted in its summary), so that card only fills in after a manual
   `/cron/image-backfill?secret=...` call.
+
+# Handoff notes — 2026-10-04 session (#309 slice 2: Facebook wins link flow, #312)
+
+## Code (in git, PR for #309 slice 2 / #312)
+
+"Open in cart" opens a won sale in the New Order cart, prefilled. The
+"Imported items" panel links lots to cards as normal cart rows (ref + note +
+price, index-aligned), and Register marks the linked items `registered`.
+Distribute's rounding is fixed with the same shared split
+(`static/money-split.js`). No schema change (still version 13).
+
+## Direct database changes
+
+None. No production DB read or write was made. The old "Venter" collection
+cleanup is still a separate, user-confirmed prod write.
+
+## Open items raised but intentionally not built
+
+- **"Order missing" only covers pending items.** A pending lot kept as "not
+  complete" whose order no longer exists shows "order #N missing". A
+  *registered* item whose order is later deleted doesn't come back into the
+  inbox. Reason: `won_items.purchase_id` is a plain label and isn't updated
+  when Edit order moves, merges or splits rows. Merging a seller's sales
+  (the settled workflow) would otherwise bring every merged sale back as
+  "order missing". To do it properly, Edit order's move/merge would need to
+  carry `won_items.purchase_id` along.
+- **Leftovers of a partly registered sale.** Items left unlinked stay
+  pending. Opening the sale again prefills a new order whose Total is
+  those items' known prices, while the first order's Total (prefilled with
+  the whole sale) already counted them as Remaining. The cart shows "Other
+  items from this sale are already on order #N, check this Total doesn't
+  count them twice" but doesn't prevent it. Adding the leftovers to the
+  existing order with Edit order and then clicking Ignore (or, for a lot,
+  "Lot complete") avoids the double count.
+- **`ux` follow-up** (UX_NOTES 2026-10-04) to review the panel with 10+
+  items from one seller is still open.

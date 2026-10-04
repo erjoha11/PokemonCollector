@@ -2,8 +2,9 @@
 {# "Facebook wins to register" (#309, slice 1): pending won_items sent by
    fb_auction_watcher, one entry per won sale (a sale becomes one order, so
    it's grouped by sale, not by seller; the seller is shown for context).
-   Read-only apart from Ignore. Registering a sale through the New Order cart
-   is a later slice. The section is always rendered (hidden when empty) so
+   "Open in cart" (slice 2) opens the sale in the New Order cart, prefilled,
+   to link its lots to cards and register; Ignore and Lot complete are the
+   only writes here. The section is always rendered (hidden when empty) so
    Ignore's hx-target exists. #}
 <section id="fb-wins" class="orders-section fb-wins"{% if not fb_wins %} hidden{% endif %}>
   {% if fb_wins %}
@@ -20,6 +21,11 @@
         <span>{{ sale.items | length }} item{{ 's' if sale.items | length != 1 }}</span>
         <span class="num">{{ sale.known_total | kr }}{% if sale.unknown_count %} <span title="{{ sale.unknown_count }} item{{ 's' if sale.unknown_count != 1 }} without a known price">+ ?</span>{% endif %}</span>
         <a href="{{ sale.post_url }}" target="_blank" rel="noopener">Facebook post ↗</a>
+        {# One order per sale. confirmDiscardCart only asks when the open
+           cart has real work in it (a prefilled, untouched one doesn't). #}
+        <button type="button" class="fb-win-open" hx-get="/orders/fb-wins/{{ sale.items[0].id }}/cart"
+                hx-target="#purchase-cart-container" hx-swap="innerHTML" hx-trigger="click[confirmDiscardCart()]"
+                title="Open this sale in the New Order cart, dated to its end, to link its lots to your cards and register it">Open in cart</button>
       </div>
       {% if sale.shipping_text or sale.payment_text %}
       <div class="muted small fb-win-terms">
@@ -33,6 +39,18 @@
         <li class="fb-win-item">
           <a href="{{ item.lot_url }}" target="_blank" rel="noopener" title="Open this lot's comment on Facebook">{{ item.label }}</a>
           <span class="num">{% if item.price is not none %}{{ item.price | kr }}{% else %}<span class="muted">price unknown</span>{% endif %}</span>
+          {% if item.purchase_id is not none %}
+          {% if item.purchase_id in sale.missing_orders %}
+          <span class="tx-badge fb-cand-on-order" title="This lot was registered as not complete on order #{{ item.purchase_id }}, and that order no longer exists. Open the sale in the cart to register it again, or Ignore it.">order #{{ item.purchase_id }} missing</span>
+          {% else %}
+          <span class="tx-badge fb-cand-new">lot not complete · <a href="/orders/purchased?open_order={{ item.purchase_id }}#order-{{ item.purchase_id }}">order #{{ item.purchase_id }}</a></span>
+          <form method="post" action="/orders/fb-wins/{{ item.id }}/complete"
+                hx-post="/orders/fb-wins/{{ item.id }}/complete" hx-target="#fb-wins" hx-swap="outerHTML"
+                hx-confirm="Mark “{{ item.label }}” complete? Add its other cards to order #{{ item.purchase_id }} with Edit order first; this only takes it off this list.">
+            <button type="submit" class="secondary" title="All of this lot's cards are on order #{{ item.purchase_id }} now">Lot complete</button>
+          </form>
+          {% endif %}
+          {% endif %}
           <form method="post" action="/orders/fb-wins/{{ item.id }}/ignore"
                 hx-post="/orders/fb-wins/{{ item.id }}/ignore" hx-target="#fb-wins" hx-swap="outerHTML"
                 hx-confirm="Ignore “{{ item.label }}”? It leaves this list for good; sending wins again won't bring it back.">

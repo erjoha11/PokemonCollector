@@ -70,22 +70,204 @@ function updateCartAutoTotal(form) {
   if (!isNaN(shipping)) sum += shipping;
   var hasInputs = form.querySelectorAll('#cart-body tr').length > 0 || !isNaN(shipping);
   totalInput.placeholder = hasInputs ? 'Total (auto ' + formatKr(sum) + ')' : 'Total (optional)';
+  refreshImportedSummary(form);
 }
 if (!window.__tcgOrdersCartInit) {
   document.body.addEventListener('htmx:afterSwap', function (e) {
     if (e.detail.target && e.detail.target.id === 'cart-body') {
       syncCartType(e.detail.target.closest('form'));
     }
+    // A cart just opened: "Open in cart" from Facebook wins (#309) arrives
+    // prefilled, so its summary needs a first pass, and it opens below the
+    // inbox list, so bring it into view.
+    if (e.detail.target && e.detail.target.id === 'purchase-cart-container') {
+      var form = document.getElementById('purchase-cart-form');
+      if (form) updateCartAutoTotal(form);
+      if (e.detail.target.querySelector('[data-imported-sale]')) {
+        e.detail.target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
   });
 }
 
-function addCardToCart(cardId) {
+// `extra` (optional) carries a Facebook wins link (#309): {won_item_id,
+// price}; the server adds the item's note to the row.
+function addCardToCart(cardId, extra) {
   var cartBody = document.getElementById('cart-body');
   if (!cartBody) {
     alert('Open a new order first (the button above), then add cards to it.');
     return Promise.resolve();
   }
-  return htmx.ajax('GET', '/transactions/purchase/add-row?card_id=' + cardId, { target: '#cart-body', swap: 'beforeend', indicator: '#cart-add-indicator' });
+  var url = '/transactions/purchase/add-row?card_id=' + encodeURIComponent(cardId);
+  if (extra) {
+    Object.keys(extra).forEach(function (key) {
+      if (extra[key] !== undefined && extra[key] !== null && extra[key] !== '') {
+        url += '&' + encodeURIComponent(key) + '=' + encodeURIComponent(extra[key]);
+      }
+    });
+  }
+  return htmx.ajax('GET', url, { target: '#cart-body', swap: 'beforeend', indicator: '#cart-add-indicator' });
+}
+
+// --- Facebook wins in the cart (#309 slice 2) ---------------------------
+// The "Imported items" panel (partials/purchase_cart.html) sits outside the
+// form. Which items are linked is never stored on the panel: it's read off
+// the cart rows' won_item_id inputs, so removing a row unlinks its item.
+
+function importedPanel(form) {
+  var card = form && form.closest('.card');
+  return card ? card.querySelector('[data-imported-sale]') : null;
+}
+
+function itemPrice(el) {
+  return el.dataset.price === '' ? NaN : parseFloat(el.dataset.price);
+}
+
+function linkedRowCount(form, itemId) {
+  return form.querySelectorAll('#cart-body input[name="won_item_id"][value="' + itemId + '"]').length;
+}
+
+function importedState(form) {
+  var panel = importedPanel(form);
+  if (!panel) return null;
+  var state = { items: 0, unlinked: 0, unlinkedKr: 0, unlinkedUnknown: 0, unpriced: 0 };
+  panel.querySelectorAll('.fb-import-item').forEach(function (el) {
+    var price = itemPrice(el);
+    state.items += 1;
+    if (isNaN(price)) state.unpriced += 1;
+    if (linkedRowCount(form, el.dataset.itemId) === 0) {
+      state.unlinked += 1;
+      if (isNaN(price)) state.unlinkedUnknown += 1;
+      else state.unlinkedKr += price;
+    }
+  });
+  return state;
+}
+
+function unlinkedText(state) {
+  return state.unlinked + ' of ' + state.items + ' item' + (state.items === 1 ? '' : 's') + ' not linked (' +
+    formatKr(state.unlinkedKr) + (state.unlinkedUnknown ? ' + ?' : '') + ')';
+}
+
+// Keeps each item's "Linked to N cards" / "Lot not complete" and the
+// summary above Register in step with the cart rows. Called from
+// updateCartAutoTotal, which runs on every input, row add and row remove.
+function refreshImportedSummary(form) {
+  var panel = importedPanel(form);
+  if (!panel) return;
+  panel.querySelectorAll('.fb-import-item').forEach(function (el) {
+    var n = linkedRowCount(form, el.dataset.itemId);
+    el.classList.toggle('is-linked', n > 0);
+    var status = el.querySelector('[data-item-status]');
+    if (status) status.textContent = n ? 'Linked to ' + n + ' card' + (n === 1 ? '' : 's') : 'Not linked';
+    var keep = el.querySelector('.fb-keep');
+    if (keep) {
+      keep.hidden = n === 0;
+      if (n === 0) keep.querySelector('input').checked = false;
+    }
+  });
+  var state = importedState(form);
+  var summary = form.querySelector('[data-import-summary]');
+  if (!summary) return;
+  var unlinked = summary.querySelector('[data-import-unlinked]');
+  unlinked.innerHTML = '';
+  var strong = document.createElement('strong');
+  if (state.unlinked) {
+    strong.textContent = unlinkedText(state);
+    unlinked.appendChild(strong);
+    unlinked.appendChild(document.createTextNode(' — they stay in the inbox.'));
+  } else {
+    strong.textContent = 'All ' + state.items + ' item' + (state.items === 1 ? '' : 's') + ' linked.';
+    unlinked.appendChild(strong);
+  }
+
+  // Remaining exactly as Order history computes it once registered:
+  // Total − card prices − shipping (trade/ripped prices aren't cash).
+  var totalInput = form.querySelector('input[name="purchase_total"]');
+  var total = parseFloat(totalInput.value);
+  var remaining = summary.querySelector('[data-import-remaining]');
+  if (isNaN(total)) {
+    remaining.hidden = true;
+  } else {
+    var type = cartType(form);
+    var sum = 0;
+    if (type !== 'trade' && type !== 'ripped') {
+      form.querySelectorAll('#cart-body input[name="price"]').forEach(function (el) {
+        var v = parseFloat(el.value);
+        if (!isNaN(v)) sum += v;
+      });
+    }
+    var shipping = parseFloat(form.querySelector('input[name="purchase_shipping"]').value);
+    var left = Math.round((total - sum - (isNaN(shipping) ? 0 : shipping)) * 100) / 100;
+    remaining.hidden = false;
+    remaining.textContent = 'Remaining ' + formatKr(left) +
+      (left !== 0 && state.unlinked ? ' (Total − card prices − shipping: includes what isn\'t linked yet)' : '');
+  }
+
+  var warning = summary.querySelector('[data-import-warning]');
+  var message = '';
+  if (isNaN(total) && (state.unlinked || state.unpriced)) {
+    message = 'No Total: with items not linked or without a price, the order won\'t show what\'s unaccounted for. Enter what you paid.';
+  } else if (state.unpriced) {
+    message = state.unpriced + ' item' + (state.unpriced === 1 ? '' : 's') +
+      ' without a known price: the Total counts only known prices. Set it to what you actually paid.';
+  }
+  warning.textContent = message;
+  warning.hidden = !message;
+}
+
+// The prefilled Total is the sale's known prices (data-prefill-base). Until
+// it's edited by hand, Shipping typed is added to it, so Remaining stays
+// "what isn't linked" rather than going negative by the shipping.
+function syncImportedTotal(form, evt) {
+  var total = form.querySelector('input[name="purchase_total"]');
+  if (!total || total.dataset.prefillBase === undefined || !evt || !evt.target) return;
+  if (evt.target === total) {
+    total.dataset.tracking = 'off';
+    return;
+  }
+  if (total.dataset.tracking === 'off' || evt.target.name !== 'purchase_shipping') return;
+  var base = parseFloat(total.dataset.prefillBase);
+  var shipping = parseFloat(evt.target.value);
+  total.value = Math.round((base + (isNaN(shipping) ? 0 : shipping)) * 100) / 100;
+}
+// Capture phase, so the Total is already updated when the form's own
+// oninput (updateCartAutoTotal) recomputes Remaining.
+if (!window.__tcgOrdersCartInit) {
+  document.addEventListener('input', function (e) {
+    var form = e.target && e.target.form;
+    if (form && form.id === 'purchase-cart-form') syncImportedTotal(form, e);
+  }, true);
+}
+
+// "Link selected": the ticked cards of one item become normal cart rows
+// carrying the item's ref, note and price. A lot's price is split evenly
+// over its cards, the last one taking the rounding (splitEvenly). If the
+// item already has rows in the cart, the new ones come without a price
+// rather than re-splitting prices that may have been typed over.
+function linkSelected(itemEl) {
+  var form = document.getElementById('purchase-cart-form');
+  if (!itemEl || !form) return Promise.resolve();
+  var boxes = Array.prototype.filter.call(itemEl.querySelectorAll('input.fb-cand'), function (el) { return el.checked; });
+  var ids = [];
+  boxes.forEach(function (el) { if (ids.indexOf(el.value) === -1) ids.push(el.value); });
+  if (!ids.length) {
+    alert('Tick the card this item is first (several for a lot).');
+    return Promise.resolve();
+  }
+  var itemId = itemEl.dataset.itemId;
+  var price = itemPrice(itemEl);
+  var shares = !isNaN(price) && linkedRowCount(form, itemId) === 0 ? splitEvenly(price, ids.length) : [];
+  var chain = Promise.resolve();
+  ids.forEach(function (id, i) {
+    chain = chain.then(function () {
+      return addCardToCart(id, { won_item_id: itemId, price: shares.length ? shares[i] : '' });
+    });
+  });
+  return chain.then(function () {
+    boxes.forEach(function (el) { el.checked = false; });
+    updateCartAutoTotal(form);
+  });
 }
 
 // Shared by "+ New Order" (this file) and "Cancel" (partials/purchase_cart.html)
@@ -96,12 +278,14 @@ function confirmDiscardCart() {
   return confirm('Discard the in-progress order?');
 }
 
+// A value the cart was opened with (a Facebook sale's prefilled Total, #309)
+// isn't work to lose: only one that differs from it counts.
 function cartHasUnsavedWork() {
   var cartBody = document.getElementById('cart-body');
   var hasRows = !!cartBody && cartBody.children.length > 0;
   var hasTotalOrShipping = Array.prototype.some.call(
     document.querySelectorAll('#purchase-cart-container input[name="purchase_total"], #purchase-cart-container input[name="purchase_shipping"]'),
-    function (el) { return el.value.trim() !== ''; }
+    function (el) { return el.value.trim() !== '' && el.value !== el.defaultValue; }
   );
   return hasRows || hasTotalOrShipping;
 }
@@ -150,6 +334,19 @@ function confirmRegisterOrder(form) {
     emptyPrice.focus();
     return false;
   }
+  // Facebook wins (#309): never leave imported items behind without asking.
+  var state = importedState(form);
+  if (state) {
+    if (state.unlinked && !confirm(unlinkedText(state) + '. They stay in the inbox for a later order. Register the linked cards now?')) {
+      return false;
+    }
+    var totalInput = form.querySelector('input[name="purchase_total"]');
+    if (totalInput.value.trim() === '' && (state.unlinked || state.unpriced) &&
+        !confirm('There\'s no Total, so the order won\'t show what\'s unaccounted for (items not linked or without a price). Register anyway?')) {
+      totalInput.focus();
+      return false;
+    }
+  }
   leavingDeliberately = true;
   return true;
 }
@@ -179,7 +376,8 @@ function resetBrowseUnorderedToggle() {
 }
 
 // Splits the "Remaining amount" value evenly across every still-empty price
-// input in the purchase-cart table.
+// input in the purchase-cart table, the last one taking the rounding so the
+// shares add up exactly (#312: 100 over 3 used to leave 0.01 kr behind).
 function distributeRemaining() {
   var sumInput = document.getElementById('remaining_sum');
   var sum = parseFloat(sumInput.value);
@@ -189,8 +387,8 @@ function distributeRemaining() {
     function (el) { return el.value.trim() === ''; }
   );
   if (empties.length === 0) return;
-  var each = Math.round((sum / empties.length) * 100) / 100;
-  empties.forEach(function (el) { el.value = each; });
+  var shares = splitEvenly(sum, empties.length);
+  empties.forEach(function (el, i) { el.value = shares[i]; });
   sumInput.value = '';
   updateCartAutoTotal(sumInput.form);
 }

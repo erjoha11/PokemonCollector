@@ -1,8 +1,14 @@
-<tr>
+<tr{% if won_item %} data-won-item="{{ won_item.id }}"{% endif %}>
   <td>
     <a href="https://app.dextcg.com/cards/{{ card.card_id | urlencode }}" target="_blank" rel="noopener noreferrer">{{ card.name }}</a>
     <span class="muted">({{ card.card_id }}{% if card.variant %}, {{ card.variant }}{% endif %}{% if card.rarity %}, {{ card.rarity }}{% endif %})</span>
+    {% if won_item %}<div class="muted small">From Facebook: {{ note }}</div>{% endif %}
     <input type="hidden" name="card_id" value="{{ card.id }}">
+    {# Always submitted, blank when the row isn't linked to an imported
+       Facebook item (#309), so both stay index-aligned with card_id/price
+       (create_purchase's require_same_length). #}
+    <input type="hidden" name="won_item_id" value="{{ won_item.id if won_item else '' }}">
+    <input type="hidden" name="note" value="{{ note or '' }}">
   </td>
   <td class="cart-trade-only">
     {# Always submitted so it stays index-aligned with card_id/price; the
@@ -12,7 +18,7 @@
       <option value="out">Out (gave)</option>
     </select>
   </td>
-  <td class="num cart-price-col"><input type="number" step="0.01" name="price" placeholder="Price" required class="tx-input-sm"
+  <td class="num cart-price-col"><input type="number" step="0.01" name="price" placeholder="Price" required class="tx-input-sm" value="{{ price or '' }}"
                          title="For a trade: any cash that moved with this card (paid on In, received on Out) — 0 if none."></td>
   <td><button type="button" class="secondary" onclick="var f = this.closest('form'); this.closest('tr').remove(); updateCartAutoTotal(f)">Remove</button></td>
 </tr>

@@ -226,7 +226,10 @@ run).
 
   The cart + card picker JS lives in `static/orders-cart.js` (shared by
   both order tabs; reads the cart type with `form.elements.type`, which
-  works for the Purchased select and the Sold hidden input alike).
+  works for the Purchased select and the Sold hidden input alike), with
+  the even split it shares with the Facebook wins panel in
+  `static/money-split.js` (DOM-free, so `tests/test_money_split.py` runs it
+  under node).
 
 - **Orders → Purchased** (`/orders/purchased`, was `/transactions`) — laid out as **Order history first**,
   then individually-registered rows, then one card picker, then a
@@ -240,8 +243,12 @@ run).
   item count, the known total plus "+ ?" when some prices aren't known, the
   seller's shipping/payment terms, and each lot linked to its Facebook
   comment. Each lot has **Ignore** (a cancelled or duplicate win): it leaves
-  the list for good, and later sends never bring it back. Registering a sale
-  as an order from here ("Open in cart") is the next slice of #309.
+  the list for good, and later sends never bring it back. **Open in cart**
+  on a sale opens it in the New Order cart, prefilled, to link its lots to
+  cards and register it as one order (see "Facebook wins inbox" below for
+  the cart's panel). A lot registered as "not complete" stays listed with
+  "lot not complete · order #N" and a **Lot complete** button; one whose
+  order no longer exists shows "order #N missing" instead of disappearing.
 
   **Order history** is the page's primary content, directly under the KPI
   cards: one row per order with the numbers that describe the deal — Order
@@ -394,7 +401,9 @@ run).
   untouched does persist it as the order's Total — unlike Order history's
   and the cart's blank-means-auto field.) A "Distribute remaining
   across unpriced cards" button (client-side, same pattern as the New
-  Order cart's "Distribute evenly") fills `Total − Shipping −
+  Order cart's "Distribute evenly", which splits evenly with the last
+  empty row taking the rounding so the shares add up exactly, #312:
+  100 over 3 is 33.33 / 33.33 / 33.34, `static/money-split.js`) fills `Total − Shipping −
   Σ(already-priced cards)` into the still-unpriced rows — useful
   for a lot where a few cards' values are known and the rest should
   absorb the remainder. A "Split" choice picks **By market value** (each
@@ -1204,6 +1213,59 @@ or cards — only you do, in the cart.
 - **RLS:** `won_items` gets row-level security from `init_db()` like every
   table (see "Database access hardening"); grants stay as they are.
 
+**Registering a won sale (the link flow).** One won sale becomes one order
+(several sales from one seller paid together can be merged afterwards with
+Edit order). The workflow: you win (the card goes into Dex's Incoming at
+qty 0, which Dex doesn't export, so it isn't in tcg_inventory yet); you pay
+and it arrives; you raise its qty in Dex; after the next daily sync it
+exists here, and you open the sale with **Open in cart** and register it.
+So linking always happens after the cards exist.
+
+- **Prefill.** "Open in cart" (`GET /orders/fb-wins/{item_id}/cart`)
+  renders the normal New Order cart in one response: date = the sale's end
+  date, platform "Facebook", Total = the sum of the known prices (blank if
+  none is known), Shipping blank with the seller's shipping text shown
+  muted beside it. While the prefilled Total is untouched, Shipping you
+  type is added to it, so Remaining (Total − card prices − shipping, the
+  same formula Order history uses) stays exactly the known price of what
+  isn't linked; once you edit the Total yourself it's left alone. A cart
+  that was only prefilled doesn't ask "Discard the in-progress order?" when
+  you open another sale.
+- **Imported items panel**, above the form and deliberately outside it (its
+  checkboxes have no name and are never submitted). Per item: its label
+  linked to the Facebook comment, its price or "price unknown", candidate
+  cards as **unticked** checkboxes (never auto-linked), **Link selected**,
+  and an item-scoped **Not listed? Search…**. Candidates are a fuzzy name
+  match (`won_inbox.candidates`: a distinctive word of the card's name in
+  the label, small typos allowed, its printed number adds to the score),
+  ranked cards with no purchase/ripped/trade row first, then cards first
+  synced on or after the sale ended ("new since the sale"); a card already
+  on an order says "already on order #N". With none: "No matching card yet
+  — it appears after it arrives, you raise its qty in Dex, and the daily
+  sync runs."
+- **Link selected** adds normal cart rows through
+  `/transactions/purchase/add-row`, which takes the item's ref
+  (`won_item_id`), adds its note ("<label> · <seller>") and a prefilled
+  price. A lot linked to several cards gets its price split evenly, the
+  last card taking the rounding (`static/money-split.js`, shared with
+  Distribute). Every cart row posts `won_item_id` and `note` (blank when
+  not linked), index-aligned with `card_id`/`price`; `create_purchase`
+  checks all four line up and stores the note on the transaction. Removing
+  a row unlinks its item.
+- **Nothing is dropped silently.** Above Register: "N of M items not linked
+  (kr X) — they stay in the inbox", the live Remaining, and a warning when
+  some items have no known price or there's no Total. Register asks before
+  leaving items unlinked, and warns when there's no Total while items are
+  unlinked or unpriced.
+- **Register** marks each linked item `registered` with the new order's
+  `purchase_id`, in the same commit as the transactions. Unlinked items stay
+  pending. A lot linked to fewer cards than it holds can be kept pending
+  with its "Lot not complete — keep it in the inbox" box: it stays listed,
+  pointing at the order, until you add its other cards with Edit order and
+  click **Lot complete**. An item registered or ignored meanwhile (another
+  tab) makes Register refuse with a 422 and write nothing. Ignore stays
+  available throughout.
+
 To turn it on in prod: set `INBOX_TOKEN` in Vercel (a long random string,
 e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`),
 redeploy, then in the extension's Settings enter the app's address and the
@@ -1854,7 +1916,8 @@ file locally following the steps above and add a dated line here.
   "Masterdata" above).
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `won_inbox.py` — the Facebook wins inbox: checks fb_auction_watcher's
-  payload and stages it in `won_items` (see "Facebook wins inbox" above).
+  payload and stages it in `won_items`, and the link flow's candidate
+  matching and Register bookkeeping (see "Facebook wins inbox" above).
 - `sync_status.py` — records background-job runs in `import_log` and builds
   the `/sync-status` at-a-glance block (see "Sync status").
 - `pricing.py` — per-source prices (`card_prices`) and the resolver that

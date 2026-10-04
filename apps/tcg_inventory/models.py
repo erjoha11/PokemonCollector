@@ -793,10 +793,10 @@ class WonItem(Base):
     `apps/fb_auction_watcher/docs/spec.md` "Sending wins to tcg_inventory".
 
     Totals per sale are computed from the items, never stored.
-    `purchase_id` is the Order ID the item gets registered under (the link
-    flow, a later slice of #309); a plain label like
-    `Transaction.purchase_id`, so it can point at an order that was later
-    deleted or split.
+    `purchase_id` is the Order ID the item was registered under by the
+    New Order cart's link flow (also set on a lot kept pending as "not
+    complete"); a plain label like `Transaction.purchase_id`, so it can
+    point at an order that was later deleted, merged or split.
     """
 
     __tablename__ = "won_items"

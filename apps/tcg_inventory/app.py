@@ -70,6 +70,7 @@ from models import (
     PokemonAlias,
     Set,
     Transaction,
+    WonItem,
 )
 
 
@@ -2367,13 +2368,85 @@ def purchase_cart_browse_unordered(request: Request):
 
 
 @app.get("/transactions/purchase/add-row")
-def purchase_cart_add_row(request: Request, card_id: int):
+def purchase_cart_add_row(request: Request, card_id: int, won_item_id: int | None = None, price: str = ""):
+    """One cart row. From the Facebook wins panel's "Link selected" (#309)
+    it also carries the imported item it's linked to (`won_item_id`), that
+    item's note ("<label> · <seller>") and a prefilled price (the item's
+    price, or its share of a lot). Every row renders the ref and note
+    inputs, blank when unlinked, so they stay index-aligned with
+    card_id/price."""
     db = get_db_session()
     try:
         card = db.query(Card).filter(Card.id == card_id).one_or_none()
         if card is None:
             return HTMLResponse("")
-        return templates.TemplateResponse(request, "partials/purchase_cart_row.html", {"card": card})
+        item = db.get(WonItem, won_item_id) if won_item_id is not None else None
+        try:
+            prefill = f"{float(price):.2f}" if price.strip() else ""
+        except ValueError:
+            prefill = ""
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_cart_row.html",
+            {"card": card, "won_item": item, "note": won_inbox.note_for(item) if item else "", "price": prefill},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/orders/fb-wins/{item_id}/cart")
+def fb_win_cart(request: Request, item_id: int):
+    """"Open in cart" (#309 slice 2): the New Order cart prefilled from one
+    won sale (the sale `item_id` belongs to), in one response -- date =
+    the sale's end date, platform Facebook, Total = the known prices -- with
+    an "Imported items" panel kept outside the form: each item's candidate
+    cards (unticked, never auto-linked), "Link selected", and an
+    item-scoped search."""
+    db = get_db_session()
+    try:
+        opened = won_inbox.open_sale(db, item_id)
+        if opened is None:
+            return HTMLResponse(
+                '<p class="muted">Nothing from this sale is waiting to be registered any more. Reload the page.</p>'
+            )
+        return templates.TemplateResponse(
+            request,
+            "partials/purchase_cart.html",
+            {
+                "type": "purchase",
+                "today": (opened.sale.ended_on or dt.date.today()).isoformat(),
+                "imported": opened,
+                "candidates": won_inbox.candidates(db, opened.sale.items, ACQUIRED_TYPES),
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.get("/orders/fb-wins/{item_id}/search")
+def fb_win_search(request: Request, item_id: int, q: str = ""):
+    """An imported item's own "Not listed? Search…": results are checkboxes
+    inside that item's block, so "Link selected" links them to that item
+    (the cart's general search adds rows with no item attached)."""
+    db = get_db_session()
+    try:
+        item = db.get(WonItem, item_id)
+        results = []
+        if item is not None and len(q.strip()) >= 2:
+            like = _like_pattern(q.strip())
+            cards = (
+                db.query(Card)
+                .filter(func.lower(Card.name).like(like) | func.lower(Card.card_id).like(like))
+                .order_by(Card.name)
+                .limit(20)
+                .all()
+            )
+            results = won_inbox.annotate_cards(db, cards, item.ended_on, ACQUIRED_TYPES)
+        return templates.TemplateResponse(
+            request,
+            "partials/fb_win_candidates.html",
+            {"item": item, "cands": results, "searched": True, "q": q},
+        )
     finally:
         db.close()
 
@@ -2414,6 +2487,17 @@ def add_cards_to_existing_order(request: Request, card_id: list[int] = Form(defa
         db.close()
 
 
+def _parse_item_ref(raw: str, row: int) -> int | None:
+    """A cart row's `won_item_id`: blank (not linked) or an inbox item's id."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        raise FormError(f"Row {row}'s imported-item link is broken -- nothing was saved. Reload the page.") from None
+
+
 @app.post("/transactions/purchase")
 def create_purchase(
     request: Request,
@@ -2426,6 +2510,9 @@ def create_purchase(
     card_id: list[int] = Form(default=[]),
     price: list[str] = Form(default=[]),
     direction: list[str] = Form(default=[]),
+    note: list[str] = Form(default=[]),
+    won_item_id: list[str] = Form(default=[]),
+    keep_pending: list[int] = Form(default=[]),
 ):
     """Registers the New Order cart. `purchase_shipping` is the order's
     shipping whatever its type -- on a Sale it's the seller-paid shipping,
@@ -2439,6 +2526,15 @@ def create_purchase(
     (`_allocating_order_id`); a `purchase_id` posted by the client (an old
     cached cart form) is ignored, so a Mark sold in another tab can never
     merge into this order (issue #228 b).
+
+    Facebook wins (#309): each row also posts `note` and `won_item_id`
+    (blank on rows not linked to an imported item), index-aligned with
+    card_id/price. A linked row's transaction gets the note; every linked
+    item becomes `registered` on this order in the same commit, except
+    those in `keep_pending` (a lot not complete yet), which stay pending
+    pointing at it. Items not linked aren't touched: they stay in the inbox.
+    A form with neither list at all (a cart opened before this change) is
+    read as all-blank.
     """
     # Validate everything before touching the DB (issue #228): a rejected
     # value is a plain-text 422 shown in the cart's error slot, and the
@@ -2448,8 +2544,11 @@ def create_purchase(
     total_value = parse_optional_amount(purchase_total, "Total")
     shipping_value = parse_optional_amount(purchase_shipping, "Shipping")
     fees_value = parse_optional_amount(fees, "Fees")
-    require_same_length(card_id=card_id, price=price)
+    if not note and not won_item_id:
+        note = won_item_id = [""] * len(card_id)
+    require_same_length(card_id=card_id, price=price, note=note, won_item_id=won_item_id)
     parsed = [parse_amount(raw, "Price", row=i + 1) for i, raw in enumerate(price)]
+    item_refs = [_parse_item_ref(raw, row=i + 1) for i, raw in enumerate(won_item_id)]
     db = get_db_session()
     try:
         if not card_id:
@@ -2457,6 +2556,10 @@ def create_purchase(
                 request, db, order_tab([type]),
                 error="No cards added to the order yet — search for at least one card first.",
             )
+        try:
+            linked = won_inbox.linkable_items(db, {r for r in item_refs if r is not None})
+        except won_inbox.LinkError as exc:
+            raise FormError(str(exc)) from None
         prices = [_price_for(type, p) for p in parsed]
         cash_order = type in ("purchase", "sale")
         row_fees = _split_order_fees(fees_value if cash_order and fees_value else None, prices)
@@ -2474,8 +2577,10 @@ def create_purchase(
                         purchase_id=purchase_id,
                         purchase_total=total_value,
                         purchase_shipping=shipping_value,
+                        note=note[i].strip() or None,
                     )
                 )
+            won_inbox.mark_registered(linked, purchase_id, set(keep_pending))
             db.commit()
         # Same open_order + hx-select/hx-target/hx-swap="outerHTML" pattern
         # as set_purchase_total below -- htmx swaps in just the newly
@@ -3589,6 +3694,24 @@ def ignore_fb_win(request: Request, item_id: int):
     db = get_db_session()
     try:
         won_inbox.ignore_item(db, item_id)
+        db.commit()
+        if request.headers.get("hx-request"):
+            return templates.TemplateResponse(
+                request, "partials/fb_wins_inbox.html", {"fb_wins": won_inbox.pending_sales(db)}
+            )
+        return RedirectResponse("/orders/purchased#fb-wins", status_code=303)
+    finally:
+        db.close()
+
+
+@app.post("/orders/fb-wins/{item_id}/complete")
+def complete_fb_win(request: Request, item_id: int):
+    """"Lot complete" for a lot registered as not complete (#309): it's
+    pending and points at its order; once the rest of its cards are on that
+    order (Edit order), this marks it registered and it leaves the list."""
+    db = get_db_session()
+    try:
+        won_inbox.complete_item(db, item_id)
         db.commit()
         if request.headers.get("hx-request"):
             return templates.TemplateResponse(
