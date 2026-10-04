@@ -957,6 +957,16 @@ $<HTMLInputElement>("#my-name").addEventListener("change", (e) => {
     await load();
   });
 }
+// Settings: a dialog from the top-right button. Esc, ×, or a click outside closes it.
+const settingsDialog = $<HTMLDialogElement>("#settings");
+$("#open-settings").addEventListener("click", () => settingsDialog.showModal());
+settingsDialog.querySelector(".settings-close")!.addEventListener("click", () => settingsDialog.close());
+settingsDialog.addEventListener("click", (e) => {
+  // Only a click outside the box (on the backdrop); the dialog's own padding also targets it.
+  const box = settingsDialog.getBoundingClientRect();
+  const inside = e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+  if (e.target === settingsDialog && !inside) settingsDialog.close();
+});
 chrome.runtime.onMessage.addListener((msg) => {
   if (isStoreUpdatedMessage(msg)) void load();
 });
