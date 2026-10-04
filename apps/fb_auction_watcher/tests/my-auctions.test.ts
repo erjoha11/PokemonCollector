@@ -37,6 +37,15 @@ describe("needsYou", () => {
   });
 });
 
+describe("a sale you marked as ended", () => {
+  it("leaves Needs you and Leading: its leads count as won from the last full read", () => {
+    const marked = { ended: true, endedByYouAt: "2026-10-04T11:55:00Z" };
+    const rows = [sale("M", 600, [{ myStatus: "outbid", highestBid: 50 }, { myStatus: "lead", myHighestBid: 80 }], marked)];
+    expect(needsYou(rows)).toEqual([]);
+    expect(leadingBySale(rows)).toEqual([]);
+  });
+});
+
 describe("leadingBySale", () => {
   it("per sale, what you'd pay if your leads hold; an ended sale waits for its final read", () => {
     const rows = [
