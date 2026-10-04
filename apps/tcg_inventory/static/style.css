@@ -1995,3 +1995,27 @@ html.card-modal-open { overflow: hidden; }
 .fb-win-item { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.3rem 0; border-top: 1px solid var(--border); margin-top: 0.3rem; }
 .fb-win-item > a { flex: 1 1 16rem; overflow-wrap: anywhere; }
 .fb-win-item form { margin: 0; }
+.fb-win-open { margin-left: auto; }
+
+/* The New Order cart opened from a Facebook sale (#309 slice 2): the
+   "Imported items" panel above the form, and the summary above Register. */
+.fb-import { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 0.6rem 0.8rem; margin-bottom: 1rem; }
+.fb-import h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+.fb-import p { margin: 0.2rem 0; }
+.fb-import-items, .fb-cands { list-style: none; margin: 0; padding: 0; }
+.fb-import-item { border-top: 1px solid var(--border); padding: 0.45rem 0; }
+.fb-import-item.is-linked .fb-import-status { color: #0a7f0a; font-weight: 600; }
+.fb-import-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.3rem 1rem; }
+.fb-import-head > a { flex: 1 1 16rem; overflow-wrap: anywhere; }
+.fb-cands { margin: 0.3rem 0 0 0.2rem; }
+.fb-cands li { margin: 0.15rem 0; }
+.fb-cands label { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; align-items: baseline; cursor: pointer; }
+.fb-cand-new { background: rgba(20, 150, 110, 0.14); color: #0d7a57; font-weight: 600; }
+.fb-cand-on-order { background: rgba(235, 104, 52, 0.14); color: #b8501f; font-weight: 600; }
+.fb-import-search { margin-top: 0.3rem; }
+.fb-import-search input { max-width: 20rem; }
+.fb-import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; margin-top: 0.3rem; }
+.fb-keep { font-size: 0.85rem; display: inline-flex; gap: 0.3rem; align-items: center; }
+.fb-ship-terms { align-self: center; max-width: 24rem; overflow-wrap: anywhere; }
+.fb-import-summary { margin: 0 0 0.6rem; }
+.fb-import-summary p { margin: 0.15rem 0; }

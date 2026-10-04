@@ -20,17 +20,27 @@ Three pieces, kept apart so each is testable on its own:
 - `upsert_items`: writes `won_items` only -- never transactions or cards.
   Pending rows are refreshed; registered and ignored ones are never touched.
 - `pending_sales`: the Purchased tab's list, one entry per won sale.
+
+And the link flow (slice 2), where a sale opens in the New Order cart:
+- `open_sale`: one sale's pending items plus what the cart is prefilled with.
+- `candidates` / `annotate_cards`: the cards each item may be, by a fuzzy
+  name match, never auto-linked.
+- `linkable_items` / `mark_registered`: what Register does to the items
+  linked in the cart.
 """
 from __future__ import annotations
 
 import datetime as dt
+import difflib
 import math
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
 from sqlalchemy.orm import Session
 
-from models import WonItem
+from models import Card, Transaction, WonItem
 
 FORMAT = "fbaw-won"
 SUPPORTED_VERSION = 1
@@ -270,6 +280,10 @@ class PendingSale:
     shipping_text: str | None
     payment_text: str | None
     items: list[WonItem] = field(default_factory=list)
+    # Order IDs some of these items point at (a lot kept pending as "not
+    # complete") that no longer have any transaction: shown as "order
+    # missing" rather than hidden.
+    missing_orders: set[int] = field(default_factory=set)
 
     @property
     def known_total(self) -> float:
@@ -301,4 +315,258 @@ def pending_sales(db: Session) -> list[PendingSale]:
                 payment_text=row.payment_text,
             )
         sale.items.append(row)
+    _mark_missing_orders(db, list(sales.values()))
     return sorted(sales.values(), key=lambda s: (s.ended_on is None, -(s.ended_on or dt.date.min).toordinal()))
+
+
+def _existing_orders(db: Session, purchase_ids: set[int]) -> set[int]:
+    if not purchase_ids:
+        return set()
+    rows = db.query(Transaction.purchase_id).filter(Transaction.purchase_id.in_(purchase_ids)).distinct()
+    return {pid for (pid,) in rows}
+
+
+def _mark_missing_orders(db: Session, sales: list[PendingSale]) -> None:
+    wanted = {i.purchase_id for s in sales for i in s.items if i.purchase_id is not None}
+    existing = _existing_orders(db, wanted)
+    for sale in sales:
+        sale.missing_orders = {
+            i.purchase_id for i in sale.items if i.purchase_id is not None and i.purchase_id not in existing
+        }
+
+
+# ── The link flow (slice 2): a sale in the New Order cart ─────────────────
+
+
+def note_for(item: WonItem) -> str:
+    """The note a linked cart row (and so its transaction) carries."""
+    return f"{item.label} · {item.seller}" if item.seller else item.label
+
+
+@dataclass
+class OpenSale:
+    """One sale opened in the New Order cart: its pending items and the
+    values the cart is prefilled with."""
+
+    sale: PendingSale
+    # Orders other items of this same sale were already registered on.
+    registered_orders: list[int]
+
+    @property
+    def total(self) -> float | None:
+        """The prefilled Total: the sum of the known prices, or None when no
+        price is known. Shipping starts blank, and the cart adds whatever is
+        typed there to this Total until the Total is edited by hand, so
+        Remaining (Total - prices - shipping, as Order history computes it)
+        is only ever the known price of what isn't linked."""
+        if all(i.price is None for i in self.sale.items):
+            return None
+        return self.sale.known_total
+
+
+def open_sale(db: Session, item_id: int) -> OpenSale | None:
+    """The sale `item_id` belongs to, with that sale's pending items, or
+    None if the item is gone or nothing of its sale is pending."""
+    anchor = db.get(WonItem, item_id)
+    if anchor is None:
+        return None
+    rows = (
+        db.query(WonItem)
+        .filter(WonItem.post_url == anchor.post_url, WonItem.status == STATUS_PENDING)
+        .order_by(WonItem.id)
+        .all()
+    )
+    if not rows:
+        return None
+    first = rows[0]
+    sale = PendingSale(
+        post_url=first.post_url,
+        seller=first.seller,
+        sale_type=first.sale_type,
+        ended_on=first.ended_on,
+        shipping_text=first.shipping_text,
+        payment_text=first.payment_text,
+        items=rows,
+    )
+    _mark_missing_orders(db, [sale])
+    registered = sorted(
+        {
+            pid
+            for (pid,) in db.query(WonItem.purchase_id).filter(
+                WonItem.post_url == anchor.post_url,
+                WonItem.status == STATUS_REGISTERED,
+                WonItem.purchase_id.isnot(None),
+            )
+        }
+    )
+    return OpenSale(sale=sale, registered_orders=registered)
+
+
+# Fuzzy name matching. Labels are free text from a Facebook comment
+# ("3. Charizard ex 199/165 NM"), card names are Dex's ("Charizard ex"). A
+# card is a candidate when at least one distinctive word of its name is in
+# the label (a small typo allowed) and at least half of its words are; its
+# printed number in the label adds to the score.
+_WORD = re.compile(r"[a-z0-9]+")
+# Words too common in card names to identify one on their own.
+_GENERIC = {
+    "ex", "gx", "v", "vmax", "vstar", "mega", "m", "tag", "team", "and", "the", "of",
+    "holo", "reverse", "promo", "lv", "x", "break", "prime", "star", "card", "full", "art",
+}
+MAX_CANDIDATES = 6
+_MIN_SCORE = 0.5
+
+
+def _words(text: str | None) -> list[str]:
+    if not text:
+        return []
+    text = unicodedata.normalize("NFKD", text.lower())
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    return _WORD.findall(text)
+
+
+def _distinctive(word: str) -> bool:
+    return len(word) >= 3 and word not in _GENERIC and not word.isdigit()
+
+
+def _printed_number(card: Card) -> str | None:
+    """"199/165" -> "199", "007" -> "7"; None when there's no number."""
+    if not card.number:
+        return None
+    head = card.number.split("/")[0].strip().lstrip("0")
+    return head if head.isdigit() else None
+
+
+@dataclass
+class Candidate:
+    card: Card
+    score: float
+    # Orders this card already has an acquired transaction on (purchase,
+    # ripped, trade), for the "already on order #N" badge.
+    orders: list[int]
+    # It has an acquired transaction with no Order ID (registered alone).
+    unordered_acquired: bool
+    # First seen on or after the sale ended: likely this very copy.
+    recent: bool
+
+    @property
+    def acquired(self) -> bool:
+        return bool(self.orders) or self.unordered_acquired
+
+
+def _acquired_by_card(db: Session, acquired_types: tuple[str, ...], card_ids=None) -> dict[int, list[int | None]]:
+    query = db.query(Transaction.card_id, Transaction.purchase_id).filter(Transaction.type.in_(acquired_types))
+    if card_ids is not None:
+        query = query.filter(Transaction.card_id.in_(card_ids))
+    out: dict[int, list[int | None]] = {}
+    for card_id, purchase_id in query:
+        ids = out.setdefault(card_id, [])
+        if purchase_id not in ids:
+            ids.append(purchase_id)
+    return out
+
+
+def _candidate(card: Card, score: float, ended_on: dt.date | None, acquired: dict) -> Candidate:
+    pids = acquired.get(card.id, [])
+    return Candidate(
+        card=card,
+        score=score,
+        orders=sorted(p for p in pids if p is not None),
+        unordered_acquired=None in pids,
+        recent=bool(ended_on and card.created_at and card.created_at.date() >= ended_on),
+    )
+
+
+def _rank(c: Candidate):
+    # 1. no acquired transaction yet, 2. first seen on/after the sale's end, then the match.
+    return (c.acquired, not c.recent, -c.score, c.card.name, c.card.id)
+
+
+def annotate_cards(db: Session, cards: list[Card], ended_on: dt.date | None, acquired_types: tuple[str, ...]) -> list[Candidate]:
+    """Badges and ranking for an item's own "Not listed? Search…" results."""
+    acquired = _acquired_by_card(db, acquired_types, [c.id for c in cards]) if cards else {}
+    return sorted((_candidate(c, 0.0, ended_on, acquired) for c in cards), key=_rank)
+
+
+def candidates(db: Session, items: list[WonItem], acquired_types: tuple[str, ...]) -> dict[int, list[Candidate]]:
+    """Up to MAX_CANDIDATES cards per item, best first. Suggestions only: the
+    cart shows them as unticked checkboxes and never links one by itself.
+    A card reaches tcg_inventory only after it arrives and Dex syncs it, so
+    an empty list is normal for a while."""
+    cards = db.query(Card).all()
+    acquired = _acquired_by_card(db, acquired_types)
+    names = {c.id: _words(c.name) for c in cards}
+    vocab_by_initial: dict[str, set[str]] = {}
+    for words in names.values():
+        for w in words:
+            vocab_by_initial.setdefault(w[0], set()).add(w)
+
+    out: dict[int, list[Candidate]] = {}
+    for item in items:
+        label_words = set(_words(item.label))
+        numbers = {w.lstrip("0") for w in label_words if w.isdigit() and w.lstrip("0")}
+        matched: set[str] = set()
+        for w in label_words:
+            if w in vocab_by_initial.get(w[0], ()):
+                matched.add(w)
+            elif len(w) >= 4 and not w.isdigit():
+                matched.update(difflib.get_close_matches(w, vocab_by_initial.get(w[0], ()), n=3, cutoff=0.85))
+        found = []
+        for card in cards:
+            words = names[card.id]
+            if not words or not any(_distinctive(w) and w in matched for w in words):
+                continue
+            score = sum(1 for w in words if w in matched) / len(words)
+            if score < _MIN_SCORE:
+                continue
+            if _printed_number(card) in numbers:
+                score += 0.5
+            found.append(_candidate(card, score, item.ended_on, acquired))
+        found.sort(key=_rank)
+        out[item.id] = found[:MAX_CANDIDATES]
+    return out
+
+
+class LinkError(ValueError):
+    """A linked item can't be registered; the message says why."""
+
+
+def linkable_items(db: Session, item_ids: set[int]) -> dict[int, WonItem]:
+    """The pending items the cart linked, or LinkError naming the first one
+    that's gone or no longer pending (registered or ignored in another tab),
+    so Register writes nothing rather than registering an item twice."""
+    rows = {r.id: r for r in db.query(WonItem).filter(WonItem.id.in_(item_ids))} if item_ids else {}
+    for item_id in sorted(item_ids):
+        row = rows.get(item_id)
+        if row is None:
+            raise LinkError("An imported Facebook item in this cart no longer exists -- nothing was saved. Reload the page.")
+        if row.status != STATUS_PENDING:
+            where = f" on order #{row.purchase_id}" if row.purchase_id is not None else ""
+            raise LinkError(
+                f"“{row.label}” is already {row.status}{where} -- nothing was saved. "
+                "Remove its rows (or reload the page) and register again."
+            )
+    return rows
+
+
+def mark_registered(items: dict[int, WonItem], purchase_id: int, keep_pending: set[int]) -> None:
+    """Points every linked item at the new order, without committing. Each
+    becomes `registered`, except a lot marked "not complete", which stays
+    pending (pointing at the order) until its other cards are added."""
+    for item_id, row in items.items():
+        row.purchase_id = purchase_id
+        if item_id not in keep_pending:
+            row.status = STATUS_REGISTERED
+
+
+def complete_item(db: Session, item_id: int) -> bool:
+    """Marks a lot kept pending as "not complete" registered, once the rest
+    is on its order, without committing. False unless it's a pending item
+    pointing at an order that still exists."""
+    row = db.get(WonItem, item_id)
+    if row is None or row.status != STATUS_PENDING or row.purchase_id is None:
+        return False
+    if not _existing_orders(db, {row.purchase_id}):
+        return False
+    row.status = STATUS_REGISTERED
+    return True

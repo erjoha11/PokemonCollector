@@ -1,0 +1,26 @@
+{# One imported Facebook item's candidate cards (#309 slice 2), in the
+   cart's "Imported items" panel or from that item's own "Not listed?
+   Search…". Unticked checkboxes with no name: they're outside the cart form
+   and never submitted; "Link selected" turns the ticked ones into normal
+   cart rows. `searched` = rendered by the item's search, not the
+   suggestions. #}
+{% if cands %}
+<ul class="fb-cands">
+  {% for c in cands %}
+  <li>
+    <label>
+      <input type="checkbox" class="fb-cand" value="{{ c.card.id }}">
+      {{ c.card.name }}
+      <span class="muted">— {{ c.card.set }} ({{ c.card.card_id }}{% if c.card.variant %}, {{ c.card.variant }}{% endif %})</span>
+      {% if c.recent %}<span class="tx-badge fb-cand-new" title="First synced from Dex on or after the sale ended">new since the sale</span>{% endif %}
+      {% for pid in c.orders %}<span class="tx-badge fb-cand-on-order" title="This card already has a purchase, trade or ripped row on order #{{ pid }}. Link it only if this is another copy.">already on order #{{ pid }}</span>{% endfor %}
+      {% if c.unordered_acquired %}<span class="tx-badge fb-cand-on-order" title="This card already has a purchase row without an order. Link it only if this is another copy.">already registered</span>{% endif %}
+    </label>
+  </li>
+  {% endfor %}
+</ul>
+{% elif searched %}
+{% if q | trim | length >= 2 %}<p class="muted small">No card matches “{{ q }}”.</p>{% endif %}
+{% else %}
+<p class="muted small fb-cands-empty">No matching card yet — it appears after it arrives, you raise its qty in Dex, and the daily sync runs.</p>
+{% endif %}
