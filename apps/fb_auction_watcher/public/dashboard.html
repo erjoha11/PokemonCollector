@@ -47,12 +47,12 @@
         <button type="button" data-filter="auction">Auction</button>
         <button type="button" data-filter="claim">Claim</button>
         <button type="button" data-filter="fixed">Fixed price</button>
-        <button type="button" data-filter="mine">My bids</button>
       </div>
       <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
     </div>
   </header>
-  <main id="groups"></main>
+  <nav id="tabs" class="tabs" role="tablist" aria-label="Sales"></nav>
+  <main id="groups" role="tabpanel"></main>
   <dialog id="settings" class="settings" aria-labelledby="settings-title">
     <div class="settings-head">
       <h2 id="settings-title">Settings</h2>
