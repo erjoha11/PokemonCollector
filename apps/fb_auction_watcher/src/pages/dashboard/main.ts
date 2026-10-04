@@ -282,16 +282,21 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
     ]
       .filter(Boolean)
       .join("\n");
-  } else if (r.type === "fixed") {
-    td.append(el("div", "when", "No end time"));
   } else {
-    // Unknown: say why, and let you end it by hand when it's over.
-    const head = line("div", el("span", "countdown unknown", "Unknown"));
-    if (!r.textComplete && !r.endsAtText) head.append(" ", el("span", "flag", "cut off"));
-    td.append(head);
-    const toggle = endedToggle(r);
-    if (toggle) td.append(line("div", toggle));
-    td.title = [orig || "No end time in the post's text that the rules or Claude could read.", !r.textComplete && !r.endsAtText ? "The post's text was cut off before an end time." : ""]
+    // No end time (fixed price, or one nobody could read): when it was added says how fresh it is.
+    // "Added" is when a scan first saw the post, which is close to when it was posted while
+    // auto-scan runs. Mark as ended is in the row's lots (click the row).
+    const seen = Date.parse(r.firstSeenAt);
+    const cutOff = r.type !== "fixed" && !r.textComplete && !r.endsAtText;
+    td.append(
+      el("div", "countdown added", `Added ${ago(r.firstSeenAt, now)}`),
+      line("div", el("span", "when", endLabel(seen, now)), ...(cutOff ? [" · ", el("span", "flag", "cut off")] : [])),
+    );
+    td.title = [
+      `Added ${new Date(seen).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (when a scan first saw it)`,
+      r.type === "fixed" ? "Fixed price: no end time." : orig || "No end time in the post's text that the rules or Claude could read.",
+      r.type !== "fixed" && !r.textComplete && !r.endsAtText ? "The post's text was cut off before an end time." : "",
+    ]
       .filter(Boolean)
       .join("\n");
   }
