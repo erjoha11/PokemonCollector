@@ -96,6 +96,22 @@ yet.
   a price, under M2's failure tracking and photo cap and kept by M6's
   retention.
 
+**Claim lots priced from the lot's text; My Auctions redesigned (#290, #291)**
+- #290: claim lots whose price is in the text above each photo ("Holo/rev.holo
+  5kr per stk") are priced by `lotTextPrice`: per card for "per stk"/"pr
+  kort", otherwise the lot's price. A won claim is priced from it before
+  Claude answers, and Claude's claim-lot question now includes the seller's
+  text along with the photo.
+- #291: My Auctions is now a to-do list instead of one card per sale. Needs
+  you lists the lots you must act on (outbid, unclear, check) across all sales,
+  soonest first, each linking to the lot's comment with the lowest bid that
+  counts. The extension still never bids. Leading has one folded line per
+  sale with its cost if the lead holds. To pay has one line per seller with the
+  total, how to pay and Paid/Received. Lost and ended lots stay in the table.
+  Collapse/Expand all and the Ended list are removed. The Outbid counter is
+  now Need you, counted in lots. The rules are in `model.ts` (`needsYou`,
+  `leadingBySale`, `lotUrl`) and tested in `tests/my-auctions.test.ts`.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
