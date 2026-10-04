@@ -349,3 +349,4 @@ a.act-btn { color: var(--lead); }
 .lot-link { color: var(--lead); text-decoration: none; font-weight: 600; }
 .lot-link:hover { text-decoration: underline; }
 @media (max-width: 720px) { .sale-wrap { flex-wrap: wrap; } }
+.countdown.added { font: 600 13px var(--sans); color: var(--text); white-space: nowrap; }
