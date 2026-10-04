@@ -76,8 +76,8 @@ from its last full read (Leading becomes Won and shows under To pay). **Undo end
 the seller in To pay) takes the mark back. The mark is yours only, stored in the extension.
 
 Lost lots and finished sales aren't listed there; they're in the table with their status. The
-**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. Each
-sale has two buttons: **Open ↗** opens the post on Facebook (so does its name), **Read** reads its lots and bids now.
+**Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. A
+sale's name opens the post on Facebook; its **Read** button reads its lots and bids now.
 A lot's name, wherever it shows (Needs you, Leading, To pay, a row's lots), opens its own comment on Facebook (where you'd bid).
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every

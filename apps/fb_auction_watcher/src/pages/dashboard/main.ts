@@ -356,14 +356,9 @@ function readSale(r: Row) {
   });
 }
 
-/** The sale's two actions: Open ↗ (the post on Facebook) and Read (its bids and lots, now). */
+/** Read: reads the sale's lots and bids now. (Its name is the link to Facebook.) */
 function saleActions(r: Row): HTMLSpanElement {
   const box = el("span", "sale-actions");
-  const open = el("a", "act-btn", "Open ↗");
-  open.href = r.url;
-  open.target = "_blank";
-  open.rel = "noopener";
-  open.title = "Open the post on Facebook";
   const state = readState(r.id);
   const read = el("button", `act-btn${state ? " busy" : ""}`, state ?? "Read");
   read.type = "button";
@@ -376,7 +371,7 @@ function saleActions(r: Row): HTMLSpanElement {
     e.stopPropagation(); // Inside a table row: don't expand it.
     readSale(r);
   });
-  box.append(open, read);
+  box.append(read);
   return box;
 }
 
@@ -387,7 +382,7 @@ function titleLine(r: Row): HTMLDivElement {
   return line;
 }
 
-/** Photo, then two lines (the sale's name and New; its description), then Open ↗ / Read. */
+/** Photo, then two lines (the sale's name, a link to Facebook, and New; its description), then Read. */
 function saleCell(r: Row, now: Date): HTMLTableCellElement {
   const td = el("td", "sale");
   const wrap = el("div", "sale-wrap");
@@ -976,7 +971,7 @@ function render() {
   );
   main.setAttribute("aria-labelledby", `tab-${tab}`);
   const current = all.find((x) => x.id === tab)!;
-  main.append(el("p", "table-hint", "Open ↗ opens a sale on Facebook · Read reads its lots and bids now · click a row to show its lots"));
+  main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook · Read reads its lots and bids now · click a row to show its lots"));
   if (current.count === 0) {
     main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
     return;
