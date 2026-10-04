@@ -51,6 +51,17 @@ yet.
   and `non_holo` -> `normal`.
 - `.github/pull_request_template.md` carries the Definition of Done.
 
+**Docs cover all three apps, including fb_auction_watcher (#307)**
+- Root `CLAUDE.md` covers fb_auction_watcher's setup (Node, `npm ci`), tests
+  (root `pytest` includes its `native/` host; `npm` typecheck/test/build in
+  its folder, as in CI), how to run it (build `dist/`, load unpacked,
+  `native/install.sh`, rebuild after merges), and a short architecture
+  section with its rules (read-only on Facebook, slow pacing, `claude -p`
+  only, `samples/` never committed).
+- Root `README.md` lists it in the apps table. Agent and command docs say
+  "all apps" instead of "both apps"; `ux` states it doesn't cover the
+  extension.
+
 ### fb_auction_watcher
 
 **Overview of the group's sales, Claude via `claude -p`, review fixes (#285)**
