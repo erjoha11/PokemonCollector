@@ -298,11 +298,12 @@ td.ends > div:first-child { white-space: nowrap; }
 /* The sales table (2026-10-04 redesign): Seller has its own column, every row is two lines */
 /* Fixed column widths, so every group's table lines up; Sale takes the rest, long text cut with "…". */
 #groups table { table-layout: fixed; }
-#groups th:nth-child(1) { width: 120px; }
-#groups th:nth-child(3) { width: 160px; }
-#groups th:nth-child(4) { width: 130px; }
-#groups th:nth-child(5) { width: 130px; }
-#groups th:nth-child(6) { width: 200px; }
+#groups th:nth-child(1) { width: 120px; } /* Ends */
+#groups th:nth-child(2) { width: 90px; }  /* Added */
+#groups th:nth-child(4) { width: 160px; } /* Seller */
+#groups th:nth-child(5) { width: 130px; } /* Price */
+#groups th:nth-child(6) { width: 130px; } /* Lots */
+#groups th:nth-child(7) { width: 190px; } /* You */
 td.ends { width: auto; overflow: hidden; }
 .sale-text { min-width: 0; flex: 1; }
 .sale .title-line { display: block; }
@@ -351,4 +352,4 @@ a.lot-link { color: var(--text); text-decoration: none; }
 a.lot-link:hover { color: var(--lead); text-decoration: underline; }
 .line-next { white-space: nowrap; color: var(--muted); }
 @media (max-width: 720px) { .sale-wrap { flex-wrap: wrap; } }
-.countdown.added { font: 600 13px var(--sans); color: var(--text); white-space: nowrap; }
+td.added { font-size: 12px; white-space: nowrap; overflow: hidden; }

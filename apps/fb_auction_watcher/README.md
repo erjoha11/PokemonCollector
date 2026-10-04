@@ -89,9 +89,9 @@ time. Countdowns under an hour turn red. Every row is two lines:
 **Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
 "AUKSJON/BUDRUNDE"/"FASTPRIS", then the description, cut with "…"; hover for the full text and when it was
 first seen), **Seller**, **Price** (type, then the terms), **Lots** and **You**. The seller's original end text is
-in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. A
-sale without an end time (fixed price, or none could be read) shows **Added 23 h ago** and the date instead: when a
-scan first saw it, close to when it was posted while auto-scan runs. **Mark as ended** is in a row's lots (click the row).
+in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. The
+**Added** column shows when each sale was added ("1 d ago", then the date): when a scan first saw it, close to when
+it was posted while auto-scan runs. **Mark as ended** is in a row's lots (click the row).
 **Ended** is for looking back: your sales first ("Yours"), then everyone else's. **Result** shows how
 it went ("9 of 12 sold · 6220 kr") and whether that's **final** (read after the end) or only **at last read**.
 Click a row for each lot: "Sold 1100 kr · buyer" or "Unsold", with your Won/Lost first. Only one thing talks to Facebook at a time: if a scan or another read is running, your **Read** waits

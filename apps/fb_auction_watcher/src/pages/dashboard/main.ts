@@ -283,23 +283,27 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
       .filter(Boolean)
       .join("\n");
   } else {
-    // No end time (fixed price, or one nobody could read): when it was added says how fresh it is.
-    // "Added" is when a scan first saw the post, which is close to when it was posted while
-    // auto-scan runs. Mark as ended is in the row's lots (click the row).
-    const seen = Date.parse(r.firstSeenAt);
+    // No end time: fixed price, or one nobody could read. (When it was added is in its own column.)
     const cutOff = r.type !== "fixed" && !r.textComplete && !r.endsAtText;
-    td.append(
-      el("div", "countdown added", `Added ${ago(r.firstSeenAt, now)}`),
-      line("div", el("span", "when", endLabel(seen, now)), ...(cutOff ? [" · ", el("span", "flag", "cut off")] : [])),
-    );
+    const head = line("div", el("span", "countdown unknown", r.type === "fixed" ? "No end" : "Unknown"));
+    if (cutOff) head.append(" ", el("span", "flag", "cut off"));
+    td.append(head);
     td.title = [
-      `Added ${new Date(seen).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (when a scan first saw it)`,
       r.type === "fixed" ? "Fixed price: no end time." : orig || "No end time in the post's text that the rules or Claude could read.",
-      r.type !== "fixed" && !r.textComplete && !r.endsAtText ? "The post's text was cut off before an end time." : "",
+      cutOff ? "The post's text was cut off before an end time." : "",
     ]
       .filter(Boolean)
       .join("\n");
   }
+  return td;
+}
+
+/** When the sale was added: when a scan first saw the post (close to when it was posted while auto-scan runs). */
+function addedCell(r: Row, now: Date): HTMLTableCellElement {
+  const td = el("td", "added");
+  const seen = Date.parse(r.firstSeenAt);
+  td.append(el("div", undefined, ago(r.firstSeenAt, now)), el("div", "when", endLabel(seen, now)));
+  td.title = `Added ${new Date(seen).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} (when a scan first saw it)`;
   return td;
 }
 
@@ -383,7 +387,7 @@ function titleLine(r: Row): HTMLDivElement {
 }
 
 /** Photo, then two lines (the sale's name, a link to Facebook, and New; its description), then Read. */
-function saleCell(r: Row, now: Date): HTMLTableCellElement {
+function saleCell(r: Row): HTMLTableCellElement {
   const td = el("td", "sale");
   const wrap = el("div", "sale-wrap");
   td.append(wrap);
@@ -405,7 +409,7 @@ function saleCell(r: Row, now: Date): HTMLTableCellElement {
   if (detail) box.append(el("div", "desc", detail));
   wrap.append(box, saleActions(r));
   // The full text, and when it was first seen (the Seen column until 2026-10-04).
-  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", `First seen ${ago(r.firstSeenAt, now)}`]
+  td.title = [r.title, r.description && r.description !== r.title ? r.description : ""]
     .filter(Boolean)
     .join("\n");
   return td;
@@ -976,7 +980,7 @@ function render() {
     main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
     return;
   }
-  const headers = ["Ends", "Sale", "Seller", "Price", "Lots", "You"];
+  const headers = ["Ends", "Added", "Sale", "Seller", "Price", "Lots", "You"];
   const table = el("table");
   const head = el("tr");
   // Ended sales show their result where running ones show their price.
@@ -998,7 +1002,7 @@ function render() {
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
-      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
+      tr.append(endsCell(r, now), addedCell(r, now), saleCell(r), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
       body.append(tr);
       if (expanded.has(r.id)) body.append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));

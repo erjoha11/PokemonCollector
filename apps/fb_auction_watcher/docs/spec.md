@@ -204,12 +204,12 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 - Columns (redesigned 2026-10-04: every row two lines, columns line up across groups):
   Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
   `saleLines` in `model.ts`, and New / Reading…; description, cut with "…") · Seller · Price (type /
-  terms) · Lots · You. Type and Seen are no longer columns; first seen is in the Sale tooltip.
+  terms) · Lots · You. Type and Seen are no longer columns (first seen came back as Added).
 - **Seller's original end text** (decided 2026-10-04, relaxing "Keep raw text" for the table): in the
   Ends tooltip when the rules are sure; in the row, flagged, when they weren't or Claude read it.
   Raw text is still stored and shown in full in the lots.
-- No end time (fixed price, unknown): Ends shows "Added 23 h ago" / the date (first seen by a scan)
-  instead of a countdown (2026-10-04). Mark as ended: in the expanded row, for every sale.
+- **Added** column (2026-10-04, after Ends): when a scan first saw the post ("1 d ago" / the date).
+  Ends shows only the end: "No end" for fixed price, "Unknown" (and "cut off") otherwise. Mark as ended: in the expanded row, for every sale.
 - **Ended group** (reviewed 2026-10-04: it's for looking back: how your bids went, what things sold
   for, and whether that's final). Your sales first under "Yours", then "Everyone else", newest first
   in each (`splitEnded`). Ends says "Ended 3 h ago" (muted; it was red, a ticker bug). Result
