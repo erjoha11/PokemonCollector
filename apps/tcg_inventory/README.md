@@ -685,8 +685,15 @@ without updating both the code and this doc.
 
 1. **Dex's "My Collection" is the physical inventory.** Every other Dex
    category is a tag on a subset of the same physical cards, never a
-   separate set of cards. "Wishlist" and any category starting with
-   "151 Fullarts" are always fully ignored.
+   separate set of cards. "Wishlist", "Incoming", and any category starting
+   with "151 Fullarts" are always fully ignored: never a collection, a
+   binder, or an importer warning. "Incoming" is the Dex folder of won cards
+   that haven't arrived yet (added at qty 0, removed on arrival). Dex doesn't
+   export qty-0 rows, so its only exported rows are cards already in My
+   Collection; what's on the way is tracked in Dex and the Facebook wins
+   inbox, not here (#311). Ignoring a category never touches an existing
+   collection of the same name: an "Incoming" collection created by an
+   earlier sync keeps its old tags until it is cleaned up by hand.
 2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored.
 3. **Primary collection.** When a card belongs to more than one collection,
    `Card.primary_collection` picks one by priority, highest first:
