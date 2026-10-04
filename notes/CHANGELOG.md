@@ -112,6 +112,24 @@ yet.
   now Need you, counted in lots. The rules are in `model.ts` (`needsYou`,
   `leadingBySale`, `lotUrl`) and tested in `tests/my-auctions.test.ts`.
 
+**Mark a sale ended; Settings dialog; two-line sales table (#293, #294, #295)**
+- #293: "Mark as ended" for a sale whose end time couldn't be read or that
+  the seller closed early (otherwise its outbid lots stayed in Needs you and
+  its leads never became won). The mark is stored as `endedMarks` in
+  `chrome.storage.local`; the sale is ended from then and its last full read
+  counts as final, so Leading becomes Won (in To pay) and Outbid becomes
+  Lost. "Undo ended" takes it back. Retention ignores marks.
+- #294: Settings moved from a fold-out above the table to a "Settings"
+  button at the top right that opens a modal dialog (close with ×, Esc or a
+  click outside). Same settings and element IDs.
+- #295: each sales-table row is now two lines with columns aligned across
+  groups: Ends (countdown, then end time and antisnipe), Sale (photo, title
+  without the template's type words via `saleLines`, then the description),
+  a new Seller column, Type folded into Price, Seen dropped. "Mark as ended"
+  shows in the row only for an unknown end time. "Claim and fixed price" is
+  split: Claim sorted by end time, Fixed price newest first and folded by
+  default.
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
