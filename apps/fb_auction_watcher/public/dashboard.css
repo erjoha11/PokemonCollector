@@ -322,3 +322,8 @@ tr.lots-row .end-toggle { margin-top: 6px; }
   .sale .title-line { white-space: normal; }
   #groups td.unread { display: none; } /* "–" for a sale not read yet: nothing to show on a phone. */
 }
+
+/* Ended (2026-10-04 review): quiet, outcome first, yours first */
+.countdown.ended { color: var(--muted); font-size: 13px; font-weight: 600; }
+td.result .result-final { color: var(--muted); font-size: 11px; }
+tr.subhead td { background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; }

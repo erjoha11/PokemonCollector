@@ -205,6 +205,13 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   Ends tooltip when the rules are sure; in the row, flagged, when they weren't or Claude read it.
   Raw text is still stored and shown in full in the lots.
 - Mark as ended: in the row for an unknown end time, otherwise in the expanded row.
+- **Ended group** (reviewed 2026-10-04: it's for looking back: how your bids went, what things sold
+  for, and whether that's final). Your sales first under "Yours", then "Everyone else", newest first
+  in each (`splitEnded`). Ends says "Ended 3 h ago" (muted; it was red, a ticker bug). Result
+  replaces Price: "9 of 12 sold" / "6220 kr · final" or "at last read <when>" (`saleResult`: lots
+  with a valid bid or a claim, the sum of winning bids or Claude-priced claimed cards; final =
+  `readAfterEnd`), "Not read" if never read. Expanded lots: "Sold 1100 kr · <bidder>" or "Unsold",
+  yours first with Won/Lost, flagged "at last read" when not final.
 - Filters: All / Auction / Claim / Fixed price / My bids / New + search.
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
