@@ -57,9 +57,9 @@ line above them ("14 need you · 12 leading (4600 kr if they hold) · 412 kr to 
 
 - **Needs you**: every lot where you have to act, across all sales, soonest ending first. Outbid,
   **Leading?** (a reply couldn't be read) and **Check** (someone claimed the same card first). One
-  line each: photo, lot name, sale and seller, countdown, the highest bid (and yours). The button
-  (**Bid 190+ ↗**) shows the lowest bid that counts now and opens that lot's comment on Facebook in
-  a new tab; you bid there yourself. The first 5 show, then **Show all**.
+  line each: photo, lot name, sale and seller, countdown, the highest bid (and yours). **next 190 kr+**
+  is the lowest bid that counts now; click the lot's name to open its comment on Facebook in a new
+  tab, and bid there yourself. The first 5 show, then **Show all**.
 - **Leading**: one folded line per sale (countdown, title, seller, "12 lots · 4600 kr", which is
   what you pay if they all hold). Unfold it to see the lots. A sale that ended but hasn't been read
   since says "ended: waiting for a final read".
@@ -78,7 +78,7 @@ the seller in To pay) takes the mark back. The mark is yours only, stored in the
 Lost lots and finished sales aren't listed there; they're in the table with their status. The
 **Need you** and **Won lots** counters sit next to the others. Below it are the counters and the full table. Clicking a row shows or hides its lots. Each
 sale has two buttons: **Open ↗** opens the post on Facebook (so does its name), **Read** reads its lots and bids now.
-Each lot has a **↗** to its own comment on Facebook (where you'd bid), in the table's lots and in To pay.
+A lot's name, wherever it shows (Needs you, Leading, To pay, a row's lots), opens its own comment on Facebook (where you'd bid).
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
 auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit) · **Today** ·

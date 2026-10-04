@@ -576,10 +576,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       item.append(img);
     }
     const body = el("div", "lot-body");
-    const lotTitleEl = el("div", "lot-title", `${l.position}. ${l.title} `);
-    if (l.namedByClaude) lotTitleEl.title = "Named by Claude from the photo";
-    lotTitleEl.append(lotLink(r, l));
-    body.append(lotTitleEl);
+    body.append(line("div", lotLink(r, l, `${l.position}. ${l.title}`, "lot-title")));
     if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
@@ -722,8 +719,7 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   const { row: r, lot: l, status } = item;
   const li = el("li", `lot-line ${status.key}`);
   li.append(lotThumb(l, photos));
-  const name = el("span", "line-name", l.title);
-  name.title = l.namedByClaude ? `${l.title} (named by Claude from the photo)` : l.title;
+  const name = lotLink(r, l, l.title, "line-name");
   const sale = el("span", "line-sale", `${saleTitle(r)} · ${r.sellerName ?? ""}`);
   sale.title = sale.textContent ?? "";
   li.append(line("span", name, sale), countdownEl(r, now));
@@ -735,39 +731,34 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
     if (status.key === "unclear") price.append(" · a reply couldn't be read");
     li.append(price);
   }
-  // Where you'd act: the lot's own comment on Facebook. The extension never bids or types.
-  const act = el("a", "line-act", item.nextBid !== null ? `Bid ${item.nextBid}+ ↗` : "Open ↗");
-  act.href = lotUrl(r, l);
-  act.target = "_blank";
-  act.rel = "noopener";
-  act.title = item.nextBid !== null ? `The lowest bid that counts now is ${item.nextBid} kr. Opens the lot on Facebook.` : "Opens the lot on Facebook.";
+  // The lowest bid that counts now; you bid on Facebook (the lot's name links there). The extension never bids.
   const actions = el("span", "line-actions");
-  actions.append(act);
+  if (item.nextBid !== null) {
+    const next = line("span", "next ", kr(item.nextBid), "+");
+    next.className = "line-next";
+    next.title = `The lowest bid that counts now is ${item.nextBid} kr. Click the lot's name to bid on Facebook.`;
+    actions.append(next);
+  }
   const toggle = endedToggle(r, "Sale ended");
   if (toggle) actions.append(toggle);
   li.append(actions);
   return li;
 }
 
-/** "↗" to a lot's own comment on Facebook (the post, when the lot has no comment ID). */
-function lotLink(r: Pick<Row, "url">, l: Lot, text = "↗"): HTMLAnchorElement {
-  const a = el("a", "lot-link", text);
+/** A lot's name as a link to its own comment on Facebook (the post, when the lot has no comment ID). */
+function lotLink(r: Pick<Row, "url">, l: Lot, text: string, cls: string): HTMLAnchorElement {
+  const a = el("a", `lot-link ${cls}`, text);
   a.href = lotUrl(r, l);
   a.target = "_blank";
   a.rel = "noopener";
-  a.title = l.commentId ? "Open this lot on Facebook" : "Open the post on Facebook (this lot has no link of its own)";
+  a.title = (l.commentId ? "Open this lot on Facebook" : "Open the post on Facebook (this lot has no link of its own)") + (l.namedByClaude ? " · named by Claude from the photo" : "");
   return a;
 }
 
 /** A lot you're leading, inside its sale. */
 function leadingLine(r: Row, l: Lot, photos: Photo[]): HTMLLIElement {
   const li = el("li", "lot-line lead");
-  li.append(lotThumb(l, photos), el("span", "line-name", l.title), line("span", "Your bid ", kr(l.myHighestBid)));
-  const open = el("a", "line-act", "Open ↗");
-  open.href = lotUrl(r, l);
-  open.target = "_blank";
-  open.rel = "noopener";
-  li.append(open);
+  li.append(lotThumb(l, photos), lotLink(r, l, l.title, "line-name"), line("span", "Your bid ", kr(l.myHighestBid)));
   return li;
 }
 
@@ -808,9 +799,7 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
   const photos = lotPhotos(g.items.map((i) => i.lot));
   for (const item of g.items) {
     const li = el("li", "lot-line");
-    const name = el("span", "line-name", `${item.label} `);
-    name.append(lotLink(item.row, item.lot));
-    li.append(lotThumb(item.lot, photos), name, item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
+    li.append(lotThumb(item.lot, photos), lotLink(item.row, item.lot, item.label, "line-name"), item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
     items.append(li);
   }
   card.append(items);
