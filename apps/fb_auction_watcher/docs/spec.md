@@ -193,9 +193,12 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
   final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
 - Numbers at the top: active, within 1 h, need you (lots), won lots, new.
-- Groups: today (including anything within the hour) · tomorrow and later · end time unknown ·
-  claim sales (by end time) · fixed price (newest first, folded by default) · ended (folded). Claim
-  and fixed price were one group until 2026-10-04. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
+- **Tabs** (2026-10-04; they replaced stacked, foldable groups): New (first seen since the last
+  visit, not ended) · Today (including anything within the hour) · Upcoming (was "Tomorrow and
+  later") · No end (end time unknown, then fixed price) · My bids (running, then ended) · Ended
+  (Yours, then Everyone else). Claim sales sit in Today / Upcoming by end time. Counts follow the
+  filter and search; the tab is remembered (localStorage `fbaw-tab`); ← / → move between tabs.
+  `tabs()` in `model.ts`. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
   red under an hour, and the "Within 1 hour" counter stays.)
 - Columns (redesigned 2026-10-04: every row two lines, columns line up across groups):
   Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
@@ -212,7 +215,7 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   with a valid bid or a claim, the sum of winning bids or Claude-priced claimed cards; final =
   `readAfterEnd`), "Not read" if never read. Expanded lots: "Sold 1100 kr · <bidder>" or "Unsold",
   yours first with Won/Lost, flagged "at last read" when not final.
-- Filters: All / Auction / Claim / Fixed price / My bids / New + search.
+- Filters: All / Auction / Claim / Fixed price + search (My bids and New are tabs).
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.

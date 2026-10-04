@@ -26,22 +26,21 @@ import {
   countdown,
   countRows,
   endLabel,
-  groupRows,
   krText,
   leadingBySale,
   lotStatus,
   lotUrl,
   readAfterEnd,
-  isMine,
   needsYou,
   saleLines,
   saleResult,
-  splitEnded,
+  tabs,
   wonBySeller,
   wonTotal,
   type LotStatus,
   type NeedsYouItem,
   type Row,
+  type TabId,
   type WonSeller,
 } from "./model";
 
@@ -52,7 +51,7 @@ import {
 // interpreted values (docs/spec.md rule), and anything read by Claude is marked as such.
 
 const store = idbStore();
-type Filter = "all" | "auction" | "claim" | "fixed" | "mine";
+type Filter = "all" | "auction" | "claim" | "fixed";
 
 const $ = <T extends Element>(sel: string) => document.querySelector(sel) as T;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string) => {
@@ -90,10 +89,9 @@ const local = {
 };
 
 /**
- * What you've folded away (table groups "group:<id>", sale cards "sale:<post id>", Won sellers
- * "won:<seller>"), remembered in this browser. Keys in `foldedByDefault` start folded.
+ * What you've folded or unfolded in My Auctions (Leading sales "lead:<post id>", To pay sellers
+ * "pay:<seller>"), remembered in this browser. Both start folded.
  */
-const foldedByDefault = new Set(["group:ended", "group:fixed"]);
 const folds: Record<string, boolean> = (() => {
   try {
     return JSON.parse(local.get("fbaw-folds") ?? "{}") as Record<string, boolean>;
@@ -101,7 +99,7 @@ const folds: Record<string, boolean> = (() => {
     return {};
   }
 })();
-const isFolded = (key: string) => folds[key] ?? (foldedByDefault.has(key) || key.startsWith("lead:") || key.startsWith("pay:"));
+const isFolded = (key: string) => folds[key] ?? (key.startsWith("lead:") || key.startsWith("pay:"));
 function setFolded(key: string, folded: boolean) {
   folds[key] = folded;
   local.set("fbaw-folds", JSON.stringify(folds));
@@ -120,7 +118,10 @@ const lastVisit = previousVisit ? new Date(previousVisit) : null;
 local.set("fbaw-last-visit", new Date().toISOString());
 
 let rows: Row[] = [];
-let filter: Filter = (local.get("fbaw-filter") as Filter | null) ?? "all";
+const FILTERS: Filter[] = ["all", "auction", "claim", "fixed"];
+const TAB_IDS: TabId[] = ["new", "today", "upcoming", "noend", "mine", "ended"];
+let filter: Filter = FILTERS.find((f) => f === local.get("fbaw-filter")) ?? "all"; // "mine" is a tab now.
+let tab: TabId = TAB_IDS.find((t) => t === local.get("fbaw-tab")) ?? "today";
 let query = "";
 let lastFeedReadAt: string | null = null;
 let settings: Settings;
@@ -176,9 +177,7 @@ async function load() {
 }
 
 function matches(r: Row): boolean {
-  if (filter === "mine") {
-    if (!isMine(r)) return false;
-  } else if (filter !== "all" && r.type !== filter) return false;
+  if (filter !== "all" && r.type !== filter) return false;
   if (!query) return true;
   const q = query.toLowerCase();
   return [r.title, r.sellerName ?? "", r.text, r.description ?? ""].some((s) => s.toLowerCase().includes(q));
@@ -473,7 +472,9 @@ function statusCells(r: Row, now: Date): HTMLTableCellElement[] {
   if (isClaims && read.length) {
     const open = read.reduce((n, l) => n + (l.available ?? 0), 0);
     const note = read.length < (r.lots?.length ?? 0) ? ` (${read.length} of ${r.lots!.length} lots read)` : "";
-    lotsTd.append(el("div", open ? "avail-sum" : "muted small", open ? `${open} card${open === 1 ? "" : "s"} available${note}` : `Sold out${note}`));
+    const avail = el("div", open ? "avail-sum" : "muted small", open ? `${open} card${open === 1 ? "" : "s"} available${note}` : `Sold out${note}`);
+    avail.title = avail.textContent ?? "";
+    lotsTd.append(avail);
   }
   if (s.unsure) lotsTd.append(el("div", "flag", `${s.unsure} unsure`));
   const counts = statusCounts(r);
@@ -921,46 +922,69 @@ function render() {
     main.append(el("p", "empty", "No sales yet. Open the group's feed on Facebook and click the extension icon to scan it."));
     return;
   }
+  // Tabs, with how many sales each holds under the current filter and search.
+  const all = tabs(visible, now);
+  const bar = $("#tabs");
+  bar.replaceChildren(
+    ...all.map((x) => {
+      const b = el("button", "tab");
+      b.type = "button";
+      b.id = `tab-${x.id}`;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(x.id === tab));
+      b.setAttribute("aria-controls", "groups");
+      b.tabIndex = x.id === tab ? 0 : -1;
+      b.dataset.tab = x.id;
+      b.append(x.label, " ", el("span", "group-count", String(x.count)));
+      return b;
+    }),
+  );
+  main.setAttribute("aria-labelledby", `tab-${tab}`);
+  const current = all.find((x) => x.id === tab)!;
   main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook and read its bids · click a row to show its lots"));
+  if (current.count === 0) {
+    main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
+    return;
+  }
   const headers = ["Ends", "Sale", "Seller", "Price", "Lots", "You"];
-  for (const g of groupRows(visible, now)) {
-    if (g.rows.length === 0) continue;
-    const section = el("section", `group group-${g.id}`);
-    const wrap = foldable(`group:${g.id}`, "group-fold");
-    const heading = el("summary", "group-title", `${g.label} `);
-    heading.append(el("span", "group-count", String(g.rows.length)));
-    wrap.append(heading);
-    const ended = g.id === "ended";
-    const table = el("table");
-    const head = el("tr");
-    for (const h of headers) head.append(el("th", undefined, ended && h === "Price" ? "Result" : h));
-    table.append(el("thead"), el("tbody"));
-    table.tHead!.append(head);
-    // Ended: your sales first (it's where lost lots live), then everyone else's; newest first in each.
-    const parts = ended ? splitEnded(g.rows) : null;
-    const ordered = parts ? [...parts.yours, ...parts.others] : g.rows;
-    for (const r of ordered) {
-      if (parts?.yours.length && (r === parts.yours[0] || r === parts.others[0])) {
-        const sub = el("tr", "subhead");
-        const td = el("td", undefined, r === parts.yours[0] ? `Yours · ${parts.yours.length}` : `Everyone else · ${parts.others.length}`);
-        td.colSpan = headers.length;
-        sub.append(td);
-        table.tBodies[0].append(sub);
-      }
+  const table = el("table");
+  const head = el("tr");
+  // Ended sales show their result where running ones show their price.
+  const allEnded = current.sections.every((x) => x.rows.every((r) => r.ended));
+  for (const h of headers) head.append(el("th", undefined, h === "Price" ? (allEnded ? "Result" : tab === "mine" ? "Price / result" : h) : h));
+  table.append(el("thead"), el("tbody"));
+  table.tHead!.append(head);
+  const body = table.tBodies[0];
+  for (const section of current.sections) {
+    // Sections only when the tab has more than one ("Yours" / "Everyone else").
+    if (current.sections.length > 1 && section.label) {
+      const sub = el("tr", "subhead");
+      const td = el("td", undefined, `${section.label} · ${section.rows.length}`);
+      td.colSpan = headers.length;
+      sub.append(td);
+      body.append(sub);
+    }
+    for (const r of section.rows) {
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
-      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
+      tr.append(endsCell(r, now), saleCell(r, now), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
-      table.tBodies[0].append(tr);
-      if (expanded.has(r.id)) table.tBodies[0].append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
+      body.append(tr);
+      if (expanded.has(r.id)) body.append(r.lots?.length ? lotsRow(r, headers.length) : pendingLotsRow(r, headers.length));
     }
-    wrap.append(table);
-    section.append(wrap);
-    main.append(section);
   }
-  if (visible.length === 0) main.append(el("p", "empty", "Nothing matches the filter."));
+  main.append(table);
 }
+
+const EMPTY_TAB: Record<TabId, string> = {
+  new: "Nothing new since your last visit.",
+  today: "Nothing ends today.",
+  upcoming: "Nothing ends after today yet.",
+  noend: "Every sale has an end time.",
+  mine: "You haven't bid or claimed in any sale the overview has read.",
+  ended: "No ended sales stored.",
+};
 
 /** Countdowns tick every second; a full re-render (regrouping) every 30 s. */
 function tick() {
@@ -997,6 +1021,22 @@ document.querySelectorAll<HTMLButtonElement>("[data-filter]").forEach((b) =>
     render();
   }),
 );
+// Tabs: click, or ← / → between them (the ARIA tabs pattern).
+$("#tabs").addEventListener("click", (e) => {
+  const b = (e.target as Element).closest<HTMLButtonElement>("[data-tab]");
+  if (!b) return;
+  tab = b.dataset.tab as TabId;
+  local.set("fbaw-tab", tab);
+  render();
+});
+$<HTMLElement>("#tabs").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const i = TAB_IDS.indexOf(tab) + (e.key === "ArrowRight" ? 1 : -1);
+  tab = TAB_IDS[(i + TAB_IDS.length) % TAB_IDS.length];
+  local.set("fbaw-tab", tab);
+  render();
+  $<HTMLButtonElement>(`#tab-${tab}`).focus();
+});
 $<HTMLInputElement>("#search").addEventListener("input", (e) => {
   query = (e.target as HTMLInputElement).value.trim();
   render();

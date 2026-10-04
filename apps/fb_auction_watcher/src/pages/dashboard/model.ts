@@ -6,11 +6,7 @@ import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, ty
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
-// The table's logic, without any DOM: stored raw posts → interpreted rows → groups.
-// Groups: today (including anything within the hour) · tomorrow and later · claim/fixed price ·
-// ended, plus "end time unknown" for auctions the rules couldn't read. (docs/spec.md planned a
-// separate "within 1 h" group; merged into Today on 2026-10-04, since the countdown turns red under
-// an hour and the "Within 1 hour" counter stays.)
+// The table's logic, without any DOM: stored raw posts → interpreted rows → tabs (see `tabs`).
 
 export type Row = StoredPost &
   Interpretation & {
@@ -41,8 +37,9 @@ export type RowExtras = {
   endedMarks?: Record<string, string>;
 };
 
-export type GroupId = "today" | "later" | "unknown" | "claim" | "fixed" | "ended";
-export type Group = { id: GroupId; label: string; rows: Row[] };
+export type TabId = "new" | "today" | "upcoming" | "noend" | "mine" | "ended";
+/** A tab's sales, in sections when it holds more than one kind ("Yours" / "Everyone else"). */
+export type Tab = { id: TabId; label: string; sections: { label: string | null; rows: Row[] }[]; count: number };
 
 const HOUR = 3_600_000;
 
@@ -112,36 +109,48 @@ const sameOsloDay = (a: Date, b: Date) => {
   return x.year === y.year && x.month === y.month && x.day === y.day;
 };
 
-export function groupRows(rows: Row[], now: Date): Group[] {
+/**
+ * The overview's tabs (2026-10-04; they replaced stacked groups). Claim sales sit in Today /
+ * Upcoming by their end time like auctions. A tab with more than one kind of sale has sections.
+ */
+export function tabs(rows: Row[], now: Date): Tab[] {
   const t = now.getTime();
-  const groups: Record<GroupId, Row[]> = { today: [], later: [], unknown: [], claim: [], fixed: [], ended: [] };
-  for (const r of rows) {
-    if (r.ended) groups.ended.push(r);
-    else if (r.type === "fixed") groups.fixed.push(r);
-    else if (r.type === "claim") groups.claim.push(r);
-    else if (r.endsAtMs === null) groups.unknown.push(r);
-    // Today, or within the hour (just before midnight); the countdown turns red under an hour.
-    else if (r.maybeEnded || r.endsAtMs - t < HOUR || sameOsloDay(new Date(r.endsAtMs), now)) groups.today.push(r);
-    else groups.later.push(r);
-  }
   const byEnd = (a: Row, b: Row) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity);
   const bySeen = (a: Row, b: Row) => b.firstSeenAt.localeCompare(a.firstSeenAt);
-  groups.today.sort(byEnd); // "Ended?" (in the antisnipe window) first: their end time has passed.
-  groups.later.sort(byEnd);
-  groups.unknown.sort(bySeen);
-  // Claim sales race against their end time; fixed price is a catalogue, newest first.
-  groups.claim.sort((a, b) => byEnd(a, b) || bySeen(a, b));
-  groups.fixed.sort(bySeen);
-  groups.ended.sort((a, b) => endedAtMs(b) - endedAtMs(a));
-  const labels: Record<GroupId, string> = {
-    today: "Today",
-    later: "Tomorrow and later",
-    unknown: "End time unknown",
-    claim: "Claim sales",
-    fixed: "Fixed price",
-    ended: "Ended",
-  };
-  return (Object.keys(groups) as GroupId[]).map((id) => ({ id, label: labels[id], rows: groups[id] }));
+  const newestEnded = (a: Row, b: Row) => endedAtMs(b) - endedAtMs(a);
+  const running = rows.filter((r) => !r.ended);
+  const timed = running.filter((r) => r.type !== "fixed" && r.endsAtMs !== null);
+  // Today, or within the hour (just before midnight); the countdown turns red under an hour.
+  const isToday = (r: Row) => r.maybeEnded || r.endsAtMs! - t < HOUR || sameOsloDay(new Date(r.endsAtMs!), now);
+  const ended = rows.filter((r) => r.ended).sort(newestEnded);
+  const mine = rows.filter(isMine);
+  const { yours, others } = splitEnded(ended);
+  const list: [TabId, string, [string | null, Row[]][]][] = [
+    ["new", "New", [[null, running.filter((r) => r.isNew).sort(bySeen)]]],
+    ["today", "Today", [[null, timed.filter(isToday).sort(byEnd)]]], // "Ended?" (antisnipe window) first.
+    ["upcoming", "Upcoming", [[null, timed.filter((r) => !isToday(r)).sort(byEnd)]]],
+    [
+      "noend",
+      "No end",
+      [
+        ["End time unknown", running.filter((r) => r.type !== "fixed" && r.endsAtMs === null).sort(bySeen)],
+        ["Fixed price", running.filter((r) => r.type === "fixed").sort(bySeen)],
+      ],
+    ],
+    [
+      "mine",
+      "My bids",
+      [
+        ["Running", mine.filter((r) => !r.ended).sort(byEnd)],
+        ["Ended", mine.filter((r) => r.ended).sort(newestEnded)],
+      ],
+    ],
+    ["ended", "Ended", [["Yours", yours], ["Everyone else", others]]],
+  ];
+  return list.map(([id, label, parts]) => {
+    const sections = parts.filter(([, r]) => r.length).map(([l, r]) => ({ label: l, rows: r }));
+    return { id, label, sections, count: sections.reduce((n, x) => n + x.rows.length, 0) };
+  });
 }
 
 export type Counts = { active: number; withinHour: number; outbid: number; isNew: number };

@@ -41,18 +41,18 @@
       <div class="counter won"><span id="count-won" class="num">–</span><span class="label">Won lots</span></div>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
+    <nav id="tabs" class="tabs" role="tablist" aria-label="Sales"></nav>
     <div class="controls">
       <div class="filters" role="group" aria-label="Filter by type">
         <button type="button" data-filter="all">All</button>
         <button type="button" data-filter="auction">Auction</button>
         <button type="button" data-filter="claim">Claim</button>
         <button type="button" data-filter="fixed">Fixed price</button>
-        <button type="button" data-filter="mine">My bids</button>
       </div>
       <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
     </div>
   </header>
-  <main id="groups"></main>
+  <main id="groups" role="tabpanel"></main>
   <dialog id="settings" class="settings" aria-labelledby="settings-title">
     <div class="settings-head">
       <h2 id="settings-title">Settings</h2>

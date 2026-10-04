@@ -327,3 +327,14 @@ tr.lots-row .end-toggle { margin-top: 6px; }
 .countdown.ended { color: var(--muted); font-size: 13px; font-weight: 600; }
 td.result .result-final { color: var(--muted); font-size: 11px; }
 tr.subhead td { background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; }
+
+/* Tabs (2026-10-04): New · Today · Upcoming · No end · My bids · Ended */
+/* In the header, above the filters: they narrow down the tab you're on. */
+.tabs { display: flex; gap: 2px; margin: 16px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tab { font: inherit; font-size: 14px; font-weight: 600; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--lead); }
+.tab .group-count { margin-left: 2px; }
+#groups > table { margin-top: 6px; }
+td.lots { overflow: hidden; }
+td.lots > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

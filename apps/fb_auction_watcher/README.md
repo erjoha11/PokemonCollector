@@ -80,21 +80,24 @@ Lost lots and finished sales aren't listed there; they're in the table with thei
 name opens the post on Facebook in a new tab and reads it quietly there.
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
-auction and claim sale the scans have saved, grouped by end time (today · tomorrow and later · end time unknown · claim sales ·
-fixed price, folded · ended, folded; countdowns under an hour turn red), with live countdowns. Every row is two lines:
+auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit) · **Today** ·
+**Upcoming** (tomorrow and later) · **No end** (end time unknown, then fixed price) · **My bids** (running,
+then ended) · **Ended**. Each tab shows how many sales it holds under the current filter and search; ← / →
+switch tabs, and the overview remembers the last one. Claim sales sit in Today / Upcoming by their end
+time. Countdowns under an hour turn red. Every row is two lines:
 **Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
 "AUKSJON/BUDRUNDE"/"FASTPRIS", then the description, cut with "…"; hover for the full text and when it was
 first seen), **Seller**, **Price** (type, then the terms), **Lots** and **You**. The seller's original end text is
 in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. A
 sale with no readable end time has **Mark as ended** right there; others have it in the row's lots (click the row).
-**Ended** (folded) is for looking back: your sales first ("Yours"), then everyone else's. **Result** shows how
+**Ended** is for looking back: your sales first ("Yours"), then everyone else's. **Result** shows how
 it went ("9 of 12 sold · 6220 kr") and whether that's **final** (read after the end) or only **at last read**.
 Click a row for each lot: "Sold 1100 kr · buyer" or "Unsold", with your Won/Lost first. Only one thing talks to Facebook at a time: if a scan or another read is running, your click waits
 ("Queued") and starts as soon as it's done. Click a title to open the post; the extension reads it quietly in that tab (comments, replies, bids). A
 small overlay in the bottom-right corner shows progress (with **Stop**), then turns green with what was
 saved ("Saved · 100 lots · 13 bids · Leading 1") and fades; the toolbar icon shows ✓ in that tab, and
-the overview row says **Just read**. Ctrl/Cmd-click just opens the post. **My bids** filters to sales you're
-bidding in.
+the overview row says **Just read**. Ctrl/Cmd-click just opens the post. The **My bids** tab lists the sales you're
+bidding or claiming in.
 
 **Bids and your status:** click a sale's title in the overview, or open a post on Facebook and click the
 icon (it reads every comment and reply).

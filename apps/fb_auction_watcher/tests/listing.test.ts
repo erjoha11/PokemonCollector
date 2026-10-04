@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { interpretListing, saleTitle, saleType } from "../src/domain/listing";
-import { buildRows, countdown, countRows, groupRows } from "../src/pages/dashboard/model";
+import { buildRows, countdown, countRows, tabs, type Tab } from "../src/pages/dashboard/model";
+
+const tabIds = (t: Tab[]) => Object.fromEntries(t.map((x) => [x.id, x.sections.flatMap((s) => s.rows.map((r) => r.id))]));
 import { endTimeAnswerKey } from "../src/llm/prompts";
 import type { StoredPost } from "../src/shared/feed";
 
@@ -73,15 +75,25 @@ describe("table model", () => {
     expect(rows.map((r) => r.id)).not.toContain("9");
   });
 
-  it("groups by end time", () => {
-    const g = Object.fromEntries(groupRows(rows, now).map((x) => [x.id, x.rows.map((r) => r.id)]));
-    expect(g).toEqual({ today: ["7", "1", "2"], later: ["3"], unknown: ["4"], claim: ["5"], fixed: ["6"], ended: ["8"] });
+  it("tabs: by end time (claim sales too), no end, new, yours, ended", () => {
+    const g = tabIds(tabs(rows, now));
+    expect(g).toEqual({
+      new: ["1", "2", "3", "4", "5", "6", "7"], // All first seen after the last visit; ended ones aren't new.
+      today: ["7", "1", "2"],
+      upcoming: ["5", "3"], // The claim sale ends tomorrow at 14:00, before auction 3 at 21:00.
+      noend: ["4", "6"], // End time unknown, then fixed price.
+      mine: [],
+      ended: ["8"],
+    });
+    const noend = tabs(rows, now).find((x) => x.id === "noend")!;
+    expect(noend.sections.map((x) => x.label)).toEqual(["End time unknown", "Fixed price"]);
+    expect(noend.count).toBe(2);
   });
 
   it("an auction ending within the hour but after midnight is still Today", () => {
     const lateNight = new Date("2026-10-03T21:50:00Z"); // 23:50 in Oslo.
     const [r] = buildRows([stored("30", AUCTION.replace("04.10.26 kl 21:00", "04.10.26 kl 00:20"))], lateNight, null);
-    expect(groupRows([r], lateNight).find((x) => x.id === "today")!.rows).toHaveLength(1);
+    expect(tabIds(tabs([r], lateNight)).today).toHaveLength(1);
   });
 
   it("marks 'Ended?' inside the antisnipe window", () => {
@@ -105,10 +117,10 @@ describe("table model", () => {
     const marked = buildRows(posts, now, null, { endedMarks: marks });
     expect(marked.find((r) => r.id === "3")).toMatchObject({ ended: true, maybeEnded: false, endedByYouAt: "2026-10-03T12:00:00Z" });
     expect(marked.find((r) => r.id === "7")).toMatchObject({ ended: true, maybeEnded: false });
-    const g = Object.fromEntries(groupRows(marked, now).map((x) => [x.id, x.rows.map((r) => r.id)]));
+    const g = tabIds(tabs(marked, now));
     // Newest ended first: 7 (its end time, 14:57 Oslo), 4 (marked 14:30, no end time), 3 (marked 14:00, before its end), 8.
     expect(g.ended).toEqual(["7", "4", "3", "8"]);
-    expect(g.unknown).toEqual([]);
+    expect(g.noend).toEqual(["6"]); // 4 (unknown end) was marked ended.
     expect(rows.find((r) => r.id === "3")).toMatchObject({ ended: false, endedByYouAt: null });
   });
 
