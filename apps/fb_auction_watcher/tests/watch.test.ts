@@ -13,7 +13,7 @@ const MIN = 60_000;
 const NOW = Date.parse("2026-10-04T12:00:00Z");
 const fbUrl = (id: string) => `https://www.facebook.com/groups/g/posts/${id}/`;
 const mk = (id: string, over: Partial<MyAuction> = {}): MyAuction => ({
-  postId: id, url: fbUrl(id), title: `Sale ${id}`, endsAt: NOW + 60 * MIN, closesAt: NOW + 65 * MIN,
+  postId: id, url: fbUrl(id), title: `Sale ${id}`, type: "auction", endsAt: NOW + 60 * MIN, closesAt: NOW + 65 * MIN,
   lastRead: NOW - 5 * MIN, lastComplete: NOW - 5 * MIN, lots: [], ...over,
 });
 const mkLot = (position: number, over: Partial<Lot> = {}): Lot =>
@@ -45,7 +45,7 @@ describe("watchPlan", () => {
 });
 
 describe("notes", () => {
-  const sale = { postId: "1", title: "Gengar", url: fbUrl("1") };
+  const sale = { postId: "1", title: "Gengar", url: fbUrl("1"), type: "auction" as const };
 
   it("outbid: only lots you were leading (or maybe leading) before; links to the lot, with the next bid", () => {
     const before = [mkLot(1, { myStatus: "lead" }), mkLot(2, { myStatus: "outbid" }), mkLot(3, { myStatus: "unclear" })];
@@ -56,14 +56,14 @@ describe("notes", () => {
     ];
     const notes = outbidNotes(before, after, sale);
     expect(notes.map((n) => n.title)).toEqual(["Outbid: Lot 1", "Outbid: Lot 3"]);
-    expect(notes[0]).toMatchObject({ message: "Gengar · highest 190 kr (you 160 kr) · next bid 200 kr", url: `${fbUrl("1")}?comment_id=c1` });
+    expect(notes[0]).toMatchObject({ message: "Auction · Gengar · highest 190 kr (you 160 kr) · next bid 200 kr", url: `${fbUrl("1")}?comment_id=c1` });
     expect(outbidNotes(null, after, sale)).toEqual([]); // The first read: nothing to compare with.
   });
 
   it("result: what you won (and for how much) and what you lost", () => {
     const after = [mkLot(1, { myStatus: "lead", myHighestBid: 280 }), mkLot(2, { myStatus: "lead", myHighestBid: 200 }), mkLot(3, { myStatus: "outbid" })];
     expect(resultNotes(after, sale)).toEqual([
-      { key: "result:1", title: "Won 2 lots · 480 kr · lost 1", message: "Gengar · won: Lot 1, Lot 2 · lost: Lot 3", url: fbUrl("1") },
+      { key: "result:1", title: "Won 2 lots · 480 kr · lost 1", message: "Auction · Gengar · won: Lot 1, Lot 2 · lost: Lot 3", url: fbUrl("1") },
     ]);
     expect(resultNotes([mkLot(1, { myStatus: "outbid" })], sale)[0].title).toBe("Lost 1 lot");
     expect(resultNotes([mkLot(1)], sale)).toEqual([]);
@@ -71,7 +71,7 @@ describe("notes", () => {
 
   it("ending soon: minutes left and where you stand", () => {
     const a = mk("1", { title: "Gengar", endsAt: NOW + 9 * MIN, lastRead: NOW - 4 * MIN, lots: [mkLot(1, { myStatus: "lead" }), mkLot(2, { myStatus: "outbid" })] });
-    expect(endingSoonNote(a, NOW)).toMatchObject({ title: "Ends in 9 min: Gengar", message: "leading 1 · outbid 1 (at the last read, 4 min ago)", url: fbUrl("1") });
+    expect(endingSoonNote(a, NOW)).toMatchObject({ title: "Ends in 9 min: Gengar", message: "Auction · leading 1 · outbid 1 (at the last read, 4 min ago)", url: fbUrl("1") });
   });
 });
 

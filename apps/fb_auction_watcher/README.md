@@ -93,7 +93,12 @@ switch tabs, and the overview remembers the last one. Claim sales sit in Today /
 time. Countdowns under an hour turn red. Every row is two lines:
 **Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
 "AUKSJON/BUDRUNDE"/"FASTPRIS", then the description, cut with "…"; hover for the full text and when it was
-first seen), **Seller**, **Price** (type, then the terms), **Lots** and **You**. The seller's original end text is
+first seen), **Seller**, **Price** (the terms: "Min 10 kr · +5", "2000 kr"), **Lots** and **You**.
+Every sale's name starts with its **type badge**: **Auction** (purple), **Claim** (teal) or **Fixed price**
+(gold), outlined so it never looks like a Leading/Outbid status, and in words, not colour alone. A post laid
+out as a sale (description, minimum price, end time…) that names none of the three shows **Unknown** (grey,
+dashed) instead of a guess. The same badge is on My Auctions' Needs you, Leading and To pay lines, and the
+words match the type filter (All / Auction / Claim / Fixed price). The seller's original end text is
 in the Ends tooltip; it shows in the row instead when the rules weren't sure ("?") or Claude read it. The
 **Added** column shows when each sale was added ("1 d ago", then the date): when a scan first saw it, close to when
 it was posted while auto-scan runs. **Mark as ended** is in a row's lots (click the row).
@@ -167,7 +172,8 @@ again (for up to 2 hours). With auto-scan off, the overview says "open it to see
 
 **Desktop notifications** (Settings, on by default): **Outbid** when a read finds someone has bid over
 you (with the next valid bid), **Ends in 10 min** for a sale you're bidding in, and **Won N lots ·
-X kr / Lost** once its final read is in. Each shows once; clicking it opens the lot (or the post) on
+X kr / Lost** once its final read is in. The message starts with the sale's type and name ("Auction ·
+Gengar · …"). Each shows once; clicking it opens the lot (or the post) on
 Facebook, nothing more. Outbid and Won/Lost come from reads, so they arrive by themselves only while
 auto-scan is on; background re-reads run every 15 min, so an outbid can show up to 15 min late. On
 macOS, Chrome must be allowed to show notifications (System Settings → Notifications → Google Chrome).

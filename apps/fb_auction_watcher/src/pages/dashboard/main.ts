@@ -46,6 +46,7 @@ import {
   type TabId,
   type WonSeller,
 } from "./model";
+import { typeBadge } from "./badge";
 
 // The overview: every sale read from the feed, grouped and sorted by end time, with live
 // countdowns, and for posts you've read with the icon: lots, bids and your Leading/Outbid
@@ -189,14 +190,20 @@ function matches(r: Row): boolean {
   return [r.title, r.sellerName ?? "", r.text, r.description ?? ""].some((s) => s.toLowerCase().includes(q));
 }
 
-/** The sale type, then its price terms: "Auction / Min 10 kr · +5", "Fixed price / 2000 kr". */
+/**
+ * The price terms: "Min 10 kr · +5", "2000 kr". The type is the badge by the sale's name (#322),
+ * so it's no longer repeated here.
+ */
 function priceCell(r: Row): HTMLTableCellElement {
   const td = el("td", "price");
-  td.append(el("div", "type", TYPE_LABEL[r.type]));
   const terms = el("div");
   if (r.type === "auction") {
     terms.append(...(r.minPrice !== null ? ["Min ", kr(r.minPrice)] : ["Min per lot"]));
     if (r.increment !== null) terms.append(` · +${r.increment}`);
+  } else if (r.type === "other") {
+    // Unknown type: say what the post does state, without reading it as an auction or a claim.
+    const stated = [r.minPrice !== null ? `Min ${r.minPrice} kr` : "", r.increment !== null ? `+${r.increment}` : ""].filter(Boolean);
+    terms.append(stated.length ? stated.join(" · ") : el("span", "muted", "See the post"));
   } else {
     terms.append(r.fixedPrice !== null ? kr(r.fixedPrice) : "Price per item");
   }
@@ -231,10 +238,6 @@ function resultCell(r: Row, now: Date): HTMLTableCellElement {
     : "Lots with a valid bid, and the sum of the winning bids";
   return td;
 }
-
-const TYPE_LABEL: Record<Row["type"], string> = {
-  auction: "Auction", claim: "Claim", fixed: "Fixed price", wanted: "Wanted", trade: "Trade", other: "Other",
-};
 
 /**
  * "Mark as ended" for a sale that's over though its end time says otherwise (none could be read,
@@ -385,10 +388,10 @@ function saleActions(r: Row): HTMLSpanElement {
   return box;
 }
 
-/** The sale's name as a link. */
+/** The sale's type badge (Auction / Claim / Fixed price / Unknown, #322), then its name as a link. */
 function titleLine(r: Row): HTMLDivElement {
   const line = el("div", "title-line");
-  line.append(titleLink(r));
+  line.append(typeBadge(r.type), " ", titleLink(r));
   return line;
 }
 
@@ -409,7 +412,7 @@ function saleCell(r: Row): HTMLTableCellElement {
   }
   const box = el("div", "sale-text");
   const title = titleLine(r);
-  if (r.isNew) title.prepend(el("span", "badge new", "New"), " ");
+  if (r.isNew) title.firstChild!.after(" ", el("span", "badge new", "New")); // After the type badge.
   box.append(title);
   const { detail } = saleLines(r.title, r.description);
   if (detail) box.append(el("div", "desc", detail));
@@ -725,7 +728,8 @@ function needsYouLine(item: NeedsYouItem, photos: Photo[], now: Date): HTMLLIEle
   const li = el("li", `lot-line ${status.key}`);
   li.append(lotThumb(l, photos));
   const name = lotLink(r, l, l.title, "line-name");
-  const sale = el("span", "line-sale", `${saleTitle(r)} · ${r.sellerName ?? ""}`);
+  const sale = line("span", typeBadge(r.type), ` ${saleTitle(r)} · ${r.sellerName ?? ""}`);
+  sale.className = "line-sale";
   sale.title = sale.textContent ?? "";
   li.append(line("span", name, sale), countdownEl(r, now));
   if (status.key === "check") {
@@ -814,13 +818,13 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
     link.href = r.url;
     link.target = "_blank";
     link.rel = "noopener";
-    terms.append(link);
+    terms.append(typeBadge(r.type), " ", link);
     if (r.shippingText) terms.append(" · ", el("span", undefined, `Shipping: ${r.shippingText}`));
     if (r.paymentText) terms.append(" · ", el("span", undefined, `Pay: ${r.paymentText}`));
     if (r.endedByYouAt) {
       terms.append(" · ", el("span", "muted", `marked ended by you ${ago(r.endedByYouAt, now)}`), " ");
       terms.append(endedToggle(r)!);
-    } else terms.append(" · ", el("span", "muted", r.endsAtMs !== null ? `ended ${endLabel(r.endsAtMs, now)}` : "fixed price"));
+    } else if (r.endsAtMs !== null) terms.append(" · ", el("span", "muted", `ended ${endLabel(r.endsAtMs, now)}`));
     card.append(terms);
   }
   return card;
