@@ -4,6 +4,7 @@ import { saleLines } from "../domain/saleLines";
 import { bidAnswerKey, lotNameAnswerKey } from "../llm/prompts";
 import type { PostCapture } from "../shared/capture";
 import type { StoredPost } from "../shared/feed";
+import { canonicalPostUrl } from "../shared/urls";
 
 // Auctions you're in, and what to do about them: which to re-read now, when the next final read
 // is due (just after a sale closes, so Leading becomes Won or Lost without you opening it), and
@@ -73,7 +74,7 @@ export function myAuctions(posts: StoredPost[], captures: { postId: string; capt
     const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
     out.push({
       postId,
-      url: post.url,
+      url: canonicalPostUrl(post.url, postId, post.groupSlug),
       title: saleLines(listing.title, listing.description).title,
       type: listing.type,
       endsAt,

@@ -63,6 +63,17 @@ describe("worker messages", () => {
     expect((await store.allPosts())[0]).toMatchObject({ url: fbUrl("555"), groupSlug: "g", textComplete: true, firstSeenAt: new Date(read.capturedAt).toISOString() });
   });
 
+  it("save-post-capture from the photo viewer: the post is saved by its own group address, not photo.php", async () => {
+    // Read while Facebook showed the post in the photo viewer: the page address has no group or post in it.
+    const read = capture("556", auctionText(), [lot(1, [reply(ME, `${SELLER} 40`)])], {
+      pageUrl: "https://www.facebook.com/photo.php?fbid=29539049065697822&set=p.29539049065697822&type=3",
+      post: { url: fbUrl("556"), author: SELLER, text: auctionText(), timeText: null, images: [], truncated: false },
+    });
+    await fake.sendToWorker({ type: "fbaw/save-post-capture", capture: read }, 5);
+    await vi.waitFor(async () => expect((await store.allPosts()).map((p) => p.id)).toEqual(["556"]));
+    expect((await store.allPosts())[0]).toMatchObject({ url: fbUrl("556"), groupSlug: "g" });
+  });
+
   it("queue-read opens the post; read-done from that tab finishes it", async () => {
     await fake.sendToWorker({ type: "fbaw/queue-read", postId: "1", url: fbUrl("1") });
     await vi.waitFor(async () => expect((await reader.getReaderState()).current?.tabId).toBe(100));

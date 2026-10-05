@@ -20,6 +20,7 @@ import {
   type StoreUpdatedMessage,
 } from "../shared/messages";
 import { groupSlug } from "../shared/feed";
+import { canonicalPostUrl, groupPostUrl } from "../shared/urls";
 import { getAutoScanState, getSettings, updateAutoScanState } from "../shared/settings";
 import { idbStore } from "../store";
 import { AUTO_SCAN_ALARM, describeAutoScan, isGroupFeedUrl, newPostsUrl, runAutoScan, scheduleAutoScan } from "./autoScan";
@@ -185,7 +186,7 @@ async function noticeChanges(postId: string, previous: PostCapture | null, merge
   if (listing.type !== "auction") return;
   const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
   const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
-  const sale = { postId, url: post.url, title: saleLines(listing.title, listing.description).title, type: listing.type };
+  const sale = { postId, url: canonicalPostUrl(post.url, postId, post.groupSlug), title: saleLines(listing.title, listing.description).title, type: listing.type };
   let notes: Note[];
   if (isFinal(merged, closesAt)) {
     // The result, once: not again for later reads after the close.
@@ -261,13 +262,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       const previous = await store.getCapture(id);
       const merged = mergeCaptures(previous, capture);
       await store.saveCapture(id, merged);
-      // A post read directly also belongs in the overview, even if no scan has seen it.
-      const slug = groupSlug(capture.pageUrl);
+      // A post read directly also belongs in the overview, even if no scan has seen it. Its link is
+      // always the group post's own address, also when it was read in the photo viewer
+      // (photo.php?fbid=…, which has no group in it): lot links append ?comment_id= to it.
+      const slug = groupSlug(capture.pageUrl) ?? groupSlug(capture.post.url ?? "") ?? capture.comments.map((c) => groupSlug(c.url ?? "")).find(Boolean) ?? null;
       await store.savePosts(
         [
           {
             id,
-            url: slug ? `https://www.facebook.com/groups/${slug}/posts/${id}/` : capture.pageUrl,
+            url: groupPostUrl(id, slug),
             groupSlug: slug,
             sellerName: capture.post.author,
             text: capture.post.text,

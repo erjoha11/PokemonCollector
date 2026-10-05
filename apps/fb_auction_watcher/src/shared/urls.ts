@@ -7,6 +7,24 @@
  */
 export const GROUP_FEED_URL = "https://www.facebook.com/groups/pokemonkortnorge/";
 
+/** The watched group's URL name ("pokemonkortnorge"), from GROUP_FEED_URL. */
+export const GROUP_SLUG = GROUP_FEED_URL.match(/\/groups\/([^/]+)/)![1];
+
+/** A post's own address in its group, the one place a comment link (`?comment_id=`) works. */
+export function groupPostUrl(postId: string, slug?: string | null): string {
+  return `https://www.facebook.com/groups/${slug || GROUP_SLUG}/posts/${postId}/`;
+}
+
+/**
+ * The address to link a stored post by: the group post's own address. A post read while Facebook
+ * showed it in the photo viewer was saved with that page's `photo.php?fbid=…` address, so its lot
+ * links went to the photo (2026-10-05); anything that isn't the post's own address is rebuilt.
+ */
+export function canonicalPostUrl(url: string, postId: string, slug?: string | null): string {
+  if (!/^\d+$/.test(postId)) return url; // Not a group post ID: nothing to rebuild from.
+  return new RegExp(`^https://www\\.facebook\\.com/groups/[^/?#]+/(?:posts|permalink)/${postId}/?$`).test(url) ? url : groupPostUrl(postId, slug);
+}
+
 /** The group feed itself, not a post, photo or profile inside the group. */
 export function isGroupFeedUrl(url: string | undefined): boolean {
   if (!url) return false;

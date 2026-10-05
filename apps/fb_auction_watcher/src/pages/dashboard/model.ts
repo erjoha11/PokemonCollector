@@ -2,6 +2,7 @@ import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../d
 export type { Lot } from "../../domain/bids";
 export { saleLines } from "../../domain/saleLines";
 export { lotUrl } from "../../shared/urls";
+import { canonicalPostUrl } from "../../shared/urls";
 import { interpretListing, isUntypedSale, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, osloDate } from "../../domain/endTime";
 import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
@@ -97,6 +98,8 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const firstSeen = Date.parse(p.firstSeenAt);
     rows.push({
       ...p,
+      // Posts saved from the photo viewer had a photo.php link; link them by their own address.
+      url: canonicalPostUrl(p.url, p.id, p.groupSlug),
       ...i,
       endsAtMs,
       isNew: (lastVisit !== null && firstSeen > lastVisit.getTime()) || t - firstSeen < NEW_WINDOW_MS,
