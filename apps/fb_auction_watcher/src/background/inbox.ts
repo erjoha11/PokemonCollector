@@ -1,6 +1,6 @@
 import { buildWonPayload } from "../inbox/payload";
 import { buildRows } from "../pages/dashboard/model";
-import { getEndedMarks, getSettings, getWonState, inboxOrigin, markInboxSent, setInboxState, type InboxState } from "../shared/settings";
+import { getEndedMarks, getNotWonMarks, getSettings, getWonState, inboxOrigin, markInboxSent, setInboxState, type InboxState } from "../shared/settings";
 import type { Store } from "../store";
 
 // "Send wins to inventory" (#309): posts your own wins (src/inbox/payload.ts) to your
@@ -48,18 +48,21 @@ export async function sendWins(store: Store, deps: SendDeps = defaultDeps, postI
   if (!settings.inboxToken) return done(false, null, "Set the inbox token in Settings first.");
   if (!(await deps.hasPermission(origin))) return done(false, null, `No permission to reach ${origin}: save the address in Settings again.`);
 
-  const [posts, captures, answers, endedMarks, wonState] = await Promise.all([
+  const [posts, captures, answers, endedMarks, notWonMarks, wonState] = await Promise.all([
     store.allPosts(),
     store.allCaptures(),
     store.allAnswers(),
     getEndedMarks(),
+    getNotWonMarks(),
     getWonState(),
   ]);
+  // Lots you marked "Not won" (#329) aren't wins: wonBySeller leaves them out, so they're never sent.
   const rows = buildRows(posts, now, null, {
     captures: new Map(captures.map((c) => [c.postId, c.capture])),
     answers: new Map(answers.map((a) => [a.key, a.value])),
     myName: settings.myName,
     endedMarks,
+    notWonMarks,
   });
   const payload = buildWonPayload(rows, wonState, now, postIds ? new Set(postIds) : undefined);
   const count = payload.items.length;

@@ -194,7 +194,7 @@ of this contract, so it's defined here; tcg_inventory's reader is `won_inbox.py`
   to tcg_inventory" → Save asks Chrome for that one origin (https, or http on localhost for a local
   `python app.py`). A service-worker fetch to an origin with host permission isn't subject to CORS.
 - **Which lots:** exactly To pay's (`wonBySeller`): auction lots once a complete read after the
-  end confirms the win, claim lots you claimed first. All of them on every send; tcg_inventory
+  end confirms the win, claim lots you claimed first, minus lots you marked **Not won** (#329). All of them on every send; tcg_inventory
   upserts, so re-sending is safe and a price that was unknown is filled in later. Retention deletes
   a sale's read 30 days after it ends, so a win must be sent within that window (once sent, the
   inbox keeps it).
@@ -292,6 +292,13 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
   final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
+- **Not won** (2026-10-06, #329): each lot under To pay (and a won lot in the expanded table) has
+  **Not won**, for a win the rules got wrong (e.g. your bid came after the end and the seller said
+  so under it). Stored as `notWonMarks` (`<post ID>:<comment ID>`, or `:pos<n>` for a lot without
+  one, → when) in `chrome.storage.local`. A marked lot's status is "Not won (your mark)" whatever
+  the rules read (`lotStatus` in `model.ts`): it leaves To pay, so it's never in the inbox payload,
+  and it's listed under To pay's folded "Marked not won by you" with **Undo not won**. A lot already
+  sent to tcg_inventory stays in its inbox (sends upsert, never delete): ignore it there.
 - Numbers at the top: active, within 1 h, need you (lots), won lots, new. Ended sales never count,
   including ones still shown in an active tab for their 30 min (#320).
 - **Tabs** (2026-10-04; they replaced stacked, foldable groups): New (first seen since the last

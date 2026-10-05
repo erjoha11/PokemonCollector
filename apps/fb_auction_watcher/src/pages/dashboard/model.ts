@@ -33,6 +33,8 @@ export type Row = StoredPost &
     lastReadAt: string | null;
     /** The last read that loaded every comment (reads are merged; see src/domain/captures.ts). */
     lastCompleteReadAt: string | null;
+    /** Lots you marked "Not won" yourself (#329): lot ref (`lotRef`) → when. Optional so test rows can leave it out. */
+    notWon?: Record<string, string>;
   };
 
 /** Post reads, Claude's cached answers, and your name, for lots, bids and your status. */
@@ -42,7 +44,14 @@ export type RowExtras = {
   myName?: string;
   /** Sales you marked as ended yourself (post ID → when). */
   endedMarks?: Record<string, string>;
+  /** Lots you marked "Not won" yourself (`notWonKey` → when). */
+  notWonMarks?: Record<string, string>;
 };
+
+/** A lot's ref within its sale: its comment ID, or "pos<n>" when it has none (as in the inbox's external_ref). */
+export const lotRef = (l: Pick<Lot, "commentId" | "position">) => l.commentId ?? `pos${l.position}`;
+/** The key of a lot's "Not won" mark: `<post ID>:<lot ref>`. */
+export const notWonKey = (postId: string, l: Pick<Lot, "commentId" | "position">) => `${postId}:${lotRef(l)}`;
 
 export type TabId = "new" | "today" | "upcoming" | "noend" | "mine" | "ended";
 /** A tab's sales, in sections when it holds more than one kind ("Yours" / "Everyone else"). */
@@ -59,7 +68,7 @@ export const ENDED_GRACE_MS = 30 * 60_000;
  * unless they're laid out as a sale (`isUntypedSale`): those stay, typed "other" (shown "Unknown").
  */
 export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
-  const { captures = new Map(), answers = new Map(), myName = "", endedMarks = {} } = extras;
+  const { captures = new Map(), answers = new Map(), myName = "", endedMarks = {}, notWonMarks = {} } = extras;
   const rows: Row[] = [];
   for (const p of posts) {
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
@@ -96,6 +105,11 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const closes = [endsAtMs === null ? null : endsAtMs + softMs, endedByYouAt ? Date.parse(endedByYouAt) : null].filter((x): x is number => x !== null);
     const endedAt = ended ? Math.min(...closes) : null;
     const firstSeen = Date.parse(p.firstSeenAt);
+    const notWon: Record<string, string> = {};
+    for (const l of lots ?? []) {
+      const at = notWonMarks[notWonKey(p.id, l)];
+      if (at) notWon[lotRef(l)] = at;
+    }
     rows.push({
       ...p,
       // Posts saved from the photo viewer had a photo.php link; link them by their own address.
@@ -114,6 +128,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
       lastReadAt: capture?.capturedAt ?? null,
       // Reads saved before merging existed have no completeAt: treat them as complete, as before.
       lastCompleteReadAt: capture ? (capture.completeAt === undefined ? capture.capturedAt : capture.completeAt) : null,
+      notWon,
     });
   }
   return rows;
@@ -230,7 +245,7 @@ export function ago(iso: string, now: Date): string {
 
 /** How a lot shows for you: one place for these rules (they used to be repeated in main.ts). */
 export type LotStatus = {
-  key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "leading-at-last-read" | "outbid-at-last-read" | "check";
+  key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "not-won" | "leading-at-last-read" | "outbid-at-last-read" | "check";
   label: string;
   /** CSS class: lead (blue), won (green), outbid (orange). */
   cls: "lead" | "won" | "outbid" | "none";
@@ -249,7 +264,20 @@ export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinut
   return Date.parse(r.lastCompleteReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
 }
 
+/** When you marked this lot "Not won" yourself (#329), or null. */
+export const notWonAt = (r: Pick<Row, "notWon">, l: Pick<Lot, "commentId" | "position">): string | null => r.notWon?.[lotRef(l)] ?? null;
+
+/**
+ * Your status on a lot. Your "Not won" mark (#329) overrides what the rules read for a lot you bid
+ * on or claimed: it's off To pay and out of what's sent to tcg_inventory, until you undo it.
+ */
 export function lotStatus(r: Row, l: Lot): LotStatus {
+  const status = lotStatusByRules(r, l);
+  if (status.key !== "none" && notWonAt(r, l)) return { key: "not-won", label: "Not won (your mark)", cls: "outbid" };
+  return status;
+}
+
+function lotStatusByRules(r: Row, l: Lot): LotStatus {
   if (r.type === "claim" || r.type === "fixed") {
     if (l.myClaim === "claimed") return { key: "won", label: "Won", cls: "won" };
     if (l.myClaim === "check") return { key: "check", label: "Check: someone was earlier", cls: "outbid" };
@@ -292,6 +320,21 @@ export type WonItem = {
   /** What you pay, or null when it isn't known yet (a claim lot Claude hasn't read). */
   kr: number | null;
 };
+
+/** A lot you marked "Not won" (#329), for To pay's list of them with Undo. */
+export type NotWonItem = { row: Row; lot: Lot; key: string; at: string };
+
+/** Every lot you marked "Not won", the latest mark first. */
+export function notWonLots(rows: Row[]): NotWonItem[] {
+  const items: NotWonItem[] = [];
+  for (const row of rows) {
+    for (const lot of row.lots ?? []) {
+      const at = notWonAt(row, lot);
+      if (at && lotStatus(row, lot).key === "not-won") items.push({ row, lot, key: notWonKey(row.id, lot), at });
+    }
+  }
+  return items.sort((a, b) => b.at.localeCompare(a.at));
+}
 
 /** Everything won from one seller: you pay per seller. */
 export type WonSeller = {

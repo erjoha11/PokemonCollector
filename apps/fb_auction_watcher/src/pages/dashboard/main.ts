@@ -9,10 +9,12 @@ import {
   getEndedMarks,
   getInboxSent,
   getInboxState,
+  getNotWonMarks,
   getSettings,
   getWonState,
   inboxOrigin,
   markEnded,
+  markNotWon,
   markWon,
   updateSettings,
   type AutoScanState,
@@ -21,6 +23,7 @@ import {
   type EndedMarks,
   type InboxSent,
   type InboxState,
+  type NotWonMarks,
   type Settings,
   type WonState,
 } from "../../shared/settings";
@@ -37,6 +40,9 @@ import {
   lotUrl,
   readAfterEnd,
   needsYou,
+  notWonAt,
+  notWonKey,
+  notWonLots,
   saleLines,
   saleResult,
   tabs,
@@ -136,6 +142,8 @@ let claude: ClaudeState;
 let cleanup: CleanupState;
 let wonState: WonState = {};
 let endedMarks: EndedMarks = {};
+/** Lots you marked "Not won" yourself (#329). */
+let notWonMarks: NotWonMarks = {};
 let inbox: InboxState = { lastAt: null, ok: null, count: null, outcome: null };
 /** Won auctions sent to tcg_inventory (post ID → when), and the ones ticked to send next. */
 let inboxSent: InboxSent = {};
@@ -152,18 +160,19 @@ let source: { posts: Awaited<ReturnType<typeof store.allPosts>>; captures: Map<s
 };
 
 function rebuild() {
-  rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName, endedMarks });
+  rows = buildRows(source.posts, new Date(), lastVisit, { ...source, myName: settings.myName, endedMarks, notWonMarks });
 }
 
 /** The small status objects: auto-scan, Claude, the daily cleanup, the reader. */
 async function loadStatus() {
-  [settings, autoScan, claude, cleanup, wonState, endedMarks, inbox, inboxSent] = await Promise.all([
+  [settings, autoScan, claude, cleanup, wonState, endedMarks, notWonMarks, inbox, inboxSent] = await Promise.all([
     getSettings(),
     getAutoScanState(),
     getClaudeState(),
     getCleanupState(),
     getWonState(),
     getEndedMarks(),
+    getNotWonMarks(),
     getInboxState(),
     getInboxSent(),
   ]);
@@ -260,6 +269,26 @@ function endedToggle(r: Row, label = "Mark as ended"): HTMLButtonElement | null 
     e.preventDefault(); // Inside a <summary>: don't fold or unfold.
     e.stopPropagation();
     void markEnded(r.id, !r.endedByYouAt);
+  });
+  return button;
+}
+
+/**
+ * "Not won" on a lot the rules count as won but you didn't get (#329: e.g. your bid came after the
+ * end and the seller said so), or "Undo not won" for one you marked. Your own mark, in
+ * chrome.storage; it takes the lot off To pay and out of what's sent to tcg_inventory.
+ */
+function notWonToggle(r: Row, l: Lot): HTMLButtonElement {
+  const at = notWonAt(r, l);
+  const button = el("button", "linkish end-toggle", at ? "Undo not won" : "Not won");
+  button.type = "button";
+  button.title = at
+    ? `You marked this lot as not won ${ago(at, new Date())}. Undo puts it back as the rules read it.`
+    : "You didn't get this lot (e.g. the seller said your bid was too late): take it off To pay and don't send it to tcg_inventory.";
+  button.addEventListener("click", (e) => {
+    e.preventDefault(); // Inside a <summary>: don't fold or unfold.
+    e.stopPropagation();
+    void markNotWon(notWonKey(r.id, l), !at);
   });
   return button;
 }
@@ -639,6 +668,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       );
       if (!readAfterEnd(r)) body.append(el("div", "flag", "at last read: bids may have come in after"));
       if (status.key !== "none") body.append(el("div", `status ${status.cls}`, `${status.label} · your bid ${l.myHighestBid} kr`));
+      if (status.key === "won" || status.key === "not-won") body.append(line("div", notWonToggle(r, l)));
       item.append(body);
       list.append(item);
       continue;
@@ -677,7 +707,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
 
 /** Your lots' statuses in a sale, counted by label ("Leading 2", "Outbid 1"), in a sensible order. */
 function statusCounts(r: Row): { status: LotStatus; count: number }[] {
-  const order: LotStatus["key"][] = ["outbid", "unclear", "check", "outbid-at-last-read", "lost", "leading", "leading-at-last-read", "won"];
+  const order: LotStatus["key"][] = ["outbid", "unclear", "check", "outbid-at-last-read", "lost", "not-won", "leading", "leading-at-last-read", "won"];
   const byKey = new Map<LotStatus["key"], { status: LotStatus; count: number }>();
   for (const l of r.lots ?? []) {
     const st = lotStatus(r, l);
@@ -815,7 +845,12 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
   const photos = lotPhotos(g.items.map((i) => i.lot));
   for (const item of g.items) {
     const li = el("li", "lot-line");
-    li.append(lotThumb(item.lot, photos), lotLink(item.row, item.lot, item.label, "line-name"), item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"));
+    li.append(
+      lotThumb(item.lot, photos),
+      lotLink(item.row, item.lot, item.label, "line-name"),
+      item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"),
+      notWonToggle(item.row, item.lot),
+    );
     items.append(li);
   }
   card.append(items);
@@ -923,7 +958,24 @@ function renderMine(now: Date) {
   // To pay: one folded line per seller; paid and received ones fold away entirely.
   const open = groups.filter((g) => !isDone(g));
   const done = groups.length - open.length;
-  $<HTMLElement>("#topay").hidden = groups.length === 0;
+  // Lots you marked "Not won" (#329), with Undo: listed under To pay, which they left.
+  const notWon = notWonLots(rows);
+  $<HTMLElement>("#topay").hidden = groups.length === 0 && notWon.length === 0;
+  $<HTMLElement>("#notwon").hidden = notWon.length === 0;
+  $("#notwon-count").textContent = String(notWon.length);
+  const notWonPhotos = lotPhotos(notWon.map((i) => i.lot));
+  $("#notwon-list").replaceChildren(
+    ...notWon.map((i) => {
+      const li = el("li", "lot-line");
+      li.append(
+        lotThumb(i.lot, notWonPhotos),
+        lotLink(i.row, i.lot, `${i.lot.position}. ${i.lot.title}`, "line-name"),
+        el("span", "muted small", `${i.row.sellerName ?? "Unknown seller"} · marked ${ago(i.at, now)}`),
+        notWonToggle(i.row, i.lot),
+      );
+      return li;
+    }),
+  );
   $("#topay-sum").textContent = groups.length
     ? toPay.length
       ? `${toPay.length} seller${toPay.length === 1 ? "" : "s"} · ${sellerTotal(owe)}`
@@ -1267,8 +1319,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   // need their own small state, not a reload of every post from the database (review M6).
   if ("settings" in changes) {
     void load();
-  } else if ("endedMarks" in changes) {
-    // Marking a sale ended changes its row and its lots' statuses: rebuild from what's loaded.
+  } else if ("endedMarks" in changes || "notWonMarks" in changes) {
+    // Marking a sale ended (or a lot not won) changes lots' statuses: rebuild from what's loaded.
     void loadStatus().then(() => {
       rebuild();
       render();
