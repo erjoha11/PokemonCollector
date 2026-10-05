@@ -8,12 +8,14 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; width: 260px; padding: 12px; background: var(--bg); color: var(--text); font: 13px/1.4 "IBM Plex Sans", system-ui, -apple-system, sans-serif; }
-h1 { font-size: 14px; margin: 0 0 4px; }
+h1 { font-size: 14px; margin: 0 0 8px; }
 .muted { color: var(--muted); margin: 0 0 8px; }
 .small { font-size: 12px; }
 .actions { display: grid; gap: 6px; margin-bottom: 8px; }
+.hint { margin: -2px 0 2px; }
+.hint:empty { display: none; }
 button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--soft); color: var(--text); cursor: pointer; text-align: left; }
-button:hover { border-color: var(--lead); }
-#read:not([hidden]), #scan:not([hidden]) { background: var(--lead); border-color: var(--lead); color: #fff; }
-.dev { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; border-top: 1px solid var(--border); padding-top: 8px; }
-button.quiet { font-size: 12px; padding: 4px 6px; text-align: center; }
+button:hover:not(:disabled) { border-color: var(--lead); }
+button.primary { background: var(--lead); border-color: var(--lead); color: #fff; }
+button:disabled { cursor: default; color: var(--muted); }
+#auto { border-top: 1px solid var(--border); padding-top: 8px; margin: 0; }

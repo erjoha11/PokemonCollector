@@ -7,17 +7,14 @@
 </head>
 <body>
   <h1>Auction Watcher</h1>
-  <p id="where" class="muted"></p>
   <div class="actions">
-    <button id="overview" type="button">Open overview</button>
-    <button id="read" type="button" hidden>Read this post</button>
-    <button id="scan" type="button" hidden>Scan the feed</button>
+    <button id="overview" type="button">Open Dashboard</button>
+    <button id="scan" type="button">Scan feed</button>
+    <button id="read" type="button" aria-describedby="read-hint">Scan Post</button>
+    <p id="read-hint" class="hint muted small"></p>
+    <button id="reload-ext" type="button">Reload extension</button>
   </div>
   <p id="auto" class="muted small"></p>
-  <div class="dev">
-    <button id="reload-ext" type="button" class="quiet">Reload extension</button>
-    <button id="reload-fb" type="button" class="quiet">Reload Facebook tabs</button>
-  </div>
   <script type="module" src="popup.js"></script>
 </body>
 </html>

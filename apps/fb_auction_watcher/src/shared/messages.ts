@@ -83,3 +83,8 @@ export const isSendWinsMessage = (m: unknown): m is { type: typeof MSG_SEND_WINS
 /** Content script → service worker: a scan or read started from the toolbar menu has finished (frees the Facebook slot). */
 export const MSG_ACTIVITY_DONE = "fbaw/activity-done" as const;
 export const isActivityDoneMessage = (m: unknown): m is { type: typeof MSG_ACTIVITY_DONE } => hasType(m, MSG_ACTIVITY_DONE);
+
+/** Toolbar menu → service worker: open the group feed in a new tab and scan it there once loaded (#320). Takes the Facebook slot first. */
+export const MSG_SCAN_FEED_NEW_TAB = "fbaw/scan-feed-new-tab" as const;
+export type ScanFeedNewTabMessage = { type: typeof MSG_SCAN_FEED_NEW_TAB; url: string };
+export const isScanFeedNewTabMessage = (m: unknown): m is ScanFeedNewTabMessage => hasType(m, MSG_SCAN_FEED_NEW_TAB);

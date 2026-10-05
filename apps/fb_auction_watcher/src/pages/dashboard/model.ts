@@ -13,11 +13,15 @@ import type { StoredPost } from "../../shared/feed";
 export type Row = StoredPost &
   Interpretation & {
     endsAtMs: number | null;
-    /** First seen after the previous visit to this page. */
+    /** First seen after the previous visit to this page, or less than 30 min ago (NEW_WINDOW_MS; a rescan or visit inside that window doesn't clear it). */
     isNew: boolean;
     /** End time passed, but within the antisnipe window: bids may still extend it. */
     maybeEnded: boolean;
     ended: boolean;
+    /** When it became ended: its end time + antisnipe window, or your mark if that came first. Null while not ended. */
+    endedAtMs: number | null;
+    /** Ended less than 30 min ago (ENDED_GRACE_MS): still shown, as ended, in the tabs it was in just before (#320). */
+    justEnded: boolean;
     /** You marked the sale as ended yourself (ISO), or null. It then counts as ended from that moment. */
     endedByYouAt: string | null;
     /** The end time came from Claude (the rules couldn't read it). */
@@ -44,6 +48,10 @@ export type TabId = "new" | "today" | "upcoming" | "noend" | "mine" | "ended";
 export type Tab = { id: TabId; label: string; sections: { label: string | null; rows: Row[] }[]; count: number };
 
 const HOUR = 3_600_000;
+/** A sale stays New this long after it was first seen, whatever the last visit (#320). */
+export const NEW_WINDOW_MS = 30 * 60_000;
+/** An ended sale stays in the active tabs (all but Ended) this long after it ended (#320). */
+export const ENDED_GRACE_MS = 30 * 60_000;
 
 /** Sales only: wanted, trade and unrecognized posts are left out of the table. */
 export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
@@ -80,13 +88,19 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const softMs = (i.softCloseMinutes ?? 0) * 60_000;
     const t = now.getTime();
     const endedByYouAt = endedMarks[p.id] ?? null;
+    const ended = endedByYouAt !== null || (endsAtMs !== null && t >= endsAtMs + softMs);
+    const closes = [endsAtMs === null ? null : endsAtMs + softMs, endedByYouAt ? Date.parse(endedByYouAt) : null].filter((x): x is number => x !== null);
+    const endedAt = ended ? Math.min(...closes) : null;
+    const firstSeen = Date.parse(p.firstSeenAt);
     rows.push({
       ...p,
       ...i,
       endsAtMs,
-      isNew: lastVisit !== null && Date.parse(p.firstSeenAt) > lastVisit.getTime(),
+      isNew: (lastVisit !== null && firstSeen > lastVisit.getTime()) || t - firstSeen < NEW_WINDOW_MS,
       maybeEnded: !endedByYouAt && endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
-      ended: endedByYouAt !== null || (endsAtMs !== null && t >= endsAtMs + softMs),
+      ended,
+      endedAtMs: endedAt,
+      justEnded: endedAt !== null && t - endedAt < ENDED_GRACE_MS,
       endedByYouAt,
       endsViaClaude,
       lots,
@@ -99,8 +113,8 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
   return rows;
 }
 
-/** When a sale ended: your mark if it came first (or there's no end time), else its end time. */
-function endedAtMs(r: Row): number {
+/** For sorting ended sales: your mark if it came first (or there's no end time), else its end time. */
+function endedSortMs(r: Row): number {
   const times = [r.endsAtMs, r.endedByYouAt ? Date.parse(r.endedByYouAt) : null].filter((x): x is number => x !== null);
   return times.length ? Math.min(...times) : 0;
 }
@@ -119,11 +133,17 @@ export function tabs(rows: Row[], now: Date): Tab[] {
   const t = now.getTime();
   const byEnd = (a: Row, b: Row) => (a.endsAtMs ?? Infinity) - (b.endsAtMs ?? Infinity);
   const bySeen = (a: Row, b: Row) => b.firstSeenAt.localeCompare(a.firstSeenAt);
-  const newestEnded = (a: Row, b: Row) => endedAtMs(b) - endedAtMs(a);
-  const running = rows.filter((r) => !r.ended);
+  const newestEnded = (a: Row, b: Row) => endedSortMs(b) - endedSortMs(a);
+  // The active tabs (all but Ended) hold running sales, plus sales that ended under 30 min ago
+  // (#320), shown as ended, in the tab they were in just before they ended.
+  const running = rows.filter((r) => !r.ended || r.justEnded);
   const timed = running.filter((r) => r.type !== "fixed" && r.endsAtMs !== null);
-  // Today, or within the hour (just before midnight); the countdown turns red under an hour.
-  const isToday = (r: Row) => r.maybeEnded || r.endsAtMs! - t < HOUR || sameOsloDay(new Date(r.endsAtMs!), now);
+  // Today, or within the hour (just before midnight); the countdown turns red under an hour. A
+  // just-ended sale is judged at the moment it ended (a sale marked ended early can be Upcoming).
+  const isToday = (r: Row) => {
+    const at = r.ended ? r.endedAtMs! : t;
+    return r.maybeEnded || r.endsAtMs! - at < HOUR || sameOsloDay(new Date(r.endsAtMs!), new Date(at));
+  };
   const ended = rows.filter((r) => r.ended).sort(newestEnded);
   const mine = rows.filter(isMine);
   const { yours, others } = splitEnded(ended);
@@ -143,8 +163,9 @@ export function tabs(rows: Row[], now: Date): Tab[] {
       "mine",
       "My bids",
       [
-        ["Running", mine.filter((r) => !r.ended).sort(byEnd)],
-        ["Ended", mine.filter((r) => r.ended).sort(newestEnded)],
+        // A sale that ended under 30 min ago stays under Running (shown as ended), then moves down.
+        ["Running", mine.filter((r) => !r.ended || r.justEnded).sort(byEnd)],
+        ["Ended", mine.filter((r) => r.ended && !r.justEnded).sort(newestEnded)],
       ],
     ],
     ["ended", "Ended", [["Yours", yours], ["Everyone else", others]]],

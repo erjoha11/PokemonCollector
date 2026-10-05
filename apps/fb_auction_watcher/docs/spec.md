@@ -137,7 +137,8 @@ below is kept for reference.
 **settings** (as built, `src/shared/settings.ts`): `autoScan` (the off switch, default off),
 `myName` (default "Erik Johansen"), `useClaude` (default on), `notify` (default on), `inboxUrl`
 and `inboxToken` (tcg_inventory's address and its `INBOX_TOKEN`, empty until set up; see
-"Sending wins to tcg_inventory"). The group is the pinned feed tab;
+"Sending wins to tcg_inventory"). The group is the pinned feed tab for auto-scan, and the
+constant `GROUP_FEED_URL` (pokemonkortnorge) for the menu's Scan feed in a new tab;
 the interval is fixed at 10–15 min ±20 %. Originally planned: `groupUrl`, `scanIntervalMin`,
 `backfillDays`, `captureEnabled`, `apiKey` (no API key is used).
 
@@ -249,7 +250,7 @@ Per listing:
 
 | UI label | Meaning |
 |---|---|
-| New | First seen after my last visit to the table page |
+| New | First seen after my last visit to the table page, **or** first seen less than 30 min ago (2026-10-05, #320: a rescan or a quick visit inside that window doesn't clear it; `NEW_WINDOW_MS` in `model.ts`) |
 | Activity | More comments than last time (`commentCount` > `commentCountPrev`) |
 | Ending soon | Less than 1 hour left |
 | Unknown end time | End time could not be interpreted |
@@ -279,13 +280,29 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
   final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
-- Numbers at the top: active, within 1 h, need you (lots), won lots, new.
+- Numbers at the top: active, within 1 h, need you (lots), won lots, new. Ended sales never count,
+  including ones still shown in an active tab for their 30 min (#320).
 - **Tabs** (2026-10-04; they replaced stacked, foldable groups): New (first seen since the last
-  visit, not ended) · Today (including anything within the hour) · Upcoming (was "Tomorrow and
+  visit or under 30 min ago, see Statuses; not ended, except just ended below) · Today (including anything within the hour) · Upcoming (was "Tomorrow and
   later") · No end (end time unknown, then fixed price) · My bids (running, then ended) · Ended
   (Yours, then Everyone else). Claim sales sit in Today / Upcoming by end time. Counts follow the
   filter and search; the tab is remembered (localStorage `fbaw-tab`); ← / → move between tabs.
-  `tabs()` in `model.ts`. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
+  `tabs()` in `model.ts`.
+  **Just ended** (2026-10-05, #320): a sale that ended (end time + antisnipe window passed, or you
+  marked it ended) stays in the active tabs it was in for less than 30 min after it ended
+  (`ENDED_GRACE_MS`, `Row.justEnded` / `Row.endedAtMs`), dimmed and shown as ended (Ends says
+  "Ended …", Result replaces Price, the header reads "Price / result"), and it doesn't count in the
+  numbers at the top (active, within 1 h, new). At 30 min it drops out and is only in Ended; it is in
+  Ended from the moment it ends, as before. Readings chosen: "active tabs" = every tab but Ended
+  (New, Today, Upcoming, No end, My bids); the tab is the one its state just before the end put it in,
+  judged at the moment it ended: a sale ending by its end time was in Today; one you marked ended
+  early stays in Today or Upcoming by where it was at the mark; one with no end time (or fixed price)
+  stays under No end; New keeps it while its own New window lasts (and the 30 min since the end);
+  in My bids it stays under "Running" for the 30 min, then moves to My bids' own "Ended" part (which
+  was already there, so My bids keeps showing your ended sales). The 30 min count from when it
+  became ended: the end of the antisnipe window, or your mark if that came first, so a mark long
+  after the end doesn't restart them, and a sale with no end time counts from the mark.
+  ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
   red under an hour, and the "Within 1 hour" counter stays.)
 - Columns (redesigned 2026-10-04: every row two lines, columns line up across groups):
   Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
@@ -307,6 +324,38 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.
+
+### Toolbar menu (`popup.html`)
+
+Decided 2026-10-05 (#320): four buttons (Open Dashboard, Scan feed, Scan Post, Reload extension);
+nothing starts until you pick one. Which button does
+what for the active tab is the pure `popupActions()` in `src/pages/popup/actions.ts`.
+
+- **Open Dashboard:** opens (or focuses) `dashboard.html`.
+- **Scan feed:** the active tab is the group feed → scan it there (as before, re-sorted to "New
+  posts" first). Otherwise → the service worker takes the Facebook slot first (waiting up to 5 min,
+  like other menu actions), then opens the group feed sorted by "New posts" in a new, active tab
+  (a scan needs a visible tab), waits for it to load, and starts the same scan there
+  (`MSG_SCAN_FEED_NEW_TAB`, `scanFeedInNewTab` in `src/background/index.ts`). The slot is held for
+  "no tab yet" and moved to the new tab once it exists, so no second tab talks to Facebook. Which
+  group (changed 2026-10-05 on the user's word, replacing an inference chain of active tab's group →
+  open feed tab → last seen post's group): always https://www.facebook.com/groups/pokemonkortnorge,
+  the named constant `GROUP_FEED_URL` in `src/shared/urls.ts`, opened as
+  `?sorting_setting=CHRONOLOGICAL` (`newPostsUrl`), the same parameter the in-tab scan uses. So the
+  button is never disabled. A constant rather than a setting: one user, one group, and the planned
+  `groupUrl` setting was never built (see "settings" above). "The group feed" for scanning here is
+  still any `isGroupFeedUrl` tab (vanity slug or numeric ID, any query string).
+- **Scan Post:** reads the post shown in the active tab (the full panel, as before). Reading chosen:
+  when the active tab isn't a Facebook post (`isPostUrl` in `src/shared/urls.ts`: a group post or
+  permalink, a profile/page post, `permalink.php` / `story.php`) it's disabled with "Open a post on
+  Facebook to read it." instead of doing nothing or navigating.
+- Not buttons: the auto-scan status line (on/off, next run, last outcome). Its **off switch stays in
+  the dashboard's Settings** (pacing rule: a user-facing off switch); the menu says where.
+- **Reload extension:** `chrome.runtime.reload()`, the same call the menu's button made before #320.
+  #320 first moved it to the right-click menu only; it came back the same day because the user asked
+  for it (it's the step after every `npm run build`). Same on every tab, so not in `popupActions()`.
+- **Reload Facebook tabs** stays off the menu: it's on the icon's right-click menu (with Open
+  overview and Reload extension, which is there too), where it already was.
 
 ### Side panel
 
