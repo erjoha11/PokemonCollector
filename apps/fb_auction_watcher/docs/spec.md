@@ -249,7 +249,7 @@ Per listing:
 
 | UI label | Meaning |
 |---|---|
-| New | First seen after my last visit to the table page |
+| New | First seen after my last visit to the table page, **or** first seen less than 30 min ago (2026-10-05, #320: a rescan or a quick visit inside that window doesn't clear it; `NEW_WINDOW_MS` in `model.ts`) |
 | Activity | More comments than last time (`commentCount` > `commentCountPrev`) |
 | Ending soon | Less than 1 hour left |
 | Unknown end time | End time could not be interpreted |
@@ -279,13 +279,29 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in
   `chrome.storage.local`. A marked sale is ended from that moment, and its last full read counts as
   final (`readAfterEnd`): your word replaces "read after end + antisnipe". Retention ignores marks.
-- Numbers at the top: active, within 1 h, need you (lots), won lots, new.
+- Numbers at the top: active, within 1 h, need you (lots), won lots, new. Ended sales never count,
+  including ones still shown in an active tab for their 30 min (#320).
 - **Tabs** (2026-10-04; they replaced stacked, foldable groups): New (first seen since the last
-  visit, not ended) · Today (including anything within the hour) · Upcoming (was "Tomorrow and
+  visit or under 30 min ago, see Statuses; not ended, except just ended below) · Today (including anything within the hour) · Upcoming (was "Tomorrow and
   later") · No end (end time unknown, then fixed price) · My bids (running, then ended) · Ended
   (Yours, then Everyone else). Claim sales sit in Today / Upcoming by end time. Counts follow the
   filter and search; the tab is remembered (localStorage `fbaw-tab`); ← / → move between tabs.
-  `tabs()` in `model.ts`. ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
+  `tabs()` in `model.ts`.
+  **Just ended** (2026-10-05, #320): a sale that ended (end time + antisnipe window passed, or you
+  marked it ended) stays in the active tabs it was in for less than 30 min after it ended
+  (`ENDED_GRACE_MS`, `Row.justEnded` / `Row.endedAtMs`), dimmed and shown as ended (Ends says
+  "Ended …", Result replaces Price, the header reads "Price / result"), and it doesn't count in the
+  numbers at the top (active, within 1 h, new). At 30 min it drops out and is only in Ended; it is in
+  Ended from the moment it ends, as before. Readings chosen: "active tabs" = every tab but Ended
+  (New, Today, Upcoming, No end, My bids); the tab is the one its state just before the end put it in,
+  judged at the moment it ended: a sale ending by its end time was in Today; one you marked ended
+  early stays in Today or Upcoming by where it was at the mark; one with no end time (or fixed price)
+  stays under No end; New keeps it while its own New window lasts (and the 30 min since the end);
+  in My bids it stays under "Running" for the 30 min, then moves to My bids' own "Ended" part (which
+  was already there, so My bids keeps showing your ended sales). The 30 min count from when it
+  became ended: the end of the antisnipe window, or your mark if that came first, so a mark long
+  after the end doesn't restart them, and a sale with no end time counts from the mark.
+  ("Within 1 h" was its own group until 2026-10-04; merged into Today: the countdown turns
   red under an hour, and the "Within 1 hour" counter stays.)
 - Columns (redesigned 2026-10-04: every row two lines, columns line up across groups):
   Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
@@ -307,6 +323,31 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.
+
+### Toolbar menu (`popup.html`)
+
+Decided 2026-10-05 (#320): exactly three buttons; nothing starts until you pick one. Which button does
+what for the active tab is the pure `popupActions()` / `feedToOpen()` in `src/pages/popup/actions.ts`.
+
+- **Open Dashboard:** opens (or focuses) `dashboard.html`.
+- **Scan feed:** the active tab is the group feed → scan it there (as before, re-sorted to "New
+  posts" first). Otherwise → the service worker takes the Facebook slot first (waiting up to 5 min,
+  like other menu actions), then opens the group feed sorted by "New posts" in a new, active tab
+  (a scan needs a visible tab), waits for it to load, and starts the same scan there
+  (`MSG_SCAN_FEED_NEW_TAB`, `scanFeedInNewTab` in `src/background/index.ts`). The slot is held for
+  "no tab yet" and moved to the new tab once it exists, so no second tab talks to Facebook. Which
+  group: the active tab's group (e.g. a post in it), else an open feed tab's (the pinned one first),
+  else the group of the post seen most recently. Reading chosen: with no group known at all (never
+  scanned, no group tab open) the button is disabled with "Open the group on Facebook once to scan
+  its feed.".
+- **Scan Post:** reads the post shown in the active tab (the full panel, as before). Reading chosen:
+  when the active tab isn't a Facebook post (`isPostUrl` in `src/shared/urls.ts`: a group post or
+  permalink, a profile/page post, `permalink.php` / `story.php`) it's disabled with "Open a post on
+  Facebook to read it." instead of doing nothing or navigating.
+- Not buttons: the auto-scan status line (on/off, next run, last outcome). Its **off switch stays in
+  the dashboard's Settings** (pacing rule: a user-facing off switch); the menu says where.
+  **Reload extension** / **Reload Facebook tabs** left the menu; they're on the icon's right-click
+  menu (with Open overview), where they already were.
 
 ### Side panel
 

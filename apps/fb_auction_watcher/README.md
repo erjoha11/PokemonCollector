@@ -22,10 +22,12 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-**Clicking the icon opens a small menu**; nothing starts until you choose it there: **Open overview**, then
-**Read this post** (on a post) or **Scan the feed** (on the group feed), and at the bottom **Reload extension** and
-**Reload Facebook tabs**. The right-click menu has **Open overview**, **Reload extension** and **Reload
-Facebook tabs** too.
+**Clicking the icon opens a small menu** with three buttons; nothing starts until you choose one (#320):
+**Open Dashboard** (the overview); **Scan feed** (scans the group feed in this tab if it's open here, otherwise
+opens the feed in a new tab and scans it there once it has loaded, waiting its turn if something else is
+talking to Facebook); and **Scan Post** (reads the post shown in this tab; greyed out, with a hint, on anything
+that isn't a Facebook post). Below them, the auto-scan status (switch it on/off in the overview's Settings).
+**Reload extension** and **Reload Facebook tabs** are on the icon's right-click menu, with **Open overview**.
 
 After every `npm run build`: **Reload extension**, then **Reload Facebook tabs** (open tabs need the new
 content script). A new permission in the manifest needs the reload icon on the extension's card in
@@ -81,9 +83,11 @@ sale's name opens the post on Facebook; its **Read** button reads its lots and b
 A lot's name, wherever it shows (Needs you, Leading, To pay, a row's lots), opens its own comment on Facebook (where you'd bid).
 
 **Right-click the extension icon → Open overview** (or **Open overview** in the scan panel). It lists every
-auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit) · **Today** ·
-**Upcoming** (tomorrow and later) · **No end** (end time unknown, then fixed price) · **My bids** (running,
-then ended) · **Ended**. Each tab shows how many sales it holds under the current filter and search; ← / →
+auction and claim sale the scans have saved, in tabs: **New** (first seen since your last visit, or in the last 30 minutes, so a rescan
+or a quick visit doesn't clear it) · **Today** · **Upcoming** (tomorrow and later) · **No end** (end time
+unknown, then fixed price) · **My bids** (running, then ended) · **Ended**. A sale that ends (or that you mark
+as ended) stays in the tab it was in for 30 minutes after the end, dimmed and shown as ended (not counted
+as active); after that it's only under **Ended** (and My bids' own Ended part). Each tab shows how many sales it holds under the current filter and search; ← / →
 switch tabs, and the overview remembers the last one. Claim sales sit in Today / Upcoming by their end
 time. Countdowns under an hour turn red. Every row is two lines:
 **Ends** (countdown, then end time and antisnipe), **Sale** (photo, the title without the template's
@@ -218,7 +222,8 @@ prompts on `src/llm/cases.ts` through the real bridge (uses your Claude plan).
 
 ## Scan the feed
 
-Open the group's feed (no post open) and click the extension icon. If the feed isn't sorted by **New
+Click the extension icon → **Scan feed** (on the group's feed with no post open it scans that tab; anywhere
+else it opens the feed in a new tab first). If the feed isn't sorted by **New
 posts**, the extension reloads it that way first (`?sorting_setting=CHRONOLOGICAL`). It then scrolls the
 feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
 screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is
