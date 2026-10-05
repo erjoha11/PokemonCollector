@@ -1,32 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { popupActions, SCAN_POST_HINT } from "../src/pages/popup/actions";
+import { scanAction } from "../src/pages/popup/actions";
 import { GROUP_FEED_URL, isGroupFeedUrl, isPostUrl, newPostsUrl } from "../src/shared/urls";
 import popupHtml from "../public/popup.html?raw";
 import { fakeChrome } from "./fakes/chrome";
 
-// The toolbar menu's four buttons (#320): what Scan feed and Scan Post do per active tab, and
-// the page itself (public/popup.html + main.ts) with its Reload extension button.
+// The toolbar menu: three buttons, with one Scan button whose label and action follow the active
+// tab (post → Scan post, feed → Scan feed, anywhere else → Open feed and scan), and the page
+// itself (public/popup.html + main.ts).
 
 const FEED = "https://www.facebook.com/groups/g/";
 const POST = "https://www.facebook.com/groups/g/posts/123456/";
-const NEW_TAB = { kind: "new-tab", url: GROUP_FEED_URL };
 
-describe("popup buttons", () => {
-  it("on the group feed: Scan feed scans here, Scan Post is disabled with a hint", () => {
-    expect(popupActions(FEED)).toEqual({ scanFeed: { kind: "here" }, scanPost: { enabled: false, hint: SCAN_POST_HINT } });
-    expect(popupActions(`${FEED}?sorting_setting=CHRONOLOGICAL`).scanFeed).toEqual({ kind: "here" });
-    expect(popupActions(newPostsUrl(GROUP_FEED_URL)).scanFeed).toEqual({ kind: "here" });
+describe("the Scan button", () => {
+  it("on a post: Scan post, which reads it here", () => {
+    expect(scanAction(POST)).toMatchObject({ kind: "post", label: "Scan post" });
   });
 
-  it("on a post: Scan Post reads it, Scan feed opens the group's feed in a new tab", () => {
-    expect(popupActions(POST)).toEqual({ scanFeed: NEW_TAB, scanPost: { enabled: true } });
+  it("on the group feed (any sort): Scan feed, which scans it here", () => {
+    for (const url of [FEED, `${FEED}?sorting_setting=CHRONOLOGICAL`, newPostsUrl(GROUP_FEED_URL)]) {
+      expect(scanAction(url)).toMatchObject({ kind: "feed", label: "Scan feed" });
+    }
   });
 
-  it("anywhere else, with no group known: Scan feed still opens the group's feed (never disabled), Scan Post is disabled", () => {
+  it("anywhere else: Open feed and scan, with the group's feed (never disabled)", () => {
     for (const url of ["https://example.com/", "https://www.facebook.com/", "chrome://extensions/", undefined]) {
-      const a = popupActions(url);
-      expect(a.scanFeed).toEqual(NEW_TAB);
-      expect(a.scanPost).toEqual({ enabled: false, hint: SCAN_POST_HINT });
+      expect(scanAction(url)).toMatchObject({ kind: "open-feed", label: "Open feed and scan", url: GROUP_FEED_URL });
     }
   });
 
@@ -57,10 +55,10 @@ describe("popup page", () => {
     return { fake, reload };
   }
 
-  it("has exactly four buttons, in order: Open Dashboard, Scan feed, Scan Post, Reload extension", async () => {
+  it("has exactly three buttons, in order: Open Dashboard, Scan (here: Open feed and scan), Reload extension", async () => {
     await loadPopup();
     const labels = [...document.querySelectorAll("button")].map((b) => b.textContent?.trim());
-    expect(labels).toEqual(["Open Dashboard", "Scan feed", "Scan Post", "Reload extension"]);
+    expect(labels).toEqual(["Open Dashboard", "Open feed and scan", "Reload extension"]);
     expect(document.body.textContent).not.toContain("Reload Facebook tabs");
   });
 

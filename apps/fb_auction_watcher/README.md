@@ -22,11 +22,12 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-**Clicking the icon opens a small menu** with four buttons; nothing starts until you choose one (#320):
-**Open Dashboard** (the overview); **Scan feed** (scans the group feed in this tab if it's open here, otherwise
-opens https://www.facebook.com/groups/pokemonkortnorge sorted by **New posts** in a new tab and scans it there
-once it has loaded, waiting its turn if something else is talking to Facebook); and **Scan Post** (reads the post shown in this tab; greyed out, with a hint, on anything
-that isn't a Facebook post); and **Reload extension**. Below them, the auto-scan status (switch it on/off in the
+**Clicking the icon opens a small menu** with three buttons; nothing starts until you choose one:
+**Open Dashboard** (the overview); one **Scan** button that follows the page you're on: **Scan post** on a
+Facebook post (reads it here), **Scan feed** on the group's feed (scans it here, sorted by **New posts**), and
+**Open feed and scan** anywhere else (opens https://www.facebook.com/groups/pokemonkortnorge sorted by **New
+posts** in a new tab and scans it there once it has loaded, waiting its turn if something else is talking to
+Facebook); and **Reload extension**. Below them, the auto-scan status (switch it on/off in the
 overview's Settings). **Reload Facebook tabs** is on the icon's right-click menu, with **Open overview** and
 **Reload extension**.
 
@@ -230,8 +231,8 @@ prompts on `src/llm/cases.ts` through the real bridge (uses your Claude plan).
 
 ## Scan the feed
 
-Click the extension icon → **Scan feed** (on the group's feed with no post open it scans that tab; anywhere
-else it opens https://www.facebook.com/groups/pokemonkortnorge, sorted by New posts, in a new tab first). If the feed isn't sorted by **New
+Click the extension icon → **Scan feed** (on the group's feed it scans that tab; anywhere else the button
+says **Open feed and scan** and opens https://www.facebook.com/groups/pokemonkortnorge, sorted by New posts, in a new tab first). If the feed isn't sorted by **New
 posts**, the extension reloads it that way first (`?sorting_setting=CHRONOLOGICAL`). It then scrolls the
 feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
 screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is
