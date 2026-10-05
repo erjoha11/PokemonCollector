@@ -117,7 +117,9 @@ The overview then shows its lots and bids, and **Leading / Outbid** per lot (blu
 row; **Your lots** expands them). Rules: a lot is a comment with a photo from the seller; bids are replies
 to it, in the order they were placed; the seller's own replies never count; a bid has to beat the highest
 by the increment; bids placed under another reply (e.g. under the seller's photo) are shown but not
-counted, since sellers reject them. Set your Facebook name under **⚙ Settings** (top right of the overview) if it isn't Erik Johansen.
+counted, since sellers reject them. An auction with no lot comments, where the post itself is the item and
+people bid right under it, is read as one lot: the post's photo and text, its start bid and raise, and the
+comments under it as bids (a reply under someone's comment doesn't count). Set your Facebook name under **⚙ Settings** (top right of the overview) if it isn't Erik Johansen.
 Each read of a post is merged with the earlier ones, so a read that missed comments (a background tab, the
 time limit) never hides a bid already seen; the row then says **partial read** with when the last full
 read was. **Won**/**Lost** only show after a full read made after the auction ended.
