@@ -46,6 +46,30 @@ export function saleType(text: string): SaleType {
   return headline.map(typeIn).find((t) => t !== null) ?? ((tags && typeIn(tags)) || typeIn(text) || "other");
 }
 
+/**
+ * The sale type's name in the UI, the same everywhere (badges, filter, notifications): the
+ * filter's words. "other" is "Unknown": the post names no type the rules know, and nobody guesses.
+ */
+export const SALE_TYPE_LABEL: Record<SaleType, string> = {
+  auction: "Auction",
+  claim: "Claim",
+  fixed: "Fixed price",
+  wanted: "Wanted",
+  trade: "Trade",
+  other: "Unknown",
+};
+
+export const saleTypeLabel = (type: SaleType): string => SALE_TYPE_LABEL[type];
+
+/**
+ * A post whose type the rules can't tell, but that is laid out as a sale (the group's template:
+ * "Objektbeskrivelse:", "Minstepris:", "Minimum budøkning:", "Sluttid:"). The table shows it as
+ * "Unknown" rather than dropping it or guessing; chatter and questions have none of these.
+ */
+export function isUntypedSale(i: Interpretation): boolean {
+  return i.type === "other" && (i.description !== null || i.minPrice !== null || i.increment !== null || i.endsAtText !== null);
+}
+
 /** First line of the post, without the template's "-annonse" suffix and the "… Se mer" cut. */
 export function saleTitle(text: string): string {
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);

@@ -2,7 +2,7 @@ import { interpretLots, summarizeLots, type Lot, type LotSummary } from "../../d
 export type { Lot } from "../../domain/bids";
 export { saleLines } from "../../domain/saleLines";
 export { lotUrl } from "../../shared/urls";
-import { interpretListing, type Interpretation } from "../../domain/listing";
+import { interpretListing, isUntypedSale, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, osloDate } from "../../domain/endTime";
 import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
@@ -45,13 +45,16 @@ export type Tab = { id: TabId; label: string; sections: { label: string | null; 
 
 const HOUR = 3_600_000;
 
-/** Sales only: wanted, trade and unrecognized posts are left out of the table. */
+/**
+ * Sales only: wanted and trade posts are left out of the table, and so are posts of no known type
+ * unless they're laid out as a sale (`isUntypedSale`): those stay, typed "other" (shown "Unknown").
+ */
 export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
   const { captures = new Map(), answers = new Map(), myName = "", endedMarks = {} } = extras;
   const rows: Row[] = [];
   for (const p of posts) {
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
-    if (i.type === "wanted" || i.type === "trade" || i.type === "other") continue;
+    if (i.type === "wanted" || i.type === "trade" || (i.type === "other" && !isUntypedSale(i))) continue;
     let endsViaClaude = false;
     if (!i.endsAt) {
       const fromClaude = claudeEndsAt(answers.get(endTimeAnswerKey(p.text)));

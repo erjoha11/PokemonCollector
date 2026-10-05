@@ -148,7 +148,7 @@ async function noticeChanges(postId: string, previous: PostCapture | null, merge
   if (listing.type !== "auction") return;
   const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
   const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
-  const sale = { postId, url: post.url, title: saleLines(listing.title, listing.description).title };
+  const sale = { postId, url: post.url, title: saleLines(listing.title, listing.description).title, type: listing.type };
   let notes: Note[];
   if (isFinal(merged, closesAt)) {
     // The result, once: not again for later reads after the close.

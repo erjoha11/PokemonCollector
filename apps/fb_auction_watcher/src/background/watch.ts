@@ -1,5 +1,5 @@
 import { interpretLots, summarizeLots, type Lot } from "../domain/bids";
-import { interpretListing, type Interpretation } from "../domain/listing";
+import { interpretListing, type Interpretation, type SaleType } from "../domain/listing";
 import { saleLines } from "../domain/saleLines";
 import { bidAnswerKey, lotNameAnswerKey } from "../llm/prompts";
 import type { PostCapture } from "../shared/capture";
@@ -23,6 +23,8 @@ export type MyAuction = {
   url: string;
   /** The sale's name without the template's type words. */
   title: string;
+  /** Always "auction" today (only auctions are watched); named in notifications. */
+  type: SaleType;
   endsAt: number | null;
   /** End plus antisnipe: after this, no bid counts. */
   closesAt: number | null;
@@ -73,6 +75,7 @@ export function myAuctions(posts: StoredPost[], captures: { postId: string; capt
       postId,
       url: post.url,
       title: saleLines(listing.title, listing.description).title,
+      type: listing.type,
       endsAt,
       closesAt: endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000,
       lastRead: Date.parse(capture.capturedAt),

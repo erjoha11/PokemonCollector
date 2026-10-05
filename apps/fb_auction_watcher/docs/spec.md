@@ -9,7 +9,8 @@
   store of raw posts and post reads, table page with your Leading/Outbid status. See
   `notes/fb_auction_watcher/overview-plan.md`. Automatic re-reads of auctions you're in
   (every 15 min, plus a final read on its own alarm 2 min after the close) and desktop notifications
-  (outbid, ends in 10 min, won/lost; `src/background/watch.ts`, `notify.ts`) are built. Not built: overlay, side panel.
+  (outbid, ends in 10 min, won/lost; `src/background/watch.ts`, `notify.ts`; each message starts
+  with the sale's type in the badge's words, "Auction · Gengar · …", #322) are built. Not built: overlay, side panel.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
@@ -262,6 +263,11 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 ## Design
 
 - **Colors:** blue `#2457D6` = Leading, orange `#C2570C` = Outbid, red `#B42318` = under 1 h.
+- **Sale-type colors** (added 2026-10-05, #322; `--type-*` in `dashboard.css`): purple `#8250DF` =
+  Auction, teal `#1B7C83` = Claim, gold `#9A6700` = Fixed price; Unknown uses the muted grey with a
+  dashed border. Dark theme: `#a371f7` / `#39c5cf` / `#d29922`. New tokens because reusing blue/orange
+  would read as Leading/Outbid; the badges are outlined (text and border in the colour) so they never
+  look like the filled status pills.
 - **Fonts:** IBM Plex Sans / IBM Plex Mono.
 - **Language:** English UI.
 
@@ -291,6 +297,16 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   Ends (countdown / end time · antisnipe) · Sale (photo; title without the template's type words,
   `saleLines` in `model.ts`, and New / Reading…; description, cut with "…") · Seller · Price (type /
   terms) · Lots · You. Type and Seen are no longer columns (first seen came back as Added).
+- **Sale-type badge** (2026-10-05, #322): every sale's name starts with its type, as a badge with
+  text (`typeBadge` in `badge.ts`, labels `SALE_TYPE_LABEL` in `src/domain/listing.ts`): Auction /
+  Claim / Fixed price, the filter's words, then New. Same badge on My Auctions' Needs you, Leading and
+  To pay lines. Price is now terms only ("Min 10 kr · +5", "2000 kr", "Price per item"): the type line
+  it used to start with duplicated the badge. **Unknown**: a post whose type the rules can't tell but
+  that is laid out as a sale (`isUntypedSale`: a description, minimum price, increment or end line)
+  stays in the table as type `other`, shown "Unknown", never guessed; until then those were dropped
+  with the chatter. Its Price shows only what the post states (min price, increment) or "See the
+  post"; its lots are read the default (bid) way, and it gets no Claude end-time read or
+  notifications (both are for auctions/claims). Wanted, trade and chatter posts are still left out.
 - **Seller's original end text** (decided 2026-10-04, relaxing "Keep raw text" for the table): in the
   Ends tooltip when the rules are sure; in the row, flagged, when they weren't or Claude read it.
   Raw text is still stored and shown in full in the lots.
@@ -303,7 +319,8 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   with a valid bid or a claim, the sum of winning bids or Claude-priced claimed cards; final =
   `readAfterEnd`), "Not read" if never read. Expanded lots: "Sold 1100 kr · <bidder>" or "Unsold",
   yours first with Won/Lost, flagged "at last read" when not final.
-- Filters: All / Auction / Claim / Fixed price + search (My bids and New are tabs).
+- Filters: All / Auction / Claim / Fixed price + search (My bids and New are tabs). The same words as
+  the type badges (a test checks it); Unknown sales show under All only.
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.

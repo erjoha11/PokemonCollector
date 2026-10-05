@@ -1,4 +1,5 @@
 import type { Lot } from "../domain/bids";
+import { saleTypeLabel, type SaleType } from "../domain/listing";
 import { getSettings } from "../shared/settings";
 import { lotUrl } from "../shared/urls";
 import type { MyAuction } from "./watch";
@@ -17,7 +18,10 @@ export type Note = {
   url: string;
 };
 
-export type Sale = { postId: string; title: string; url: string };
+/** The sale a note is about; its type leads the message, in the overview's words ("Auction · Gengar", #322). */
+export type Sale = { postId: string; title: string; url: string; type: SaleType };
+
+const named = (sale: Pick<Sale, "title" | "type">) => `${saleTypeLabel(sale.type)} · ${sale.title}`;
 
 const lotKey = (l: Lot) => l.commentId ?? `#${l.position}`;
 const kr = (n: number | null) => (n === null ? "?" : `${n} kr`);
@@ -32,7 +36,7 @@ export function outbidNotes(before: Lot[] | null, after: Lot[], sale: Sale): Not
       return {
         key: `outbid:${sale.postId}:${lotKey(l)}:${l.highestBid}`,
         title: `Outbid: ${l.title}`,
-        message: `${sale.title} · highest ${kr(l.highestBid)} (you ${kr(l.myHighestBid)})${next !== null ? ` · next bid ${next} kr` : ""}`,
+        message: `${named(sale)} · highest ${kr(l.highestBid)} (you ${kr(l.myHighestBid)})${next !== null ? ` · next bid ${next} kr` : ""}`,
         url: lotUrl(sale, l),
       };
     });
@@ -52,7 +56,7 @@ export function resultNotes(after: Lot[], sale: Sale): Note[] {
     {
       key: `result:${sale.postId}`,
       title,
-      message: `${sale.title}${won.length ? ` · won: ${names(won)}` : ""}${lost.length ? ` · lost: ${names(lost)}` : ""}`,
+      message: `${named(sale)}${won.length ? ` · won: ${names(won)}` : ""}${lost.length ? ` · lost: ${names(lost)}` : ""}`,
       url: sale.url,
     },
   ];
@@ -68,7 +72,7 @@ export function endingSoonNote(a: MyAuction, now: number): Note {
   return {
     key: `ending:${a.postId}:${a.endsAt}`,
     title: `Ends in ${min} min: ${a.title}`,
-    message: `${parts.join(" · ")} (at the last read, ${Math.round((now - a.lastRead) / 60_000)} min ago)`,
+    message: `${[saleTypeLabel(a.type), ...parts].join(" · ")} (at the last read, ${Math.round((now - a.lastRead) / 60_000)} min ago)`,
     url: a.url,
   };
 }
