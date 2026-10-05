@@ -1,5 +1,6 @@
 import type { CapturedComment, CapturedReply, PostCapture } from "../shared/capture";
 import { parseAmount } from "./amount";
+import { saleLines } from "./saleLines";
 
 // Lots and bids from a post read with the toolbar icon (module 1's capture), by rules, with
 // optional answers from Claude for replies the rules can't read. Findings this relies on are in
@@ -59,6 +60,8 @@ export type MyClaim = "none" | "claimed" | "check";
 export type ClaimCards = { card: string; price: number | null; claimedBy: string | null; isMe: boolean }[];
 
 export type Lot = {
+  /** The post itself is the lot (no lot comments; bids right under the post). */
+  wholePost?: boolean;
   commentId: string | null;
   position: number;
   title: string;
@@ -224,15 +227,45 @@ export function sellerOf(capture: PostCapture): string | null {
   return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? author;
 }
 
+/**
+ * An auction whose post is itself the one lot (2026-10-05, e.g. "LYNAUKSJON… Div pokemon kort
+ * (bulk)… Minstepris: 200kr"): no lot comments from the seller, and the bids written as comments
+ * directly under the post. Mirrors a lot comment: the post is the lot, its comments are the
+ * replies to it, and a reply to someone's comment is "under another reply". Null when the post has
+ * no comments from anyone but the seller.
+ */
+function postAsLot(capture: PostCapture, seller: string | null): { lot: CapturedComment; title: string; replies: CapturedReply[]; underReply: Set<string | null> } | null {
+  const others = capture.comments.filter((c) => !seller || normalizeName(c.author) !== normalizeName(seller));
+  if (others.length === 0) return null;
+  const underReply = new Set<string | null>();
+  const replies: CapturedReply[] = [];
+  for (const c of capture.comments) {
+    replies.push(c);
+    for (const r of c.replies) {
+      replies.push(r);
+      underReply.add(r.id);
+    }
+  }
+  const lines = capture.post.text.split("\n").map((l) => l.trim()).filter(Boolean);
+  const title = saleLines(lines[0] ?? "", lines[1] ?? null).title || "The post";
+  const lot: CapturedComment = {
+    id: null, url: null, author: capture.post.author, text: capture.post.text, timeText: capture.post.timeText, ariaLabel: null,
+    images: capture.post.images, truncated: capture.post.truncated, rawText: capture.post.text, index: -1, hasImage: capture.post.images.length > 0, replies: [],
+  };
+  return { lot, title, replies: replies.sort((a, b) => compareIds(a.id, b.id)), underReply };
+}
+
 export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] {
   const seller = sellerOf(capture);
   const me = normalizeName(options.myName);
   const lots: Lot[] = [];
-  for (const c of capture.comments) {
-    if (!isLot(c, seller)) continue;
+  const lotComments = capture.comments.filter((c) => isLot(c, seller));
+  // No lot comments in an auction: the post itself may be the lot, with bids right under it.
+  const whole = !options.claims && lotComments.length === 0 ? postAsLot(capture, seller) : null;
+  for (const c of whole ? [whole.lot] : lotComments) {
     const startBid = lotStartBid(c.text) ?? options.listingMinPrice;
     const increment = lotIncrement(c.text) ?? options.listingIncrement;
-    const replies = [...c.replies].sort((a, b) => compareIds(a.id, b.id));
+    const replies = whole ? whole.replies : [...c.replies].sort((a, b) => compareIds(a.id, b.id));
     const bids: Bid[] = [];
     let unsureCount = 0;
     /** Replies that may be bids but couldn't be counted: their IDs (null = order unknown). */
@@ -256,7 +289,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
     }
     for (const r of options.claims ? [] : replies) {
-      const bid = toBid(r, seller, me, options);
+      const bid = toBid(r, seller, me, options, !!whole && whole.underReply.has(r.id));
       if (bid === "unsure") {
         unsureCount++;
         if (normalizeName(r.author) !== me) doubtful.push(r.id);
@@ -301,7 +334,8 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     lots.push({
       commentId: c.id,
       position: lots.length + 1,
-      ...lotTitleFor(c, lots.length + 1, options),
+      ...(whole ? { title: whole.title, untitled: false, namedByClaude: false } : lotTitleFor(c, lots.length + 1, options)),
+      wholePost: !!whole,
       rawText: c.text,
       imageUrl: c.images[0]?.src ?? null,
       startBid,
@@ -422,7 +456,7 @@ function myStatusFor(mine: Bid[], highest: Bid | null, doubtful: (string | null)
   return after ? "unclear" : "lead";
 }
 
-function toBid(r: CapturedReply, seller: string | null, me: string, options: LotOptions): Bid | "unsure" | null {
+function toBid(r: CapturedReply, seller: string | null, me: string, options: LotOptions, placedUnderReply = false): Bid | "unsure" | null {
   const bidder = r.author ?? "";
   if (seller && normalizeName(bidder) === normalizeName(seller)) return null; // The seller never bids.
   const reading = readBid(r.text, seller);
@@ -437,7 +471,7 @@ function toBid(r: CapturedReply, seller: string | null, me: string, options: Lot
     viaClaude = true;
   }
   // "Svar fra A på B sitt svar" (to a reply) vs "… sin kommentar" (to the lot).
-  const underReply = /\bsitt svar\b|'s reply\b/i.test(r.ariaLabel ?? "");
+  const underReply = placedUnderReply || /\bsitt svar\b|'s reply\b/i.test(r.ariaLabel ?? "");
   return {
     replyId: r.id,
     bidder,
