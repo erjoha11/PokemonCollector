@@ -1818,3 +1818,40 @@ cleanup is still a separate, user-confirmed prod write.
   "Lot complete") avoids the double count.
 - **`ux` follow-up** (UX_NOTES 2026-10-04) to review the panel with 10+
   items from one seller is still open.
+
+
+# Handoff notes — 2026-10-01 session (Bitwarden, credential rotation)
+
+## Code shipped
+
+- **#258**: `tools/bw_env.py` keeps the gitignored `.env` files in the
+  user's Bitwarden vault (one Secure Note per file in a `PokemonCollector`
+  folder, a hidden field per variable). See the root README, "Secrets in
+  Bitwarden".
+
+## Credentials and config changed outside git
+
+- **Supabase `postgres` password reset.** The old local `DATABASE_URL` had
+  a stale password. The first reset attempt didn't take, so the password
+  was reset again. The new one is in `apps/tcg_inventory/.env`, Vercel's
+  `DATABASE_URL`, and the vault. Verified read-only (`select count(*) from
+  cards` = 869).
+- **`CRON_SECRET` rotated** in Vercel, the local `.env`, and the vault.
+- **Short prod outage** (`500 FUNCTION_INVOCATION_FAILED` on every page)
+  after a redeploy while Vercel still had a non-working password. Fixed by
+  setting Vercel's `DATABASE_URL` to the verified value and redeploying.
+- **`DROPBOX_FOLDER`** was removed from the local `.env` and the vault only.
+  It is still needed in Vercel: `/cron/dropbox-sync` reads it via
+  `dropbox_client.default_folder()`.
+- No direct database writes, so no backup was taken.
+
+## Open items
+
+- **Prod backups have never run.** The repo has no Actions secrets at all,
+  so `prod-backup.yml` skips every week. #223's one-time setup (age key,
+  backup Dropbox app, `backup_reader` role, five `BACKUP_*` secrets) is
+  still to do.
+- The Dropbox and Supabase keys that live only in Vercel aren't in the
+  vault yet. The root `.env` (`ANTHROPIC_API_KEY`) doesn't exist yet.
+- On Windows, `python -m pytest` fails to collect `test_tcgdex_prices.py`
+  (cp1252 `UnicodeDecodeError`). It passes with `PYTHONUTF8=1`.
