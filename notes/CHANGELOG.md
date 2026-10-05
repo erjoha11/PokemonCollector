@@ -191,6 +191,34 @@ yet.
   end: "No end" for fixed price, "Unknown" (and "cut off") otherwise. This
   replaces #303's "Added" text in the Ends cell.
 
+**Popup buttons, Scan feed opens the group, New and ended sales kept 30 min (#320, #321)**
+- The toolbar popup has four buttons: Open Dashboard, Scan feed, Scan Post
+  and Reload extension. Reload Facebook tabs stays on the icon's right-click
+  menu only.
+- Scan feed scans the active tab when it is the group feed. Otherwise it
+  takes the Facebook slot first, then opens pokemonkortnorge sorted by New
+  posts (`GROUP_FEED_URL` in `src/shared/urls.ts`) in a new tab and scans
+  there. Scan Post is disabled unless the active tab is a post.
+- New: a sale is New if it was first seen after your last visit or less
+  than 30 min ago (`NEW_WINDOW_MS`).
+- A sale that ended less than 30 min ago (`ENDED_GRACE_MS`, counted from end
+  time + antisnipe, or your mark if that came first) stays dimmed in the
+  active tab it was in, shown as ended and not counted in the top numbers.
+  It is in Ended from the moment it ends. In My bids it stays under Running
+  for those 30 min, then moves to My bids' Ended.
+
+**Sale-type badge (#322, #323)**
+- An outlined Auction / Claim / Fixed price / Unknown badge before every
+  sale's name, in table rows and on My Auctions' Needs you, Leading and To
+  pay lines. The words come from one place (`SALE_TYPE_LABEL` in
+  `src/domain/listing.ts`), the same as the type filter. New design tokens
+  `--type-auction` / `--type-claim` / `--type-fixed`.
+- The Price column shows terms only, since the badge now shows the type.
+- Posts laid out as a sale that the rules can't type are kept as Unknown
+  instead of dropped (`isUntypedSale`). Chatter, wanted and trade posts are
+  still left out.
+- Notifications start with the type ("Auction · Gengar · ...").
+
 ### tcg_inventory
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
