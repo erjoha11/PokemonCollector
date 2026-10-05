@@ -1,4 +1,5 @@
 import { groupSlug, type FeedPost } from "../../shared/feed";
+import { groupPostUrl } from "../../shared/urls";
 import { collectText } from "../post/extract";
 import { isSeeMoreLabel } from "../post/patterns";
 import { postId } from "./recorder";
@@ -46,7 +47,7 @@ export function extractFeedPost(post: Element, pageUrl: string): FeedPost | null
   const slug = groupSlug(pageUrl);
   return {
     id,
-    url: slug ? `https://www.facebook.com/groups/${slug}/posts/${id}/` : `https://www.facebook.com/${id}`,
+    url: groupPostUrl(id, slug),
     groupSlug: slug,
     sellerName,
     text,
