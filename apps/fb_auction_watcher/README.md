@@ -22,12 +22,13 @@ npm run typecheck
 2. **Load unpacked** → pick `apps/fb_auction_watcher/dist/`.
 3. Pin the extension (puzzle icon → pin) so its icon is on the toolbar.
 
-**Clicking the icon opens a small menu** with three buttons; nothing starts until you choose one (#320):
+**Clicking the icon opens a small menu** with four buttons; nothing starts until you choose one (#320):
 **Open Dashboard** (the overview); **Scan feed** (scans the group feed in this tab if it's open here, otherwise
 opens https://www.facebook.com/groups/pokemonkortnorge sorted by **New posts** in a new tab and scans it there
 once it has loaded, waiting its turn if something else is talking to Facebook); and **Scan Post** (reads the post shown in this tab; greyed out, with a hint, on anything
-that isn't a Facebook post). Below them, the auto-scan status (switch it on/off in the overview's Settings).
-**Reload extension** and **Reload Facebook tabs** are on the icon's right-click menu, with **Open overview**.
+that isn't a Facebook post); and **Reload extension**. Below them, the auto-scan status (switch it on/off in the
+overview's Settings). **Reload Facebook tabs** is on the icon's right-click menu, with **Open overview** and
+**Reload extension**.
 
 After every `npm run build`: **Reload extension**, then **Reload Facebook tabs** (open tabs need the new
 content script). A new permission in the manifest needs the reload icon on the extension's card in

@@ -327,7 +327,8 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 
 ### Toolbar menu (`popup.html`)
 
-Decided 2026-10-05 (#320): exactly three buttons; nothing starts until you pick one. Which button does
+Decided 2026-10-05 (#320): four buttons (Open Dashboard, Scan feed, Scan Post, Reload extension);
+nothing starts until you pick one. Which button does
 what for the active tab is the pure `popupActions()` in `src/pages/popup/actions.ts`.
 
 - **Open Dashboard:** opens (or focuses) `dashboard.html`.
@@ -350,8 +351,11 @@ what for the active tab is the pure `popupActions()` in `src/pages/popup/actions
   Facebook to read it." instead of doing nothing or navigating.
 - Not buttons: the auto-scan status line (on/off, next run, last outcome). Its **off switch stays in
   the dashboard's Settings** (pacing rule: a user-facing off switch); the menu says where.
-  **Reload extension** / **Reload Facebook tabs** left the menu; they're on the icon's right-click
-  menu (with Open overview), where they already were.
+- **Reload extension:** `chrome.runtime.reload()`, the same call the menu's button made before #320.
+  #320 first moved it to the right-click menu only; it came back the same day because the user asked
+  for it (it's the step after every `npm run build`). Same on every tab, so not in `popupActions()`.
+- **Reload Facebook tabs** stays off the menu: it's on the icon's right-click menu (with Open
+  overview and Reload extension, which is there too), where it already was.
 
 ### Side panel
 

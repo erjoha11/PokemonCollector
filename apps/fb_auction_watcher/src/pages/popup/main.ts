@@ -2,9 +2,10 @@ import { MSG_OPEN_OVERVIEW, MSG_SCAN_FEED_NEW_TAB, MSG_START, type ScanFeedNewTa
 import { getAutoScanState, getSettings } from "../../shared/settings";
 import { popupActions } from "./actions";
 
-// The toolbar icon's menu (#320): exactly three buttons, Open Dashboard · Scan feed · Scan Post.
-// Nothing starts until you pick it here. Which button does what for the active tab: actions.ts.
-// Reloading the extension / the Facebook tabs is on the icon's right-click menu; auto-scan's
+// The toolbar icon's menu (#320): four buttons, Open Dashboard · Scan feed · Scan Post · Reload
+// extension. Nothing starts until you pick it here. Which button does what for the active tab:
+// actions.ts. Reload extension is chrome.runtime.reload(), as before #320 (back on the user's
+// word); reloading the Facebook tabs stays on the icon's right-click menu only. Auto-scan's
 // on/off switch is in the dashboard's Settings (its status is shown here as text).
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -35,6 +36,8 @@ async function init() {
     read.disabled = true;
     $("read-hint").textContent = actions.scanPost.hint;
   }
+
+  $("reload-ext").addEventListener("click", () => chrome.runtime.reload());
 
   function start(kind: StartMessage["kind"]) {
     if (tab?.id === undefined) return;

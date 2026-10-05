@@ -1,6 +1,7 @@
 import { GROUP_FEED_URL, isGroupFeedUrl, isPostUrl } from "../../shared/urls";
 
-// The toolbar menu's three buttons, without any DOM (#320): what each does for the active tab.
+// The toolbar menu's buttons that depend on the active tab, without any DOM (#320). (The fourth,
+// Reload extension, is the same everywhere: chrome.runtime.reload(), wired in main.ts.)
 // Open Dashboard always works; Scan feed scans the feed here, or opens the group's feed
 // (GROUP_FEED_URL, sorted by "New posts" by the worker) in a new tab and scans there; Scan Post
 // reads the post shown here, and is disabled with a hint anywhere else.

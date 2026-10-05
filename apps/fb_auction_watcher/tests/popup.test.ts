@@ -1,8 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { popupActions, SCAN_POST_HINT } from "../src/pages/popup/actions";
 import { GROUP_FEED_URL, isGroupFeedUrl, isPostUrl, newPostsUrl } from "../src/shared/urls";
+import popupHtml from "../public/popup.html?raw";
+import { fakeChrome } from "./fakes/chrome";
 
-// The toolbar menu's three buttons (#320): what Scan feed and Scan Post do per active tab.
+// The toolbar menu's four buttons (#320): what Scan feed and Scan Post do per active tab, and
+// the page itself (public/popup.html + main.ts) with its Reload extension button.
 
 const FEED = "https://www.facebook.com/groups/g/";
 const POST = "https://www.facebook.com/groups/g/posts/123456/";
@@ -33,6 +36,39 @@ describe("popup buttons", () => {
     expect(newPostsUrl(GROUP_FEED_URL)).toBe("https://www.facebook.com/groups/pokemonkortnorge/?sorting_setting=CHRONOLOGICAL");
     expect(isGroupFeedUrl(newPostsUrl(GROUP_FEED_URL))).toBe(true);
     expect(isGroupFeedUrl("https://www.facebook.com/groups/pokemonkortnorge")).toBe(true);
+  });
+});
+
+describe("popup page", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    document.body.innerHTML = "";
+  });
+
+  async function loadPopup() {
+    // The page's body, without its <script> (main.ts is imported below instead).
+    document.body.innerHTML = /<body>([\s\S]*)<\/body>/.exec(popupHtml)![1].replace(/<script[\s\S]*?<\/script>/g, "");
+    const fake = fakeChrome();
+    const reload = vi.spyOn(fake.chrome.runtime, "reload");
+    vi.stubGlobal("chrome", fake.chrome);
+    vi.resetModules();
+    await import("../src/pages/popup/main");
+    await vi.waitFor(() => expect(document.getElementById("auto")!.textContent).not.toBe(""));
+    return { fake, reload };
+  }
+
+  it("has exactly four buttons, in order: Open Dashboard, Scan feed, Scan Post, Reload extension", async () => {
+    await loadPopup();
+    const labels = [...document.querySelectorAll("button")].map((b) => b.textContent?.trim());
+    expect(labels).toEqual(["Open Dashboard", "Scan feed", "Scan Post", "Reload extension"]);
+    expect(document.body.textContent).not.toContain("Reload Facebook tabs");
+  });
+
+  it("Reload extension calls chrome.runtime.reload() (the path from before #320), and nothing else", async () => {
+    const { fake, reload } = await loadPopup();
+    document.getElementById("reload-ext")!.click();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(fake.runtimeMessages).toEqual([]);
   });
 });
 
