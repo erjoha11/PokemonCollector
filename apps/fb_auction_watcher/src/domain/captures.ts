@@ -1,4 +1,5 @@
 import type { CapturedComment, CapturedReply, PostCapture } from "../shared/capture";
+import { relativeAge } from "./bidTime";
 
 // Merging reads of the same post (review H2). A read can miss replies: a hidden background tab
 // doesn't load comments by scrolling, a quiet read stops after 4 minutes, the sort switch to
@@ -37,9 +38,32 @@ function mergeById<T extends { id: string | null }>(older: T[], newer: T[], comb
   return [...[...out.values()].sort(byId), ...noId];
 }
 
+/**
+ * Stamps a read's comments and replies with when it ran (`seenAt`), where they don't have it yet:
+ * their `timeText` ("5 min") is relative to that read, and merging keeps replies from older reads.
+ */
+function stampSeen(read: PostCapture): CapturedComment[] {
+  const at = read.capturedAt;
+  return read.comments.map((c) => ({ ...c, seenAt: c.seenAt ?? at, replies: c.replies.map((r) => ({ ...r, seenAt: r.seenAt ?? at })) }));
+}
+
+/**
+ * The more precise of two reads' times for one reply (#329): "7 min" read just after the end says
+ * more than "3 t" read hours later, so a later read doesn't blur when a bid was placed.
+ */
+function preciseTime<T extends Pick<CapturedReply, "timeText" | "seenAt">>(older: T, newer: T): Pick<CapturedReply, "timeText" | "seenAt"> {
+  const width = (r: T) => {
+    const age = r.seenAt ? relativeAge(r.timeText) : null;
+    return age ? age.max - age.min : Infinity;
+  };
+  const pick = width(older) < width(newer) ? older : newer;
+  return { timeText: pick.timeText, seenAt: pick.seenAt };
+}
+
 function mergeComment(older: CapturedComment, newer: CapturedComment): CapturedComment {
   return {
     ...newer,
+    ...preciseTime(older, newer),
     // A read that lost the photo (still loading) keeps the earlier one.
     images: newer.images.length ? newer.images : older.images,
     hasImage: newer.hasImage || older.hasImage,
@@ -48,12 +72,14 @@ function mergeComment(older: CapturedComment, newer: CapturedComment): CapturedC
       ...n,
       text: n.text || o.text,
       images: n.images.length ? n.images : o.images,
+      ...preciseTime(o, n),
     })),
   };
 }
 
 /** Merges a new read of a post into the stored one (null on the first read). */
-export function mergeCaptures(stored: PostCapture | null, read: PostCapture): PostCapture {
+export function mergeCaptures(stored: PostCapture | null, incoming: PostCapture): PostCapture {
+  const read = { ...incoming, comments: stampSeen(incoming) };
   const complete = isCompleteRead(read, stored);
   const completeAt = complete ? read.capturedAt : (stored?.completeAt ?? null);
   if (!stored) return { ...read, completeAt, reads: 1 };

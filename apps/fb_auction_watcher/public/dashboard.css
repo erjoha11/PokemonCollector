@@ -315,6 +315,7 @@ td.ends > div:first-child { white-space: nowrap; }
 .pay-how { flex: 1; min-width: 120px; }
 .lead-card[open] .lead-lots, .pay-card[open] .pay-items { margin-top: 4px; }
 .pay-card .won-terms { margin: 4px 0 2px; }
+.pay-items .lot-line > .flag.small { grid-column: 2 / -1; }
 .notwon { margin: 4px 0; }
 .notwon summary { cursor: pointer; }
 @media (max-width: 720px) {

@@ -28,7 +28,7 @@ import { waitForTabLoad } from "./tabs";
 import { scheduleClaude } from "./claude";
 import { finishRead, getReaderState, isReaderAlarm, kickReader, readNow, WATCH_ALARM, watchMyAuctions } from "./reader";
 import { listenForNoteClicks, outbidNotes, resultNotes, showNotes, type Note } from "./notify";
-import { isFinal, readLots } from "./watch";
+import { closesAtOf, isFinal, readLots } from "./watch";
 import { saleLines } from "../domain/saleLines";
 import type { PostCapture } from "../shared/capture";
 import { facebookSlot } from "./slot";
@@ -184,8 +184,8 @@ async function noticeChanges(postId: string, previous: PostCapture | null, merge
   const answerMap = new Map(answers.map((a) => [a.key, a.value]));
   const { listing, lots } = readLots(post, merged, answerMap, settings.myName);
   if (listing.type !== "auction") return;
-  const endsAt = listing.endsAt ? Date.parse(listing.endsAt) : null;
-  const closesAt = endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000;
+  // Chained antisnipe over this read's bids (#329), as the watcher uses.
+  const closesAt = closesAtOf(listing, lots);
   const sale = { postId, url: canonicalPostUrl(post.url, postId, post.groupSlug), title: saleLines(listing.title, listing.description).title, type: listing.type };
   let notes: Note[];
   if (isFinal(merged, closesAt)) {

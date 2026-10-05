@@ -44,6 +44,36 @@ Post = listing: overview photos of the whole auction, rules, end time
   someone's comment counts as "under another reply" (not counted). Start bid and raise come from
   the post ("Minstepris", "Minimum budøkning"). `postAsLot` in `src/domain/bids.ts`.
 - Comments without an image are chatter. Replies from the seller are never bids.
+- **Late bids don't count** (2026-10-06, #329; `src/domain/bids.ts`, `src/domain/bidTime.ts`).
+  A bid is valid when it's on the lot itself, not rejected by the seller, not after the end, at
+  least the start bid, and at least the highest + the raise, checked in the order bids were placed.
+  - **The seller says so:** a seller's reply directly under a bid (its aria-label names that
+    bidder's reply, or that bidder's comment when the post is the lot; or a reply to the lot that
+    starts with the bidder's name) answers that bidder's latest bid before it. Wording like "for
+    sent", "for seint", "kom for sent", "kom etter sluttid", "auksjonen er avsluttet/ferdig",
+    "etter sluttid", "ikke gyldig", "ugyldig", "teller ikke", "too late" makes that bid invalid,
+    note `seller: too late ("<the seller's words>")`, and the next valid bid wins. "Ikke for sent"
+    doesn't; congratulations, "sendt PM", "den er grei", a photo are "ok". Mixed ("Avsluttet,
+    gratulerer!") or unknown wording under **your own** bid goes to Claude (`claude -p`,
+    `seller-reply` task: does the seller reject the bid? true/false/null), asked until 3 days after
+    the end (sellers answer late bids late), raw text kept and shown; until it answers, the lot is
+    flagged "check". Unknown wording under other people's bids is left alone.
+  - **Bid time vs the end, chained antisnipe** (group-domain §4.2): the end is strict at minute
+    resolution (end 20:00: 19:59 counts, 20:00 doesn't); with "Antisnipe 5 min: Ja" each valid bid
+    before the current end and in its last 5 minutes moves the end to bid time + 5 min, again and
+    again, per lot (`effectiveEnd`). Facebook only shows a reply's age ("5 min", "2 t", rounded
+    down), relative to the read that saw it (`seenAt`, stamped when reads are merged; the most
+    precise age seen is kept), so each bid's time is a window (±1 min slack) and the lot's end is a
+    window too (`judgeBidTimes`). A bid **late** for its whole window is invalid ("after the end");
+    one **on time** for its whole window counts; one in between (**unsure**) is kept valid and, if
+    it's the highest or yours, the lot is flagged "check: … may have come after the end" (shown on
+    To pay and the lot; use **Not won** if the seller agrees). A read before the end proves every
+    bid in it on time. No evidence at all (no readable age; reads stored before #329) is treated as
+    before: counts, no flag, moves nothing.
+  - **When the sale is over** (`saleClosesAt`): the latest lot end from that chain, never before
+    the end + the antisnipe window (a last-minute bid may not have been read yet). "Ended?",
+    "Ended", the final read and won/lost notifications all use it (replacing the fixed end +
+    `softCloseMinutes` they used before).
 - A top-level comment of just "." is someone tagging themselves to follow the sale (they get
   notified of new activity). Not a lot, not a bid. The count of them is a rough "watchers"
   number. Claim sales ask for this explicitly ("Tagg deg selv i kommentarfeltet").
@@ -261,8 +291,8 @@ Per listing:
 | Activity | More comments than last time (`commentCount` > `commentCountPrev`) |
 | Ending soon | Less than 1 hour left |
 | Unknown end time | End time could not be interpreted |
-| Ended? | End time passed, but the soft close window is not over |
-| Ended | End time (and any soft close window) passed |
+| Ended? | End time passed, but the sale isn't closed: within the antisnipe window, or a bidding war's chained end (#329) |
+| Ended | The sale closed: end time, antisnipe window and any chained extension passed (`saleClosesAt`) |
 | Sold/withdrawn | Seller marked the sale as sold or withdrawn |
 
 Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 · outbid 1".
@@ -529,7 +559,8 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   minimum price, "den er grei"), and "<Seller> ." (following a single lot, not a bid).
 - **Minimum price per lot:** "Mp 10kr" (lower case, no colon) as well as "MP: 1400"; one lot
   had a bare "700kr".
-- **End time formats:** "Sluttid: 2026-10-02 22.00", "Sluttid (Lørdag 3. oktober 23.59):",
+- **End time formats:** "Sluttid: Tirsdag klokken 23, 6 oktober" ("klokken"/"klokka" read like
+  "kl", 2026-10-06, #329), "Sluttid: 2026-10-02 22.00", "Sluttid (Lørdag 3. oktober 23.59):",
   "Sluttid: 03.10 Lørdag kl22:00", "Sluttid: Søndag 04.10 kl 21:00", and "Slutt: 05.10.26
   kl 21:00" (label "Slutt", not "Sluttid").
 - **Claim sales:** the lot comment can be just an image, with the price written on the

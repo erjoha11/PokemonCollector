@@ -5,7 +5,8 @@ export { lotUrl } from "../../shared/urls";
 import { canonicalPostUrl } from "../../shared/urls";
 import { interpretListing, isUntypedSale, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, osloDate } from "../../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
+import { saleClosesAt } from "../../domain/bidTime";
+import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, sellerReplyAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
@@ -14,6 +15,11 @@ import type { StoredPost } from "../../shared/feed";
 export type Row = StoredPost &
   Interpretation & {
     endsAtMs: number | null;
+    /**
+     * When no bid counts any more: the end with chained antisnipe over the lots' bids (#329,
+     * `saleClosesAt`), never before end + antisnipe window. Null without an end. Optional so test rows can leave it out.
+     */
+    closesAtMs?: number | null;
     /** First seen after the previous visit to this page, or less than 30 min ago (NEW_WINDOW_MS; a rescan or visit inside that window doesn't clear it). */
     isNew: boolean;
     /** End time passed, but within the antisnipe window: bids may still extend it. */
@@ -95,14 +101,18 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
             const key = bidAnswerKey(seller, text);
             return answers.has(key) ? (answers.get(key) as number | null) : undefined;
           },
+          endsAt: i.endsAt ? Date.parse(i.endsAt) : null,
+          softCloseMinutes: i.softCloseMinutes,
+          sellerReplyAnswer: (text) => answers.get(sellerReplyAnswerKey(text)) as boolean | null | undefined,
         })
       : null;
     const endsAtMs = i.endsAt ? Date.parse(i.endsAt) : null;
-    const softMs = (i.softCloseMinutes ?? 0) * 60_000;
+    // When no bid counts any more: chained antisnipe over the lots' bids (#329), at least end + window.
+    const closesAtMs = saleClosesAt(endsAtMs, i.softCloseMinutes, (lots ?? []).map((l) => l.closesAt));
     const t = now.getTime();
     const endedByYouAt = endedMarks[p.id] ?? null;
-    const ended = endedByYouAt !== null || (endsAtMs !== null && t >= endsAtMs + softMs);
-    const closes = [endsAtMs === null ? null : endsAtMs + softMs, endedByYouAt ? Date.parse(endedByYouAt) : null].filter((x): x is number => x !== null);
+    const ended = endedByYouAt !== null || (closesAtMs !== null && t >= closesAtMs);
+    const closes = [closesAtMs, endedByYouAt ? Date.parse(endedByYouAt) : null].filter((x): x is number => x !== null);
     const endedAt = ended ? Math.min(...closes) : null;
     const firstSeen = Date.parse(p.firstSeenAt);
     const notWon: Record<string, string> = {};
@@ -116,8 +126,9 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
       url: canonicalPostUrl(p.url, p.id, p.groupSlug),
       ...i,
       endsAtMs,
+      closesAtMs,
       isNew: (lastVisit !== null && firstSeen > lastVisit.getTime()) || t - firstSeen < NEW_WINDOW_MS,
-      maybeEnded: !endedByYouAt && endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
+      maybeEnded: !endedByYouAt && endsAtMs !== null && closesAtMs !== null && t >= endsAtMs && t < closesAtMs,
       ended,
       endedAtMs: endedAt,
       justEnded: endedAt !== null && t - endedAt < ENDED_GRACE_MS,
@@ -257,11 +268,12 @@ export type LotStatus = {
  * partial read may have missed the bid that beat you (review H2). A sale you marked as ended
  * yourself takes your word for it: its last full read is final.
  */
-export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinutes" | "lastCompleteReadAt" | "endedByYouAt">): boolean {
+export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "closesAtMs" | "softCloseMinutes" | "lastCompleteReadAt" | "endedByYouAt">): boolean {
   if (!r.ended || !r.lastCompleteReadAt) return false;
   if (r.endedByYouAt) return true;
   if (r.endsAtMs === null) return false;
-  return Date.parse(r.lastCompleteReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
+  const closes = r.closesAtMs ?? saleClosesAt(r.endsAtMs, r.softCloseMinutes)!;
+  return Date.parse(r.lastCompleteReadAt) >= closes;
 }
 
 /** When you marked this lot "Not won" yourself (#329), or null. */

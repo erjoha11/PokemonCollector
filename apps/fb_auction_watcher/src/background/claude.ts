@@ -1,4 +1,4 @@
-import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, type ClaudeRequest } from "../llm/prompts";
+import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, sellerReplyRequest, type ClaudeRequest } from "../llm/prompts";
 import { getClaudeState, getSettings, updateClaudeState } from "../shared/settings";
 import type { Store, StoredAnswer } from "../store";
 import {
@@ -87,15 +87,15 @@ async function run(store: Store, onAnswered: () => void) {
     let failures: Failures = pruneFailures(await loadFailures(store), now);
     let photoCalls = recentPhotoCalls(state.photoCalls ?? [], now);
     const pending = await pendingItems(store, { myName: settings.myName, now, failures, photoCallsLeft: photoCallsLeft(photoCalls, now) });
-    const { endTimes, bids, claimLots, lotNames } = pending;
-    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0 && lotNames.length === 0) {
+    const { endTimes, bids, sellerReplies, claimLots, lotNames } = pending;
+    if (endTimes.length === 0 && bids.length === 0 && sellerReplies.length === 0 && claimLots.length === 0 && lotNames.length === 0) {
       await saveFailures(store, failures);
       if (pending.photoLimited) await updateClaudeState({ photoLimitUntil: photoLimitFreesAt(photoCalls, now), photoCalls });
       return;
     }
 
     const saved: StoredAnswer[] = [];
-    const read = { endTimes: 0, bids: 0, claimLots: 0, lotNames: 0 };
+    const read = { endTimes: 0, bids: 0, sellerReplies: 0, claimLots: 0, lotNames: 0 };
     let failed = 0;
     const newlySkipped: ItemFailure[] = [];
     const answered = (key: string, value: unknown) => {
@@ -118,6 +118,7 @@ async function run(store: Store, onAnswered: () => void) {
     for (const [items, request, field, count] of [
       [endTimes, endTimes.length ? endTimeRequest(endTimes) : null, "endsAt", "endTimes"],
       [bids, bids.length ? bidRequest(bids) : null, "amount", "bids"],
+      [sellerReplies, sellerReplies.length ? sellerReplyRequest(sellerReplies) : null, "rejects", "sellerReplies"],
     ] as const) {
       if (!request) continue;
       const reply = await ask(request);

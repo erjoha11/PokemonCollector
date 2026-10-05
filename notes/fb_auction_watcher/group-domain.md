@@ -382,6 +382,8 @@ Bid replies: `@Seller 100`, `@Seller 150` (the seller's full name as a mention, 
 
 ## 11. Compared with the code (2026-10-05, `main` at 97728ed)
 
+> **Update 2026-10-06 (#329):** the chained antisnipe rule and the "klokken" fix below are now in the code (`src/domain/bidTime.ts`, `findTime` in `src/domain/endTime.ts`), along with sellers' "too late" replies; see `docs/spec.md` "Late bids don't count".
+
 - **Antisnipe is not chained in the code.** §4.2 says every bid in the last 5 min moves the end to bid time + 5 min, repeatedly. The code closes a sale at a fixed `endsAt + softCloseMinutes` (`src/background/watch.ts:81`, `src/background/index.ts:188`, `src/pages/dashboard/model.ts:92`). A bidding war running past that point would be shown as ended and get its final read too early, possibly with the wrong winner. Worth a ticket.
 - **Type detection order differs, and the code is right.** §6.1 puts the hashtag first; `src/domain/listing.ts` deliberately reads the headline first, because sellers get the hashtag wrong more often (e.g. "Claimsalg" with `#Fastpris`). Keep the code's order.
 - **End-time examples (§6.2) run through `parseEndTime`:** 5 of 6 parse correctly. `Tirsdag klokken 23, 6 oktober` gives no end time: the rules know `kl`/`kl.` but not `klokken` (`findTime` in `src/domain/endTime.ts`), so such posts depend on the `claude -p` fallback. Small fix: accept `klokken` too.

@@ -1,7 +1,8 @@
 import { interpretLots, summarizeLots, type Lot } from "../domain/bids";
 import { interpretListing, type Interpretation, type SaleType } from "../domain/listing";
 import { saleLines } from "../domain/saleLines";
-import { bidAnswerKey, lotNameAnswerKey } from "../llm/prompts";
+import { saleClosesAt } from "../domain/bidTime";
+import { bidAnswerKey, lotNameAnswerKey, sellerReplyAnswerKey } from "../llm/prompts";
 import type { PostCapture } from "../shared/capture";
 import type { StoredPost } from "../shared/feed";
 import { canonicalPostUrl } from "../shared/urls";
@@ -44,13 +45,21 @@ export function readLots(post: Pick<StoredPost, "text" | "firstSeenAt">, capture
     myName,
     listingIncrement: listing.increment,
     listingMinPrice: listing.minPrice,
+    endsAt: listing.endsAt ? Date.parse(listing.endsAt) : null,
+    softCloseMinutes: listing.softCloseMinutes,
     lotName: (imageUrl) => answers.get(lotNameAnswerKey(imageUrl)) as string | null | undefined,
     answer: (seller, text) => {
       const key = bidAnswerKey(seller, text);
       return answers.has(key) ? (answers.get(key) as number | null) : undefined;
     },
+    sellerReplyAnswer: (text) => answers.get(sellerReplyAnswerKey(text)) as boolean | null | undefined,
   });
   return { listing, lots };
+}
+
+/** When an auction is over: the end with chained antisnipe over its lots' bids (src/domain/bidTime.ts, #329). */
+export function closesAtOf(listing: Pick<Interpretation, "endsAt" | "softCloseMinutes">, lots: Lot[]): number | null {
+  return saleClosesAt(listing.endsAt ? Date.parse(listing.endsAt) : null, listing.softCloseMinutes, lots.map((l) => l.closesAt));
 }
 
 /** When a read last loaded every comment. Reads saved before merging existed count as complete. */
@@ -78,7 +87,7 @@ export function myAuctions(posts: StoredPost[], captures: { postId: string; capt
       title: saleLines(listing.title, listing.description).title,
       type: listing.type,
       endsAt,
-      closesAt: endsAt === null ? null : endsAt + (listing.softCloseMinutes ?? 0) * 60_000,
+      closesAt: closesAtOf(listing, lots),
       lastRead: Date.parse(capture.capturedAt),
       lastComplete: completeAt(capture),
       lots,

@@ -84,7 +84,7 @@ function findDate(s: string): DateParts | null {
   // "04.10.26", "4/10", "04/10-26", "05.10.2026", but not a time after "kl" ("kl 21.10").
   for (const m of s.matchAll(/(?<!\d)(\d{1,2})\s*[./]\s*(\d{1,2})(?:\s*[./-]\s*(\d{4}|\d{2}))?(?!\d)/g)) {
     const before = s.slice(0, m.index);
-    if (/kl\.?:?\s*$/.test(before)) continue;
+    if (new RegExp(String.raw`${KL}\s*$`).test(before)) continue;
     if (!validDate(+m[2], +m[1])) continue;
     const y = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : null;
     return { year: y, month: +m[2], day: +m[1], match: m[0] };
@@ -92,8 +92,11 @@ function findDate(s: string): DateParts | null {
   return null;
 }
 
+/** "kl", "kl.", "kl:", and written out: "klokken" / "klokka" ("Tirsdag klokken 23, 6 oktober"). */
+const KL = String.raw`kl(?:okken|okka)?\.?:?`;
+
 function findTime(s: string): { hour: number; minute: number } | null {
-  const kl = s.match(/kl\.?:?\s*(\d{1,2})(?:\s*[:.]\s*(\d{2}))?(?!\d)/);
+  const kl = s.match(new RegExp(String.raw`${KL}\s*(\d{1,2})(?:\s*[:.]\s*(\d{2}))?(?!\d)`));
   const plain = s.match(/(?<![\d.:/])(\d{1,2})[:.](\d{2})(?![\d.:/])/);
   const t = kl ?? plain;
   if (!t) return null;

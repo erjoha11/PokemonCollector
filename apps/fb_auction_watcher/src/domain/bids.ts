@@ -1,5 +1,6 @@
 import type { CapturedComment, CapturedReply, PostCapture } from "../shared/capture";
 import { parseAmount } from "./amount";
+import { judgeBidTimes, replyWindow, type TimeVerdict, type TimeWindow } from "./bidTime";
 import { saleLines } from "./saleLines";
 
 // Lots and bids from a post read with the toolbar icon (module 1's capture), by rules, with
@@ -30,7 +31,23 @@ export type Bid = {
   underReply: boolean;
   /** The amount came from Claude, not the rules. */
   viaClaude: boolean;
+  /**
+   * Doesn't count because it came too late (#329): the seller said so in a reply under it
+   * ("seller"), or its time proves it came after the lot's end ("time"). Null otherwise.
+   */
+  late: "seller" | "time" | null;
+  /** Its time vs the end: "unsure" when its time window straddles the end (kept valid, the lot is flagged). Null without an end time. */
+  timeVerdict: TimeVerdict | null;
+  /** The seller's reply directly under this bid, if any: its raw text and how it was read. */
+  sellerReply: SellerReply | null;
 };
+
+/**
+ * The seller's reply under a bid (#329): "too-late" (the bid doesn't count: "for sent", "auksjonen
+ * er avsluttet", "ikke gyldig"), "ok" (accepts it, congratulates, "sendt PM", a photo), or
+ * "unsure". An unsure reply under your own bid goes to Claude (`viaClaude` once it answered).
+ */
+export type SellerReply = { text: string; verdict: "too-late" | "ok" | "unsure"; viaClaude: boolean };
 
 /**
  * Your status on an auction lot. "unclear": you'd be leading, but a reply the rules couldn't
@@ -94,6 +111,17 @@ export type Lot = {
   untitled: boolean;
   /** `title` came from Claude reading the photo. */
   namedByClaude: boolean;
+  /**
+   * Auctions with a known end: the lot's end with chained antisnipe, at its latest possible
+   * (`judgeBidTimes`' endHi), in ms. Null without an end time (or for claim lots).
+   */
+  closesAt?: number | null;
+  /**
+   * Why the result needs a look (#329), or null: a bid that counts may have come after the end
+   * (its time couldn't be proven either way), or the seller replied under your bid and that
+   * reply couldn't be read (yet).
+   */
+  lateCheck?: string | null;
 };
 
 export const normalizeName = (s: string | null | undefined) =>
@@ -207,6 +235,16 @@ export type LotOptions = {
   claimAnswer?: (input: ClaimLotInput) => { cards: { card: string; price: number | null; claimedBy: string | null }[] } | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
   answer?: (seller: string | null, text: string) => number | null | undefined;
+  /** The sale's end (ms; rules, else Claude's reading), for bid times vs the end (#329). Unknown: no time checks. */
+  endsAt?: number | null;
+  /** Antisnipe minutes ("Antisnipe 5 min: Ja" → 5; 0 or null = none). */
+  softCloseMinutes?: number | null;
+  /**
+   * Claude's reading of a seller's reply under your bid that the rules couldn't classify: true =
+   * the seller rejects the bid (too late, ended, not valid), false = not, null = can't tell,
+   * undefined = not asked yet.
+   */
+  sellerReplyAnswer?: (text: string) => boolean | null | undefined;
 };
 
 function isLot(c: CapturedComment, seller: string | null): boolean {
@@ -262,11 +300,17 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
   const lotComments = capture.comments.filter((c) => isLot(c, seller));
   // No lot comments in an auction: the post itself may be the lot, with bids right under it.
   const whole = !options.claims && lotComments.length === 0 ? postAsLot(capture, seller) : null;
+  // A reply's age ("5 min") is relative to the read that saw it: `seenAt` on merged reads, else
+  // the one read there was. Older merged reads without it: only "it was there by the last read".
+  const readAt = Date.parse(capture.capturedAt);
+  const singleReadAt = (capture.reads ?? 1) <= 1 ? readAt : null;
   for (const c of whole ? [whole.lot] : lotComments) {
     const startBid = lotStartBid(c.text) ?? options.listingMinPrice;
     const increment = lotIncrement(c.text) ?? options.listingIncrement;
     const replies = whole ? whole.replies : [...c.replies].sort((a, b) => compareIds(a.id, b.id));
     const bids: Bid[] = [];
+    /** When each bid was placed, as a window (src/domain/bidTime.ts). */
+    const bidWindows = new Map<Bid, TimeWindow>();
     let unsureCount = 0;
     /** Replies that may be bids but couldn't be counted: their IDs (null = order unknown). */
     const doubtful: (string | null)[] = [];
@@ -296,16 +340,26 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       } else if (bid) {
         if (bid.replyId === null && !bid.isMe) doubtful.push(null); // Can't tell if it came before or after yours.
         bids.push(bid);
+        bidWindows.set(bid, replyWindow(r.timeText, r.seenAt ? Date.parse(r.seenAt) : singleReadAt, readAt));
       }
     }
+    // The seller's replies under bids: one saying it came too late makes that bid not count (#329).
+    if (!options.claims) applySellerReplies(replies, seller, bids, options);
     // Validity, in the order bids were placed: on the lot itself (sellers reject bids placed
-    // under another reply: "bud blir bare godtatt under hovedbildet"), at least the start bid,
-    // and at least the current highest plus the increment (above it when none is stated).
+    // under another reply: "bud blir bare godtatt under hovedbildet"), not rejected by the seller
+    // as too late, not placed after the end (chained antisnipe, src/domain/bidTime.ts), at least
+    // the start bid, and at least the current highest plus the increment (above it when none is
+    // stated). Returns whether the bid counts (and so can move the end, with antisnipe).
     let highest: Bid | null = null;
-    for (const b of bids) {
-      if (b.amount === null) continue;
-      if (b.underReply) {
+    const judge = (b: Bid, time: TimeVerdict | null): boolean => {
+      b.timeVerdict = time;
+      if (b.amount === null) return false;
+      if (b.underReply || b.late === "seller") {
         b.valid = false;
+      } else if (time === "late") {
+        b.valid = false;
+        b.late = "time";
+        b.note = "after the end (its time is past the lot's end, antisnipe included)";
       } else if (startBid !== null && b.amount < startBid) {
         b.valid = false;
         b.note = `below the start bid (${startBid})`;
@@ -314,15 +368,25 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
         b.note = increment ? `less than ${increment} over the highest bid` : "not over the highest bid";
       } else {
         highest = b;
+        return true;
       }
+      return false;
+    };
+    let closesAt: number | null = null;
+    if (!options.claims && options.endsAt != null) {
+      const windows = bids.map((b) => bidWindows.get(b) ?? { lo: -Infinity, hi: Infinity });
+      closesAt = judgeBidTimes(options.endsAt, options.softCloseMinutes ?? null, windows, (i, v) => judge(bids[i], v)).endHi;
+    } else {
+      for (const b of bids) judge(b, null);
     }
     // Nobody reached the start bid: take the best of the rest, flagged, since sellers sometimes
     // accept it ("den er grei"). Same order and increment rule, without the start bid.
-    const belowStart = !highest && bids.some((b) => b.amount !== null && !b.underReply);
+    const counted = (b: Bid) => b.amount !== null && !b.underReply && !b.late;
+    const belowStart = !highest && bids.some(counted);
     if (belowStart) {
       for (const b of bids) {
-        if (b.amount === null || b.underReply) continue;
-        if (!highest || b.amount >= (highest.amount ?? 0) + (increment ?? 1)) {
+        if (!counted(b)) continue;
+        if (!highest || b.amount! >= (highest.amount ?? 0) + (increment ?? 1)) {
           highest = b;
           b.valid = true;
           b.note = `below the start bid (${startBid})`;
@@ -332,6 +396,8 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     const mine = bids.filter((b) => b.isMe && b.amount !== null);
     const myHighestBid = mine.length ? Math.max(...mine.map((b) => b.amount!)) : null;
     lots.push({
+      closesAt,
+      lateCheck: lateCheckFor(bids, highest),
       commentId: c.id,
       position: lots.length + 1,
       ...(whole ? { title: whole.title, untitled: false, namedByClaude: false } : lotTitleFor(c, lots.length + 1, options)),
@@ -447,6 +513,19 @@ function readClaims(replies: CapturedReply[], seller: string | null, me: string)
   return claims;
 }
 
+/**
+ * Why a lot's result needs a look (#329): the bid that counts as highest, or one of yours that
+ * counts, may have come after the end (its time window straddles it: kept valid, never guessed
+ * late); or the seller replied under your bid and neither the rules nor Claude (yet) could read it.
+ */
+function lateCheckFor(bids: Bid[], highest: Bid | null): string | null {
+  const unread = bids.find((b) => b.isMe && b.sellerReply?.verdict === "unsure");
+  if (unread) return `the seller replied under your bid: "${unread.sellerReply!.text.trim()}"`;
+  const unsure = bids.filter((b) => b.valid && b.timeVerdict === "unsure" && (b === highest || b.isMe));
+  if (unsure.length === 0) return null;
+  return unsure.some((b) => b === highest) ? "the highest bid may have come after the end" : "your bid may have come after the end";
+}
+
 /** Leading only when nothing unreadable could be a higher bid after yours: otherwise "unclear". */
 function myStatusFor(mine: Bid[], highest: Bid | null, doubtful: (string | null)[]): MyStatus {
   if (mine.length === 0) return "none";
@@ -483,7 +562,110 @@ function toBid(r: CapturedReply, seller: string | null, me: string, options: Lot
     note: underReply ? "placed under another reply, not the lot (sellers usually don't count these)" : null,
     underReply,
     viaClaude,
+    late: null,
+    timeVerdict: null,
+    sellerReply: null,
   };
+}
+
+// ── The seller's replies under bids (#329) ─────────────────────────────────────────────────
+// Sellers reject late bids in a reply under them; the wording varies ("for sent", "kom for seint",
+// "auksjonen er avsluttet", "etter sluttid", "ikke gyldig"). "ikke for sent" ("not too late") isn't one.
+
+const TOO_LATE = new RegExp(
+  [
+    String.raw`(?<!ikke\s)\bfor\s+(?:sent|seint|sen)\b`,
+    String.raw`\bkom\s+(?:litt\s+|alt\s+)?(?:for\s+)?(?:sent|seint|etter)\b`,
+    String.raw`\better\s+(?:slutt(?:tid(?:en)?)?|tiden|fristen|deadline)\b`,
+    String.raw`\bauksjon(?:en)?\s+(?:er\s+|var\s+|ble\s+|har\s+)?(?:avsluttet|avslutta|ferdig|slutt|over|stengt)\b`,
+    String.raw`\b(?:ikke\s+gyldig|ugyldig|teller\s+ikke|gjelder\s+ikke)\b`,
+    String.raw`\btoo\s+late\b`,
+    String.raw`\b(?:auction\s+(?:is\s+|has\s+)?(?:over|ended|closed)|not\s+valid)\b`,
+  ].join("|"),
+  "iu",
+);
+/** Words of a seller who's accepting the bid or winding up the sale with its winner. */
+const ACCEPTS = /\b(?:ikke\s+for\s+(?:sent|seint)|(?:den|budet)\s+(?:teller|gjelder|står)|gratulerer|grattis|gratz|congrats|vant|vinner(?:en)?|er\s+dine?|fikk\s+(?:den|det|kortet|kortene)|sendt?\s+(?:pm|dm|melding)|sjekk\s+(?:pm|dm|innboks(?:en)?|meldinger)|pm|dm|vipps|betal(?:ing|e)?|solgt|takk\s+for\s+(?:budet|handelen))\b/iu;
+const BENIGN = /^(?:ok(?:ei|ay)?|den\s+er\s+grei|grei|greit|takk|tusen\s+takk|supert|flott|fint|nice|perfekt|[\p{Extended_Pictographic}\s!.]+)[\s!.]*$/iu;
+
+/** Reads a seller's reply under a bid by rules: "too-late", "ok" or "unsure". `bidder`'s tag is stripped first. */
+export function classifySellerReply(text: string, bidder: string | null): SellerReply["verdict"] {
+  const t = stripSellerTag(text, bidder).trim();
+  if (!t) return "ok"; // A photo, or only the bidder's tag.
+  const late = TOO_LATE.test(t);
+  const accepts = ACCEPTS.test(t);
+  if (late) return accepts ? "unsure" : "too-late"; // "Avsluttet, gratulerer!" under the winner: ask.
+  if (accepts || BENIGN.test(t)) return "ok";
+  return "unsure";
+}
+
+/** Who a reply answers, from its aria-label: "Svar fra A på B sitt svar" / "… på B sin kommentar" / "Reply by A to B's reply". */
+function replyTarget(ariaLabel: string | null): string | null {
+  const m = ariaLabel?.match(/\bpå\s+(.+?)\s+(?:sitt\s+svar|sin\s+kommentar)\b/iu) ?? ariaLabel?.match(/\bto\s+(.+?)['’]s\s+(?:reply|comment)\b/iu);
+  return m ? m[1] : null;
+}
+
+/**
+ * The bid a seller's reply answers: by its aria-label's target (a bidder's reply or, when the post
+ * is the lot, their comment), else a reply to the lot that starts with a bidder's name (a tag).
+ * Then that bidder's latest bid placed before the seller's reply. Null when it answers no bid.
+ */
+function bidAnswered(r: CapturedReply, seller: string | null, bids: Bid[]): Bid | null {
+  let target = replyTarget(r.ariaLabel);
+  if (!target || (seller && normalizeName(target) === normalizeName(seller))) {
+    const text = normalizeName(r.text);
+    const bidders = [...new Set(bids.map((b) => b.bidder).filter(Boolean))];
+    target =
+      bidders.find((b) => text.startsWith(normalizeName(b))) ??
+      (() => {
+        const byFirst = bidders.filter((b) => text.startsWith(normalizeName(b).split(" ")[0] + " "));
+        return byFirst.length === 1 ? byFirst[0] : null;
+      })() ??
+      null;
+  }
+  if (!target) return null;
+  const theirs = bids.filter((b) => normalizeName(b.bidder) === normalizeName(target) && (r.id === null || compareIds(b.replyId, r.id) < 0));
+  return theirs.at(-1) ?? null;
+}
+
+/** Reads the seller's replies under bids, and marks the bids they reject (in place). */
+function applySellerReplies(replies: CapturedReply[], seller: string | null, bids: Bid[], options: LotOptions): void {
+  if (!seller) return;
+  for (const r of replies) {
+    if (normalizeName(r.author) !== normalizeName(seller)) continue;
+    const bid = bidAnswered(r, seller, bids);
+    if (!bid) continue;
+    let verdict = classifySellerReply(r.text, bid.bidder);
+    let viaClaude = false;
+    if (verdict === "unsure" && bid.isMe) {
+      const answer = options.sellerReplyAnswer?.(r.text);
+      if (answer === true || answer === false) {
+        verdict = answer ? "too-late" : "ok";
+        viaClaude = true;
+      }
+    }
+    // A later reply under the same bid wins only if it says more (a rejection beats "ok").
+    if (bid.sellerReply?.verdict === "too-late") continue;
+    bid.sellerReply = { text: r.text, verdict, viaClaude };
+    if (verdict === "too-late") {
+      bid.late = "seller";
+      bid.note = `seller: too late ("${r.text.trim()}")${viaClaude ? " (read by Claude)" : ""}`;
+    }
+  }
+}
+
+/**
+ * Seller replies under your bids that the rules can't classify, for Claude (raw text kept). Each
+ * is asked once (`sellerReplyAnswerKey`), whatever lot it's on.
+ */
+export function unsureSellerReplies(capture: PostCapture, myName: string, claims = false): string[] {
+  if (claims || !myName.trim()) return [];
+  const lots = interpretLots(capture, { myName, listingIncrement: null, listingMinPrice: null });
+  return [
+    ...new Set(
+      lots.flatMap((l) => l.bids.filter((b) => b.isMe && b.sellerReply?.verdict === "unsure" && !b.sellerReply.viaClaude).map((b) => b.sellerReply!.text)),
+    ),
+  ];
 }
 
 /** Unsure replies (for Claude), with the seller they tag. */

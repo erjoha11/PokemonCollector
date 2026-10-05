@@ -274,6 +274,19 @@ function endedToggle(r: Row, label = "Mark as ended"): HTMLButtonElement | null 
 }
 
 /**
+ * An ended lot's late-bid details (#329): your bids that didn't count because they came too late
+ * (the seller's own words, as written), and what needs a look (`lateCheck`).
+ */
+function lateNotes(body: HTMLElement, l: Lot) {
+  for (const b of l.bids.filter((x) => x.isMe && x.late)) {
+    body.append(el("div", "small muted", `You: "${b.rawText}" → not counted · ${b.note ?? "too late"}`));
+  }
+  const rejected = l.bids.filter((x) => !x.isMe && x.late).length;
+  if (rejected) body.append(el("div", "small muted", `${rejected} other bid${rejected === 1 ? "" : "s"} not counted: too late`));
+  if (l.lateCheck) body.append(el("div", "flag", `Check: ${l.lateCheck}`));
+}
+
+/**
  * "Not won" on a lot the rules count as won but you didn't get (#329: e.g. your bid came after the
  * end and the seller said so), or "Undo not won" for one you marked. Your own mark, in
  * chrome.storage; it takes the lot off To pay and out of what's sent to tcg_inventory.
@@ -668,6 +681,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       );
       if (!readAfterEnd(r)) body.append(el("div", "flag", "at last read: bids may have come in after"));
       if (status.key !== "none") body.append(el("div", `status ${status.cls}`, `${status.label} · your bid ${l.myHighestBid} kr`));
+      lateNotes(body, l);
       if (status.key === "won" || status.key === "not-won") body.append(line("div", notWonToggle(r, l)));
       item.append(body);
       list.append(item);
@@ -691,9 +705,12 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     }
     const notCounted = l.bids.filter((x) => !x.valid).length;
     if (notCounted) {
-      const why = [...new Set(l.bids.filter((x) => !x.valid).map((x) => (x.underReply ? "under another reply" : "too low")))].join(", ");
+      const reason = (x: Lot["bids"][number]) =>
+        x.underReply ? "under another reply" : x.late === "seller" ? "seller: too late" : x.late === "time" ? "after the end" : "too low";
+      const why = [...new Set(l.bids.filter((x) => !x.valid).map(reason))].join(", ");
       body.append(el("div", "small muted", `${notCounted} bid${notCounted === 1 ? "" : "s"} not counted (${why})`));
     }
+    if (l.lateCheck) body.append(el("div", "flag", `Check: ${l.lateCheck}`));
     if (l.unsureCount) body.append(el("div", "flag", `${l.unsureCount} repl${l.unsureCount === 1 ? "y" : "ies"} that may be bids couldn't be read yet`));
     item.append(body);
     list.append(item);
@@ -851,6 +868,12 @@ function toPayCard(g: WonSeller, now: Date): HTMLDetailsElement {
       item.kr !== null ? kr(item.kr) : el("span", "flag", "price not read yet"),
       notWonToggle(item.row, item.lot),
     );
+    if (item.lot.lateCheck) {
+      // A win that may not be one (#329): say why, so you can check it and mark it Not won.
+      const flag = el("span", "flag small", `check: ${item.lot.lateCheck}`);
+      flag.title = "The win counts, but it couldn't be confirmed. Open the lot to check, and use Not won if you didn't get it.";
+      li.append(flag);
+    }
     items.append(li);
   }
   card.append(items);

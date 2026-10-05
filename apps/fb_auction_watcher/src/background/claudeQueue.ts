@@ -1,7 +1,18 @@
-import { claimLotsToRead, normalizeName, untitledLotPhotos, unsureReplies, type ClaimLotInput } from "../domain/bids";
+import { claimLotsToRead, normalizeName, untitledLotPhotos, unsureReplies, unsureSellerReplies, type ClaimLotInput } from "../domain/bids";
 import { interpretListing } from "../domain/listing";
 import { claudeEndsAt } from "../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type BidItem, type ClaudeRequest, type EndTimeItem, type LotNameItem } from "../llm/prompts";
+import {
+  bidAnswerKey,
+  claimLotAnswerKey,
+  endTimeAnswerKey,
+  lotNameAnswerKey,
+  sellerReplyAnswerKey,
+  type BidItem,
+  type ClaudeRequest,
+  type EndTimeItem,
+  type LotNameItem,
+  type SellerReplyItem,
+} from "../llm/prompts";
 import type { Store } from "../store";
 
 // What to send to Claude, and what to leave alone: pure decisions, no chrome.* and no bridge,
@@ -16,6 +27,9 @@ const DAY = 24 * HOUR;
 /** Batched (Haiku) questions per run. */
 export const MAX_END_TIMES = 20;
 export const MAX_BIDS = 40;
+export const MAX_SELLER_REPLIES = 40;
+/** The seller's replies under your bids are asked about until this long after the end (#329): sellers answer late bids late. */
+export const SELLER_REPLY_GRACE_MS = 3 * 24 * 60 * 60_000;
 /** Photo questions are one call each (Sonnet), so fewer per run. */
 export const MAX_CLAIM_LOTS = 5;
 /** Lot photos to name (Sonnet): several per call, at most this many per run. */
@@ -141,6 +155,8 @@ export type PendingOptions = {
 export type Pending = {
   endTimes: (EndTimeItem & { key: string })[];
   bids: (BidItem & { key: string })[];
+  /** The seller's replies under your bids that the rules couldn't classify (#329): rejects the bid, or not? */
+  sellerReplies: (SellerReplyItem & { key: string })[];
   claimLots: (ClaimLotInput & { key: string })[];
   /** Lot photos whose text doesn't name the lot ("Mp 20kr"), yours first: Claude names them. */
   lotNames: (LotNameItem & { key: string; mine: boolean })[];
@@ -186,6 +202,7 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
   }
 
   const bids: Pending["bids"] = [];
+  const sellerReplies: Pending["sellerReplies"] = [];
   const claimLots: Pending["claimLots"] = [];
   const lotNames: Pending["lotNames"] = [];
   const me = normalizeName(myName);
@@ -199,7 +216,16 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
       (post && interpretListing(post.text, ref).endsAt) ||
       interpretListing(capture.post.text, ref).endsAt ||
       claudeEndsAt(answerMap.get(endTimeAnswerKey(post?.text ?? capture.post.text)));
-    if (isSaleOver(endsAt, later(capture.capturedAt, post?.lastSeenAt), now)) continue;
+    const lastActivity = later(capture.capturedAt, post?.lastSeenAt);
+    // The seller's replies under your bids (#329) come after the end ("for sent"), so they're
+    // asked about for longer than the rest; there are only ever a few.
+    if (type === "auction" && endsAt && now.getTime() <= Date.parse(endsAt) + SELLER_REPLY_GRACE_MS) {
+      for (const text of unsureSellerReplies(capture, myName)) {
+        const key = sellerReplyAnswerKey(text);
+        if (wanted(key)) sellerReplies.push({ id: sellerReplies.length, text, key });
+      }
+    }
+    if (isSaleOver(endsAt, lastActivity, now)) continue;
 
     // Lots whose text doesn't name them: Claude names them from the photo, for any kind of sale.
     const mine = !!me && capture.comments.some((c) => c.replies.some((r) => normalizeName(r.author) === me));
@@ -232,6 +258,7 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
   return {
     endTimes: endTimes.slice(0, MAX_END_TIMES),
     bids: bids.slice(0, MAX_BIDS),
+    sellerReplies: sellerReplies.slice(0, MAX_SELLER_REPLIES),
     claimLots: claimLots.slice(0, take),
     lotNames: lotNames.slice(0, takeNames),
     more: (lotsHeld && take === MAX_CLAIM_LOTS) || (namesHeld && takeNames === MAX_LOT_NAMES),
@@ -258,7 +285,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** One run's outcome for the overview's Claude status line. */
 export type RunSummary = {
-  read: { endTimes: number; bids: number; claimLots: number; lotNames: number };
+  read: { endTimes: number; bids: number; claimLots: number; lotNames: number; sellerReplies?: number };
   /** Items that failed this run and will be tried again later. */
   failed: number;
   /** Items of live sales skipped after MAX_ATTEMPTS failures (including any that just reached it). */
@@ -271,6 +298,7 @@ export function describeRun(s: RunSummary): string {
   const read = [
     s.read.endTimes && plural(s.read.endTimes, "end time"),
     s.read.bids && plural(s.read.bids, "bid"),
+    s.read.sellerReplies && `${s.read.sellerReplies} seller ${s.read.sellerReplies === 1 ? "reply" : "replies"}`,
     s.read.claimLots && plural(s.read.claimLots, "claim lot photo"),
     s.read.lotNames && `${plural(s.read.lotNames, "lot name")} from photos`,
   ].filter(Boolean);

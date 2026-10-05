@@ -4,7 +4,7 @@
 
 export type ClaudeRequest = {
   /** A short name for logs. */
-  task: "end-time" | "bid" | "claim-lot" | "lot-name";
+  task: "end-time" | "bid" | "claim-lot" | "lot-name" | "seller-reply";
   /** Haiku unless set; photos need Sonnet (Haiku misread prices on a real lot). */
   model?: "haiku" | "sonnet";
   /** Photo URLs (Facebook's CDN) the bridge downloads and sends along. */
@@ -84,6 +84,35 @@ export function hashText(s: string): string {
 export const endTimeAnswerKey = (text: string) => `end-time:${hashText(text)}`;
 
 export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hashText(`${seller ?? ""}\n${text}`)}`;
+
+/** A seller's reply directly under one of your bids that the rules couldn't classify (#329). */
+export type SellerReplyItem = { id: number; text: string };
+
+export function sellerReplyRequest(items: SellerReplyItem[]): ClaudeRequest {
+  return {
+    task: "seller-reply",
+    system: `You read replies a seller wrote directly under a bid in a Norwegian Facebook auction for Pokémon cards. The auction has a strict end time; bids after it don't count.
+For each reply, give rejects: true if the seller is saying the bid it answers doesn't count (it came too late or after the end, the auction was already over, or the bid isn't valid), false if not (the seller accepts the bid, congratulates the winner, asks them to pay or check messages, answers a question, or talks about something else), or null if you can't tell.`,
+    input: items.map((i) => `${i.id}: ${JSON.stringify(i.text)}`).join("\n"),
+    schema: {
+      type: "object",
+      properties: {
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { id: { type: "integer" }, rejects: { type: ["boolean", "null"] } },
+            required: ["id", "rejects"],
+          },
+        },
+      },
+      required: ["results"],
+    },
+  };
+}
+
+/** Same reply text, same answer (the seller's tag of the bidder is part of the text). */
+export const sellerReplyAnswerKey = (text: string) => `seller-reply:${hashText(text)}`;
 
 /** One claim-sale lot: its full-size photo and the replies under it, oldest first. */
 export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[]; lotText?: string };

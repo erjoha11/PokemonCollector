@@ -16,6 +16,11 @@ export type CapturedReply = {
   text: string;
   /** Relative time as Facebook shows it ("2 t", "3h"). Absolute times need a hover, which we don't do. */
   timeText: string | null;
+  /**
+   * Set on stored captures (src/domain/captures.ts): when the read that saw this `timeText` ran,
+   * since reads are merged and the age is relative to it. Missing on reads stored before #329.
+   */
+  seenAt?: string;
   ariaLabel: string | null;
   images: CapturedImage[];
   /** A "See more" / "Se mer" button was still present after expanding, so the text may be cut off. */
