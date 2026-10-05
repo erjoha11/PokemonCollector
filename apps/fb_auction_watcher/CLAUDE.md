@@ -1,6 +1,6 @@
 # CLAUDE.md – fb_auction_watcher
 
-App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.md` before any non-trivial change — it is the source of truth for scope, domain, and rules.
+App-specific guidance; the repo-root `CLAUDE.md` still applies. Read `docs/spec.md` before any non-trivial change — it is the source of truth for scope, domain, and rules. Before changing parsing rules (`src/domain/`), also read `notes/fb_auction_watcher/group-domain.md`: background research on how the group works (templates, antisnipe, field variants, real examples), with its known disagreements with the code in its last section.
 
 ## What this is
 
