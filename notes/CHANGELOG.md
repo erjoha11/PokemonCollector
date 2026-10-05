@@ -191,6 +191,26 @@ yet.
   end: "No end" for fixed price, "Unknown" (and "cut off") otherwise. This
   replaces #303's "Added" text in the Ends cell.
 
+**Send wins to tcg_inventory (#314, slice 1 of #309)**
+- Settings → "Send wins to tcg_inventory": the app's address and its
+  `INBOX_TOKEN`, kept in `chrome.storage.local`. Saving requests host access
+  for just that origin (`optional_host_permissions`; plain http only for
+  localhost), so the extension holds no extra access until it's set up.
+- A "Send wins to inventory" button under To pay posts your own wins (one
+  item per won lot, built by the pure `buildWonPayload()` from To pay's
+  data) to `POST /inbox/fb-wins`, from the service worker with a Bearer
+  token and no cookies. The last result is shown next to the button. No new
+  Facebook clicks, no Claude.
+- The v1 contract is in `docs/spec.md` ("Sending wins to tcg_inventory");
+  the app's `CLAUDE.md` scope now allows sending your own wins, nothing
+  else, to your tcg_inventory. Root `tests/test_cross_app_won_inbox.py`
+  parses a fixture the extension's tests generate
+  (`tests/fixtures/won-inbox.v1.json`) with tcg_inventory's parser, without
+  either app importing the other.
+- **User action:** in the main checkout, `npm run build` in
+  `apps/fb_auction_watcher` and reload the extension; then fill in Settings
+  and allow the permission prompt.
+
 **Popup buttons, Scan feed opens the group, New and ended sales kept 30 min (#320, #321)**
 - The toolbar popup has four buttons: Open Dashboard, Scan feed, Scan Post
   and Reload extension. Reload Facebook tabs stays on the icon's right-click
@@ -220,6 +240,31 @@ yet.
 - Notifications start with the type ("Auction · Gengar · ...").
 
 ### tcg_inventory
+
+**Facebook wins inbox (#314, slice 1 of #309)**
+- New `won_items` staging table (`models.WonItem`, logic in `won_inbox.py`).
+  `CURRENT_SCHEMA_VERSION` 12 → 13; `init_db()` creates it with RLS.
+- `POST /inbox/fb-wins` takes fb_auction_watcher's v1 payload. It has its
+  own `INBOX_TOKEN` (Bearer header only, never `CRON_SECRET`) and fails
+  closed: with Supabase auth configured and no token set it returns 503.
+  Body and item count are capped, links must be Facebook's, and any refused
+  payload writes nothing. Items upsert by `external_ref`; registered or
+  ignored ones are never touched. Writes only `won_items`, never
+  transactions or cards.
+- Orders → Purchased shows "Facebook wins to register" (one entry per won
+  sale, with seller, end date, total, terms and lot links) when something is
+  pending, with Ignore per lot. Registering a win as an order ("Open in
+  cart") is slice 2.
+- **User action:** set `INBOX_TOKEN` in Vercel (tcg_inventory, Production)
+  and redeploy; the first request runs the v13 migration. Until the token
+  is set, prod refuses every send (503).
+
+**Dex's "Incoming" folder is ignored like Wishlist (#313, closes #311)**
+- `"Incoming"` joins `"Wishlist"` in `EXCLUDED_CATEGORIES_EXACT`: its rows
+  create no card, collection or warning. A card that's also in another
+  folder imports normally. README Business rules #1 updated.
+- An existing "Incoming" collection in prod isn't cleaned up by this; its
+  tags stay frozen until a separate, user-confirmed prod cleanup.
 
 **Card page opens as an in-page modal; photo lightbox removed (#280)**
 - A plain left click on a card name or photo (Inventory, Dashboard incl.
