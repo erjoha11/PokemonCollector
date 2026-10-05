@@ -12,6 +12,7 @@ import {
   isSaveFeedPostsMessage,
   isSavePostCaptureMessage,
   isSendWinsMessage,
+  isScanFeedNewTabMessage,
   MSG_READ_POST,
   MSG_STORE_UPDATED,
   type KnownPosts,
@@ -69,6 +70,42 @@ async function startInTab(tabId: number, kind: "read" | "scan") {
   await chrome.tabs.sendMessage(tabId, msg).catch(() => {
     void facebookSlot.release(holder, tabId);
     // The tab was open before the extension was (re)loaded: no content script yet.
+    void chrome.action.setBadgeText({ tabId, text: "!" });
+    void chrome.action.setTitle({ tabId, title: "Reload this Facebook tab, then try again." });
+  });
+}
+
+/**
+ * "Scan feed" from the menu when the active tab isn't the feed (#320): open the group's feed
+ * (sorted by "New posts") in a new tab and scan it there once it has loaded. The Facebook slot is
+ * taken before the tab is opened, so the new tab never talks to Facebook alongside anything else.
+ */
+async function scanFeedInNewTab(feedUrl: string) {
+  if (!isGroupFeedUrl(feedUrl)) return;
+  void chrome.action.setBadgeText({ text: "" }); // Clear a "!" left by an earlier try.
+  const fail = (title: string) => {
+    void chrome.action.setBadgeText({ text: "!" });
+    void chrome.action.setTitle({ title });
+  };
+  // No tab yet: hold the slot for "no tab" (-1), then move it to the tab once it exists (as the reader does).
+  if (!(await facebookSlot.acquireWhenFree("menu-scan", -1))) return fail("Facebook was busy for too long (another read or scan). Try again.");
+  const tab = await chrome.tabs.create({ url: newPostsUrl(feedUrl), active: true }).catch(() => null);
+  if (tab?.id === undefined) {
+    await facebookSlot.release("menu-scan", -1);
+    return fail("Couldn't open the group feed. Try again.");
+  }
+  const tabId = tab.id;
+  await facebookSlot.moveTo("menu-scan", -1, tabId);
+  if (!(await waitForTabLoad(tabId, 30_000))) {
+    await facebookSlot.release("menu-scan", tabId);
+    void chrome.action.setBadgeText({ tabId, text: "!" });
+    void chrome.action.setTitle({ tabId, title: "The feed didn't finish loading. Try Scan feed again." });
+    return;
+  }
+  await new Promise((r) => setTimeout(r, 1500)); // Let the feed render its first posts.
+  const msg: ReadPostMessage = { type: MSG_READ_POST };
+  await chrome.tabs.sendMessage(tabId, msg).catch(() => {
+    void facebookSlot.release("menu-scan", tabId);
     void chrome.action.setBadgeText({ tabId, text: "!" });
     void chrome.action.setTitle({ tabId, title: "Reload this Facebook tab, then try again." });
   });
@@ -178,6 +215,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (isStartMessage(msg)) {
     void startInTab(msg.tabId, msg.kind);
+    return;
+  }
+  if (isScanFeedNewTabMessage(msg)) {
+    void scanFeedInNewTab(msg.url);
     return;
   }
   if (isReloadFbTabsMessage(msg)) {

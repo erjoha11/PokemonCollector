@@ -117,6 +117,8 @@ td.type, td.price, td.seen { white-space: nowrap; color: var(--muted); font-size
 .status.outbid { background: var(--outbid); }
 tr.mine-lead > td:first-child { box-shadow: inset 4px 0 0 var(--lead); }
 tr.mine-outbid > td:first-child { box-shadow: inset 4px 0 0 var(--outbid); }
+/* Ended under 30 min ago, still in an active tab (#320). */
+tr.just-ended > td { opacity: 0.7; }
 td.lots, td.you { font-size: 13px; white-space: nowrap; }
 .via { font-size: 11px; color: var(--lead); margin-top: 2px; }
 .linkish { font: inherit; font-size: 12px; background: none; border: none; color: var(--lead); padding: 0; cursor: pointer; text-decoration: underline; }

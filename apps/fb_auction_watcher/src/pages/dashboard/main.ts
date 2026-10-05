@@ -1015,7 +1015,8 @@ function render() {
   const head = el("tr");
   // Ended sales show their result where running ones show their price.
   const allEnded = current.sections.every((x) => x.rows.every((r) => r.ended));
-  for (const h of headers) head.append(el("th", undefined, h === "Price" ? (allEnded ? "Result" : tab === "mine" ? "Price / result" : h) : h));
+  const someEnded = current.sections.some((x) => x.rows.some((r) => r.ended)); // e.g. just ended, still in Today (#320).
+  for (const h of headers) head.append(el("th", undefined, h === "Price" ? (allEnded ? "Result" : tab === "mine" || someEnded ? "Price / result" : h) : h));
   table.append(el("thead"), el("tbody"));
   table.tHead!.append(head);
   const body = table.tBodies[0];
@@ -1032,6 +1033,11 @@ function render() {
       const tr = el("tr");
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
+      // Ended under 30 min ago, still in an active tab (#320): shown as ended, dimmed.
+      if (r.justEnded && tab !== "ended") {
+        tr.classList.add("just-ended");
+        tr.title = "Ended: it stays in this tab for 30 minutes after the end, then only under Ended.";
+      }
       tr.append(endsCell(r, now), addedCell(r, now), saleCell(r), sellerCell(r), r.ended ? resultCell(r, now) : priceCell(r), ...statusCells(r, now));
       makeExpandable(tr, r.id);
       body.append(tr);
@@ -1042,7 +1048,7 @@ function render() {
 }
 
 const EMPTY_TAB: Record<TabId, string> = {
-  new: "Nothing new since your last visit.",
+  new: "Nothing new since your last visit or in the last 30 minutes.",
   today: "Nothing ends today.",
   upcoming: "Nothing ends after today yet.",
   noend: "Every sale has an end time.",
