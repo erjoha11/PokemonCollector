@@ -137,7 +137,8 @@ below is kept for reference.
 **settings** (as built, `src/shared/settings.ts`): `autoScan` (the off switch, default off),
 `myName` (default "Erik Johansen"), `useClaude` (default on), `notify` (default on), `inboxUrl`
 and `inboxToken` (tcg_inventory's address and its `INBOX_TOKEN`, empty until set up; see
-"Sending wins to tcg_inventory"). The group is the pinned feed tab;
+"Sending wins to tcg_inventory"). The group is the pinned feed tab for auto-scan, and the
+constant `GROUP_FEED_URL` (pokemonkortnorge) for the menu's Scan feed in a new tab;
 the interval is fixed at 10–15 min ±20 %. Originally planned: `groupUrl`, `scanIntervalMin`,
 `backfillDays`, `captureEnabled`, `apiKey` (no API key is used).
 
@@ -327,7 +328,7 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 ### Toolbar menu (`popup.html`)
 
 Decided 2026-10-05 (#320): exactly three buttons; nothing starts until you pick one. Which button does
-what for the active tab is the pure `popupActions()` / `feedToOpen()` in `src/pages/popup/actions.ts`.
+what for the active tab is the pure `popupActions()` in `src/pages/popup/actions.ts`.
 
 - **Open Dashboard:** opens (or focuses) `dashboard.html`.
 - **Scan feed:** the active tab is the group feed → scan it there (as before, re-sorted to "New
@@ -336,10 +337,13 @@ what for the active tab is the pure `popupActions()` / `feedToOpen()` in `src/pa
   (a scan needs a visible tab), waits for it to load, and starts the same scan there
   (`MSG_SCAN_FEED_NEW_TAB`, `scanFeedInNewTab` in `src/background/index.ts`). The slot is held for
   "no tab yet" and moved to the new tab once it exists, so no second tab talks to Facebook. Which
-  group: the active tab's group (e.g. a post in it), else an open feed tab's (the pinned one first),
-  else the group of the post seen most recently. Reading chosen: with no group known at all (never
-  scanned, no group tab open) the button is disabled with "Open the group on Facebook once to scan
-  its feed.".
+  group (changed 2026-10-05 on the user's word, replacing an inference chain of active tab's group →
+  open feed tab → last seen post's group): always https://www.facebook.com/groups/pokemonkortnorge,
+  the named constant `GROUP_FEED_URL` in `src/shared/urls.ts`, opened as
+  `?sorting_setting=CHRONOLOGICAL` (`newPostsUrl`), the same parameter the in-tab scan uses. So the
+  button is never disabled. A constant rather than a setting: one user, one group, and the planned
+  `groupUrl` setting was never built (see "settings" above). "The group feed" for scanning here is
+  still any `isGroupFeedUrl` tab (vanity slug or numeric ID, any query string).
 - **Scan Post:** reads the post shown in the active tab (the full panel, as before). Reading chosen:
   when the active tab isn't a Facebook post (`isPostUrl` in `src/shared/urls.ts`: a group post or
   permalink, a profile/page post, `permalink.php` / `story.php`) it's disabled with "Open a post on

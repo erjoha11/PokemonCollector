@@ -1,7 +1,6 @@
 import { MSG_OPEN_OVERVIEW, MSG_SCAN_FEED_NEW_TAB, MSG_START, type ScanFeedNewTabMessage, type StartMessage } from "../../shared/messages";
 import { getAutoScanState, getSettings } from "../../shared/settings";
-import { idbStore } from "../../store";
-import { feedToOpen, popupActions } from "./actions";
+import { popupActions } from "./actions";
 
 // The toolbar icon's menu (#320): exactly three buttons, Open Dashboard · Scan feed · Scan Post.
 // Nothing starts until you pick it here. Which button does what for the active tab: actions.ts.
@@ -10,20 +9,10 @@ import { feedToOpen, popupActions } from "./actions";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-/** The group of the post seen most recently, for "Scan feed" when no group tab is open. */
-async function recentGroupSlug(): Promise<string | null> {
-  const posts = await idbStore().allPosts().catch(() => []);
-  const latest = posts.filter((p) => p.groupSlug).sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))[0];
-  return latest?.groupSlug ?? null;
-}
-
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url;
-  const feedTabs = await chrome.tabs.query({ url: "https://www.facebook.com/groups/*" }).catch(() => [] as chrome.tabs.Tab[]);
-  let feedUrl = feedToOpen(url, feedTabs, null);
-  if (!feedUrl) feedUrl = feedToOpen(url, [], await recentGroupSlug());
-  const actions = popupActions(url, feedUrl);
+  const actions = popupActions(url);
 
   $("overview").addEventListener("click", () => {
     void chrome.runtime.sendMessage({ type: MSG_OPEN_OVERVIEW }).finally(() => window.close());
@@ -31,17 +20,12 @@ async function init() {
 
   const scan = $<HTMLButtonElement>("scan");
   const scanFeed = actions.scanFeed;
-  if (scanFeed.kind === "unavailable") {
-    scan.disabled = true;
-    $("scan-hint").textContent = scanFeed.hint;
-  } else {
-    if (scanFeed.kind === "here") scan.classList.add("primary");
-    scan.addEventListener("click", () => {
-      if (scanFeed.kind === "here") return start("scan");
-      const msg: ScanFeedNewTabMessage = { type: MSG_SCAN_FEED_NEW_TAB, url: scanFeed.url };
-      void chrome.runtime.sendMessage(msg).finally(() => window.close());
-    });
-  }
+  if (scanFeed.kind === "here") scan.classList.add("primary");
+  scan.addEventListener("click", () => {
+    if (scanFeed.kind === "here") return start("scan");
+    const msg: ScanFeedNewTabMessage = { type: MSG_SCAN_FEED_NEW_TAB, url: scanFeed.url };
+    void chrome.runtime.sendMessage(msg).finally(() => window.close());
+  });
 
   const read = $<HTMLButtonElement>("read");
   if (actions.scanPost.enabled) {

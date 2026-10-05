@@ -24,8 +24,8 @@ npm run typecheck
 
 **Clicking the icon opens a small menu** with three buttons; nothing starts until you choose one (#320):
 **Open Dashboard** (the overview); **Scan feed** (scans the group feed in this tab if it's open here, otherwise
-opens the feed in a new tab and scans it there once it has loaded, waiting its turn if something else is
-talking to Facebook); and **Scan Post** (reads the post shown in this tab; greyed out, with a hint, on anything
+opens https://www.facebook.com/groups/pokemonkortnorge sorted by **New posts** in a new tab and scans it there
+once it has loaded, waiting its turn if something else is talking to Facebook); and **Scan Post** (reads the post shown in this tab; greyed out, with a hint, on anything
 that isn't a Facebook post). Below them, the auto-scan status (switch it on/off in the overview's Settings).
 **Reload extension** and **Reload Facebook tabs** are on the icon's right-click menu, with **Open overview**.
 
@@ -223,7 +223,7 @@ prompts on `src/llm/cases.ts` through the real bridge (uses your Claude plan).
 ## Scan the feed
 
 Click the extension icon → **Scan feed** (on the group's feed with no post open it scans that tab; anywhere
-else it opens the feed in a new tab first). If the feed isn't sorted by **New
+else it opens https://www.facebook.com/groups/pokemonkortnorge, sorted by New posts, in a new tab first). If the feed isn't sorted by **New
 posts**, the extension reloads it that way first (`?sorting_setting=CHRONOLOGICAL`). It then scrolls the
 feed slowly by itself and saves each post as it appears (Facebook empties posts once they leave the
 screen). On auction and claim-sale posts it clicks **Se mer** so the full text, with the end time, is

@@ -1,5 +1,12 @@
 // Facebook URL helpers shared by the service worker, the toolbar menu and tests.
 
+/**
+ * The one group this extension watches (docs/spec.md "Toolbar menu"): what the menu's "Scan feed"
+ * opens when the active tab isn't a group feed. The worker opens it sorted by "New posts"
+ * (`newPostsUrl`). A constant, not a setting: one user, one group.
+ */
+export const GROUP_FEED_URL = "https://www.facebook.com/groups/pokemonkortnorge/";
+
 /** The group feed itself, not a post, photo or profile inside the group. */
 export function isGroupFeedUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -39,9 +46,4 @@ export function isPostUrl(url: string | undefined): boolean {
   if (/^\/(?!groups\/)[^/]+\/posts\/[^/]+\/?$/.test(u.pathname)) return true;
   if (u.pathname === "/permalink.php" || u.pathname === "/story.php") return u.searchParams.has("story_fbid");
   return false;
-}
-
-/** The group's feed URL from its slug ("pokemonkortnorge" → "https://www.facebook.com/groups/pokemonkortnorge/"). */
-export function groupFeedUrl(slug: string): string {
-  return `https://www.facebook.com/groups/${slug}/`;
 }

@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GROUP_FEED_URL } from "../src/shared/urls";
 import type { Store } from "../src/store";
 import { fakeChrome, type FakeChrome } from "./fakes/chrome";
 import { auctionText, capture, lot, ME, reply, SELLER } from "./fakes/posts";
@@ -89,10 +90,10 @@ describe("worker messages", () => {
   });
 
   it("scan-feed-new-tab (#320): takes the slot, opens the feed sorted by New posts, scans there; done frees the slot", async () => {
-    await fake.sendToWorker({ type: "fbaw/scan-feed-new-tab", url: "https://www.facebook.com/groups/g/" });
+    await fake.sendToWorker({ type: "fbaw/scan-feed-new-tab", url: GROUP_FEED_URL }); // What the popup sends.
     await vi.advanceTimersByTimeAsync(2_000); // The new tab loads, then the feed gets 1.5 s to render.
     await vi.waitFor(() => expect(fake.tabMessages).toContainEqual({ tabId: 100, message: { type: "fbaw/read-post" } }));
-    expect(fake.created).toEqual([{ url: "https://www.facebook.com/groups/g/?sorting_setting=CHRONOLOGICAL", active: true }]);
+    expect(fake.created).toEqual([{ url: "https://www.facebook.com/groups/pokemonkortnorge/?sorting_setting=CHRONOLOGICAL", active: true }]);
     expect(fake.session.data.get("facebookSlot")).toMatchObject({ holder: "menu-scan", tabId: 100 });
     await fake.sendToWorker({ type: "fbaw/activity-done" }, 100);
     await vi.waitFor(() => expect(fake.session.data.get("facebookSlot")).toBeNull());
@@ -100,7 +101,7 @@ describe("worker messages", () => {
 
   it("scan-feed-new-tab waits for the slot: no tab is opened while something else talks to Facebook", async () => {
     await fake.session.set({ facebookSlot: { holder: "reader", tabId: 7, since: new Date().toISOString() } });
-    await fake.sendToWorker({ type: "fbaw/scan-feed-new-tab", url: "https://www.facebook.com/groups/g/" });
+    await fake.sendToWorker({ type: "fbaw/scan-feed-new-tab", url: GROUP_FEED_URL });
     await vi.advanceTimersByTimeAsync(10_000);
     expect(fake.created).toEqual([]);
     await fake.session.set({ facebookSlot: null });
