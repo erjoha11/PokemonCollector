@@ -39,6 +39,10 @@ Post = listing: overview photos of the whole auction, rules, end time
     └ Reply under the lot comment = bid (name, amount, time)
 ```
 
+- **The post is the lot** (an auction with no lot comments, 2026-10-05): the post's photo and
+  text are the one lot, top-level comments under the post are its bids, and a reply under
+  someone's comment counts as "under another reply" (not counted). Start bid and raise come from
+  the post ("Minstepris", "Minimum budøkning"). `postAsLot` in `src/domain/bids.ts`.
 - Comments without an image are chatter. Replies from the seller are never bids.
 - A top-level comment of just "." is someone tagging themselves to follow the sale (they get
   notified of new activity). Not a lot, not a bid. The count of them is a rough "watchers"

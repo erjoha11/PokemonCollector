@@ -551,7 +551,7 @@ function pendingLotsRow(r: Row, columns: number): HTMLTableRowElement {
   td.textContent = readState(r.id)
     ? "Reading the post… its lots show up here when it's done."
     : r.lots
-      ? "No lots found in this post (a lot is a comment with a photo from the seller)."
+      ? "No lots found in this post (a lot is a comment with a photo from the seller, or the post itself when people bid right under it)."
       : "Not read yet: click Read to read its lots and bids.";
   const toggle = endedToggle(r);
   if (toggle) td.append(" · ", toggle);
@@ -591,6 +591,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     }
     const body = el("div", "lot-body");
     body.append(line("div", lotLink(r, l, `${l.position}. ${l.title}`, "lot-title")));
+    if (l.wholePost) body.append(el("div", "via", "The post itself is the lot: bids are the comments right under it"));
     if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
     body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
     if (isClaims) {
