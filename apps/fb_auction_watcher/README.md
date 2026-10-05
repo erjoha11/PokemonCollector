@@ -178,7 +178,8 @@ Facebook, nothing more. Outbid and Won/Lost come from reads, so they arrive by t
 auto-scan is on; background re-reads run every 15 min, so an outbid can show up to 15 min late. On
 macOS, Chrome must be allowed to show notifications (System Settings → Notifications → Google Chrome).
 
-**Send wins to inventory** (under To pay, #309) sends what you've won to your tcg_inventory, where
+**Send selected to inventory** (under To pay, #309) sends the won auctions you've ticked (**Send** on each
+auction under its seller, or **Tick all not sent**) to your tcg_inventory; sent ones show "sent 2 h ago". There
 each won sale waits under Orders → Purchased → "Facebook wins to register" until you register it.
 Only your own wins leave the browser: seller, lot label, price, links, dates, the seller's shipping
 and payment terms, and your Paid/Received marks; never post reads, other people's names or comments.

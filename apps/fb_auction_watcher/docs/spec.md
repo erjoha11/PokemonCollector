@@ -175,7 +175,9 @@ of this contract, so it's defined here; tcg_inventory's reader is `won_inbox.py`
   type, end date, links, the lot's label and price, the seller's quoted shipping/payment text,
   and my Paid/Received marks. **Never** raw captures (post reads), other bidders' or claimers'
   names, comments, or photos.
-- **How:** the overview's **Send wins to inventory** (under To pay, by hand for now) asks the
+- **How:** the overview's **Send selected to inventory** (under To pay, by hand for now: you tick
+  **Send** on each won auction you want, or "Tick all not sent"; sent ones show "sent 2 h ago",
+  kept as `inboxSent`, post ID → when) asks the
   service worker (`src/background/inbox.ts`) to POST the payload to `<inboxUrl>/inbox/fb-wins`
   with `Authorization: Bearer <inboxToken>` (tcg_inventory's `INBOX_TOKEN`), no cookies, no
   redirects followed, 30 s timeout. The result (when, ok/error, how many, what the server said)
@@ -280,7 +282,7 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   to the lot's comment with the lowest bid that counts, the extension never bids), **Leading** (one
   folded line per sale, what it costs if it holds) and **To pay** (one folded line per seller, with
   Paid / Received). Lost and ended lots live in the table. Rules: `needsYou`, `leadingBySale`,
-  `wonBySeller` in `model.ts`. Under To pay: **Send wins to inventory** and the last send's
+  `wonBySeller` in `model.ts`. Under To pay: a **Send** tick per won auction, **Send selected to inventory** and the last send's
   result (2026-10-04, #309; see "Sending wins to tcg_inventory").
 - **Mark as ended** (2026-10-04): you can mark a sale as ended yourself (an end time nobody
   could read, a seller who closed early), and undo it. Stored as `endedMarks` (post ID → when) in

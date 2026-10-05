@@ -68,6 +68,17 @@ export const updateClaudeState = (change: Partial<ClaudeState>) => patch("claude
 export const getCleanupState = () => read("cleanupState", DEFAULT_CLEANUP_STATE);
 export const updateCleanupState = (change: Partial<CleanupState>) => patch("cleanupState", DEFAULT_CLEANUP_STATE, change);
 export const getInboxState = () => read("inboxState", DEFAULT_INBOX_STATE);
+
+/** Won auctions (post ID → when) sent to tcg_inventory, so To pay can say "sent" and you can pick what's left. */
+export type InboxSent = Record<string, string>;
+export async function getInboxSent(): Promise<InboxSent> {
+  return ((await chrome.storage.local.get("inboxSent")).inboxSent as InboxSent | undefined) ?? {};
+}
+export async function markInboxSent(postIds: string[], at: Date): Promise<void> {
+  const sent = await getInboxSent();
+  for (const id of postIds) sent[id] = at.toISOString();
+  await chrome.storage.local.set({ inboxSent: sent });
+}
 export const setInboxState = (state: InboxState) => chrome.storage.local.set({ inboxState: state });
 
 /**

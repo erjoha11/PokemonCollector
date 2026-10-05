@@ -53,10 +53,11 @@ function endedOn(r: Pick<Row, "endsAtMs" | "endedByYouAt">): string | null {
  * when Claude priced each card: per-card refs would change once the photo is read and leave
  * duplicates behind in the inbox.
  */
-export function buildWonPayload(rows: Row[], wonState: WonState, sentAt: Date): WonPayload {
+export function buildWonPayload(rows: Row[], wonState: WonState, sentAt: Date, onlyPostIds?: ReadonlySet<string>): WonPayload {
   const items: WonPayloadItem[] = [];
   for (const group of wonBySeller(rows)) {
     for (const { row: r, lot: l, label, kr } of group.items) {
+      if (onlyPostIds && !onlyPostIds.has(r.id)) continue; // Only the won auctions you picked.
       const mark = wonState[r.id];
       items.push({
         external_ref: externalRef(r.id, l),

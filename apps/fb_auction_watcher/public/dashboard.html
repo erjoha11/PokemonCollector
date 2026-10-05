@@ -33,7 +33,8 @@
           <label id="show-done-label" class="muted small show-done"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label></h3>
         <div id="topay-list"></div>
         <div class="send-wins">
-          <button id="send-wins" type="button" title="Sends what you've won (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory. Nothing else leaves this computer.">Send wins to inventory</button>
+          <button id="send-wins" type="button" title="Sends the won auctions you ticked (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory. Nothing else leaves this computer.">Send selected to inventory</button>
+          <button id="send-pick-unsent" type="button" class="linkish" hidden></button>
           <span id="send-wins-status" class="muted small" role="status"></span>
         </div>
       </section>
@@ -86,7 +87,7 @@
       </div>
       <div class="setting">
         <label>Send wins to tcg_inventory</label>
-        <div class="muted small">"Send wins to inventory" under To pay sends your own wins (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory, where they wait to be registered as orders. Nothing else is sent: no post reads, other people's names or comments.</div>
+        <div class="muted small">Under To pay, tick <strong>Send</strong> on the won auctions you want, then <strong>Send selected to inventory</strong>: it sends those wins (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory, where they wait to be registered as orders. Nothing else is sent: no post reads, other people's names or comments.</div>
         <label for="inbox-url" class="sub-label">Address</label>
         <input id="inbox-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://your-app.vercel.app">
         <label for="inbox-token" class="sub-label">Inbox token (INBOX_TOKEN on the server)</label>

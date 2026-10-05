@@ -287,7 +287,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (isSendWinsMessage(msg)) {
     // "Send wins to inventory" (#309): your own wins to your tcg_inventory, nothing else.
-    void sendWins(store).then(sendResponse);
+    void sendWins(store, undefined, msg.postIds).then(sendResponse);
     return true;
   }
   if (isActivityDoneMessage(msg)) {

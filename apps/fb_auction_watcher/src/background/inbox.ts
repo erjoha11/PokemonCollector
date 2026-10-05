@@ -1,6 +1,6 @@
 import { buildWonPayload } from "../inbox/payload";
 import { buildRows } from "../pages/dashboard/model";
-import { getEndedMarks, getSettings, getWonState, inboxOrigin, setInboxState, type InboxState } from "../shared/settings";
+import { getEndedMarks, getSettings, getWonState, inboxOrigin, markInboxSent, setInboxState, type InboxState } from "../shared/settings";
 import type { Store } from "../store";
 
 // "Send wins to inventory" (#309): posts your own wins (src/inbox/payload.ts) to your
@@ -32,7 +32,8 @@ function describe(r: { added?: number; updated?: number; unchanged?: number; kep
   return parts.join(", ");
 }
 
-export async function sendWins(store: Store, deps: SendDeps = defaultDeps): Promise<InboxState> {
+/** Sends the won auctions you picked (`postIds`), or all of them when it's omitted. */
+export async function sendWins(store: Store, deps: SendDeps = defaultDeps, postIds?: string[]): Promise<InboxState> {
   const now = deps.now();
   const done = async (ok: boolean, count: number | null, outcome: string): Promise<InboxState> => {
     const state: InboxState = { lastAt: now.toISOString(), ok, count, outcome };
@@ -40,6 +41,7 @@ export async function sendWins(store: Store, deps: SendDeps = defaultDeps): Prom
     return state;
   };
 
+  if (postIds && postIds.length === 0) return done(false, null, "Tick the won auctions to send first.");
   const settings = await getSettings();
   const origin = inboxOrigin(settings.inboxUrl);
   if (!origin) return done(false, null, "Set your tcg_inventory address in Settings first.");
@@ -59,7 +61,7 @@ export async function sendWins(store: Store, deps: SendDeps = defaultDeps): Prom
     myName: settings.myName,
     endedMarks,
   });
-  const payload = buildWonPayload(rows, wonState, now);
+  const payload = buildWonPayload(rows, wonState, now, postIds ? new Set(postIds) : undefined);
   const count = payload.items.length;
   if (count === 0) return done(true, 0, "Nothing won to send.");
 
@@ -78,6 +80,7 @@ export async function sendWins(store: Store, deps: SendDeps = defaultDeps): Prom
     type Answer = { error?: string; added?: number; updated?: number; unchanged?: number; kept?: number };
     const body = (await res.json().catch(() => null)) as Answer | null;
     if (!res.ok) return done(false, count, `HTTP ${res.status}: ${body?.error ?? (res.statusText || "error")}`);
+    await markInboxSent([...new Set(payload.items.map((i) => i.external_ref.split(":")[1]))], now);
     return done(true, count, describe(body ?? {}));
   } catch (err) {
     const why = abort.signal.aborted ? `no answer in ${TIMEOUT_MS / 1000} s` : err instanceof Error ? err.message : String(err);
