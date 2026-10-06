@@ -22,10 +22,14 @@
       <span class="muted small">· {{ sale.items | length }} from <a href="{{ sale.post_url }}" target="_blank" rel="noopener">this Facebook post ↗</a>{% if sale.ended_on %}, ended {{ sale.ended_on.isoformat() }}{% endif %}</span>
     </h3>
     {% if sale.payment_text %}<p class="muted small fb-win-terms">Pay: {{ sale.payment_text }}</p>{% endif %}
+    {# Leftovers of a partly registered sale (#317): the prefilled Total
+       leaves out what those orders already count (won_inbox.open_sale). #}
     {% if imported.registered_orders %}
     <p class="muted small">Other items from this sale are already on order{{ 's' if imported.registered_orders | length > 1 }}
-      {% for pid in imported.registered_orders %}<a href="/orders/purchased?open_order={{ pid }}#order-{{ pid }}">#{{ pid }}</a>{{ ', ' if not loop.last }}{% endfor %}
-      — check this Total doesn't count them twice (or add these cards to that order with Edit order instead).</p>
+      {% for pid in imported.registered_orders %}<a href="/orders/purchased?open_order={{ pid }}#order-{{ pid }}">#{{ pid }}</a>{{ ', ' if not loop.last }}{% endfor %}.
+      {% if imported.excluded and imported.total is not none %}The Total below leaves out {{ imported.excluded | kr }} {{ 'they already count' if imported.registered_orders | length > 1 else 'it already counts' }} (as Remaining, or as a linked lot), so it isn't counted twice.
+      {% else %}{{ 'They don’t' if imported.registered_orders | length > 1 else 'It doesn’t' }} count these items yet, so the Total below is their full known price.
+      {% endif %}Or add these cards to that order with Edit order instead.</p>
     {% endif %}
     <p class="muted small">Tick the card each item is, then <strong>Link selected</strong>: it's added to the order below with the item's price (a lot's price is split evenly over its cards). Nothing is linked until you do.</p>
     <ul class="fb-import-items">
@@ -38,7 +42,7 @@
           <span class="fb-import-status muted" data-item-status>Not linked</span>
           {% if item.purchase_id is not none %}
           {% if item.purchase_id in sale.missing_orders %}
-          <span class="tx-badge fb-cand-on-order" title="This lot was registered as not complete on order #{{ item.purchase_id }}, which no longer exists.">order #{{ item.purchase_id }} missing</span>
+          <span class="tx-badge fb-cand-on-order" title="{{ 'This lot was registered as not complete' if item.status == 'pending' else 'This item was registered' }} on order #{{ item.purchase_id }}, which no longer exists. Link it again here, or Ignore it in the list.">order #{{ item.purchase_id }} missing</span>
           {% else %}
           <span class="tx-badge fb-cand-new" title="Registered as not complete: some of its cards are on order #{{ item.purchase_id }}. Add the rest to that order with Edit order, then click Lot complete in the list.">lot not complete · on order #{{ item.purchase_id }}</span>
           {% endif %}

@@ -27,6 +27,14 @@ And the link flow (slice 2), where a sale opens in the New Order cart:
   name match, never auto-linked.
 - `linkable_items` / `mark_registered`: what Register does to the items
   linked in the cart.
+
+And keeping items pointed at their order (#317):
+- `follow_order_edit`: Edit order's move/merge/split carries
+  `won_items.purchase_id` along, so a registered item keeps pointing at the
+  order its cards ended up in.
+- An item is *open* (listed, can be opened in the cart, linked, ignored)
+  when it's pending, or registered on an order that no longer has any
+  transaction ("order missing").
 """
 from __future__ import annotations
 
@@ -35,9 +43,11 @@ import difflib
 import math
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from sqlalchemy import and_, exists, or_
 from sqlalchemy.orm import Session
 
 from models import Card, Transaction, WonItem
@@ -257,11 +267,12 @@ def upsert_items(db: Session, items: list[WonItemIn], now: dt.datetime | None = 
 
 
 def ignore_item(db: Session, item_id: int) -> bool:
-    """Marks a pending item ignored (a cancelled or duplicate win), without
-    committing. Later sends leave it alone. False if there's no such pending
-    item (already ignored or registered, or gone)."""
-    row = db.get(WonItem, item_id)
-    if row is None or row.status != STATUS_PENDING:
+    """Marks an open item ignored (a cancelled or duplicate win, or one
+    whose order is missing and isn't to be registered again), without
+    committing. Later sends leave it alone. False if there's no such open
+    item (already ignored, registered on an order that exists, or gone)."""
+    row = db.query(WonItem).filter(WonItem.id == item_id, _open_filter()).one_or_none()
+    if row is None:
         return False
     row.status = STATUS_IGNORED
     return True
@@ -281,8 +292,8 @@ class PendingSale:
     payment_text: str | None
     items: list[WonItem] = field(default_factory=list)
     # Order IDs some of these items point at (a lot kept pending as "not
-    # complete") that no longer have any transaction: shown as "order
-    # missing" rather than hidden.
+    # complete", or a registered item, #317) that no longer have any
+    # transaction: shown as "order missing" rather than hidden.
     missing_orders: set[int] = field(default_factory=set)
 
     @property
@@ -294,11 +305,25 @@ class PendingSale:
         return sum(1 for i in self.items if i.price is None)
 
 
+def _open_filter():
+    """Open items: pending, or registered on an order that no longer has
+    any transaction (deleted, or emptied by Edit order) -- that registration
+    no longer stands, so the item comes back as "order missing" (#317).
+    Edit order carries `purchase_id` along (`follow_order_edit`), so a
+    merged or moved order doesn't count as missing."""
+    has_order = exists().where(Transaction.purchase_id == WonItem.purchase_id)
+    return or_(
+        WonItem.status == STATUS_PENDING,
+        and_(WonItem.status == STATUS_REGISTERED, WonItem.purchase_id.isnot(None), ~has_order),
+    )
+
+
 def pending_sales(db: Session) -> list[PendingSale]:
-    """Pending items grouped by sale, newest sale first (no end date last)."""
+    """Open items (pending, or registered on a missing order) grouped by
+    sale, newest sale first (no end date last)."""
     rows = (
         db.query(WonItem)
-        .filter(WonItem.status == STATUS_PENDING)
+        .filter(_open_filter())
         .order_by(WonItem.id)
         .all()
     )
@@ -345,34 +370,78 @@ def note_for(item: WonItem) -> str:
 
 @dataclass
 class OpenSale:
-    """One sale opened in the New Order cart: its pending items and the
+    """One sale opened in the New Order cart: its open items and the
     values the cart is prefilled with."""
 
     sale: PendingSale
-    # Orders other items of this same sale were already registered on.
+    # Existing orders other items of this same sale are already on: items
+    # registered there, and lots kept pending as "not complete" on them.
     registered_orders: list[int]
+    # What those earlier orders already count of this sale's open items
+    # (their Remaining, see `open_sale`), left out of the prefilled Total.
+    accounted: float = 0.0
+    # Known prices of open items already linked to cards on an existing
+    # order (lots kept as "not complete"): on that order's rows already.
+    on_order_known: float = 0.0
+
+    @property
+    def excluded(self) -> float:
+        """Everything left out of the prefilled Total (#317)."""
+        return round(self.accounted + self.on_order_known, 2)
 
     @property
     def total(self) -> float | None:
-        """The prefilled Total: the sum of the known prices, or None when no
-        price is known. Shipping starts blank, and the cart adds whatever is
-        typed there to this Total until the Total is edited by hand, so
-        Remaining (Total - prices - shipping, as Order history computes it)
-        is only ever the known price of what isn't linked."""
+        """The prefilled Total: the open items' known prices minus what the
+        sale's earlier orders already count (`excluded`), so the same money
+        is never in two orders' Totals (#317); None when no price is known.
+        Shipping starts blank, and the cart adds whatever is typed there to
+        this Total until the Total is edited by hand, so Remaining (Total -
+        prices - shipping, as Order history computes it) is the known price
+        of what isn't linked, less what's excluded."""
         if all(i.price is None for i in self.sale.items):
             return None
-        return self.sale.known_total
+        return round(max(0.0, self.sale.known_total - self.excluded), 2)
+
+
+def _orders_remaining(db: Session, purchase_ids: set[int]) -> float:
+    """The sum of each order's positive Remaining, exactly as Order history
+    computes it: Total - card prices - shipping, trade/ripped prices not
+    being cash. An order with no Total has no Remaining and adds nothing."""
+    if not purchase_ids:
+        return 0.0
+    by_order: dict[int, list[Transaction]] = {}
+    for tx in db.query(Transaction).filter(Transaction.purchase_id.in_(purchase_ids)):
+        by_order.setdefault(tx.purchase_id, []).append(tx)
+    out = 0.0
+    for txs in by_order.values():
+        total = next((t.purchase_total for t in txs if t.purchase_total is not None), None)
+        if total is None:
+            continue
+        shipping = next((t.purchase_shipping for t in txs if t.purchase_shipping is not None), None) or 0.0
+        prices = sum(t.price or 0.0 for t in txs if t.type not in ("trade", "ripped"))
+        out += max(0.0, total - prices - shipping)
+    return round(out, 2)
 
 
 def open_sale(db: Session, item_id: int) -> OpenSale | None:
-    """The sale `item_id` belongs to, with that sale's pending items, or
-    None if the item is gone or nothing of its sale is pending."""
+    """The sale `item_id` belongs to, with that sale's open items, or None
+    if the item is gone or nothing of its sale is open.
+
+    Leftovers of a partly registered sale (#317, decided 2026-10-06): the
+    first order's Total was prefilled with the whole sale, so its Remaining
+    already counts the items left unlinked. The new order's prefilled Total
+    leaves out what the sale's earlier orders still show as Remaining
+    (capped at the leftovers' known prices), plus the known price of any
+    lot already linked to cards on an existing order. If the earlier
+    order's Total was set to cover only its own cards (Remaining 0), nothing
+    is left out. Approximate when an earlier order also holds other sales
+    (merged): its Remaining may include theirs; the cap keeps it bounded."""
     anchor = db.get(WonItem, item_id)
     if anchor is None:
         return None
     rows = (
         db.query(WonItem)
-        .filter(WonItem.post_url == anchor.post_url, WonItem.status == STATUS_PENDING)
+        .filter(WonItem.post_url == anchor.post_url, _open_filter())
         .order_by(WonItem.id)
         .all()
     )
@@ -389,17 +458,25 @@ def open_sale(db: Session, item_id: int) -> OpenSale | None:
         items=rows,
     )
     _mark_missing_orders(db, [sale])
-    registered = sorted(
-        {
-            pid
-            for (pid,) in db.query(WonItem.purchase_id).filter(
-                WonItem.post_url == anchor.post_url,
-                WonItem.status == STATUS_REGISTERED,
-                WonItem.purchase_id.isnot(None),
-            )
-        }
+    registered = {
+        pid
+        for (pid,) in db.query(WonItem.purchase_id).filter(
+            WonItem.post_url == anchor.post_url,
+            WonItem.status == STATUS_REGISTERED,
+            WonItem.purchase_id.isnot(None),
+        )
+    }
+    on_order = [i for i in rows if i.purchase_id is not None and i.purchase_id not in sale.missing_orders]
+    earlier = _existing_orders(db, registered) | {i.purchase_id for i in on_order}
+    on_order_known = round(sum(i.price for i in on_order if i.price is not None), 2)
+    leftover_known = max(0.0, sale.known_total - on_order_known)
+    accounted = min(leftover_known, _orders_remaining(db, earlier))
+    return OpenSale(
+        sale=sale,
+        registered_orders=sorted(earlier),
+        accounted=round(accounted, 2),
+        on_order_known=on_order_known,
     )
-    return OpenSale(sale=sale, registered_orders=registered)
 
 
 # Fuzzy name matching. Labels are free text from a Facebook comment
@@ -532,15 +609,17 @@ class LinkError(ValueError):
 
 
 def linkable_items(db: Session, item_ids: set[int]) -> dict[int, WonItem]:
-    """The pending items the cart linked, or LinkError naming the first one
-    that's gone or no longer pending (registered or ignored in another tab),
-    so Register writes nothing rather than registering an item twice."""
+    """The open items the cart linked (pending, or registered on a missing
+    order), or LinkError naming the first one that's gone or no longer open
+    (registered or ignored in another tab), so Register writes nothing
+    rather than registering an item twice."""
     rows = {r.id: r for r in db.query(WonItem).filter(WonItem.id.in_(item_ids))} if item_ids else {}
+    open_ids = {i for (i,) in db.query(WonItem.id).filter(WonItem.id.in_(item_ids), _open_filter())} if item_ids else set()
     for item_id in sorted(item_ids):
         row = rows.get(item_id)
         if row is None:
             raise LinkError("An imported Facebook item in this cart no longer exists -- nothing was saved. Reload the page.")
-        if row.status != STATUS_PENDING:
+        if item_id not in open_ids:
             where = f" on order #{row.purchase_id}" if row.purchase_id is not None else ""
             raise LinkError(
                 f"“{row.label}” is already {row.status}{where} -- nothing was saved. "
@@ -551,12 +630,12 @@ def linkable_items(db: Session, item_ids: set[int]) -> dict[int, WonItem]:
 
 def mark_registered(items: dict[int, WonItem], purchase_id: int, keep_pending: set[int]) -> None:
     """Points every linked item at the new order, without committing. Each
-    becomes `registered`, except a lot marked "not complete", which stays
-    pending (pointing at the order) until its other cards are added."""
+    becomes `registered`, except a lot marked "not complete", which is (or
+    goes back to) pending, pointing at the order, until its other cards are
+    added."""
     for item_id, row in items.items():
         row.purchase_id = purchase_id
-        if item_id not in keep_pending:
-            row.status = STATUS_REGISTERED
+        row.status = STATUS_PENDING if item_id in keep_pending else STATUS_REGISTERED
 
 
 def complete_item(db: Session, item_id: int) -> bool:
@@ -570,3 +649,60 @@ def complete_item(db: Session, item_id: int) -> bool:
         return False
     row.status = STATUS_REGISTERED
     return True
+
+
+# ── Edit order carries the items along (#317) ─────────────────────────────
+
+
+def _pick_order(dests: Counter, source: int) -> int | None:
+    """Where an item's rows ended up: the one order if they're all in one;
+    the source order if some are still there; otherwise the order holding
+    most of them (lowest ID on a tie). None if there are none."""
+    if not dests:
+        return None
+    if len(dests) == 1:
+        return next(iter(dests))
+    if source in dests:
+        return source
+    return min(dests, key=lambda pid: (-dests[pid], pid))
+
+
+def follow_order_edit(db: Session, source: int, notes_before: dict[int, str | None]) -> None:
+    """After an Edit order save on order `source` (rows moved, merged into
+    another order, split off, or deleted; flushed, not committed), points
+    that order's registered and pending items at the order their cards are
+    on now. `notes_before` is every row the order had before the save:
+    tx id -> its note then.
+
+    `won_items` has no per-transaction link, so an item's own rows are
+    found by the note Register gave them ("<label> · <seller>", `note_for`)
+    as it was before this save. The item follows where its own rows went
+    (`_pick_order`): all in one order -> that order; split across orders ->
+    stays on `source` if some are still there, otherwise the order with
+    most of them. An item with no own rows left (its note was edited, its
+    rows deleted, or a lot's other cards were added later with no note)
+    goes by all of the order's rows the same way: it stays put while the
+    order still has rows, and follows a merge or a whole move. If every row
+    was deleted it keeps pointing at `source`, which then shows as "order
+    missing". Ignored items are left alone."""
+    if not notes_before:
+        return
+    items = (
+        db.query(WonItem)
+        .filter(WonItem.purchase_id == source, WonItem.status != STATUS_IGNORED)
+        .all()
+    )
+    if not items:
+        return
+    now = dict(db.query(Transaction.id, Transaction.purchase_id).filter(Transaction.id.in_(list(notes_before))).all())
+    all_dests = Counter(pid for pid in now.values() if pid is not None)
+    for item in items:
+        mine = note_for(item)
+        own = Counter(
+            now[txid]
+            for txid, note in notes_before.items()
+            if (note or "").strip() == mine and now.get(txid) is not None
+        )
+        target = _pick_order(own or all_dests, source)
+        if target is not None:
+            item.purchase_id = target

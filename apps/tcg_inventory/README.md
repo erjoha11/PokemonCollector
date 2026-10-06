@@ -389,7 +389,8 @@ run).
   edits in a group commit atomically, and
   moving a row out of an order clears that row's Total/shipping
   rather than guessing how to split it (set the destination order's
-  total/shipping afterward). Save keeps you on the edit page with a
+  total/shipping afterward). Facebook wins items registered on the order
+  follow its rows (see "Facebook wins inbox" below). Save keeps you on the edit page with a
   "Saved ✓" note and a "← Back to Transactions" link (unless every row
   was moved out, which lands on Transactions); a failed save shows an
   error above Save changes instead of silently doing nothing (a rejected
@@ -1265,6 +1266,39 @@ So linking always happens after the cards exist.
   click **Lot complete**. An item registered or ignored meanwhile (another
   tab) makes Register refuse with a 422 and write nothing. Ignore stays
   available throughout.
+- **Edit order carries the items along** (#317). `won_items.purchase_id`
+  has no per-transaction link, so when Edit order saves (move, merge,
+  split, delete), `won_inbox.follow_order_edit` re-points that order's
+  registered and pending items in the same commit. An item's own rows are
+  the ones carrying the note Register gave them ("<label> · <seller>", as
+  it was before the save). The item follows where its own rows went: all
+  in one order → that order (so merging a seller's sales, the settled
+  workflow, takes every item to the merged order); split across orders →
+  it stays on the edited order if some are still there, otherwise the
+  order with most of them (lowest ID on a tie). An item with none of its
+  own rows left (note edited, rows deleted, or a lot's later cards added
+  with no note) goes by all of the order's rows the same way: it stays
+  while the order still has rows and follows a merge or whole move. If
+  every row is deleted it keeps pointing at the old ID. Ignored items are
+  left alone.
+- **"Order missing"** covers registered items too (#317): an item
+  registered on an order that no longer has any transaction comes back into
+  the list with "order #N missing", and can be opened in the cart and
+  registered again (or kept pending as "not complete") or ignored. One
+  registered on an order that exists can't be relinked or ignored.
+- **Leftovers of a partly registered sale** (#317, decided 2026-10-06).
+  Opening a sale whose other items are already on an order (registered,
+  or a lot kept "not complete") prefills a Total that leaves out what those
+  earlier orders already count, so the same money is never in two orders'
+  Totals: the known price of a lot already linked to cards on an existing
+  order, plus the earlier orders' positive Remaining (Total − card prices −
+  shipping, as Order history shows it), capped at the leftovers' known
+  prices. If the first order kept the whole-sale prefill, its Remaining is
+  exactly the leftovers and the new Total is 0; if its Total was set to
+  cover only its own cards (Remaining 0, or no Total), nothing is left out.
+  When an earlier order also holds another sale (merged), its Remaining may
+  include that sale's leftovers too, so check the Total there. The cart
+  names the earlier order(s) and how much it left out.
 
 To turn it on in prod: set `INBOX_TOKEN` in Vercel (a long random string,
 e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`),

@@ -2864,6 +2864,11 @@ def update_purchase(
     (issue #228 b), so a stale or crafted form can't edit or delete another
     order's rows. An id that no longer exists at all is skipped, as before
     (e.g. a row already deleted in another tab).
+
+    Facebook wins items registered on this order follow its rows in the
+    same commit (#317, `won_inbox.follow_order_edit`): a merge or a whole
+    move takes them along, a split takes each item where its own rows
+    (matched by the note Register gave them) went.
     """
     # Validate every row being kept before writing any (issue #228):
     # misaligned lists used to IndexError into a 500, and a bad
@@ -2911,11 +2916,18 @@ def update_purchase(
             )
         # Only take the Order ID lock when a row is actually being split off.
         needs_new_order = any(t is None for t in row_targets.values())
+        # Every row this order has before the save, with its note then: how
+        # its Facebook wins items find where their rows went (#317).
+        notes_before = dict(
+            db.query(Transaction.id, Transaction.note).filter(Transaction.purchase_id == purchase_id).all()
+        )
         with _allocating_order_id(db) if needs_new_order else nullcontext(None) as split_order_id:
             _apply_purchase_edits(
                 db, purchase_id, split_order_id, tx_id, delete_set, row_types, row_dates, row_prices,
                 row_targets, platform, note, card_id, direction, total_value, shipping_value,
             )
+            db.flush()
+            won_inbox.follow_order_edit(db, purchase_id, notes_before)
             db.commit()
         # Stay on the edit page (with a "Saved" confirmation and a Back
         # button) so the user can check the result or keep editing -- unless

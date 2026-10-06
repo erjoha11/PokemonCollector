@@ -41,7 +41,7 @@
           <span class="num">{% if item.price is not none %}{{ item.price | kr }}{% else %}<span class="muted">price unknown</span>{% endif %}</span>
           {% if item.purchase_id is not none %}
           {% if item.purchase_id in sale.missing_orders %}
-          <span class="tx-badge fb-cand-on-order" title="This lot was registered as not complete on order #{{ item.purchase_id }}, and that order no longer exists. Open the sale in the cart to register it again, or Ignore it.">order #{{ item.purchase_id }} missing</span>
+          <span class="tx-badge fb-cand-on-order" title="{{ 'This lot was registered as not complete' if item.status == 'pending' else 'This item was registered' }} on order #{{ item.purchase_id }}, and that order no longer exists. Open the sale in the cart to register it again, or Ignore it.">order #{{ item.purchase_id }} missing</span>
           {% else %}
           <span class="tx-badge fb-cand-new">lot not complete · <a href="/orders/purchased?open_order={{ item.purchase_id }}#order-{{ item.purchase_id }}">order #{{ item.purchase_id }}</a></span>
           <form method="post" action="/orders/fb-wins/{{ item.id }}/complete"
