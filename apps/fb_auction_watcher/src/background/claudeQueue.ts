@@ -205,9 +205,9 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
 
     // Lots whose text doesn't name them: Claude names them from the photo, for any kind of sale.
     const mine = !!me && capture.comments.some((c) => c.replies.some((r) => normalizeName(r.author) === me));
-    for (const imageUrl of untitledLotPhotos(capture)) {
-      const key = lotNameAnswerKey(imageUrl);
-      if (wanted(key)) lotNames.push({ imageUrl, key, mine });
+    for (const { imageUrl, text } of untitledLotPhotos(capture)) {
+      const key = lotNameAnswerKey(imageUrl, text);
+      if (wanted(key)) lotNames.push({ imageUrl, text, key, mine });
     }
 
     if (type === "auction") {

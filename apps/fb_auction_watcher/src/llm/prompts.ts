@@ -124,8 +124,11 @@ First to claim a card gets it. List every card in the photo, left to right, top 
 export const claimLotAnswerKey = (item: ClaimLotItem) =>
   `claim-lot-cards:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;
 
-/** A lot photo to name: the lot's text is only a price or empty, so the photo is all there is. */
-export type LotNameItem = { imageUrl: string };
+/**
+ * A lot to name: the rules found no name in its text (only a price, a word like "Holo", or
+ * nothing; see lotTextInfo), so Claude reads the text and the photo.
+ */
+export type LotNameItem = { imageUrl: string; text: string };
 export type LotNameAnswer = string | null;
 
 // Tried 2026-10-04 on 12 real lot photos in one call: Sonnet named all 12 with set numbers in 6 s;
@@ -135,8 +138,10 @@ export function lotNameRequest(items: LotNameItem[]): ClaudeRequest {
     task: "lot-name",
     model: "sonnet",
     images: items.map((i) => i.imageUrl),
-    system: `You name lots in a Norwegian Facebook auction or claim sale for Pokémon cards. Each photo is one lot. For each photo give a short name for the lot (at most about 60 characters): if the seller wrote text on or over the photo naming what it is, use that; otherwise the card name as printed on the card, plus its set number (e.g. 74/112) if you can read it; for several cards, name them briefly (e.g. "Pikachu, Raichu" or "3 Eevee cards"). Leave out prices. Use null if you can't tell.`,
-    input: `There ${items.length === 1 ? "is 1 photo" : `are ${items.length} photos`}, numbered in order. Name each lot.`,
+    system: `You name lots in a Norwegian Facebook auction or claim sale for Pokémon cards. Each photo is one lot, with the seller's text for it (often only a price, or a word like "Holo"). For each photo give a short name for the lot (at most about 60 characters). Use what the seller's text says first; read the photo for what it leaves out: text the seller wrote on or over the photo naming what it is, otherwise the card name as printed on the card, plus its set number (e.g. 74/112) if you can read it; for several cards, name them briefly (e.g. "Pikachu, Raichu" or "3 Eevee cards"). Keep a finish the text gives ("Charizard 4/102 holo"). Leave out prices and the condition. Use null if you can't tell.`,
+    input: `There ${items.length === 1 ? "is 1 photo" : `are ${items.length} photos`}, numbered in order. The seller's text for each:\n${items
+      .map((i, n) => `Photo ${n + 1}: ${i.text.trim() ? JSON.stringify(i.text.trim()) : "(no text)"}`)
+      .join("\n")}\nName each lot.`,
     schema: {
       type: "object",
       properties: {
@@ -150,5 +155,5 @@ export function lotNameRequest(items: LotNameItem[]): ClaudeRequest {
   };
 }
 
-/** Same photo, same name: only the photo's path counts (its query changes per read). */
-export const lotNameAnswerKey = (imageUrl: string) => `lot-name:${hashText(imageUrl.split("?")[0])}`;
+/** Same photo and text, same name: only the photo's path counts (its query changes per read). An edited text asks again. */
+export const lotNameAnswerKey = (imageUrl: string, text: string) => `lot-name:${hashText(`${imageUrl.split("?")[0]}\n${text.trim()}`)}`;

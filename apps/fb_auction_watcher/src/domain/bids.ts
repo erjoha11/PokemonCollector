@@ -163,29 +163,56 @@ function lotStartBid(text: string): number | null {
   return bare ? parseAmount(bare[1]) : null;
 }
 
-/** The lot's title: its own text, else Claude's name for the photo, else "Lot N". */
+/** The lot's title: the name in its own text, else Claude's name (from the text and photo), else "Lot N"; then the condition. */
 function lotTitleFor(c: CapturedComment, position: number, options: LotOptions): { title: string; untitled: boolean; namedByClaude: boolean } {
-  const title = lotTitle(c.text, position);
-  const untitled = title === `Lot ${position}`;
+  const { name, condition } = lotTextInfo(c.text);
   const photo = c.images[0]?.src;
-  const name = untitled && photo ? options.lotName?.(fullSizePhoto(photo)) : undefined;
-  return name ? { title: name, untitled, namedByClaude: true } : { title, untitled, namedByClaude: false };
+  const fromClaude = !name && photo ? options.lotName?.(fullSizePhoto(photo), c.text) : undefined;
+  const title = name ?? fromClaude ?? `Lot ${position}`;
+  return { title: condition ? `${title} · ${condition}` : title, untitled: !name, namedByClaude: !name && !!fromClaude };
 }
 
-/** Lots whose text doesn't name them but which have a photo: Claude can name them from it. */
-export function untitledLotPhotos(capture: PostCapture): string[] {
+/** Lots whose text doesn't name them but which have a photo: Claude names them from the text and the photo. */
+export function untitledLotPhotos(capture: PostCapture): { imageUrl: string; text: string }[] {
   const seller = sellerOf(capture);
   return capture.comments
-    .filter((c) => isLot(c, seller) && c.images[0]?.src)
-    .filter((c, i) => lotTitle(c.text, i + 1) === `Lot ${i + 1}`)
-    .map((c) => fullSizePhoto(c.images[0].src));
+    .filter((c) => isLot(c, seller) && c.images[0]?.src && !lotTextInfo(c.text).name)
+    .map((c) => ({ imageUrl: fullSizePhoto(c.images[0].src), text: c.text }));
 }
 
-/** The lot's first line, unless it's only a price ("Mp 15kr"); then "Lot N". */
-function lotTitle(text: string, position: number): string {
-  const first = text.split("\n")[0]?.trim() ?? "";
-  const onlyPrice = /^(?:mp|mb|minstepris)?\s*:?\s*\d[\d .,]*\s*(?:kr|,-|&)?\.?$/i.test(first);
-  return first && !onlyPrice ? first : `Lot ${position}`;
+// What a lot's text says besides its name (2026-10-06): prices and bid steps ("MP: 20", "mp 30kr",
+// "MB 10", "Startbud 100", "200kr", "5kr per stk"), the condition ("NM", "M/NM", "LP", "PSA 10"),
+// and words that describe but don't name it ("Holo", "Rev holo", "Promo"). "MP" is the group's
+// minimum price, not Moderately Played, unless it follows "Tilstand:".
+const AMOUNT_TEXT = String.raw`\d[\d .,]*(?:\s*k\b)?\s*(?:kr\.?|,-|nok)?`;
+const PRICE_PARTS = new RegExp(
+  String.raw`(?<![\p{L}\d])(?:mp|mb|minstepris|startbud|start|min\.?\s*bud(?:økning)?|budøkning|fastpris|pris)\s*[:.]?\s*${AMOUNT_TEXT}` +
+    String.raw`|(?<![\p{L}\d/])\d[\d .,]*\s*(?:kr\.?|,-|nok)(?:\s*(?:per|pr\.?|/)\s*(?:stk|stykk|kort|card)\.?)?(?![\p{L}])`,
+  "giu",
+);
+const CONDITION = /(?<![\p{L}\d])(?:(?:psa|cgc|bgs|tag|beckett)\s*\d{1,2}(?:[.,]5)?|m\/nm|nm\/m|mint|nm|lp|hp|dmg|damaged|tilstand\s*:?\s*(?:mp|m|ex|gd))(?![\p{L}\d])/giu;
+const GENERIC = /^(?:(?:rev(?:erse)?|reverse|rev\.?)?\s*\.?\s*holo|holo|promo|lot|kort|card|cards|stk|bulk|div(?:erse)?|og|and|[&+/,.()\-–|:\s])*$/iu;
+
+/** A lot's text, read by rules: the name it gives (null if none: only a price, generic words, or nothing) and the condition. */
+export function lotTextInfo(text: string): { name: string | null; condition: string | null } {
+  let name: string | null = null;
+  let condition: string | null = null;
+  for (const raw of text.split("\n")) {
+    let line = raw.replace(/^\s*(?:lot|nr\.?|#)\s*\d+\s*[:.)\-–]?\s*/i, ""); // "Lot 1: Charizard" → "Charizard".
+    line = line.replace(PRICE_PARTS, " ");
+    line = line.replace(CONDITION, (m) => {
+      condition ??= m.replace(/^tilstand\s*:?\s*/i, "").replace(/\s+/g, " ").toUpperCase().replace(/^(PSA|CGC|BGS|TAG|BECKETT)\s*/, "$1 ");
+      return " ";
+    });
+    line = line
+      .replace(/\(\s*\)/g, " ")
+      .replace(/\s*([|,\-–:])(?:\s*[|,\-–:])+/g, " $1")
+      .replace(/\s+/g, " ")
+      .replace(/^[\s|,\-–:.]+|[\s|,\-–:]+$/g, "")
+      .trim();
+    if (!name && /\p{L}/u.test(line) && !GENERIC.test(line)) name = line;
+  }
+  return { name, condition };
 }
 
 /** "MB: 10", also mid-line ("Holo, mp 30kr, mb 20"): the minimum increment for this lot. */
@@ -201,8 +228,8 @@ export type LotOptions = {
   /** From the post: used when a lot doesn't state its own. */
   listingIncrement: number | null;
   listingMinPrice: number | null;
-  /** Claude's name for a lot's photo (by its full-size URL), when the lot's text doesn't name it. */
-  lotName?: (imageUrl: string) => string | null | undefined;
+  /** Claude's name for a lot (its full-size photo URL and its text), when the lot's text doesn't name it. */
+  lotName?: (imageUrl: string, text: string) => string | null | undefined;
   /** Claude's reading of a claim lot (see claimLotInput), or undefined when not asked yet. */
   claimAnswer?: (input: ClaimLotInput) => { cards: { card: string; price: number | null; claimedBy: string | null }[] } | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */

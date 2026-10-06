@@ -95,7 +95,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
           listingIncrement: i.increment,
           listingMinPrice: i.minPrice,
           claimAnswer: (input) => answers.get(claimLotAnswerKey(input)) as ClaimLotAnswer | undefined,
-          lotName: (imageUrl) => answers.get(lotNameAnswerKey(imageUrl)) as string | null | undefined,
+          lotName: (imageUrl, text) => answers.get(lotNameAnswerKey(imageUrl, text)) as string | null | undefined,
           answer: (seller, text) => {
             const key = bidAnswerKey(seller, text);
             return answers.has(key) ? (answers.get(key) as number | null) : undefined;

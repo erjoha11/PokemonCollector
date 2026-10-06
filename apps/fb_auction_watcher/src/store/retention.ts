@@ -64,7 +64,7 @@ function answerKeysFor(post: StoredPost | null, capture: PostCapture | null, myN
     keys.push(endTimeAnswerKey(capture.post.text));
     for (const u of unsureReplies(capture)) keys.push(bidAnswerKey(u.seller, u.text));
     for (const lot of claimLotsToRead(capture, myName)) keys.push(claimLotAnswerKey(lot));
-    for (const url of untitledLotPhotos(capture)) keys.push(lotNameAnswerKey(url));
+    for (const l of untitledLotPhotos(capture)) keys.push(lotNameAnswerKey(l.imageUrl, l.text));
   }
   return keys;
 }

@@ -344,7 +344,7 @@ describe("pendingItems: lot names", () => {
     const failures = recordFailure({}, p.lotNames[1].key, "lot-name", "host error: HTTP Error 403: Forbidden", AT);
     const again = await pendingItems(store, { myName: fx.ME, now: AT, failures });
     expect(urls(again.lotNames)).toEqual(["lot1"]);
-    expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl));
+    expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl, again.lotNames[0].text));
   });
 
   it("skips sales that ended over a few hours ago", async () => {

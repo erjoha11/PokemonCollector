@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, claimLotInput, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
-import { lotNameAnswerKey } from "../src/llm/prompts";
+import { capturePostId, claimItems, claimLotInput, lotTextInfo, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
+import { lotNameAnswerKey, lotNameRequest } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
 // Synthetic capture shaped like the real Gengar auction in samples/ (all names invented):
@@ -132,10 +132,10 @@ describe("interpretLots", () => {
     expect(interpretLots(c3, OPTS)[0]).toMatchObject({ startBid: 30, increment: 20 });
   });
 
-  it("reads a start bid mid-line, and titles a price-only lot by its number", () => {
+  it("reads a start bid mid-line, and titles a lot whose text names nothing by its number", () => {
     const c2 = capture([lot(0, "Holo, mp 30kr", []), lot(1, "Mp 15kr", []), lot(2, "Holo ( promo) mp 40", [])]);
-    expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid])).toEqual([
-      ["Holo, mp 30kr", 30], ["Lot 2", 15], ["Holo ( promo) mp 40", 40],
+    expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid, l.untitled])).toEqual([
+      ["Lot 1", 30, true], ["Lot 2", 15, true], ["Lot 3", 40, true],
     ]);
   });
 
@@ -256,25 +256,57 @@ describe("claim lots read by Claude (photo prices, who got what)", () => {
   });
 });
 
-describe("naming lots from their photo", () => {
-  const c = capture([lot(0, "Mp 20kr", []), lot(1, "Charizard ex 199/165\nMp 500", []), lot(2, "", [])]);
+describe("a lot's name from its own text (rules first)", () => {
+  it.each([
+    // Lot texts as sellers write them (group-domain.md and samples/, no names).
+    ["Iron Jugulis 216/182 – Illustration Rare | MP: 20", "Iron Jugulis 216/182 – Illustration Rare", null],
+    ["Morpeko 206/182 | MP 100", "Morpeko 206/182", null],
+    ["Charizard ex 199/165\nMp 500", "Charizard ex 199/165", null],
+    ["Mp 50kr\nCharizard ex 199/165", "Charizard ex 199/165", null], // The name on line 2.
+    ["NM - 1200kr", null, "NM"],
+    ["Umbreon VMAX 215/203 NM - 1200kr", "Umbreon VMAX 215/203", "NM"],
+    ["Gengar 151 holo\nMp 10kr", "Gengar 151 holo", null],
+    ["Gengar reverse holo\n700kr", "Gengar reverse holo", null],
+    ["Lugia V 186/195 PSA 10\nMP: 2000", "Lugia V 186/195", "PSA 10"],
+    ["Pikachu m/nm, mp 30kr, mb 10", "Pikachu", "M/NM"],
+    ["Lot 1: Charizard ex 199/165", "Charizard ex 199/165", null],
+    ["Mewtwo\nTilstand: MP\nMp 100", "Mewtwo", "MP"], // MP after "Tilstand:" is the condition.
+    ["Holo, mp 30kr", null, null],
+    ["Holo/rev.holo\n5kr per stk", null, null],
+    ["Holo ( promo) mp 40", null, null],
+    ["Mp 15kr", null, null],
+    ["Lot\nMp 100kr", null, null],
+    ["", null, null],
+  ])("%j", (text, name, condition) => expect(lotTextInfo(text)).toEqual({ name, condition }));
+});
 
-  it("only lots whose text doesn't name them are sent to Claude", () => {
-    expect(untitledLotPhotos(c)).toEqual(["lot0.jpg", "lot2.jpg"]);
+describe("naming lots from their text and photo", () => {
+  const c = capture([lot(0, "Holo, mp 20kr", []), lot(1, "Charizard ex 199/165 NM\nMp 500", []), lot(2, "", [])]);
+
+  it("only lots whose text doesn't name them are sent to Claude, with their text", () => {
+    expect(untitledLotPhotos(c)).toEqual([{ imageUrl: "lot0.jpg", text: "Holo, mp 20kr" }, { imageUrl: "lot2.jpg", text: "" }]);
   });
 
-  it("uses Claude's name for those, keeps the seller's own text, and says where the name came from", () => {
-    const names: Record<string, string> = { "lot0.jpg": "Pikachu (74/112)" };
+  it("uses Claude's name for those, adds the condition the text gives, and says where the name came from", () => {
+    const names: Record<string, string> = { "lot0.jpg": "Pikachu 58/102 holo" };
     const lots = interpretLots(c, { ...OPTS, lotName: (url) => names[url] });
     expect(lots.map((l) => [l.title, l.namedByClaude, l.untitled])).toEqual([
-      ["Pikachu (74/112)", true, true],
-      ["Charizard ex 199/165", false, false],
+      ["Pikachu 58/102 holo", true, true],
+      ["Charizard ex 199/165 · NM", false, false],
       ["Lot 3", false, true], // Not named yet.
     ]);
   });
 
-  it("caches by the photo's path (its query string changes per read)", () => {
-    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8"));
+  it("caches by the photo's path (its query string changes per read) and the text", () => {
+    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2", "Holo")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8", "Holo"));
+    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg", "Holo")).not.toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg", "Holo, mp 30"));
+  });
+
+  it("the request gives Claude each photo's text", () => {
+    const r = lotNameRequest([{ imageUrl: "a.jpg", text: "Holo, mp 20kr" }, { imageUrl: "b.jpg", text: "" }]);
+    expect(r.images).toEqual(["a.jpg", "b.jpg"]);
+    expect(r.input).toContain('Photo 1: "Holo, mp 20kr"');
+    expect(r.input).toContain("Photo 2: (no text)");
   });
 });
 

@@ -135,9 +135,9 @@ describe("planRetention", () => {
     const c = data.captures[0].capture;
     c.comments[0] = { ...c.comments[0], text: "Mp 10kr", rawText: "Mp 10kr" }; // Only a price: named from the photo.
     const [photo] = untitledLotPhotos(c);
-    data.answers.push({ key: lotNameAnswerKey(photo), value: "Testmon 4/102", at: READ_AFTER_END });
+    data.answers.push({ key: lotNameAnswerKey(photo.imageUrl, photo.text), value: "Testmon 4/102", at: READ_AFTER_END });
     expect(planRetention(data, ME, afterClose(1)).answers).toEqual([]);
-    expect(planRetention(data, ME, afterClose(8)).answers).toContain(lotNameAnswerKey(photo));
+    expect(planRetention(data, ME, afterClose(8)).answers).toContain(lotNameAnswerKey(photo.imageUrl, photo.text));
   });
 });
 
