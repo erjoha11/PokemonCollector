@@ -1855,3 +1855,47 @@ cleanup is still a separate, user-confirmed prod write.
   vault yet. The root `.env` (`ANTHROPIC_API_KEY`) doesn't exist yet.
 - On Windows, `python -m pytest` fails to collect `test_tcgdex_prices.py`
   (cp1252 `UnicodeDecodeError`). It passes with `PYTHONUTF8=1`.
+
+
+# Handoff notes — 2026-10-06 session (#317: wins inbox follows Edit order, leftover Total)
+
+Closes the two open items of the 2026-10-04 entry above.
+
+## Code (in git, PR for #317)
+
+- **Edit order carries `won_items.purchase_id` along.** `update_purchase`
+  calls `won_inbox.follow_order_edit` in the same commit. There's no
+  per-transaction link (and no schema change, still version 13), so an
+  item's own rows are matched by the note Register gave them
+  ("<label> · <seller>", as it was before the save). Rule: all its rows in
+  one order → follow them; split across orders → stay on the edited order
+  if some are still there, else the order with most of them (lowest ID on
+  a tie); no own rows left → go by all of the order's rows the same way;
+  every row deleted → keep the old ID (shows as "order missing"). Merging a
+  seller's sales no longer leaves anything pointing at a gone order.
+- **"Order missing" covers registered items.** Open = pending, or
+  registered on an order with no transactions (`won_inbox._open_filter`).
+  Such items are listed again and can be opened in the cart, relinked or
+  ignored.
+- **Leftover Total (user decision 2026-10-06).** The prefilled Total of a
+  partly registered sale leaves out what its earlier order(s) already
+  count: a "not complete" lot's known price already on an existing order,
+  plus the earlier orders' positive Remaining, capped at the leftovers'
+  known prices. The cart's note names the order(s) and the amount left
+  out. See README "Facebook wins inbox".
+
+## Direct database changes
+
+None. No production DB read or write.
+
+## Open items
+
+- Registered items whose order was merged away *before* this change still
+  point at the old ID, so they now show as "order #N missing". Not checked
+  against prod (no prod access this session). If any appear, Ignore them
+  or re-point them by hand.
+- Approximation: when an earlier order also holds another sale (merged),
+  its Remaining may include that sale's leftovers, so the amount left out
+  can be too large (bounded by the cap). Documented in the README.
+- **`ux` follow-up** (UX_NOTES 2026-10-04: the Imported items panel with
+  10+ items from one sale) is still open; not reviewed this session.
