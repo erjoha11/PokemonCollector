@@ -3,7 +3,7 @@ today's value of the order's still-owned copies minus the Total the row
 shows (typed, else auto Value + Shipping). See queries.order_gain."""
 import datetime as dt
 
-from conftest import make_csv, seed_import
+from conftest import make_csv, owned_first, seed_import
 from test_app import order_summary, summary_cell
 
 
@@ -12,6 +12,8 @@ def _seed(client, rows):
     import db as db_module
     from models import Card
 
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    seed_import(client, [("files", ("main.csv", make_csv("My Collection", owned_first(rows)), "text/csv"))])
     seed_import(client, [("files", ("main.csv", make_csv("My Collection", rows), "text/csv"))])
     db = db_module.SessionLocal()
     ids = {c.card_id: c.id for c in db.query(Card).all()}

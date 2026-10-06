@@ -80,6 +80,10 @@ class ImportResult:
     # True when this sync's TCGplayer price lookups were skipped because the
     # only exchange rate available was fx_rates' fallback constant (#229).
     price_lookup_degraded: bool = False
+    # Quantity-0 rows for cards that aren't in the database (Dex's "all
+    # variants" export lists every unowned variant, issue #340). Skipped, not
+    # warned about: My Collection rows and other categories' rows alike.
+    unowned_rows_skipped: int = 0
 
 
 def _parse_price(raw: str | None) -> float | None:
@@ -266,9 +270,16 @@ def import_dex_csv_files(
                 continue
             variant = (row.get("Variant") or "").strip() or None
             key = (card_id, variant)
-            seen_keys.add(key)
+            qty = _parse_qty(row.get("Quantity"))
 
             card = cards_by_key.get(key)
+            if card is None and qty == 0:
+                # An unowned variant from Dex's "all variants" export (issue
+                # #340): never becomes a card. A card already in the database
+                # whose row drops to 0 is still updated below, as before.
+                result.unowned_rows_skipped += 1
+                continue
+            seen_keys.add(key)
             is_new = card is None
             if is_new:
                 card = Card(card_id=card_id, variant=variant, created_at=dt.datetime.utcnow())
@@ -307,7 +318,7 @@ def import_dex_csv_files(
             if dex_price is not None:
                 card.reference_price = dex_price
                 dex_prices[card] = dex_price
-            card.qty = _parse_qty(row.get("Quantity"))
+            card.qty = qty
             notes = _notes_from_row(row)
             if notes:
                 card.notes = notes
@@ -396,9 +407,20 @@ def import_dex_csv_files(
             for r in rows
             if (r.get("Id") or "").strip()
         }
+        # Keys with at least one row of quantity > 0 in this category.
+        owned_keys = {
+            ((r.get("Id") or "").strip(), (r.get("Variant") or "").strip() or None)
+            for r in rows
+            if (r.get("Id") or "").strip() and _parse_qty(r.get("Quantity")) > 0
+        }
         cards_by_key = _cards_by_key(row_keys)
         for card_id, variant in row_keys:
             if (card_id, variant) not in cards_by_key:
+                if (card_id, variant) not in owned_keys:
+                    # Unowned variant ("all variants" export, issue #340):
+                    # counted, not one warning per row.
+                    result.unowned_rows_skipped += 1
+                    continue
                 variant_label = f" ({variant})" if variant else ""
                 result.warnings.append(
                     f"{category}: kort med Id '{card_id}'{variant_label} finnes ikke i databasen "
@@ -510,6 +532,12 @@ def _log_import(db: Session, result: ImportResult, source: str, filenames: list[
             warnings_count=len(result.warnings),
             job="dex-sync",
             status="ok",
+            message=(
+                f"Skipped {result.unowned_rows_skipped} rows with quantity 0 for cards not in the "
+                "database (unowned variants)"
+                if result.unowned_rows_skipped
+                else None
+            ),
             # One warning per line; a warning's own line breaks are flattened
             # so the split back into a list on /sync-status stays 1:1.
             warnings_text="\n".join(" ".join(w.splitlines()) for w in result.warnings) or None,

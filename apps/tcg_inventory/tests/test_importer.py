@@ -1,7 +1,7 @@
 import datetime as dt
 
 import pytest
-from conftest import make_csv
+from conftest import make_csv, owned_first
 
 import card_images
 import importer
@@ -333,8 +333,9 @@ def test_duplicates_total_value_unique_value_are_derived(db_session):
 
 
 def test_duplicates_never_negative_for_zero_qty(db_session):
-    csv = make_csv("My Collection", [{"id": "a", "qty": 0, "price": "5"}])
-    import_dex_csv_files(db_session, [("main.csv", csv)])
+    rows = [{"id": "a", "qty": 0, "price": "5"}]
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert card.duplicates == 0
 
@@ -882,3 +883,99 @@ def test_import_with_a_stored_fx_rate_prices_as_before(db_session, monkeypatch):
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert result.price_lookup_degraded is False
     assert card.tcgplayer_price == 9.99
+
+
+# --- Quantity-0 rows from Dex's "all variants" export (issue #340) ---
+
+
+def test_qty_zero_my_collection_row_for_unknown_card_creates_nothing(db_session):
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "owned", "variant": "Normal", "qty": 1},
+            {"id": "owned", "variant": "Reverse Holo", "qty": 0},
+            {"id": "unowned", "qty": 0},
+        ],
+    )
+    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    cards = {(c.card_id, c.variant) for c in db_session.query(Card)}
+    assert cards == {("owned", "Normal")}
+    assert result.cards_created == 1
+    assert result.unowned_rows_skipped == 2
+    assert result.warnings == []
+    log = db_session.query(ImportLog).one()
+    assert log.warnings_count == 0
+    assert "Skipped 2 rows with quantity 0" in log.message
+
+
+def test_existing_card_going_to_qty_zero_is_still_updated(db_session):
+    first = make_csv("My Collection", [{"id": "a", "qty": 2, "price": "5.0"}])
+    import_dex_csv_files(db_session, [("main.csv", first)])
+
+    second = make_csv("My Collection", [{"id": "a", "qty": 0, "price": "7.0"}])
+    result = import_dex_csv_files(db_session, [("main.csv", second)])
+
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.qty == 0
+    assert card.reference_price == 7.0
+    assert card.flagged_missing_since is None  # seen, so not flagged missing
+    assert result.cards_updated == 1
+    assert result.unowned_rows_skipped == 0
+
+
+def test_flagged_card_reappearing_at_qty_zero_is_unflagged_as_before(db_session):
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a"}, {"id": "b"}]))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "b"}]))])
+    card = db_session.query(Card).filter(Card.card_id == "a").one()
+    assert card.flagged_missing_since is not None
+
+    csv = make_csv("My Collection", [{"id": "a", "qty": 0}, {"id": "b"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    db_session.refresh(card)
+    assert card.flagged_missing_since is None
+    assert card.qty == 0
+
+
+def test_qty_zero_rows_still_count_as_seen_for_the_circuit_breaker(db_session):
+    rows = [{"id": f"c{i}"} for i in range(30)]
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
+
+    # Every existing card comes back at qty 0: nothing is newly missing, so
+    # the breaker doesn't trip and nothing is flagged.
+    zeros = [{"id": f"c{i}", "qty": 0} for i in range(30)]
+    result = import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", zeros))])
+
+    assert result.cards_flagged_missing == 0
+    assert result.cards_updated == 30
+
+
+def test_unowned_qty_zero_collection_rows_are_counted_not_warned(db_session):
+    main = make_csv("My Collection", [{"id": "v1", "variant": "Normal"}])
+    vintage = make_csv(
+        "Vintage Collection",
+        [
+            {"id": "v1", "variant": "Normal", "qty": 1},
+            {"id": "v1", "variant": "Reverse Holo", "qty": 0},
+            {"id": "v2", "qty": 0},
+            {"id": "v3", "qty": 0},
+        ],
+    )
+    result = import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage)])
+
+    assert result.warnings == []
+    assert result.unowned_rows_skipped == 3
+    vintage_coll = db_session.query(Collection).filter(Collection.name == "Vintage Collection").one()
+    assert {(c.card_id, c.variant) for c in vintage_coll.cards} == {("v1", "Normal")}
+
+
+def test_unknown_collection_row_with_quantity_still_warns_individually(db_session):
+    main = make_csv("My Collection", [{"id": "v1"}])
+    vintage = make_csv("Vintage Collection", [{"id": "v1"}, {"id": "ghost", "qty": 1}, {"id": "zero", "qty": 0}])
+    result = import_dex_csv_files(db_session, [("main.csv", main), ("vintage.csv", vintage)])
+
+    assert len(result.warnings) == 1
+    assert "'ghost'" in result.warnings[0]
+    assert "finnes ikke i databasen" in result.warnings[0]
+    assert result.unowned_rows_skipped == 1

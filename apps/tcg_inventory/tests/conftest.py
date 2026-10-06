@@ -201,3 +201,15 @@ def make_csv(category: str, rows: list[dict]) -> bytes:
             f"{variant};{rarity};{illustrator};{qty};{price};;;;;"
         )
     return "\n".join(lines).encode("utf-8")
+
+
+def owned_first(rows: list[dict]) -> list[dict]:
+    """The same rows with every quantity raised to at least 1.
+
+    Since #340 the importer never creates a card from a quantity-0 My
+    Collection row (Dex's "all variants" export lists every unowned variant
+    at 0); only a card already in the database can go to 0. A test that
+    needs a sold/traded-away (qty 0) card imports `owned_first(rows)` first
+    and then `rows`, the same way such a card reaches 0 in real life.
+    """
+    return [{**row, "qty": row.get("qty", 1) or 1} for row in rows]
