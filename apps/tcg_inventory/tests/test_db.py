@@ -468,7 +468,7 @@ def test_migration_from_v12_creates_won_items_with_rls(monkeypatch):
     db_module.init_db()
 
     assert inspect(engine).has_table("won_items")
-    assert db_module._get_schema_version() == 13
+    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION
     fake = _FakePostgresEngine()
     monkeypatch.setattr(db_module, "engine", fake)
     db_module._enable_row_level_security()

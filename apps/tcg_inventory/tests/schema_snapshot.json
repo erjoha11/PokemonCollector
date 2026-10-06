@@ -1,6 +1,6 @@
 {
-  "schema_version": 13,
-  "fingerprint": "54d1ac7549867281fbb64aad78cfb860bcea47d0483ec3dc9ce557d38324b621",
+  "schema_version": 14,
+  "fingerprint": "0aad460e8ce71c960633f9cf8f4bb3880bd0e2ace4bb994824bbfe9b96b58888",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -97,6 +97,12 @@
       ["status", "VARCHAR", true],
       ["warnings_count", "INTEGER", false],
       ["warnings_text", "TEXT", true]
+    ],
+    "job_locks": [
+      ["job", "VARCHAR", false],
+      ["started_at", "DATETIME", false],
+      ["token", "VARCHAR", false],
+      ["trigger", "VARCHAR", true]
     ],
     "listing_cards": [
       ["card_id", "INTEGER", false],

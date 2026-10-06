@@ -647,8 +647,10 @@ table `sets` replaces — kept in place, unused going forward), `releases`
 so its rows aren't lost — `notes/CHANGELOG.md` is the record of changes
 now), `import_log` (one row per background-job run, see "Sync status"), `master_cards`/`master_card_ids`
 (masterdata, see below), `card_prices`/`fx_rates` (per-source prices
-and stored exchange rates, see "Pricing" below), and `won_items` (Facebook
-wins waiting to be registered, see "Facebook wins inbox" below).
+and stored exchange rates, see "Pricing" below), `won_items` (Facebook
+wins waiting to be registered, see "Facebook wins inbox" below), and
+`job_locks` (one row per background job currently running, see "Sync
+status" → "Single-flight guard").
 
 ### Masterdata (card identity across catalogs)
 
@@ -971,7 +973,7 @@ of these does:
 
 | Job (`job`) | Recorded outcomes (`status`) | Written by |
 |---|---|---|
-| `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error) | `importer._log_import` (ok), `/cron/dropbox-sync` (the rest) |
+| `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error, or "Interrupted": a run killed before it finished, #340) | `importer._log_import` (ok), `/cron/dropbox-sync` (the rest), `job_locks` (interrupted) |
 | `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `degraded` (no prices written, only the FX fallback constant was available, #229; shown as a problem), `failed` | `/cron/price-refresh` |
 | `set-sync` | `ok`, `failed` (API call failed, or an error) | `/cron/set-sync` |
 | `image-backfill` | `ok`, `failed` | `/cron/image-backfill` |
@@ -996,6 +998,36 @@ caller has committed (success) or rolled back (abort/failure) and commits
 its row on its own, so an aborted import's rollback never takes the log row
 with it. It never raises: a failure to write the log is printed and rolled
 back rather than masking the job's real response.
+
+### Single-flight guard (issue #340)
+
+Only one Dex sync (`/cron/dropbox-sync`) runs at a time. Two overlapping
+runs (a manual trigger plus a retry) deadlocked on `cards`, and a run
+killed by Vercel's 300 s limit left no trace at all. Built to #274's
+design so #274 can extend it to every job:
+
+- **`job_locks` table** (`models.JobLock`: `job` primary key,
+  `started_at`, `trigger`, `token`; schema version 14). A run inserts the
+  `dex-sync` row before doing anything (before Dropbox) and deletes it when
+  it ends, whatever the outcome. `job_locks.py` holds the logic; the lock
+  uses its own session, so its commits never mix with the sync's.
+- **Already running.** A second run while the row is live gets HTTP 409
+  `{"status": "already_running", "job", "started_at", "trigger", "error"}`
+  and writes nothing (no `import_log` row, no Dropbox call).
+- **Killed runs.** A row older than `job_locks.STALE_AFTER` (15 min,
+  well above Vercel's limit) belongs to a run that died. The next run takes
+  it over, and the dead run gets a `failed` row on Sync status, dated when
+  it started, with "Interrupted: ... no result recorded". Loading
+  `/sync-status` does the same cleanup (`job_locks.reap_stale`), so a
+  killed run shows up there without waiting for the next sync. Writes are
+  conditional on the row's random `token`, so racing instances record a
+  dead run once, and a slow run's late release never drops a newer run's
+  lock.
+- **Not** a session-level `pg_advisory_lock`: with NullPool and Supabase's
+  transaction-mode pooler it isn't held reliably for a whole run, and an
+  advisory lock couldn't make a killed run visible anyway. Works the same
+  on SQLite and Postgres. A new table, so `init_db()` creates it and its
+  RLS pass covers it.
 
 ### Missing from Dex
 
@@ -1190,6 +1222,9 @@ To turn it on:
 3. Redeploy. Vercel's dashboard (Project → Cron Jobs) shows each run and
    its response — `cards_created`/`cards_updated`/etc. and any warnings.
    The in-app Sync status page (`/sync-status`) shows the same runs.
+   If a sync is already running (e.g. a manual trigger overlapping the
+   cron), the route returns HTTP 409 with `{"status": "already_running"}`
+   and changes nothing (see "Sync status" → "Single-flight guard").
 
 Keep your Dropbox folder holding the *current* full set of exports (main
 collection + Vintage + whatever else you track) — each cron run syncs
@@ -1971,6 +2006,8 @@ file locally following the steps above and add a dated line here.
 - `won_inbox.py` — the Facebook wins inbox: checks fb_auction_watcher's
   payload and stages it in `won_items`, and the link flow's candidate
   matching and Register bookkeeping (see "Facebook wins inbox" above).
+- `job_locks.py` — single-flight guard for background jobs (`job_locks`
+  table; see "Sync status" → "Single-flight guard").
 - `sync_status.py` — records background-job runs in `import_log` and builds
   the `/sync-status` at-a-glance block (see "Sync status").
 - `pricing.py` — per-source prices (`card_prices`) and the resolver that

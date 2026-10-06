@@ -54,6 +54,7 @@ def record_run(
     source: str,
     message: str | None = None,
     files: list[str] | None = None,
+    ran_at: dt.datetime | None = None,
 ) -> ImportLog | None:
     """Add and commit one `import_log` row for a job run.
 
@@ -62,12 +63,15 @@ def record_run(
     is committed on its own, so an aborted import's rollback never takes the
     log row with it.
 
+    `ran_at` defaults to now; a run recorded after the fact (an interrupted
+    one, see job_locks) passes the time it started.
+
     Never raises: failing to write the log must not turn a finished job (or
     its real error response) into a different error. A failure here is
     printed for Vercel's runtime logs and rolled back.
     """
     row = ImportLog(
-        ran_at=dt.datetime.utcnow(),
+        ran_at=ran_at or dt.datetime.utcnow(),
         source=source,
         files=", ".join(files) if files else None,
         job=job,
