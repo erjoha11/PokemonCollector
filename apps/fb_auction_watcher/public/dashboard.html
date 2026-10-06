@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Auction overview</title>
+  <title>Auction dashboard</title>
   <link rel="stylesheet" href="dashboard.css">
 </head>
 <body>
   <header>
     <div class="top">
-      <h1>Auction overview</h1>
+      <h1>Auction dashboard</h1>
       <span id="last-read" class="muted"></span>
       <button id="open-settings" type="button" class="settings-button" aria-haspopup="dialog" aria-controls="settings">⚙ Settings</button>
     </div>
@@ -46,8 +46,8 @@
     <div class="counters">
       <div class="counter"><span id="count-active" class="num">–</span><span class="label">Active</span></div>
       <div class="counter soon"><span id="count-hour" class="num">–</span><span class="label">Within 1 hour</span></div>
-      <div class="counter outbid" title="Lots where you've been outbid, might have been, or someone claimed first"><span id="count-needs" class="num">–</span><span class="label">Need you</span></div>
-      <div class="counter won"><span id="count-won" class="num">–</span><span class="label">Won lots</span></div>
+      <a class="counter outbid" href="#needs" title="Lots where you've been outbid, might have been, or someone claimed first. Click to go to Needs you."><span id="count-needs" class="num">–</span><span class="label">Needs you</span></a>
+      <a class="counter won" href="#topay" title="Lots you've won. Click to go to To pay."><span id="count-won" class="num">–</span><span class="label">Won lots</span></a>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
     <nav id="tabs" class="tabs" role="tablist" aria-label="Sales"></nav>
@@ -67,54 +67,55 @@
       <h2 id="settings-title">Settings</h2>
       <button type="button" class="settings-close" aria-label="Close">×</button>
     </div>
-      <div class="setting">
-        <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
-        <div id="auto-scan-status" class="muted small"></div>
-        <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab. While it's on, auctions you're bidding in are also re-read in the background every 15 min.</div>
+    <div class="setting">
+      <label><input id="auto-scan" type="checkbox"> Scan the feed automatically every 10–15 min</label>
+      <div id="auto-scan-status" class="muted small"></div>
+      <div class="muted small">Uses a <strong>pinned</strong> tab with the group's feed (right-click the tab → Pin). Pauses while your screen is locked or you're away, and skips a round while you're looking at that tab. While it's on, auctions you're bidding in are also re-read in the background every 15 min.</div>
+    </div>
+    <div class="setting">
+      <h3 class="setting-title">Post reads</h3>
+      <div id="reader-status" class="muted small"></div>
+      <div class="muted small">A sale's <strong>Read</strong> button reads its lots and bids now, in a background tab that closes itself. Automatic re-reads use the same kind of tab, one post at a time.</div>
+    </div>
+    <div class="setting">
+      <label><input id="use-claude" type="checkbox"> Ask Claude about what the rules can't read</label>
+      <div id="claude-status" class="muted small"></div>
+    </div>
+    <div class="setting">
+      <label><input id="notify" type="checkbox"> Desktop notifications</label>
+      <div class="muted small">When a read finds you've been outbid, 10 minutes before a sale you're bidding in ends, and what you won or lost once it's over. Clicking one opens the lot on Facebook. Outbid and won/lost come from background reads, so auto-scan needs to be on for them to arrive by themselves.</div>
+    </div>
+    <div class="setting">
+      <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
+      <input id="my-name" type="text" autocomplete="off">
+      <div id="my-name-status" class="muted small" role="status"></div>
+    </div>
+    <div class="setting">
+      <h3 class="setting-title">Send wins to tcg_inventory</h3>
+      <div class="muted small">Under To pay, tick <strong>Send</strong> on the won auctions you want, then <strong>Send selected to inventory</strong>: it sends those wins (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory, where they wait to be registered as orders. Nothing else is sent: no post reads, other people's names or comments.</div>
+      <label for="inbox-url" class="sub-label">Address</label>
+      <input id="inbox-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://your-app.vercel.app">
+      <label for="inbox-token" class="sub-label">Inbox token (INBOX_TOKEN on the server)</label>
+      <input id="inbox-token" type="password" autocomplete="off" spellcheck="false">
+      <div class="clear-data">
+        <button type="button" id="inbox-save">Save</button>
+        <span id="inbox-save-status" class="muted small" role="status"></span>
       </div>
-      <div class="setting">
-        <label>Post reads</label>
-        <div id="reader-status" class="muted small"></div>
-        <div class="muted small">A sale's <strong>Read</strong> button reads its lots and bids now, in a background tab that closes itself. Automatic re-reads use the same kind of tab, one post at a time.</div>
+    </div>
+    <div class="setting">
+      <h3 class="setting-title">Stored data</h3>
+      <div id="cleanup-status" class="muted small"></div>
+      <div class="muted small">Kept on this computer only, and only as long as it's useful: a sale's post read (names, comments, bids) is deleted 7 days after it ends (30 days if you bid or claimed in it), posts not seen in the feed for 14 days go too, and so do Claude's answers nothing uses any more. Checked once a day. Running sales are never touched.</div>
+      <div class="clear-data">
+        <button type="button" id="clear-data">Clear stored data</button>
+        <span id="clear-confirm" hidden>
+          Delete every stored post, post read and Claude answer? Your settings are kept.
+          <button type="button" id="clear-yes" class="danger">Delete all</button>
+          <button type="button" id="clear-no">Cancel</button>
+        </span>
+        <span id="clear-done" class="muted small" role="status"></span>
       </div>
-      <div class="setting">
-        <label><input id="use-claude" type="checkbox"> Ask Claude about what the rules can't read</label>
-        <div id="claude-status" class="muted small"></div>
-      </div>
-      <div class="setting">
-        <label><input id="notify" type="checkbox"> Desktop notifications</label>
-        <div class="muted small">When a read finds you've been outbid, 10 minutes before a sale you're bidding in ends, and what you won or lost once it's over. Clicking one opens the lot on Facebook. Outbid and won/lost come from background reads, so auto-scan needs to be on for them to arrive by themselves.</div>
-      </div>
-      <div class="setting">
-        <label for="my-name">Your name on Facebook (for Leading/Outbid)</label>
-        <input id="my-name" type="text" autocomplete="off">
-      </div>
-      <div class="setting">
-        <label>Send wins to tcg_inventory</label>
-        <div class="muted small">Under To pay, tick <strong>Send</strong> on the won auctions you want, then <strong>Send selected to inventory</strong>: it sends those wins (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory, where they wait to be registered as orders. Nothing else is sent: no post reads, other people's names or comments.</div>
-        <label for="inbox-url" class="sub-label">Address</label>
-        <input id="inbox-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://your-app.vercel.app">
-        <label for="inbox-token" class="sub-label">Inbox token (INBOX_TOKEN on the server)</label>
-        <input id="inbox-token" type="password" autocomplete="off" spellcheck="false">
-        <div class="clear-data">
-          <button type="button" id="inbox-save">Save</button>
-          <span id="inbox-save-status" class="muted small" role="status"></span>
-        </div>
-      </div>
-      <div class="setting">
-        <label>Stored data</label>
-        <div id="cleanup-status" class="muted small"></div>
-        <div class="muted small">Kept on this computer only, and only as long as it's useful: a sale's post read (names, comments, bids) is deleted 7 days after it ends (30 days if you bid or claimed in it), posts not seen in the feed for 14 days go too, and so do Claude's answers nothing uses any more. Checked once a day. Running sales are never touched.</div>
-        <div class="clear-data">
-          <button type="button" id="clear-data">Clear stored data</button>
-          <span id="clear-confirm" hidden>
-            Delete every stored post, post read and Claude answer? Your settings are kept.
-            <button type="button" id="clear-yes" class="danger">Delete all</button>
-            <button type="button" id="clear-no">Cancel</button>
-          </span>
-          <span id="clear-done" class="muted small" role="status"></span>
-        </div>
-      </div>
+    </div>
   </dialog>
   <dialog id="photo" aria-label="Photo">
     <button type="button" class="photo-close" aria-label="Close">×</button>

@@ -299,6 +299,8 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 ## Design
 
 - **Colors:** blue `#2457D6` = Leading, orange `#C2570C` = Outbid, red `#B42318` = under 1 h.
+- **Finished and lost is grey** (2026-10-06): "Lost" and your own "Outbid (your mark)" use the muted
+  grey (`lotStatus` `cls: "lost"`), matching the row's grey edge; orange is kept for what still needs you.
 - **Sale-type colors** (added 2026-10-05, #322; `--type-*` in `dashboard.css`): purple `#8250DF` =
   Auction, teal `#1B7C83` = Claim, gold `#9A6700` = Fixed price; Unknown uses the muted grey with a
   dashed border. Dark theme: `#a371f7` / `#39c5cf` / `#d29922`. New tokens because reusing blue/orange
@@ -309,6 +311,10 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
 
 ### Table page (`dashboard.html`)
 
+- Titled **Auction dashboard**, matching the menu's Open Dashboard (2026-10-06). The Needs you and
+  Won lots counters link to their sections in My Auctions. The table's how-to line has a **Got it**
+  that hides it in this browser. Keyboard focus (a tab, a row, a Read button, a card header) is put
+  back after each redraw, which happens every 30 s.
 - My Auctions above the numbers (redesigned 2026-10-04; it had become one card per sale with
   every lot, 26 equal cards for one busy bidder): a summary line, then **Needs you** (lots where
   you must act: outbid, unclear, check; across sales, soonest first, 5 then "Show all"; each links

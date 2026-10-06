@@ -12,8 +12,6 @@ h1 { font-size: 14px; margin: 0 0 8px; }
 .muted { color: var(--muted); margin: 0 0 8px; }
 .small { font-size: 12px; }
 .actions { display: grid; gap: 6px; margin-bottom: 8px; }
-.hint { margin: -2px 0 2px; }
-.hint:empty { display: none; }
 button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--soft); color: var(--text); cursor: pointer; text-align: left; }
 button:hover:not(:disabled) { border-color: var(--lead); }
 button.primary { background: var(--lead); border-color: var(--lead); color: #fff; }
