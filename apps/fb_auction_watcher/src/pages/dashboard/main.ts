@@ -473,14 +473,14 @@ function saleCell(r: Row): HTMLTableCellElement {
   if (r.conditionText) box.append(el("div", "muted small", `Condition: ${r.conditionText}`));
   wrap.append(box, saleActions(r));
   // The full text, and when it was first seen (the Seen column until 2026-10-04).
-  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", r.conditionText ? `Tilstand: ${r.conditionText}` : ""]
+  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", r.conditionText ? `Condition: ${r.conditionText}` : ""]
     .filter(Boolean)
     .join("\n");
   return td;
 }
 
 function sellerCell(r: Row): HTMLTableCellElement {
-  const td = el("td", "seller-col", r.sellerName ?? "Unknown");
+  const td = el("td", r.sellerName ? "seller-col" : "seller-col muted", r.sellerName ?? "Unknown");
   if (r.sellerName) td.title = r.sellerName;
   return td;
 }
@@ -934,7 +934,7 @@ function renderMine(now: Date) {
   if (needs.length) parts.push(`${needs.length} need${needs.length === 1 ? "s" : ""} you`);
   if (leadingLots) parts.push(`${leadingLots} leading (${leadingKr} kr if they hold)`);
   if (toPay.length) parts.push(`${sellerTotal(owe)} to pay`);
-  $("#mine-summary").textContent = parts.join(" · ") || "Nothing open. Click a sale's title below to read its bids.";
+  $("#mine-summary").textContent = parts.join(" · ") || "Nothing open. Click Read on a sale below to read its bids.";
 
   // Needs you.
   $("#needs-count").textContent = String(needs.length);
@@ -1075,7 +1075,33 @@ function renderSettings(now: Date) {
     cleanup.lastAt && cleanup.lastOutcome ? `Last cleanup ${ago(cleanup.lastAt, now)}: ${cleanup.lastOutcome}` : "No cleanup has run yet.";
 }
 
+/**
+ * What has keyboard focus among the things render() rebuilds (a tab, a table row or its Read
+ * button, a Leading / To pay card's header or its Read button), as a selector to find it again.
+ */
+function focusSelector(): string | null {
+  const a = document.activeElement;
+  if (!(a instanceof HTMLElement) || a === document.body) return null;
+  if (a.matches("#tabs [data-tab]")) return `#${a.id}`;
+  const fold = a.closest<HTMLElement>("details[data-fold]");
+  if (fold) {
+    const card = `details[data-fold="${CSS.escape(fold.dataset.fold!)}"] > summary`;
+    if (a.tagName === "SUMMARY") return card;
+    if (a.matches(".act-btn")) return `${card} .act-btn`;
+  }
+  const row = a.closest<HTMLElement>("tr[data-id]");
+  if (row && (a === row || a.matches(".act-btn"))) return `tr[data-id="${CSS.escape(row.dataset.id!)}"]${a === row ? "" : " .act-btn"}`;
+  return null;
+}
+
+/** Redraws the page, and puts keyboard focus back where it was (it redraws every 30 s). */
 function render() {
+  const refocus = focusSelector();
+  draw();
+  if (refocus && !document.activeElement?.matches(refocus)) document.querySelector<HTMLElement>(refocus)?.focus({ preventScroll: true });
+}
+
+function draw() {
   const now = new Date();
   const visible = rows.filter(matches);
   const counts = countRows(rows, now);
@@ -1090,7 +1116,7 @@ function render() {
   const main = $<HTMLElement>("#groups");
   main.replaceChildren();
   if (rows.length === 0) {
-    main.append(el("p", "empty", "No sales yet. Open the group's feed on Facebook and click the extension icon to scan it."));
+    main.append(el("p", "empty", "No sales yet. Click the extension's icon, then Open feed and scan."));
     return;
   }
   // Tabs, with how many sales each holds under the current filter and search.
@@ -1112,7 +1138,7 @@ function render() {
   );
   main.setAttribute("aria-labelledby", `tab-${tab}`);
   const current = all.find((x) => x.id === tab)!;
-  main.append(el("p", "table-hint", "Click a sale's name to open it on Facebook · Read reads its lots and bids now · click a row to show its lots"));
+  if (local.get("fbaw-hint-hidden") !== "1") main.append(tableHint());
   if (current.count === 0) {
     main.append(el("p", "empty", query || filter !== "all" ? "Nothing here matches the filter." : EMPTY_TAB[tab]));
     return;
@@ -1138,6 +1164,7 @@ function render() {
     }
     for (const r of section.rows) {
       const tr = el("tr");
+      tr.dataset.id = r.id;
       const tone = rowTone(r);
       if (tone) tr.classList.add(`mine-${tone}`);
       // Ended under 30 min ago, still in an active tab (#320): shown as ended, dimmed.
@@ -1152,6 +1179,19 @@ function render() {
     }
   }
   main.append(table);
+}
+
+/** How the table works, until you click "Got it" (then remembered in this browser). */
+function tableHint(): HTMLParagraphElement {
+  const hint = el("p", "table-hint", "Click a sale's name to open it on Facebook · Read reads its lots and bids now · click a row to show its lots · ");
+  const ok = el("button", "linkish", "Got it");
+  ok.type = "button";
+  ok.addEventListener("click", () => {
+    local.set("fbaw-hint-hidden", "1");
+    hint.remove();
+  });
+  hint.append(ok);
+  return hint;
 }
 
 const EMPTY_TAB: Record<TabId, string> = {
@@ -1237,8 +1277,17 @@ $<HTMLInputElement>("#use-claude").addEventListener("change", (e) => {
   void updateSettings({ useClaude: (e.target as HTMLInputElement).checked });
 });
 $<HTMLInputElement>("#my-name").addEventListener("change", (e) => {
-  const name = (e.target as HTMLInputElement).value.trim();
-  if (name) void updateSettings({ myName: name });
+  const input = e.target as HTMLInputElement;
+  const name = input.value.trim();
+  const status = $<HTMLElement>("#my-name-status");
+  if (!name) {
+    // Leading/Outbid need a name: put the one in use back, and say so.
+    input.value = settings.myName;
+    status.textContent = settings.myName ? `Your name can't be empty: still using "${settings.myName}".` : "Your name can't be empty.";
+    return;
+  }
+  status.textContent = "";
+  void updateSettings({ myName: name });
 });
 // tcg_inventory's address and token (#309). Saving asks Chrome for permission to reach that
 // one address (an optional host permission, so the extension holds none until you set it up);

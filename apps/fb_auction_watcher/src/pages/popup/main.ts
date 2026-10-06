@@ -38,8 +38,10 @@ async function init() {
   }
 
   const [settings, auto] = await Promise.all([getSettings(), getAutoScanState()]);
+  const minutes = auto.nextAt ? Math.round((Date.parse(auto.nextAt) - Date.now()) / 60_000) : null;
+  const next = minutes === null ? "" : minutes < 1 ? ", next in under a minute" : `, next in ${minutes} min`;
   $("auto").textContent = settings.autoScan
-    ? `Auto-scan on${auto.nextAt ? `, next in ${Math.max(0, Math.round((Date.parse(auto.nextAt) - Date.now()) / 60_000))} min` : ""}${auto.lastOutcome ? ` · last: ${auto.lastOutcome}` : ""}. Switch it off in the dashboard's Settings.`
+    ? `Auto-scan on${next}${auto.lastOutcome ? ` · last: ${auto.lastOutcome}` : ""}. Switch it off in the dashboard's Settings.`
     : "Auto-scan is off (switch it on in the dashboard's Settings).";
 }
 

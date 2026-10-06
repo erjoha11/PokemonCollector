@@ -18,7 +18,7 @@ describe("lotStatus", () => {
   it("ended: Won / Lost only when read after the end plus antisnipe", () => {
     const readAfter = row({ ended: true, lastReadAt: "2026-10-04T16:06:00Z", lastCompleteReadAt: "2026-10-04T16:06:00Z" });
     expect(lotStatus(readAfter, lot({ myStatus: "lead" }))).toMatchObject({ label: "Won", cls: "won" });
-    expect(lotStatus(readAfter, lot({ myStatus: "outbid" }))).toMatchObject({ label: "Lost" });
+    expect(lotStatus(readAfter, lot({ myStatus: "outbid" }))).toMatchObject({ label: "Lost", cls: "lost" });
     // Read before the end (or inside the antisnipe window): only what was true then.
     const readBefore = row({ ended: true, lastReadAt: "2026-10-04T16:03:00Z", lastCompleteReadAt: "2026-10-04T16:03:00Z" });
     expect(lotStatus(readBefore, lot({ myStatus: "lead" }))).toMatchObject({ label: "Leading at last read", cls: "lead" });

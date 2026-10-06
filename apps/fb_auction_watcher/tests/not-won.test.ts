@@ -53,7 +53,7 @@ describe("Outbid (your mark)", () => {
     const all = rows({ "2001:9002": at, "2001:pos3": at });
     const [r] = all;
     expect(r.lots!.map((l) => lotStatus(r, l).key)).toEqual(["won", "lost", "lost"]);
-    expect(lotStatus(r, r.lots![1])).toEqual({ key: "lost", label: "Outbid (your mark)", cls: "outbid" });
+    expect(lotStatus(r, r.lots![1])).toEqual({ key: "lost", label: "Outbid (your mark)", cls: "lost" });
     const [g] = wonBySeller(all);
     expect(g.items.map((i) => i.label)).toEqual(["1. Gengar"]);
     expect(g.kr).toBe(50);

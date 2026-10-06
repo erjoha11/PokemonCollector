@@ -252,8 +252,8 @@ export function ago(iso: string, now: Date): string {
 export type LotStatus = {
   key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "leading-at-last-read" | "outbid-at-last-read" | "check";
   label: string;
-  /** CSS class: lead (blue), won (green), outbid (orange). */
-  cls: "lead" | "won" | "outbid" | "none";
+  /** CSS class: lead (blue), won (green), outbid (orange), lost (grey: finished, nothing to do). */
+  cls: "lead" | "won" | "outbid" | "lost" | "none";
 };
 
 /**
@@ -274,12 +274,12 @@ export const notWonAt = (r: Pick<Row, "notWon">, l: Pick<Lot, "commentId" | "pos
 
 /**
  * Your status on a lot. Your outbid mark (#329) overrides what the rules read for a lot you bid on
- * or claimed: the lot is lost to someone else, as if a bid had beaten yours (an orange "Outbid"),
+ * or claimed: the lot is lost to someone else, as if a bid had beaten yours (a grey "Outbid (your mark)", like Lost),
  * so it's off To pay and out of what's sent to tcg_inventory, until you undo it.
  */
 export function lotStatus(r: Row, l: Lot): LotStatus {
   const status = lotStatusByRules(r, l);
-  if (status.key !== "none" && notWonAt(r, l)) return { key: "lost", label: "Outbid (your mark)", cls: "outbid" };
+  if (status.key !== "none" && notWonAt(r, l)) return { key: "lost", label: "Outbid (your mark)", cls: "lost" };
   return status;
 }
 
@@ -298,7 +298,7 @@ function lotStatusByRules(r: Row, l: Lot): LotStatus {
       return { key: "unclear", label: "Leading?", cls: "outbid" };
     case "outbid":
       if (!r.ended) return { key: "outbid", label: "Outbid", cls: "outbid" };
-      return final ? { key: "lost", label: "Lost", cls: "outbid" } : { key: "outbid-at-last-read", label: "Outbid at last read", cls: "outbid" };
+      return final ? { key: "lost", label: "Lost", cls: "lost" } : { key: "outbid-at-last-read", label: "Outbid at last read", cls: "outbid" };
     default:
       return { key: "none", label: "", cls: "none" };
   }

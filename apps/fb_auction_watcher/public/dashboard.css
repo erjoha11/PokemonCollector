@@ -47,48 +47,81 @@ header { padding-top: 20px; }
 .top { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 h1 { font-size: 22px; margin: 0; }
 .muted { color: var(--muted); }
+.small { font-size: 12px; }
+.empty { color: var(--muted); padding: 24px 0; }
+.linkish { font: inherit; font-size: 12px; background: none; border: none; color: var(--lead); padding: 0; cursor: pointer; text-decoration: underline; }
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Counters. Need you and Won lots jump to their sections in My Auctions. */
 .counters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
 .counter { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; }
+a.counter { color: inherit; text-decoration: none; }
+a.counter:hover { border-color: var(--lead); }
+a.counter:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; }
 .counter .num { font: 600 26px/1.1 var(--mono); }
 .counter .label { color: var(--muted); font-size: 12px; }
 .counter.soon .num { color: var(--soon); }
 .counter.outbid .num { color: var(--outbid); }
+.counter.won .num { color: var(--new); }
 
+/* Tabs (New · Today · Upcoming · No end · My bids · Ended), then the filters that narrow the tab down. */
+.tabs { display: flex; gap: 2px; margin: 16px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tab { font: inherit; font-size: 14px; font-weight: 600; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
+.tab:hover { color: var(--text); }
+.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--lead); }
+.tab .group-count { margin-left: 2px; }
+.group-count { font: 12px var(--mono); color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; }
 .controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
 .filters { display: flex; gap: 4px; flex-wrap: wrap; }
 .filters button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
 .filters button[aria-pressed="true"] { background: var(--lead); border-color: var(--lead); color: #fff; }
 #search { font: inherit; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 220px; flex: 1; max-width: 360px; }
+.table-hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
 
-.group { margin: 20px 0; }
-.group-title { font-size: 15px; margin: 0 0 8px; cursor: default; }
-summary.group-title { cursor: pointer; }
-.group-count { font: 12px var(--mono); color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; }
-.group-soon .group-title { color: var(--soon); }
-
+/* The sales table: compact, two lines per row, fixed column widths; Sale takes the rest, long text cut with "…". */
 table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--border); }
-td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--border); }
+td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
 tr:last-child td { border-bottom: none; }
+#groups > table { margin-top: 6px; table-layout: fixed; }
+#groups th:nth-child(1) { width: 120px; } /* Ends */
+#groups th:nth-child(2) { width: 90px; }  /* Added */
+#groups th:nth-child(4) { width: 160px; } /* Seller */
+#groups th:nth-child(5) { width: 130px; } /* Price */
+#groups th:nth-child(6) { width: 130px; } /* Lots */
+#groups th:nth-child(7) { width: 190px; } /* You */
+tr.subhead td { background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; }
 
-td.ends { width: 220px; }
-.countdown { font: 600 16px var(--mono); }
+/* Ends */
+td.ends { overflow: hidden; }
+td.ends > div:first-child { white-space: nowrap; }
+.countdown { font: 600 14px var(--mono); display: inline-block; margin-right: 6px; }
+td.ends > .countdown { display: block; }
 .countdown.soon { color: var(--soon); }
 .countdown.unknown { color: var(--muted); font-weight: 400; }
+td.ends .countdown.unknown { font-size: 13px; }
+.countdown.ended { color: var(--muted); font-size: 13px; font-weight: 600; }
 .when { color: var(--muted); font-size: 12px; }
-.orig { font: 11px var(--mono); color: var(--muted); margin-top: 2px; word-break: break-word; }
-.flag { font-size: 11px; color: var(--outbid); margin-top: 2px; }
+.ends .when { display: inline; font-size: 11px; }
+/* A sale that hasn't started: its start and end on their own line, under "Starts in …". */
+.ends .starts { color: var(--muted); font-size: 11px; }
+.flag { font-size: 10px; color: var(--outbid); }
+.via { font-size: 10px; color: var(--lead); }
+.orig { font: 10px var(--mono); color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+td.added { font-size: 12px; white-space: nowrap; overflow: hidden; }
 
-.sale-wrap { display: flex; gap: 10px; align-items: flex-start; }
-.thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
-.sale-text { min-width: 0; }
-.title { color: var(--text); font-weight: 600; text-decoration: none; }
+/* Sale: photo, type badge + name, description, Read */
+.sale-wrap { display: flex; gap: 8px; align-items: center; }
+.thumb { width: 32px; height: 32px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
+.sale-text { min-width: 0; flex: 1; }
+.title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.sale .title-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.title { color: var(--text); font-size: 13px; font-weight: 600; text-decoration: none; }
 .title:hover { color: var(--lead); text-decoration: underline; }
-.desc { font-size: 13px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.seller { color: var(--muted); font-size: 12px; }
+.desc { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 5px; }
-.badge.new { color: #fff; background: var(--new); }
+.badge.new { color: #fff; background: var(--new); vertical-align: 1px; }
+.badge.just-read { display: inline-block; margin-top: 2px; color: #fff; background: var(--new); }
 /* Sale type (#322): outlined, so it never reads as a filled status pill (Leading / Outbid / New).
    Always text too; Unknown is muted and dashed. */
 .type-badge { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1.3; border: 1px solid currentColor; border-radius: 4px; padding: 0 5px; white-space: nowrap; vertical-align: 1px; }
@@ -97,116 +130,64 @@ td.ends { width: 220px; }
 .type-badge.fixed { color: var(--type-fixed); }
 .type-badge.other, .type-badge.wanted, .type-badge.trade { color: var(--muted); border-style: dashed; font-weight: 400; }
 .line-sale .type-badge { font-size: 10px; }
-td.type, td.price, td.seen { white-space: nowrap; color: var(--muted); font-size: 13px; }
-.empty { color: var(--muted); padding: 24px 0; }
+.sale-actions { display: flex; gap: 4px; flex: none; align-items: center; }
+.act-btn { font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; white-space: nowrap; }
+.act-btn:hover:not(:disabled) { border-color: var(--lead); color: var(--lead); }
+.act-btn.busy, .act-btn:disabled { color: var(--muted); cursor: default; }
 
-@media (max-width: 720px) {
-  .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .counter:last-child { grid-column: span 2; }
-  thead { display: none; }
-  table, tbody, tr, td { display: block; width: 100%; }
-  tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
-  td { border: none; padding: 2px 10px; }
-  td.ends { width: auto; }
-}
+/* Seller, Price / result, Lots, You */
+td.seller-col { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.price { white-space: nowrap; color: var(--text); font-size: 12px; }
+td.result .result-final { color: var(--muted); font-size: 11px; }
+td.lots, td.you { font-size: 12px; white-space: nowrap; }
+td.lots { overflow: hidden; }
+td.lots > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.you .status, td.lots .status { font-size: 11px; }
+td.you .small, td.you .muted { font-size: 11px; }
 
-/* Your status, lots, settings */
-.small { font-size: 12px; }
+/* Your status: blue = Leading, orange = Outbid, green = Won, grey = Lost (finished, quiet) */
 .status { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 4px; padding: 0 6px; margin-right: 4px; color: #fff; }
 .status.lead { background: var(--lead); }
 .status.outbid { background: var(--outbid); }
+.status.won { background: var(--new); }
+.status.lost { background: var(--muted); }
 tr.mine-lead > td:first-child { box-shadow: inset 4px 0 0 var(--lead); }
 tr.mine-outbid > td:first-child { box-shadow: inset 4px 0 0 var(--outbid); }
+tr.mine-won > td:first-child { box-shadow: inset 4px 0 0 var(--new); }
+tr.mine-lost > td:first-child { box-shadow: inset 4px 0 0 var(--border); }
 /* Ended under 30 min ago, still in an active tab (#320). */
 tr.just-ended > td { opacity: 0.7; }
-td.lots, td.you { font-size: 13px; white-space: nowrap; }
-.via { font-size: 11px; color: var(--lead); margin-top: 2px; }
-.linkish { font: inherit; font-size: 12px; background: none; border: none; color: var(--lead); padding: 0; cursor: pointer; text-decoration: underline; }
-tr.lots-row > td { background: var(--bg); }
-.lot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
-.lot { display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 13px; }
-.lot.lot-lead { border-left: 4px solid var(--lead); }
-.lot.lot-outbid { border-left: 4px solid var(--outbid); }
-.lot-img { width: 56px; height: 76px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
-.lot-title { font-weight: 600; }
-.lot .status { margin-top: 2px; }
-.settings-button { margin-left: auto; font: inherit; font-size: 13px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
-.settings-button:hover { border-color: var(--lead); color: var(--lead); }
-#settings { width: min(640px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); padding: 16px; }
-#settings::backdrop { background: rgb(0 0 0 / .4); }
-.settings-head { display: flex; align-items: center; justify-content: space-between; }
-.settings-head h2 { margin: 0; font-size: 18px; }
-.settings-close { font-size: 22px; line-height: 1; background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
-.setting { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
-.setting label { font-weight: 600; }
-.setting input[type="text"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }
-.setting input[type="password"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }
-.setting .sub-label { display: block; margin-top: 8px; font-weight: 400; font-size: 13px; }
-.send-wins { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.send-wins button:not(.linkish) { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-.send-wins button:not(.linkish):hover { border-color: var(--lead); color: var(--lead); }
-.send-wins button:disabled { opacity: 0.6; cursor: default; }
-.send-wins .error { color: var(--soon); }
-.send-pick { font-weight: 600; cursor: pointer; white-space: nowrap; }
-.sent-mark { color: var(--new); font-weight: 600; }
-.clear-data { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
-.clear-data button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
-.clear-data button.danger { background: var(--soon); border-color: var(--soon); color: #fff; }
-.title-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
-.open-link { font-size: 12px; color: var(--muted); text-decoration: none; }
-.open-link:hover { color: var(--lead); text-decoration: underline; }
-.badge.reading { color: var(--lead); border: 1px solid var(--lead); }
-.badge.just-read { display: inline-block; margin-top: 2px; color: #fff; background: var(--new); }
 
-/* Photo lightbox */
-img.zoomable { cursor: zoom-in; }
-img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; }
-#photo { border: none; padding: 0; background: transparent; max-width: 92vw; max-height: 92vh; overflow: visible; cursor: zoom-out; }
-#photo::backdrop { background: rgba(0, 0, 0, .8); }
-#photo img { display: block; max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 6px; background: var(--surface); }
-.photo-caption { color: #fff; font-size: 13px; margin-top: 6px; text-align: center; }
-.photo-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #1b1f24; font-size: 20px; line-height: 1; cursor: pointer; }
-.lot-terms { font-size: 12px; color: var(--muted); }
-
-/* My Auctions: the top panel */
-.mine-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 14px 0 6px; }
-.mine-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.mine-head h2 { font-size: 17px; margin: 0; }
-.mine-summary { display: flex; gap: 6px; flex-wrap: wrap; font-size: 13px; }
-.mine-summary .status { font-size: 13px; }
-.mine-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
-.mine-card.outbid { border-left: 4px solid var(--outbid); }
-.mine-card.lead { border-left: 4px solid var(--lead); }
-.mine-card-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
-.mine-card-head .countdown { font-size: 15px; min-width: 88px; }
-.mine-card-head .title { font-size: 14px; }
-.mine-card-head .seller { font-size: 12px; }
-.mine-lots { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px; margin-top: 6px; }
-.mine-lot { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font-size: 12px; }
-.mine-lot img { width: 34px; height: 46px; object-fit: cover; border-radius: 3px; flex: none; background: var(--border); }
-.mine-lot .lot-name { font-weight: 600; }
-.mine-lot .status { font-size: 11px; margin: 2px 0 0; }
-.mine-empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
-
-/* Won = green; clickable rows */
-.status.won { background: var(--new); }
-tr.mine-won > td:first-child { box-shadow: inset 4px 0 0 var(--new); }
-.lot.lot-won { border-left: 4px solid var(--new); }
-.mine-card.won { border-left: 4px solid var(--new); }
+/* Clickable rows, and the expanded lots */
 tr.expandable { cursor: pointer; }
 tr.expandable:hover > td { background: color-mix(in srgb, var(--lead) 5%, var(--surface)); }
 tr.expandable:focus-visible { outline: 2px solid var(--lead); outline-offset: -2px; }
 tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--lead) 7%, var(--surface)); }
+tr.lots-row > td { background: var(--bg); }
+tr.lots-row .end-toggle { margin-top: 6px; }
+.lot-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; }
+.lot { display: flex; gap: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 13px; }
+.lot.lot-lead { border-left: 4px solid var(--lead); }
+.lot.lot-outbid { border-left: 4px solid var(--outbid); }
+.lot.lot-won { border-left: 4px solid var(--new); }
+.lot.lot-lost { border-left: 4px solid var(--border); }
+.lot-img { width: 56px; height: 76px; object-fit: cover; border-radius: 4px; flex: none; background: var(--border); }
+.lot-title { font-weight: 600; }
+.lot .status { margin-top: 2px; }
+.lot-terms { font-size: 12px; color: var(--muted); }
+/* A lot's name links to its comment on Facebook: looks like a name, underlines on hover. */
+a.lot-link { color: var(--text); text-decoration: none; }
+a.lot-link:hover { color: var(--lead); text-decoration: underline; }
 
 /* Prices stand out */
 .kr { font-weight: 700; font-size: 1.1em; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
 .lot-terms .kr, td.price .kr { font-size: 1.05em; }
-.mine-lot .kr { font-size: 1.12em; }
 
 /* Claim lots: taken vs still for sale */
 .availability { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 4px; padding: 0 6px; margin: 2px 0; }
 .availability.open { color: #fff; background: var(--lead); }
 .availability.sold-out { color: var(--muted); border: 1px solid var(--border); }
+.avail-sum { font-size: 12px; color: var(--lead); font-weight: 600; }
 .card-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
 .card { font-size: 12px; }
 .card .card-state { font-size: 11px; color: var(--muted); }
@@ -215,74 +196,14 @@ tr.expandable[aria-expanded="true"] > td { background: color-mix(in srgb, var(--
 .card.taken { color: var(--muted); }
 .card.taken .card-name, .card.taken .kr { text-decoration: line-through; color: var(--muted); font-weight: 400; }
 .card.mine .card-state { color: var(--new); font-weight: 700; }
-.avail-sum { font-size: 12px; color: var(--lead); font-weight: 600; }
-.photo-nav { position: fixed; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: none; border-radius: 8px; background: rgba(255,255,255,.85); color: #1b1f24; font-size: 34px; line-height: 1; cursor: pointer; }
-.photo-nav:hover { background: #fff; }
-.photo-nav.prev { left: 16px; }
-.photo-nav.next { right: 16px; }
 
-/* Won: what you won and what you owe, per seller */
-.counter.won .num { color: var(--new); }
-.won-panel { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
-.won-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.won-head h3 { font-size: 15px; margin: 0; color: var(--new); }
-.won-summary { font-size: 13px; font-weight: 600; }
-.won-head label { margin-left: auto; cursor: pointer; }
-.won-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; margin-top: 8px; }
-.won-card { border: 1px solid var(--border); border-left: 4px solid var(--new); border-radius: 8px; padding: 8px 10px; background: var(--bg); display: grid; gap: 6px; align-content: start; }
-.won-card.done { opacity: .6; border-left-color: var(--border); }
-.won-card-head { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
-.won-items { display: grid; gap: 4px; }
-.won-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.won-item img { width: 30px; height: 40px; object-fit: cover; border-radius: 3px; flex: none; background: var(--border); }
-.won-label { flex: 1; min-width: 0; }
-.won-terms { font-size: 12px; color: var(--muted); }
-.won-marks { display: flex; gap: 14px; font-size: 13px; }
-.won-mark { cursor: pointer; }
-.mine-card.lost { border-left: 4px solid var(--border); opacity: .85; }
-tr.mine-lost > td:first-child { box-shadow: inset 4px 0 0 var(--border); }
-@media (max-width: 720px) { .won-list { grid-template-columns: 1fr; } }
-
-/* Folding: table groups, sale cards, Won sellers (<details>/<summary>) */
-details > summary { cursor: pointer; list-style: none; }
-details > summary::-webkit-details-marker { display: none; }
-details[data-fold] > summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
-details[data-fold][open] > summary::before { transform: rotate(90deg); }
-@media (prefers-reduced-motion: reduce) { details[data-fold] > summary::before { transition: none; } }
-details > summary:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; border-radius: 4px; }
-.group-fold > summary.group-title { margin: 0 0 6px; font-size: 15px; font-weight: 700; }
-.mine-card > summary.mine-card-head { align-items: center; }
-.mine-card:not([open]) { padding-bottom: 8px; }
-.card-chips { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.card-chips .status { font-size: 11px; margin: 0; }
-.mine-card .mine-lots, .won-card .won-items { margin-top: 6px; }
-.won-card > summary.won-card-head { align-items: baseline; }
-.fold-buttons { margin-left: auto; display: flex; gap: 10px; }
-
-/* Compact table: more rows on screen */
-th { padding: 4px 8px; }
-td { padding: 4px 8px; }
-td.ends { width: 190px; }
-.countdown { font-size: 14px; display: inline-block; margin-right: 6px; }
-.ends .when { display: inline; font-size: 11px; }
-/* A sale that hasn't started: its start and end on their own line, under "Starts in …". */
-.ends .starts { color: var(--muted); font-size: 11px; }
-.orig { font-size: 10px; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
-.flag, .via { font-size: 10px; margin-top: 0; }
-.sale-wrap { gap: 8px; align-items: center; }
-.thumb { width: 32px; height: 32px; }
-.title { font-size: 13px; }
-.desc { font-size: 12px; -webkit-line-clamp: 1; }
-.seller { font-size: 11px; }
-td.type, td.price, td.seen, td.lots, td.you { font-size: 12px; }
-td.you .status, td.lots .status { font-size: 11px; }
-td.you .small, td.you .muted { font-size: 11px; }
-td.ends > div:first-child { white-space: nowrap; }
-
-/* My Auctions (2026-10-04 redesign): Needs you · Leading · To pay, one line per item */
-.mine-head { align-items: baseline; }
+/* My Auctions: Needs you · Leading · To pay, one line per item */
+.mine-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; margin: 14px 0 6px; }
+.mine-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.mine-head h2 { font-size: 17px; margin: 0; }
 .mine-summary { margin: 0; font-size: 14px; font-weight: 600; }
-.mine-section { margin-top: 12px; }
+.mine-empty { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+.mine-section { margin-top: 12px; scroll-margin-top: 12px; }
 .mine-section h3 { font-size: 14px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 #needs h3 { color: var(--outbid); }
 #leading h3 { color: var(--lead); }
@@ -295,92 +216,91 @@ td.ends > div:first-child { white-space: nowrap; }
 }
 .lot-line:last-child { border-bottom: none; }
 .lot-lines .lot-line { border-left: 3px solid var(--outbid); }
-.lot-lines .lot-line.check { border-left-color: var(--outbid); }
+.lead-lots .lot-line, .pay-items .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
 .line-thumb { width: 30px; height: 40px; object-fit: cover; border-radius: 3px; background: var(--border); display: block; }
 .line-thumb.empty { display: inline-block; }
 .line-name { font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .line-sale { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lot-line .countdown { font-size: 13px; }
 .line-price { white-space: nowrap; }
+.line-next { white-space: nowrap; color: var(--muted); }
 .line-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .end-toggle { color: var(--muted); font-size: 11px; white-space: nowrap; }
-.line-act { white-space: nowrap; font-weight: 600; color: var(--lead); text-decoration: none; border: 1px solid var(--lead); border-radius: 6px; padding: 2px 8px; }
-.line-act:hover { background: var(--lead); color: #fff; }
-.lead-lots .lot-line, .pay-items .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto auto; }
 .lead-card, .pay-card { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); margin-bottom: 6px; padding: 4px 8px; }
 .lead-card { border-left: 4px solid var(--lead); }
 .pay-card { border-left: 4px solid var(--new); }
 .pay-card.done { opacity: .6; border-left-color: var(--border); }
 .lead-head, .pay-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 2px 0; }
 .lead-head .title-line { flex: 1; min-width: 160px; }
+.lead-head .sale-actions { margin-left: auto; }
+.lead-card[open] .lead-lots, .pay-card[open] .pay-items { margin-top: 4px; }
 .pay-seller { min-width: 140px; }
 .pay-how { flex: 1; min-width: 120px; }
-.lead-card[open] .lead-lots, .pay-card[open] .pay-items { margin-top: 4px; }
-.pay-card .won-terms { margin: 4px 0 2px; }
+.won-mark { cursor: pointer; }
+.won-terms { font-size: 12px; color: var(--muted); margin: 4px 0 2px; }
+.open-link { font-size: 12px; color: var(--muted); text-decoration: none; }
+.open-link:hover { color: var(--lead); text-decoration: underline; }
 .notwon { margin: 4px 0; }
-.notwon summary { cursor: pointer; }
+.send-wins { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.send-wins button:not(.linkish) { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.send-wins button:not(.linkish):hover { border-color: var(--lead); color: var(--lead); }
+.send-wins button:disabled { opacity: 0.6; cursor: default; }
+.send-wins .error { color: var(--soon); }
+.send-pick { font-weight: 600; cursor: pointer; white-space: nowrap; }
+.sent-mark { color: var(--new); font-weight: 600; }
+
+/* Folding: Leading sales and To pay sellers (<details>/<summary>) */
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details[data-fold] > summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); transition: transform .15s; }
+details[data-fold][open] > summary::before { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { details[data-fold] > summary::before { transition: none; } }
+details > summary:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; border-radius: 4px; }
+
+/* Settings dialog */
+.settings-button { margin-left: auto; font: inherit; font-size: 13px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.settings-button:hover { border-color: var(--lead); color: var(--lead); }
+#settings { width: min(640px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); padding: 16px; }
+#settings::backdrop { background: rgb(0 0 0 / .4); }
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-head h2 { margin: 0; font-size: 18px; }
+.settings-close { font-size: 22px; line-height: 1; background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.setting { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+.setting label, .setting-title { font-weight: 600; }
+.setting-title { margin: 0; font-size: inherit; }
+.setting input[type="text"], .setting input[type="password"] { font: inherit; display: block; margin-top: 6px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); width: 100%; max-width: 320px; }
+.setting .sub-label { display: block; margin-top: 8px; font-weight: 400; font-size: 13px; }
+.clear-data { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.clear-data button { font: inherit; padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+.clear-data button.danger { background: var(--soon); border-color: var(--soon); color: #fff; }
+
+/* Photo lightbox */
+img.zoomable { cursor: zoom-in; }
+img.zoomable:focus-visible { outline: 2px solid var(--lead); outline-offset: 2px; }
+#photo { border: none; padding: 0; background: transparent; max-width: 92vw; max-height: 92vh; overflow: visible; cursor: zoom-out; }
+#photo::backdrop { background: rgba(0, 0, 0, .8); }
+#photo img { display: block; max-width: 92vw; max-height: 84vh; object-fit: contain; border-radius: 6px; background: var(--surface); }
+.photo-caption { color: #fff; font-size: 13px; margin-top: 6px; text-align: center; }
+.photo-close { position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 50%; border: none; background: #fff; color: #1b1f24; font-size: 20px; line-height: 1; cursor: pointer; }
+.photo-nav { position: fixed; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: none; border-radius: 8px; background: rgba(255,255,255,.85); color: #1b1f24; font-size: 34px; line-height: 1; cursor: pointer; }
+.photo-nav:hover { background: #fff; }
+.photo-nav.prev { left: 16px; }
+.photo-nav.next { right: 16px; }
+
+/* Phones: last, so it wins over the rules above. */
 @media (max-width: 720px) {
+  .counters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .counter:last-child { grid-column: span 2; }
+  thead { display: none; }
+  table, tbody, tr, td { display: block; width: 100%; }
+  #groups > table { table-layout: auto; }
+  tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  td { border: none; padding: 2px 10px; }
+  #groups td.unread { display: none; } /* "–" for a sale not read yet: nothing to show on a phone. */
+  .sale-wrap { flex-wrap: wrap; }
+  .sale .title-line { white-space: normal; }
   .lot-lines .lot-line { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .lot-lines .line-price { grid-column: 2; }
   .lot-lines .line-actions { grid-column: 3; }
   .lead-lots .lot-line, .pay-items .lot-line { gap: 6px; }
 }
-
-/* The sales table (2026-10-04 redesign): Seller has its own column, every row is two lines */
-/* Fixed column widths, so every group's table lines up; Sale takes the rest, long text cut with "…". */
-#groups table { table-layout: fixed; }
-#groups th:nth-child(1) { width: 120px; } /* Ends */
-#groups th:nth-child(2) { width: 90px; }  /* Added */
-#groups th:nth-child(4) { width: 160px; } /* Seller */
-#groups th:nth-child(5) { width: 130px; } /* Price */
-#groups th:nth-child(6) { width: 130px; } /* Lots */
-#groups th:nth-child(7) { width: 190px; } /* You */
-td.ends { width: auto; overflow: hidden; }
-.sale-text { min-width: 0; flex: 1; }
-.sale .title-line { display: block; }
-.sale .title-line, .sale .desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sale .desc { display: block; color: var(--muted); }
-.sale .badge.new { vertical-align: 1px; }
-td.seller-col { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-td.price { color: var(--text); }
-td.price .type { color: var(--muted); font-size: 11px; }
-.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-td.ends > .countdown { display: block; }
-td.ends .countdown.unknown { font-size: 13px; }
-.table-hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
-tr.lots-row .end-toggle { margin-top: 6px; }
-@media (max-width: 720px) {
-  #groups table { table-layout: auto; }
-  .sale .title-line { white-space: normal; }
-  #groups td.unread { display: none; } /* "–" for a sale not read yet: nothing to show on a phone. */
-}
-
-/* Ended (2026-10-04 review): quiet, outcome first, yours first */
-.countdown.ended { color: var(--muted); font-size: 13px; font-weight: 600; }
-td.result .result-final { color: var(--muted); font-size: 11px; }
-tr.subhead td { background: var(--bg); color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 3px 8px; }
-
-/* Tabs (2026-10-04): New · Today · Upcoming · No end · My bids · Ended */
-/* In the header, above the filters: they narrow down the tab you're on. */
-.tabs { display: flex; gap: 2px; margin: 16px 0 10px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.tab { font: inherit; font-size: 14px; font-weight: 600; background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 12px; cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
-.tab:hover { color: var(--text); }
-.tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--lead); }
-.tab .group-count { margin-left: 2px; }
-#groups > table { margin-top: 6px; }
-td.lots { overflow: hidden; }
-td.lots > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* Open ↗ / Read on each sale (2026-10-04) and links to lots */
-.sale-actions { display: flex; gap: 4px; flex: none; align-items: center; }
-.act-btn { font: inherit; font-size: 12px; font-weight: 600; line-height: 1.2; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; text-decoration: none; white-space: nowrap; }
-.act-btn:hover:not(:disabled) { border-color: var(--lead); color: var(--lead); }
-a.act-btn { color: var(--lead); }
-.act-btn.busy, .act-btn:disabled { color: var(--muted); cursor: default; }
-.lead-head .sale-actions { margin-left: auto; }
-/* A lot's name links to its comment on Facebook: looks like a name, underlines on hover. */
-a.lot-link { color: var(--text); text-decoration: none; }
-a.lot-link:hover { color: var(--lead); text-decoration: underline; }
-.line-next { white-space: nowrap; color: var(--muted); }
-@media (max-width: 720px) { .sale-wrap { flex-wrap: wrap; } }
-td.added { font-size: 12px; white-space: nowrap; overflow: hidden; }
