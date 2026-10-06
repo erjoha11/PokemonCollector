@@ -296,6 +296,33 @@ def test_price_movers_row_title_names_the_source(client):
     assert 'title="100 kr → 200 kr · Source: TCGplayer via Dex"' in html
 
 
+def test_price_movers_row_shows_current_price(client):
+    # Issue #343: today's price per copy is visible in the row (not only in
+    # the change's hover title), before the change, for rises and falls.
+    db = _session()
+    up = Card(card_id="u", name="Riser", qty=2, market_price=200, market_price_source="dex")
+    down = Card(card_id="d", name="Faller", qty=1, market_price=40, market_price_source="dex")
+    db.add_all([up, down])
+    db.flush()
+    start = dt.date.today() - dt.timedelta(days=30)
+    db.add_all([
+        CardSnapshot(card_id=up.id, date=start, source="cron", qty=2, reference_price=100, price_source="dex"),
+        CardSnapshot(card_id=down.id, date=start, source="cron", qty=1, reference_price=90, price_source="dex"),
+    ])
+    db.commit()
+    db.close()
+
+    html = client.get("/").text
+    rows = re.findall(r'<li class="mover-row">(.*?)</li>', html, re.S)
+    riser = next(r for r in rows if "Riser" in r)
+    faller = next(r for r in rows if "Faller" in r)
+    assert '<span class="mover-price" title="Price today, per copy">200 kr</span>' in riser
+    assert '<span class="mover-price" title="Price today, per copy">40 kr</span>' in faller
+    assert riser.index("mover-price") < riser.index("mover-change")
+    # The existing old -> new tooltip on the change is kept.
+    assert 'title="90 kr → 40 kr · Source: TCGplayer via Dex"' in faller
+
+
 # --------------------------------------------------------------------------
 # Sort key rename
 # --------------------------------------------------------------------------
