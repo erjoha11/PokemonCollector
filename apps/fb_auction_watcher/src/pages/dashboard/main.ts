@@ -306,6 +306,25 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
     td.title = orig;
     return td;
   }
+  // Not started yet (a claim sale's "Startid"; the lots usually come then): count down to the start,
+  // with the start and end on a line of their own.
+  if (r.notStarted && r.startsAtMs !== null) {
+    const cd = el("div", "countdown", `Starts in ${countdown(r.startsAtMs, now)}`);
+    cd.dataset.ends = String(r.startsAtMs);
+    cd.dataset.prefix = "Starts in ";
+    td.append(cd);
+    const ends = r.endsAtMs !== null ? ` · ends ${endLabel(r.endsAtMs, now)}` : "";
+    td.append(el("div", "starts", `${endLabel(r.startsAtMs, now)}${ends}${r.lots?.length ? "" : " · lots not posted yet"}`));
+    td.title = [
+      `Starts ${endLabel(r.startsAtMs, now)}`,
+      r.startsAtText ? `The seller's text: ${r.startsAtText}` : "",
+      r.endsAtMs !== null ? `Ends ${endLabel(r.endsAtMs, now)}` : "",
+      orig,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    return td;
+  }
   if (r.ended && r.endsAtMs !== null) {
     td.append(el("div", "countdown ended", `Ended ${ago(new Date(r.endsAtMs).toISOString(), now)}`), el("div", "when one-line", endLabel(r.endsAtMs, now)));
     td.title = [`Ended ${endLabel(r.endsAtMs, now)}`, orig].filter(Boolean).join("\n");
@@ -338,12 +357,6 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
     ]
       .filter(Boolean)
       .join("\n");
-  }
-  // Claim sales with a start time to come: the lots usually aren't posted until then.
-  if (r.notStarted && r.startsAtMs !== null) {
-    const starts = `Starts ${endLabel(r.startsAtMs, now)}`;
-    td.append(el("div", "when one-line", r.lots?.length ? starts : `${starts} · lots not posted yet`));
-    td.title = [td.title, starts, r.startsAtText ? `The seller's text: ${r.startsAtText}` : ""].filter(Boolean).join("\n");
   }
   return td;
 }
@@ -1155,7 +1168,7 @@ function tick() {
   const now = new Date();
   document.querySelectorAll<HTMLElement>(".countdown[data-ends]").forEach((c) => {
     const ends = Number(c.dataset.ends);
-    if (c.textContent !== "Ended?") c.textContent = countdown(ends, now);
+    if (c.textContent !== "Ended?") c.textContent = (c.dataset.prefix ?? "") + countdown(ends, now);
     c.classList.toggle("soon", ends - now.getTime() < 3_600_000);
   });
 }
