@@ -34,7 +34,8 @@ export function findSaleSeeMore(feed: Element, skipIds: ReadonlySet<string> = ne
   return buttons;
 }
 
-export type ScanProgress = { posts: number; scrolls: number; seeMoreClicks: number; paused: boolean };
+/** `posts`: recorded this run, `newPosts`: of those, ones no earlier scan had saved. */
+export type ScanProgress = { posts: number; newPosts: number; scrolls: number; seeMoreClicks: number; paused: boolean };
 
 export type ScanOptions = {
   signal?: AbortSignal;
@@ -49,7 +50,7 @@ export type ScanOptions = {
   maxDelayMs?: number;
   /** One scroll step. Defaults to most of a screen height on the page. */
   scrollStep?: () => void;
-  /** Post IDs already saved: a run of `stopAfterKnown` of them in a row means caught up. */
+  /** Post IDs already saved: a run of `stopAfterKnown` of them in a row means caught up (Infinity: never, see CONTINUE_SCAN). */
   knownIds?: ReadonlySet<string>;
   /** Saved posts whose full text is stored: no need to open their "Se mer" again. */
   completeIds?: ReadonlySet<string>;
@@ -67,6 +68,17 @@ export type ScanOptions = {
 export type ScanResult = ScanProgress & {
   stoppedBecause: "caught-up" | "hidden" | "end-of-feed" | "max-posts" | "max-scrolls" | "aborted" | "dialog-opened";
 };
+
+/**
+ * "Continue to older posts" (the scan panel, after a scan is done): goes on from where the feed
+ * is, past posts already saved, so the older ones an earlier scan never reached (it was stopped,
+ * hit its limit, or later scans stopped at the saved posts above them) get saved too. Stops at
+ * the end of the feed, after this many posts, or when you press Stop.
+ */
+export const CONTINUE_SCAN: Pick<ScanOptions, "stopAfterKnown" | "maxPosts"> = { stopAfterKnown: Infinity, maxPosts: 400 };
+
+/** Whether a finished scan can go on to older posts: not past the end of the feed, nor behind a dialog. */
+export const canContinue = (stoppedBecause: ScanResult["stoppedBecause"]) => stoppedBecause !== "end-of-feed" && stoppedBecause !== "dialog-opened";
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const jitter = (min: number, max: number) => min + Math.random() * Math.max(0, max - min);
@@ -102,11 +114,12 @@ export async function scanFeed(feed: Element, recorder: FeedRecorder, options: S
     return recorder.posts().length;
   };
   let paused = false;
-  const progress = (): ScanProgress => ({ posts: count(), scrolls, seeMoreClicks, paused });
+  const isKnown = (key: string) => key.startsWith("post:") && knownIds.has(key.slice(5));
+  const progress = (): ScanProgress => ({ posts: count(), newPosts: recorder.posts().filter((p) => !isKnown(p.key)).length, scrolls, seeMoreClicks, paused });
   /** Known posts at the end of what's been recorded so far, in feed order (newest first). */
   const knownRun = () => {
     let run = 0;
-    for (const p of recorder.posts()) run = p.key.startsWith("post:") && knownIds.has(p.key.slice(5)) ? run + 1 : 0;
+    for (const p of recorder.posts()) run = isKnown(p.key) ? run + 1 : 0;
     return run;
   };
   /** Waits while the tab is hidden. Returns true if it had to wait. */
