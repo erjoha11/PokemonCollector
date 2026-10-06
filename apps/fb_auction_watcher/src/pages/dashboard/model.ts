@@ -33,7 +33,7 @@ export type Row = StoredPost &
     lastReadAt: string | null;
     /** The last read that loaded every comment (reads are merged; see src/domain/captures.ts). */
     lastCompleteReadAt: string | null;
-    /** Lots you marked "Not won" yourself (#329): lot ref (`lotRef`) → when. Optional so test rows can leave it out. */
+    /** Lots you marked as outbid yourself (#329; "Not won" marks): lot ref (`lotRef`) → when. Optional so test rows can leave it out. */
     notWon?: Record<string, string>;
   };
 
@@ -245,7 +245,7 @@ export function ago(iso: string, now: Date): string {
 
 /** How a lot shows for you: one place for these rules (they used to be repeated in main.ts). */
 export type LotStatus = {
-  key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "not-won" | "leading-at-last-read" | "outbid-at-last-read" | "check";
+  key: "none" | "leading" | "unclear" | "outbid" | "won" | "lost" | "leading-at-last-read" | "outbid-at-last-read" | "check";
   label: string;
   /** CSS class: lead (blue), won (green), outbid (orange). */
   cls: "lead" | "won" | "outbid" | "none";
@@ -264,16 +264,17 @@ export function readAfterEnd(r: Pick<Row, "ended" | "endsAtMs" | "softCloseMinut
   return Date.parse(r.lastCompleteReadAt) >= r.endsAtMs + (r.softCloseMinutes ?? 0) * 60_000;
 }
 
-/** When you marked this lot "Not won" yourself (#329), or null. */
+/** When you marked this lot as outbid yourself (#329; stored as a "Not won" mark), or null. */
 export const notWonAt = (r: Pick<Row, "notWon">, l: Pick<Lot, "commentId" | "position">): string | null => r.notWon?.[lotRef(l)] ?? null;
 
 /**
- * Your status on a lot. Your "Not won" mark (#329) overrides what the rules read for a lot you bid
- * on or claimed: it's off To pay and out of what's sent to tcg_inventory, until you undo it.
+ * Your status on a lot. Your outbid mark (#329) overrides what the rules read for a lot you bid on
+ * or claimed: the lot is lost to someone else, as if a bid had beaten yours (an orange "Outbid"),
+ * so it's off To pay and out of what's sent to tcg_inventory, until you undo it.
  */
 export function lotStatus(r: Row, l: Lot): LotStatus {
   const status = lotStatusByRules(r, l);
-  if (status.key !== "none" && notWonAt(r, l)) return { key: "not-won", label: "Not won (your mark)", cls: "outbid" };
+  if (status.key !== "none" && notWonAt(r, l)) return { key: "lost", label: "Outbid (your mark)", cls: "outbid" };
   return status;
 }
 
@@ -321,16 +322,16 @@ export type WonItem = {
   kr: number | null;
 };
 
-/** A lot you marked "Not won" (#329), for To pay's list of them with Undo. */
+/** A lot you marked as outbid (#329), for To pay's list of them with Undo. */
 export type NotWonItem = { row: Row; lot: Lot; key: string; at: string };
 
-/** Every lot you marked "Not won", the latest mark first. */
+/** Every lot you marked as outbid, the latest mark first. */
 export function notWonLots(rows: Row[]): NotWonItem[] {
   const items: NotWonItem[] = [];
   for (const row of rows) {
     for (const lot of row.lots ?? []) {
       const at = notWonAt(row, lot);
-      if (at && lotStatus(row, lot).key === "not-won") items.push({ row, lot, key: notWonKey(row.id, lot), at });
+      if (at && lotStatusByRules(row, lot).key !== "none") items.push({ row, lot, key: notWonKey(row.id, lot), at });
     }
   }
   return items.sort((a, b) => b.at.localeCompare(a.at));

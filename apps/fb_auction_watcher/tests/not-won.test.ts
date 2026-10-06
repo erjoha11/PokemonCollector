@@ -7,8 +7,9 @@ import { fakeChrome, type FakeChrome } from "./fakes/chrome";
 import { auctionText, capture, lot, ME, post, reply, SELLER } from "./fakes/posts";
 import { memoryStore } from "./fakes/store";
 
-// A manual "Not won" per lot (#329): for a win the rules got wrong (your bid came after the end and
-// the seller said so). The lot leaves To pay and the inbox payload, and the mark can be undone.
+// A manual "Outbid" mark per lot (#329; stored as "Not won" marks): for a win the rules got wrong
+// (your bid came after the end and the seller said so). The lot shows as outbid, leaves To pay and
+// the inbox payload, and the mark can be undone.
 // Invented names throughout.
 
 const OTHER = "Kari Budgiver";
@@ -35,7 +36,7 @@ function rows(notWonMarks: Record<string, string> = {}) {
   return buildRows(posts, AFTER_END, null, { captures: new Map(captures.map((c) => [c.postId, c.capture])), myName: ME, notWonMarks });
 }
 
-describe("Not won (your mark)", () => {
+describe("Outbid (your mark)", () => {
   it("keys a lot by post and comment ID, or its position when it has none", () => {
     expect(notWonKey("7", { commentId: "88", position: 2 })).toBe("7:88");
     expect(notWonKey("7", { commentId: null, position: 4 })).toBe("7:pos4");
@@ -47,12 +48,12 @@ describe("Not won (your mark)", () => {
     expect(wonBySeller([r])[0].items).toHaveLength(3);
   });
 
-  it("a marked lot is 'not-won': off To pay, out of the payload, in the Not won list", () => {
+  it("a marked lot is outbid (lost): off To pay, out of the payload, in the marked list", () => {
     const at = "2026-10-04T21:00:00.000Z";
     const all = rows({ "2001:9002": at, "2001:pos3": at });
     const [r] = all;
-    expect(r.lots!.map((l) => lotStatus(r, l).key)).toEqual(["won", "not-won", "not-won"]);
-    expect(lotStatus(r, r.lots![1]).label).toBe("Not won (your mark)");
+    expect(r.lots!.map((l) => lotStatus(r, l).key)).toEqual(["won", "lost", "lost"]);
+    expect(lotStatus(r, r.lots![1])).toEqual({ key: "lost", label: "Outbid (your mark)", cls: "outbid" });
     const [g] = wonBySeller(all);
     expect(g.items.map((i) => i.label)).toEqual(["1. Gengar"]);
     expect(g.kr).toBe(50);

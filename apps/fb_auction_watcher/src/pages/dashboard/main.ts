@@ -142,7 +142,7 @@ let claude: ClaudeState;
 let cleanup: CleanupState;
 let wonState: WonState = {};
 let endedMarks: EndedMarks = {};
-/** Lots you marked "Not won" yourself (#329). */
+/** Lots you marked outbid yourself (#329; stored as "Not won" marks). */
 let notWonMarks: NotWonMarks = {};
 let inbox: InboxState = { lastAt: null, ok: null, count: null, outcome: null };
 /** Won auctions sent to tcg_inventory (post ID → when), and the ones ticked to send next. */
@@ -274,17 +274,17 @@ function endedToggle(r: Row, label = "Mark as ended"): HTMLButtonElement | null 
 }
 
 /**
- * "Not won" on a lot the rules count as won but you didn't get (#329: e.g. your bid came after the
- * end and the seller said so), or "Undo not won" for one you marked. Your own mark, in
- * chrome.storage; it takes the lot off To pay and out of what's sent to tcg_inventory.
+ * "Outbid" on a lot the rules count as won but you didn't get (#329: e.g. your bid came after the
+ * end and the seller said so), or "Undo outbid" for one you marked. Your own mark, in
+ * chrome.storage: the lot shows as outbid, off To pay and out of what's sent to tcg_inventory.
  */
 function notWonToggle(r: Row, l: Lot): HTMLButtonElement {
   const at = notWonAt(r, l);
-  const button = el("button", "linkish end-toggle", at ? "Undo not won" : "Not won");
+  const button = el("button", "linkish end-toggle", at ? "Undo outbid" : "Outbid");
   button.type = "button";
   button.title = at
-    ? `You marked this lot as not won ${ago(at, new Date())}. Undo puts it back as the rules read it.`
-    : "You didn't get this lot (e.g. the seller said your bid was too late): take it off To pay and don't send it to tcg_inventory.";
+    ? `You marked this lot as outbid ${ago(at, new Date())}. Undo puts it back as the rules read it.`
+    : "Someone else got this lot (e.g. the seller said your bid was too late): mark it outbid, take it off To pay and don't send it to tcg_inventory.";
   button.addEventListener("click", (e) => {
     e.preventDefault(); // Inside a <summary>: don't fold or unfold.
     e.stopPropagation();
@@ -668,7 +668,7 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
       );
       if (!readAfterEnd(r)) body.append(el("div", "flag", "at last read: bids may have come in after"));
       if (status.key !== "none") body.append(el("div", `status ${status.cls}`, `${status.label} · your bid ${l.myHighestBid} kr`));
-      if (status.key === "won" || status.key === "not-won") body.append(line("div", notWonToggle(r, l)));
+      if (status.key === "won" || notWonAt(r, l)) body.append(line("div", notWonToggle(r, l)));
       item.append(body);
       list.append(item);
       continue;
@@ -707,16 +707,17 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
 
 /** Your lots' statuses in a sale, counted by label ("Leading 2", "Outbid 1"), in a sensible order. */
 function statusCounts(r: Row): { status: LotStatus; count: number }[] {
-  const order: LotStatus["key"][] = ["outbid", "unclear", "check", "outbid-at-last-read", "lost", "not-won", "leading", "leading-at-last-read", "won"];
-  const byKey = new Map<LotStatus["key"], { status: LotStatus; count: number }>();
+  const order: LotStatus["key"][] = ["outbid", "unclear", "check", "outbid-at-last-read", "lost", "leading", "leading-at-last-read", "won"];
+  // By label too: "Lost" and your own "Outbid (your mark)" (#329) share the key "lost".
+  const byLabel = new Map<string, { status: LotStatus; count: number }>();
   for (const l of r.lots ?? []) {
     const st = lotStatus(r, l);
     if (st.key === "none") continue;
-    const entry = byKey.get(st.key) ?? { status: st, count: 0 };
+    const entry = byLabel.get(st.label) ?? { status: st, count: 0 };
     entry.count++;
-    byKey.set(st.key, entry);
+    byLabel.set(st.label, entry);
   }
-  return order.flatMap((k) => byKey.get(k) ?? []);
+  return order.flatMap((k) => [...byLabel.values()].filter((e) => e.status.key === k));
 }
 
 /** A sale's edge colour: orange if anything needs you, green if all won, blue if leading. */
@@ -958,7 +959,7 @@ function renderMine(now: Date) {
   // To pay: one folded line per seller; paid and received ones fold away entirely.
   const open = groups.filter((g) => !isDone(g));
   const done = groups.length - open.length;
-  // Lots you marked "Not won" (#329), with Undo: listed under To pay, which they left.
+  // Lots you marked outbid (#329), with Undo: listed under To pay, which they left.
   const notWon = notWonLots(rows);
   $<HTMLElement>("#topay").hidden = groups.length === 0 && notWon.length === 0;
   $<HTMLElement>("#notwon").hidden = notWon.length === 0;
@@ -1320,7 +1321,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if ("settings" in changes) {
     void load();
   } else if ("endedMarks" in changes || "notWonMarks" in changes) {
-    // Marking a sale ended (or a lot not won) changes lots' statuses: rebuild from what's loaded.
+    // Marking a sale ended (or a lot outbid) changes lots' statuses: rebuild from what's loaded.
     void loadStatus().then(() => {
       rebuild();
       render();

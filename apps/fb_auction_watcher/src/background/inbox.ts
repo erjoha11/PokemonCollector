@@ -56,7 +56,7 @@ export async function sendWins(store: Store, deps: SendDeps = defaultDeps, postI
     getNotWonMarks(),
     getWonState(),
   ]);
-  // Lots you marked "Not won" (#329) aren't wins: wonBySeller leaves them out, so they're never sent.
+  // Lots you marked outbid (#329) aren't wins: wonBySeller leaves them out, so they're never sent.
   const rows = buildRows(posts, now, null, {
     captures: new Map(captures.map((c) => [c.postId, c.capture])),
     answers: new Map(answers.map((a) => [a.key, a.value])),
