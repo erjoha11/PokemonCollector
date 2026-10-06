@@ -89,8 +89,8 @@ Post = listing: overview photos of the whole auction, rules, end time
   and the same tab scans on from where it is (no reload), past saved posts without reopening
   their "Se mer", until the end of the feed, 400 posts, or Stop (`CONTINUE_SCAN`). Not offered
   when the feed ended or a "Se mer" opened a dialog. Progress shows how many posts were new.
-- Not built yet: a pass sorted by "Nylig aktivitet" (recent activity) to catch older posts with
-  new bids; its sort value/label needs checking against a real feed first.
+- **Dropped** (decided 2026-10-06): a pass sorted by "Nylig aktivitet" (recent activity) to catch
+  older posts with new bids. "Continue to older posts" covers the need, so it won't be built.
 - **Detail reads (lots/bids)** only: when I open a post, and automatically every 15 min for
   auctions I have bid on. Everything else is not read until opened.
 
