@@ -128,3 +128,22 @@ export async function markEnded(postId: string, ended: boolean): Promise<void> {
   else delete marks[postId];
   await chrome.storage.local.set({ endedMarks: marks });
 }
+
+/**
+ * Lots you've marked outbid yourself (#329; "Not won" marks), by `notWonKey` (`<post ID>:<lot ref>`, in the
+ * dashboard model) → when. For a win the rules got wrong (e.g. your bid came after the end and the
+ * seller said so): the lot leaves To pay and isn't sent to tcg_inventory. Undoable.
+ */
+export type NotWonMarks = Record<string, string>;
+
+export async function getNotWonMarks(): Promise<NotWonMarks> {
+  return ((await chrome.storage.local.get("notWonMarks")).notWonMarks as NotWonMarks | undefined) ?? {};
+}
+
+/** Marks a lot as outbid (not won) now, or (notWon = false) takes the mark back. */
+export async function markNotWon(key: string, notWon: boolean): Promise<void> {
+  const marks = await getNotWonMarks();
+  if (notWon) marks[key] = new Date().toISOString();
+  else delete marks[key];
+  await chrome.storage.local.set({ notWonMarks: marks });
+}

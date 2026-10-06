@@ -32,6 +32,10 @@
         <h3 id="topay-title">To pay <span id="topay-sum" class="muted small"></span>
           <label id="show-done-label" class="muted small show-done"><input id="show-done" type="checkbox"> Show paid &amp; received (<span id="show-done-count"></span>)</label></h3>
         <div id="topay-list"></div>
+        <details id="notwon" class="notwon" hidden>
+          <summary class="muted small">Marked outbid by you (<span id="notwon-count"></span>)</summary>
+          <ul id="notwon-list" class="pay-items"></ul>
+        </details>
         <div class="send-wins">
           <button id="send-wins" type="button" title="Sends the won auctions you ticked (seller, lot, price, links, dates, the seller's shipping and payment terms, your Paid/Received marks) to your tcg_inventory. Nothing else leaves this computer.">Send selected to inventory</button>
           <button id="send-pick-unsent" type="button" class="linkish" hidden></button>
