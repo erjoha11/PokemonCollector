@@ -93,6 +93,25 @@ on the user's Mac (`claude -p`, their own login) through Chrome native messaging
 (`native/fbaw_claude_host.py`), batched, Haiku, no tools, answers cached. The original design
 below is kept for reference.
 
+**What goes to Claude, and what doesn't** (2026-10-06): the rules read first; Claude gets only
+what they leave, and never other people's names.
+- **Times** (Haiku, text): a post whose end the rules can't read, or whose "Startid:" line they
+  can't read; the answer is `{ endsAt, startsAt }` (older answers are the end alone, as a string).
+- **Unsure bids** (Haiku, text): the reply's text, with the seller's tag as "@Seller"
+  (`tagAsSeller`). No seller name.
+- **Claim lots**: the photo is read **once** (Sonnet, the photo and the lot's own text, no
+  replies): the cards in it and their prices (`claimPhotoRequest`, keyed by the photo's path and
+  the lot text, so a new reply doesn't read it again). Who got which card is matched **by the
+  rules** (`matchClaims`: first claim wins, misspellings within two letters, "alle", a bare
+  claim on a one-card lot). Only claims the rules can't place for sure (they name no card, or
+  fit two different cards) go to Claude, as text (Haiku, batched, `claimMatchRequest`), with the
+  claimers as "Me", "Claimer 1", "Claimer 2"… and mapped back after. Every claim lot is still
+  read, for "N of M available" (decided 2026-10-06).
+- **Lot names**: from the lot's own text first (`lotTextInfo`: every line, prices and the
+  condition taken out, "Holo"/"Promo" alone isn't a name). An auction lot whose text names
+  nothing goes to Claude with its text and photo (Sonnet, batched). A claim lot is named from
+  its photo read's cards, with no second look at the photo.
+
 **Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
 - Only live sales: nothing from a sale that ended more than 6 h ago (late bids and claims are
   read after the end, and Won/Lost needs a read after it, so a few hours' grace), and for sales
@@ -108,8 +127,9 @@ below is kept for reference.
   quota) stops the run and pauses Claude for 10 min. Any other failure (a lot photo the CDN no
   longer serves: signed URLs expire, `oe=`, HTTP 403/404; a timeout; no JSON) counts against
   that item only: retried after 15 min, then 1 h, skipped after 3 tries, and the run goes on.
-  Failure records are kept in the store's meta (`claudeFailures`) for 7 days. A claim lot's key
-  includes its replies, so a new reply makes it a new question with fresh tries.
+  Failure records are kept in the store's meta (`claudeFailures`) for 7 days. A claim photo's key
+  is the photo and the lot text only (read once); a claim match's key includes the claims, so a
+  new claim the rules can't place is a new question with fresh tries.
 
 - **Feed call:** post text → `type`, `title`, `endsAt` (ISO), `endsAtText`, `closeRule`,
   `softCloseMinutes`, `closeRuleText`, `increment`, `price`, `shippingText`, `soldOrWithdrawn`.
@@ -161,7 +181,7 @@ names and replies), so it's kept only while useful, by a daily cleanup in the se
 - Posts: deleted once their read is gone, unseen in the feed for 14 days, and ended over 7 days
   ago (or no end time). Until then the slim row (text, seller, link) stays as history.
 - Claude's answers: deleted when nothing kept refers to them (keys from `endTimeAnswerKey`,
-  `bidAnswerKey`, `claimLotAnswerKey`); no age limit on answers still in use, since deleting one
+  `bidAnswerKey`, `claimPhotoAnswerKey`, `claimMatchAnswerKey`, `lotNameAnswerKey`); no age limit on answers still in use, since deleting one
   would only re-ask Claude.
 - A sale that hasn't ended is never touched.
 - "Clear stored data" in the overview's Settings empties the store (posts, reads, answers, meta)
@@ -529,6 +549,16 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   tekst" on 227 of 272 lot photos, never the text itself), so Claude names the lot from the
   photo: the seller's text on it if any, else the printed card name and number. Tried on 12 real
   lots in one call: Sonnet named all 12 with set numbers in 6 s, Haiku without numbers in 20 s.
+- **Lot text** (2026-10-06): a lot's text often names the card and gives its price and condition
+  on one line ("Iron Jugulis 216/182 – Illustration Rare | MP: 20", "Umbreon VMAX 215/203 NM -
+  1200kr"), sometimes the name on line 2 under the price. The title is the name with the price
+  parts out, then "· NM" when the text gives a condition. "MP" is the minimum price, except after
+  "Tilstand:" or on its own before a price in a claim lot ("MP - 250kr"): then it's the condition.
+- **Claim-sale template** (2026-10-06): "Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker
+  å delta)" then "Startid:", "Sluttid (maks 24 timer):", "Objektbeskrivelse:", "Tilstand:". The
+  bracketed instruction isn't a name, so "Objektbeskrivelse" names the sale. "Startid" is
+  optional (claim sales only); sellers usually don't post the lots until then, so before it the
+  overview shows "Starts … · lots not posted yet". Claims and bids aren't judged by it.
 - **Order:** Facebook shows replies out of time order (replies-to-replies first). Reply IDs
   increase with time, so sort by ID to get the order bids were placed. `timeText` ("18 t")
   is too coarse for ordering.

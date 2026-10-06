@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, claimLotInput, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, myClaimLots, readBid, summarizeLots, untitledLotPhotos, unsureReplies } from "../src/domain/bids";
-import { lotNameAnswerKey } from "../src/llm/prompts";
+import { capturePostId, claimItems, lotTextInfo, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, namesCard, readBid, summarizeLots, tagAsSeller, untitledLotPhotos, unsureReplies, type PhotoCards } from "../src/domain/bids";
+import { claimMatchRequest, claimPhotoAnswerKey, claimPhotoRequest, lotNameAnswerKey, lotNameRequest } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
 // Synthetic capture shaped like the real Gengar auction in samples/ (all names invented):
@@ -132,10 +132,10 @@ describe("interpretLots", () => {
     expect(interpretLots(c3, OPTS)[0]).toMatchObject({ startBid: 30, increment: 20 });
   });
 
-  it("reads a start bid mid-line, and titles a price-only lot by its number", () => {
+  it("reads a start bid mid-line, and titles a lot whose text names nothing by its number", () => {
     const c2 = capture([lot(0, "Holo, mp 30kr", []), lot(1, "Mp 15kr", []), lot(2, "Holo ( promo) mp 40", [])]);
-    expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid])).toEqual([
-      ["Holo, mp 30kr", 30], ["Lot 2", 15], ["Holo ( promo) mp 40", 40],
+    expect(interpretLots(c2, OPTS).map((l) => [l.title, l.startBid, l.untitled])).toEqual([
+      ["Lot 1", 30, true], ["Lot 2", 15, true], ["Lot 3", 40, true],
     ]);
   });
 
@@ -195,7 +195,7 @@ describe("claims (claim sales and fixed price)", () => {
   });
 });
 
-describe("claim lots read by Claude (photo prices, who got what)", () => {
+describe("claim lots: Claude reads the photo once, the rules match the claims", () => {
   it("asks Facebook's CDN for the full-size photo", () => {
     expect(fullSizePhoto("https://x.fbcdn.net/a_n.jpg?stp=dst-jpg_tt6&cstp=mx540x960&ctp=p240x240&_nc_cat=1&oh=z"))
       .toBe("https://x.fbcdn.net/a_n.jpg?stp=dst-jpg_tt6&cstp=mx540x960&_nc_cat=1&oh=z");
@@ -210,71 +210,146 @@ describe("claim lots read by Claude (photo prices, who got what)", () => {
     ]),
     lot(1, "", [reply("Bidder B", `${SELLER} claim pidgeot`, { id: 20 })]),
   ]);
+  // As Claude read a real lot's photo: every card and its price, nothing about who claimed what.
+  const PHOTO: PhotoCards = [
+    { card: "Kadabra", price: 250 }, { card: "Rapidash", price: 250 }, { card: "Marowak", price: 200 }, { card: "Castform", price: 200 },
+    { card: "Castform", price: 200 }, { card: "Feraligatr", price: 200 }, { card: "Pidgeot", price: 200 }, { card: "Kingler", price: 250 },
+  ];
 
-  it("gives Claude the lot's replies (not the seller's), oldest first, for lots you claimed on", () => {
-    const lots = myClaimLots(c, ME);
-    expect(lots).toHaveLength(1);
-    expect(lots[0].replies).toEqual([
-      { author: "Bidder A", text: `${SELLER} kingler og rapidash` },
-      { author: ME, text: `${SELLER} claim marowak og feraligator` },
-    ]);
-    expect(lots[0].imageUrl).toBe("lot0.jpg");
+  it("sends Claude only the photo and the lot's text: no replies, no names; the lots you claimed on first", () => {
+    expect(claimLotsToRead(c, ME)).toEqual([{ imageUrl: "lot0.jpg", lotText: "" }, { imageUrl: "lot1.jpg", lotText: "" }]);
+    const r = claimPhotoRequest({ imageUrl: "lot0.jpg", lotText: "Holo 5kr per stk" });
+    expect(r).toMatchObject({ task: "claim-lot", model: "sonnet", images: ["lot0.jpg"] });
+    expect(r.input).not.toContain(SELLER);
   });
 
-  it("uses Claude's answer: the cards you won and their prices", () => {
-    // As Claude answered for a real lot: every card, taken or still for sale.
-    const answer = { cards: [
-      { card: "Kadabra", price: 250, claimedBy: null }, { card: "Rapidash", price: 250, claimedBy: "Bidder A" },
-      { card: "Marowak", price: 200, claimedBy: ME }, { card: "Castform", price: 200, claimedBy: null },
-      { card: "Castform", price: 200, claimedBy: null }, { card: "Feraligatr", price: 200, claimedBy: ME },
-      { card: "Pidgeot", price: 200, claimedBy: null }, { card: "Kingler", price: 250, claimedBy: "Bidder A" },
-    ] };
-    const [l0, l1] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: (input) => (input.imageUrl === "lot0.jpg" ? answer : undefined) });
+  it("matches the claims by the rules, misspellings too: the cards you won and their prices", () => {
+    const [l0, l1] = interpretLots(c, { ...OPTS, claims: true, claimPhoto: (input) => (input.imageUrl === "lot0.jpg" ? PHOTO : undefined) });
     expect(l0.myClaim).toBe("claimed");
     expect(l0.claimCards!.filter((x) => x.isMe).map((x) => [x.card, x.price])).toEqual([["Marowak", 200], ["Feraligatr", 200]]);
+    expect(l0.claimCards!.filter((x) => x.claimedBy === "Bidder A").map((x) => x.card)).toEqual(["Rapidash", "Kingler"]);
     expect(l0.available).toBe(4); // Still for sale: the lot stays open.
+    expect(l0.claimMatchInput).toBeNull(); // The rules were sure: nothing for Claude.
+    expect(l0.title).toBe("8 cards"); // Named from the photo's cards: no second look at it.
     expect(l1.claimCards).toBeNull();
-    expect(l1.available).toBeNull(); // Not read by Claude yet.
+    expect(l1.available).toBeNull(); // Photo not read yet.
   });
 
-  it("a lot with every card claimed is sold out", () => {
-    const [l0] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: () => ({ cards: [{ card: "Marowak", price: 200, claimedBy: ME }] }) });
-    expect(l0.available).toBe(0);
+  it("first to claim a card gets it; a second copy goes to the next one", () => {
+    const sale = capture([
+      lot(0, "", [
+        reply("Bidder A", "claim castform", { id: 10 }),
+        reply(ME, "castform", { id: 11 }),
+        reply("Bidder B", "den til venstre", { id: 12 }), // "The one on the left": names no card, so Claude.
+      ]),
+    ]);
+    const [l] = interpretLots(sale, { ...OPTS, claims: true, claimPhoto: () => [{ card: "Castform", price: 10 }, { card: "Castform", price: 10 }] });
+    expect(l.claimMatchInput).toEqual({
+      cards: ["Castform", "Castform"],
+      claims: [{ who: "Claimer 1", text: "claim castform" }, { who: "Me", text: "castform" }, { who: "Claimer 2", text: "den til venstre" }],
+    });
+    const [answered] = interpretLots(sale, { ...OPTS, claims: true, claimPhoto: () => [{ card: "Castform", price: 10 }, { card: "Castform", price: 10 }], claimMatch: () => ["Claimer 1", "Me"] });
+    expect(answered.claimCards!.map((x) => [x.claimedBy, x.isMe])).toEqual([["Bidder A", false], [ME, true]]);
+    expect(answered.myClaim).toBe("claimed");
   });
 
-  it("you claimed, but Claude says someone else got it: check", () => {
-    const [l0] = interpretLots(c, { ...OPTS, claims: true, claimAnswer: () => ({ cards: [{ card: "Marowak", price: 200, claimedBy: "Bidder A" }] }) });
-    expect(l0.myClaim).toBe("check");
+  it("'alle' takes what's left, and a bare claim takes a one-card lot", () => {
+    const all = capture([lot(0, "", [reply("Bidder A", "marowak", { id: 10 }), reply(ME, "alle", { id: 11 })])]);
+    const [l] = interpretLots(all, { ...OPTS, claims: true, claimPhoto: () => PHOTO.slice(0, 3) });
+    expect(l.claimCards!.map((x) => x.claimedBy)).toEqual([ME, ME, "Bidder A"]);
+    const one = capture([lot(0, "", [reply(ME, "claim", { id: 10 })])]);
+    expect(interpretLots(one, { ...OPTS, claims: true, claimPhoto: () => [{ card: "Mew", price: 50 }] })[0].claimCards![0].isMe).toBe(true);
   });
 
-  it("reads every lot of a claim sale, yours first", () => {
-    expect(claimLotsToRead(c, ME).map((x) => x.imageUrl)).toEqual(["lot0.jpg", "lot1.jpg"]);
+  it("you claimed, but someone was first: check", () => {
+    const sale = capture([lot(0, "", [reply("Bidder A", "marowak", { id: 10 }), reply(ME, "marowak", { id: 11 })])]);
+    const [l] = interpretLots(sale, { ...OPTS, claims: true, claimPhoto: () => [{ card: "Marowak", price: 200 }] });
+    expect(l.myClaim).toBe("check");
+    expect(l.available).toBe(0); // Sold out.
   });
 
-  it("knows a lot's input even with no replies", () => {
-    expect(claimLotInput(c.comments[1], SELLER)?.replies).toHaveLength(1);
+  it("Claude matches without names: the seller is '@Seller', claimers are labels", () => {
+    expect(tagAsSeller(`${SELLER} claim zard`, SELLER)).toBe("@Seller claim zard");
+    expect(tagAsSeller("Selger: zard", SELLER)).toBe("@Seller: zard"); // First name alone.
+    const r = claimMatchRequest([{ id: 0, cards: ["Charizard"], claims: [{ who: "Me", text: "@Seller zard" }] }]);
+    expect(r).toMatchObject({ task: "claim-match" });
+    expect(r.model).toBeUndefined(); // Haiku: text only.
+    expect(r.images).toBeUndefined();
+    expect(r.input).toContain('1. Me: "@Seller zard"');
+  });
+
+  it("claims that name a card loosely", () => {
+    expect(namesCard("Feraligatr", "feraligator")).toBe(true);
+    expect(namesCard("Charizard ex", "charizard")).toBe(true);
+    expect(namesCard("Pokémon Center Lady", "pokemon center lady")).toBe(true);
+    expect(namesCard("Charizard", "zard")).toBe(true); // Inside the name.
+    expect(namesCard("Pidgeot", "pikachu")).toBe(false);
+    expect(namesCard("Mew", "ew")).toBe(false); // Too short to tell.
+  });
+
+  it("a claim that fits two different cards isn't sure: Claude decides", () => {
+    const sale = capture([lot(0, "", [reply(ME, "pikachu", { id: 10 })])]);
+    const [l] = interpretLots(sale, { ...OPTS, claims: true, claimPhoto: () => [{ card: "Pikachu", price: 10 }, { card: "Pikachu V", price: 30 }] });
+    expect(l.claimCards).toBeNull();
+    expect(l.claimMatchInput?.claims).toEqual([{ who: "Me", text: "pikachu" }]);
+  });
+
+  it("the photo is read once: a new reply doesn't change its key", () => {
+    expect(claimPhotoAnswerKey({ imageUrl: "https://x.fbcdn.net/a.jpg?oe=1", lotText: "Holo" })).toBe(claimPhotoAnswerKey({ imageUrl: "https://x.fbcdn.net/a.jpg?oe=2", lotText: "Holo" }));
   });
 });
 
-describe("naming lots from their photo", () => {
-  const c = capture([lot(0, "Mp 20kr", []), lot(1, "Charizard ex 199/165\nMp 500", []), lot(2, "", [])]);
+describe("a lot's name from its own text (rules first)", () => {
+  it.each([
+    // Lot texts as sellers write them (group-domain.md and samples/, no names).
+    ["Iron Jugulis 216/182 – Illustration Rare | MP: 20", "Iron Jugulis 216/182 – Illustration Rare", null],
+    ["Morpeko 206/182 | MP 100", "Morpeko 206/182", null],
+    ["Charizard ex 199/165\nMp 500", "Charizard ex 199/165", null],
+    ["Mp 50kr\nCharizard ex 199/165", "Charizard ex 199/165", null], // The name on line 2.
+    ["NM - 1200kr", null, "NM"],
+    ["Umbreon VMAX 215/203 NM - 1200kr", "Umbreon VMAX 215/203", "NM"],
+    ["Gengar 151 holo\nMp 10kr", "Gengar 151 holo", null],
+    ["Gengar reverse holo\n700kr", "Gengar reverse holo", null],
+    ["Lugia V 186/195 PSA 10\nMP: 2000", "Lugia V 186/195", "PSA 10"],
+    ["Pikachu m/nm, mp 30kr, mb 10", "Pikachu", "M/NM"],
+    ["Lot 1: Charizard ex 199/165", "Charizard ex 199/165", null],
+    ["Mewtwo\nTilstand: MP\nMp 100", "Mewtwo", "MP"], // MP after "Tilstand:" is the condition.
+    ["Holo, mp 30kr", null, null],
+    ["Holo/rev.holo\n5kr per stk", null, null],
+    ["Holo ( promo) mp 40", null, null],
+    ["Mp 15kr", null, null],
+    ["Lot\nMp 100kr", null, null],
+    ["", null, null],
+  ])("%j", (text, name, condition) => expect(lotTextInfo(text)).toEqual({ name, condition }));
+});
 
-  it("only lots whose text doesn't name them are sent to Claude", () => {
-    expect(untitledLotPhotos(c)).toEqual(["lot0.jpg", "lot2.jpg"]);
+describe("naming lots from their text and photo", () => {
+  const c = capture([lot(0, "Holo, mp 20kr", []), lot(1, "Charizard ex 199/165 NM\nMp 500", []), lot(2, "", [])]);
+
+  it("only lots whose text doesn't name them are sent to Claude, with their text", () => {
+    expect(untitledLotPhotos(c)).toEqual([{ imageUrl: "lot0.jpg", text: "Holo, mp 20kr" }, { imageUrl: "lot2.jpg", text: "" }]);
   });
 
-  it("uses Claude's name for those, keeps the seller's own text, and says where the name came from", () => {
-    const names: Record<string, string> = { "lot0.jpg": "Pikachu (74/112)" };
+  it("uses Claude's name for those, adds the condition the text gives, and says where the name came from", () => {
+    const names: Record<string, string> = { "lot0.jpg": "Pikachu 58/102 holo" };
     const lots = interpretLots(c, { ...OPTS, lotName: (url) => names[url] });
     expect(lots.map((l) => [l.title, l.namedByClaude, l.untitled])).toEqual([
-      ["Pikachu (74/112)", true, true],
-      ["Charizard ex 199/165", false, false],
+      ["Pikachu 58/102 holo", true, true],
+      ["Charizard ex 199/165 · NM", false, false],
       ["Lot 3", false, true], // Not named yet.
     ]);
   });
 
-  it("caches by the photo's path (its query string changes per read)", () => {
-    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8"));
+  it("caches by the photo's path (its query string changes per read) and the text", () => {
+    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=1&oe=2", "Holo")).toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg?oh=9&oe=8", "Holo"));
+    expect(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg", "Holo")).not.toBe(lotNameAnswerKey("https://x.fbcdn.net/a_n.jpg", "Holo, mp 30"));
+  });
+
+  it("the request gives Claude each photo's text", () => {
+    const r = lotNameRequest([{ imageUrl: "a.jpg", text: "Holo, mp 20kr" }, { imageUrl: "b.jpg", text: "" }]);
+    expect(r.images).toEqual(["a.jpg", "b.jpg"]);
+    expect(r.input).toContain('Photo 1: "Holo, mp 20kr"');
+    expect(r.input).toContain("Photo 2: (no text)");
   });
 });
 
@@ -295,10 +370,10 @@ describe("claim lots priced in the lot's own text (\"Fastpris: Blir oppgitt over
   it("cards Claude found without a price take the lot's per-card price", () => {
     const [l] = interpretLots(c, {
       ...OPTS, claims: true,
-      claimAnswer: () => ({ cards: [
-        { card: "Pikachu", price: null, claimedBy: ME }, { card: "Eevee", price: null, claimedBy: ME },
-        { card: "Ditto", price: 20, claimedBy: null }, // A price on the photo wins.
-      ] }),
+      claimPhoto: () => [
+        { card: "Pikachu", price: null }, { card: "Eevee", price: null },
+        { card: "Ditto", price: 20 }, // A price on the photo wins.
+      ],
     });
     expect(l.claimCards!.map((x) => [x.card, x.price])).toEqual([["Pikachu", 5], ["Eevee", 5], ["Ditto", 20]]);
     expect(l.textPrice).toEqual({ kr: 5, perCard: true });

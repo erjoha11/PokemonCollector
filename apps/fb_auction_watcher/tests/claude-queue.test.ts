@@ -21,7 +21,7 @@ import {
   STALE_AFTER_MS,
   type Failures,
 } from "../src/background/claudeQueue";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey } from "../src/llm/prompts";
+import { bidAnswerKey, claimMatchAnswerKey, claimPhotoAnswerKey, endTimeAnswerKey, lotNameAnswerKey } from "../src/llm/prompts";
 import type { CapturedComment, PostCapture } from "../src/shared/capture";
 import type { StoredPost } from "../src/shared/feed";
 import * as fx from "./fakes/posts";
@@ -182,6 +182,14 @@ describe("pendingItems", () => {
     expect(p.endTimes.map((e) => e.text)).toEqual(["AUKSJON\nAvsluttes søndag kveld klokka ni"]);
   });
 
+  it("a readable end with an unreadable start line is asked about too; a readable or missing start isn't", async () => {
+    const store = memoryStore();
+    store.posts.set("a", post("a", "Claim-salg\nStartid: når middagen er spist\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    store.posts.set("b", post("b", "Claim-salg\nStartid: 03.10.26 kl 20:00\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    store.posts.set("c", post("c", "Claim-salg\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    expect((await pendingItems(store, { now: NOW })).endTimes.map((e) => e.text)).toEqual([store.posts.get("a")!.text]);
+  });
+
   it("a failed lot waits, then is skipped, and never blocks the lots behind it", async () => {
     const store = memoryStore();
     claimSale(store, "p1", "03.10.26 kl 21:00", ago(HOUR), MAX_CLAIM_LOTS + 1);
@@ -203,27 +211,28 @@ describe("pendingItems", () => {
     expect(later.skipped.map((s) => s.key)).toEqual([broken]);
   });
 
-  it("a new reply on a skipped lot is a new question", async () => {
+  it("a photo is read once: a new reply doesn't read it again", async () => {
     const store = memoryStore();
     claimSale(store, "p1", "03.10.26 kl 21:00", ago(HOUR), 1);
     const [lot] = (await pendingItems(store, { now: NOW })).claimLots;
-    let failures: Failures = {};
-    for (let i = 0; i < 3; i++) failures = recordFailure(failures, lot.key, "claim-lot", "403", NOW);
-    expect((await pendingItems(store, { now: NOW, failures })).claimLots).toHaveLength(0);
+    expect(lot.key).toBe(claimPhotoAnswerKey(lot));
+    await store.saveAnswers([{ key: lot.key, value: { cards: [{ card: "Mew", price: 50 }] }, at: NOW.toISOString() }]);
     const c = store.captures.get("p1")!;
-    c.comments[0].replies.push({ ...c.comments[0].replies[0], id: "199", author: "Kjøper To", text: "claim" });
-    const again = await pendingItems(store, { now: NOW, failures });
-    expect(again.claimLots).toHaveLength(1);
-    expect(again.claimLots[0].key).not.toBe(lot.key);
+    c.comments[0].replies.push({ ...c.comments[0].replies[0], id: "199", author: "Kjøper To", text: "claim mew" });
+    expect((await pendingItems(store, { now: NOW })).claimLots).toHaveLength(0);
   });
 
-  it("answered lots aren't asked again", async () => {
+  it("claims the rules can't match go to Claude as text, without names, once per set of claims", async () => {
     const store = memoryStore();
     claimSale(store, "p1", "03.10.26 kl 21:00", ago(HOUR), 1);
     const [lot] = (await pendingItems(store, { now: NOW })).claimLots;
-    expect(lot.key).toBe(claimLotAnswerKey(lot));
-    await store.saveAnswers([{ key: lot.key, value: { cards: [] }, at: NOW.toISOString() }]);
-    expect((await pendingItems(store, { now: NOW })).claimLots).toHaveLength(0);
+    await store.saveAnswers([{ key: lot.key, value: { cards: [{ card: "Pikachu", price: 10 }, { card: "Raichu", price: 20 }] }, at: NOW.toISOString() }]);
+    // "claim" alone on a two-card lot: which card? Not for the rules to guess.
+    const p = await pendingItems(store, { now: NOW });
+    expect(p.claimMatches).toEqual([{ id: 0, cards: ["Pikachu", "Raichu"], claims: [{ who: "Claimer 1", text: "claim" }], key: claimMatchAnswerKey({ cards: ["Pikachu", "Raichu"], claims: [{ who: "Claimer 1", text: "claim" }] }) }]);
+    expect(JSON.stringify(p.claimMatches)).not.toContain("Kjøper");
+    await store.saveAnswers([{ key: p.claimMatches[0].key, value: [null, "Claimer 1"], at: NOW.toISOString() }]);
+    expect((await pendingItems(store, { now: NOW })).claimMatches).toHaveLength(0);
   });
 
   it("the photo cap holds lots back and says so, without asking for another run", async () => {
@@ -243,14 +252,14 @@ describe("describeRun", () => {
   it("says what was read, what failed, what was skipped and why, and the photo limit", () => {
     const photo403 = { task: "claim-lot" as const, attempts: 3, lastError: "host error: HTTP Error 403: Forbidden", lastAt: NOW.toISOString() };
     const timeout = { ...photo403, lastError: "claude -p took more than 180 s" };
-    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 5, lotNames: 0 }, failed: 0, skipped: [photo403, photo403], photoLimited: true })).toBe(
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 5, claimMatches: 0, lotNames: 0 }, failed: 0, skipped: [photo403, photo403], photoLimited: true })).toBe(
       "Read 5 claim lot photos · 2 skipped (photo unavailable) · photo limit reached, rest later",
     );
-    expect(describeRun({ read: { endTimes: 1, bids: 2, claimLots: 0, lotNames: 0 }, failed: 1, skipped: [timeout], photoLimited: false })).toBe(
-      "Read 1 end time and 2 bids · 1 failed, will retry · 1 skipped (failed 3 times)",
+    expect(describeRun({ read: { endTimes: 1, bids: 2, claimLots: 0, claimMatches: 3, lotNames: 0 }, failed: 1, skipped: [timeout], photoLimited: false })).toBe(
+      "Read 1 end time and 2 bids and claims on 3 lots · 1 failed, will retry · 1 skipped (failed 3 times)",
     );
-    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, lotNames: 12 }, failed: 0, skipped: [], photoLimited: false })).toBe("Read 12 lot names from photos");
-    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, lotNames: 0 }, failed: 2, skipped: [], photoLimited: false })).toBe("Nothing read · 2 failed, will retry");
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, claimMatches: 0, lotNames: 12 }, failed: 0, skipped: [], photoLimited: false })).toBe("Read 12 lot names from photos");
+    expect(describeRun({ read: { endTimes: 0, bids: 0, claimLots: 0, claimMatches: 0, lotNames: 0 }, failed: 2, skipped: [], photoLimited: false })).toBe("Nothing read · 2 failed, will retry");
   });
 });
 
@@ -307,7 +316,8 @@ describe("pendingItems: what the rules couldn't read", () => {
   it("every lot of claim and fixed-price sales, yours first; none from auctions", async () => {
     const { claimLots } = await pendingItems(memoryStore({ captures: [{ postId: "1", capture: sale("1") }] }), opts);
     expect(claimLots.map((l) => l.imageUrl)).toEqual([2, 1, 3].map((n) => `https://scontent.example/lot${n}.jpg`));
-    expect(claimLots[0]).toMatchObject({ seller: fx.SELLER, replies: [{ author: fx.ME, text: "claim Pikachu" }] });
+    // Only the photo and the lot's text: no seller, no replies, no names.
+    expect(Object.keys(claimLots[0]).sort()).toEqual(["imageUrl", "key", "lotText"]);
     expect((await pendingItems(memoryStore({ captures: [{ postId: "1", capture: sale("1", FIXED) }] }), opts)).claimLots).toHaveLength(3);
     expect((await pendingItems(memoryStore({ captures: [{ postId: "1", capture: sale("1", fx.auctionText()) }] }), opts)).claimLots).toEqual([]);
   });
@@ -336,7 +346,7 @@ describe("pendingItems: lot names", () => {
     const failures = recordFailure({}, p.lotNames[1].key, "lot-name", "host error: HTTP Error 403: Forbidden", AT);
     const again = await pendingItems(store, { myName: fx.ME, now: AT, failures });
     expect(urls(again.lotNames)).toEqual(["lot1"]);
-    expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl));
+    expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl, again.lotNames[0].text));
   });
 
   it("skips sales that ended over a few hours ago", async () => {

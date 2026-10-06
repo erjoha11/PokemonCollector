@@ -1,12 +1,12 @@
 import { parseAmount } from "./amount";
-import { findEndLine, parseEndTime, type EndTime } from "./endTime";
+import { findEndLine, findStartLine, parseEndTime, parseStartTime, type EndTime, type StartTime } from "./endTime";
 
 // Interprets a sale post's text (the group template) into listing fields. Pure and cheap, so
 // the table re-runs it on the stored raw text every time: better rules apply to old posts too.
 
 export type SaleType = "auction" | "claim" | "fixed" | "wanted" | "trade" | "other";
 
-export type Interpretation = EndTime & {
+export type Interpretation = EndTime & StartTime & {
   type: SaleType;
   title: string;
   /** The template's "Objektbeskrivelse:" (what's for sale), or null. */
@@ -21,6 +21,8 @@ export type Interpretation = EndTime & {
   shippingText: string | null;
   /** The template's "Betalingsalternativ: …", as written (Vipps, bank transfer…). */
   paymentText: string | null;
+  /** The template's "Tilstand: …" (condition), as written. */
+  conditionText: string | null;
 };
 
 /** The type a piece of text names, by the template's words; claim before fixed price (claim sales have a "Fastpris:" line). */
@@ -93,6 +95,7 @@ export function interpretListing(text: string, capturedAt: Date): Interpretation
   const antisnipe = text.match(/antisnipe\s*(\d+)\s*min[^:\n]*:\s*(ja|nei)/i);
   return {
     ...parseEndTime(findEndLine(text), capturedAt),
+    ...parseStartTime(findStartLine(text), capturedAt),
     type: saleType(text),
     title: saleTitle(text),
     description: labelled(text, /objektbeskrivelse\s*:?/i)?.trim() || null,
@@ -102,5 +105,6 @@ export function interpretListing(text: string, capturedAt: Date): Interpretation
     fixedPrice: parseAmount(labelled(text, /fastpris\s*:/i)),
     shippingText: labelled(text, /sender\s+med\s+post[^:\n]*:/i)?.trim() || null,
     paymentText: labelled(text, /betalingsalternativ\s*:/i)?.trim() || null,
+    conditionText: labelled(text, /^\s*tilstand\s*:/i)?.trim() || null,
   };
 }

@@ -1,7 +1,19 @@
-import { claimLotsToRead, normalizeName, untitledLotPhotos, unsureReplies, type ClaimLotInput } from "../domain/bids";
+import { claimLotsToRead, interpretLots, normalizeName, untitledLotPhotos, unsureReplies, type ClaimPhotoInput } from "../domain/bids";
+import { answerLookups } from "../llm/answers";
 import { interpretListing } from "../domain/listing";
 import { claudeEndsAt } from "../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type BidItem, type ClaudeRequest, type EndTimeItem, type LotNameItem } from "../llm/prompts";
+import {
+  bidAnswerKey,
+  claimMatchAnswerKey,
+  claimPhotoAnswerKey,
+  endTimeAnswerKey,
+  lotNameAnswerKey,
+  type BidItem,
+  type ClaimMatchItem,
+  type ClaudeRequest,
+  type EndTimeItem,
+  type LotNameItem,
+} from "../llm/prompts";
 import type { Store } from "../store";
 
 // What to send to Claude, and what to leave alone: pure decisions, no chrome.* and no bridge,
@@ -16,6 +28,8 @@ const DAY = 24 * HOUR;
 /** Batched (Haiku) questions per run. */
 export const MAX_END_TIMES = 20;
 export const MAX_BIDS = 40;
+/** Claim lots whose claims the rules couldn't match (Haiku, text only), batched. */
+export const MAX_CLAIM_MATCHES = 20;
 /** Photo questions are one call each (Sonnet), so fewer per run. */
 export const MAX_CLAIM_LOTS = 5;
 /** Lot photos to name (Sonnet): several per call, at most this many per run. */
@@ -141,7 +155,10 @@ export type PendingOptions = {
 export type Pending = {
   endTimes: (EndTimeItem & { key: string })[];
   bids: (BidItem & { key: string })[];
-  claimLots: (ClaimLotInput & { key: string })[];
+  /** Claim/fixed-price lot photos to read (cards and prices), once each, yours first. */
+  claimLots: (ClaimPhotoInput & { key: string })[];
+  /** Read lots whose claims the rules couldn't match to the cards. */
+  claimMatches: (ClaimMatchItem & { key: string })[];
   /** Lot photos whose text doesn't name the lot ("Mp 20kr"), yours first: Claude names them. */
   lotNames: (LotNameItem & { key: string; mine: boolean })[];
   /** More photos (claim lots or lot names) wait than this run takes (and the photo cap allows more): run again after it. */
@@ -162,6 +179,7 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
   const { myName = "", now = new Date(), failures = {}, photoCallsLeft: photoLeft = Infinity } = opts;
   const [posts, captures, answers] = await Promise.all([store.allPosts(), store.allCaptures(), store.allAnswers()]);
   const answerMap = new Map(answers.map((a) => [a.key, a.value]));
+  const lookups = answerLookups(answerMap);
   const postsById = new Map(posts.map((p) => [p.id, p]));
   const skipped: Pending["skipped"] = [];
   const seen = new Set<string>();
@@ -178,7 +196,9 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
   for (const p of posts) {
     if (!p.textComplete) continue;
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
-    if ((i.type !== "auction" && i.type !== "claim") || i.endsAt) continue;
+    if (i.type !== "auction" && i.type !== "claim") continue;
+    // Asked when the rules couldn't read the end, or a start line they couldn't read either.
+    if (i.endsAt && !(i.startsAtText && !i.startsAt)) continue;
     // No end time is known (that's the question), so only the age limit applies.
     if (isSaleOver(null, p.lastSeenAt, now)) continue;
     const key = endTimeAnswerKey(p.text);
@@ -187,6 +207,7 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
 
   const bids: Pending["bids"] = [];
   const claimLots: Pending["claimLots"] = [];
+  const claimMatches: Pending["claimMatches"] = [];
   const lotNames: Pending["lotNames"] = [];
   const me = normalizeName(myName);
   for (const { postId, capture } of captures) {
@@ -201,11 +222,12 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
       claudeEndsAt(answerMap.get(endTimeAnswerKey(post?.text ?? capture.post.text)));
     if (isSaleOver(endsAt, later(capture.capturedAt, post?.lastSeenAt), now)) continue;
 
-    // Lots whose text doesn't name them: Claude names them from the photo, for any kind of sale.
+    // Auction lots whose text doesn't name them: Claude names them from the text and photo. (A claim
+    // lot is named from the cards its photo read finds: no second look at the same photo.)
     const mine = !!me && capture.comments.some((c) => c.replies.some((r) => normalizeName(r.author) === me));
-    for (const imageUrl of untitledLotPhotos(capture)) {
-      const key = lotNameAnswerKey(imageUrl);
-      if (wanted(key)) lotNames.push({ imageUrl, key, mine });
+    for (const { imageUrl, text } of type === "claim" || type === "fixed" ? [] : untitledLotPhotos(capture)) {
+      const key = lotNameAnswerKey(imageUrl, text);
+      if (wanted(key)) lotNames.push({ imageUrl, text, key, mine });
     }
 
     if (type === "auction") {
@@ -215,10 +237,17 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
         if (wanted(key)) bids.push({ id: bids.length, seller: u.seller, text: u.text, key });
       }
     } else if (type === "claim" || type === "fixed") {
-      // Claim and fixed-price lots (yours first): every card, its price on the photo, taken or for sale.
-      for (const lot of claimLotsToRead(capture, myName)) {
-        const key = claimLotAnswerKey(lot);
-        if (wanted(key)) claimLots.push({ ...lot, key });
+      // Claim and fixed-price lots (yours first): every card and its price, read once per photo.
+      for (const photo of claimLotsToRead(capture, myName)) {
+        const key = claimPhotoAnswerKey(photo);
+        if (wanted(key)) claimLots.push({ ...photo, key });
+      }
+      // Read lots whose claims the rules couldn't match: Claude matches them from the text, no names.
+      const lots = interpretLots(capture, { myName, claims: true, listingIncrement: null, listingMinPrice: null, ...lookups });
+      for (const l of lots) {
+        if (!l.claimMatchInput) continue;
+        const key = claimMatchAnswerKey(l.claimMatchInput);
+        if (wanted(key)) claimMatches.push({ ...l.claimMatchInput, id: claimMatches.length, key });
       }
     }
   }
@@ -233,6 +262,7 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
     endTimes: endTimes.slice(0, MAX_END_TIMES),
     bids: bids.slice(0, MAX_BIDS),
     claimLots: claimLots.slice(0, take),
+    claimMatches: claimMatches.slice(0, MAX_CLAIM_MATCHES),
     lotNames: lotNames.slice(0, takeNames),
     more: (lotsHeld && take === MAX_CLAIM_LOTS) || (namesHeld && takeNames === MAX_LOT_NAMES),
     photoLimited: (lotsHeld && take < MAX_CLAIM_LOTS) || (namesHeld && takeNames < MAX_LOT_NAMES),
@@ -258,7 +288,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /** One run's outcome for the overview's Claude status line. */
 export type RunSummary = {
-  read: { endTimes: number; bids: number; claimLots: number; lotNames: number };
+  read: { endTimes: number; bids: number; claimLots: number; claimMatches: number; lotNames: number };
   /** Items that failed this run and will be tried again later. */
   failed: number;
   /** Items of live sales skipped after MAX_ATTEMPTS failures (including any that just reached it). */
@@ -272,6 +302,7 @@ export function describeRun(s: RunSummary): string {
     s.read.endTimes && plural(s.read.endTimes, "end time"),
     s.read.bids && plural(s.read.bids, "bid"),
     s.read.claimLots && plural(s.read.claimLots, "claim lot photo"),
+    s.read.claimMatches && `claims on ${plural(s.read.claimMatches, "lot")}`,
     s.read.lotNames && `${plural(s.read.lotNames, "lot name")} from photos`,
   ].filter(Boolean);
   const parts = [read.length ? `Read ${read.join(" and ")}` : "Nothing read"];
