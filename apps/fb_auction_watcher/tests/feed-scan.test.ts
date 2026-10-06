@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { recordFeed } from "../src/content/feed/recorder";
-import { findSaleSeeMore, isSaleText, scanFeed } from "../src/content/feed/scan";
+import { canContinue, CONTINUE_SCAN, findSaleSeeMore, isSaleText, scanFeed, type ScanResult } from "../src/content/feed/scan";
 
 // Synthetic feed (invented names), shaped like the real one: posts are direct children of the
 // feed with data-ad-rendering-role parts; the post text is cut at "Se mer"; a preview comment
@@ -123,6 +123,28 @@ describe("scanFeed", () => {
     rec.stop();
     expect(result.stoppedBecause).toBe("caught-up");
     expect(rec.posts().map((p) => p.key)).toEqual(["post:1", "post:2", "post:3", "post:4", "post:5"]);
+  });
+
+  it("'Continue to older posts' goes past the saved posts to the older ones an earlier scan never reached", async () => {
+    // Feed (newest first): 1, 2 on screen; 3..9 saved earlier (that scan was stopped there); 10..12 never saved.
+    let next = 3;
+    const scrollStep = () => {
+      if (next > 12) return;
+      feed.insertAdjacentHTML("beforeend", post(String(next++), "FASTPRIS-annonse"));
+    };
+    const known = new Set(["3", "4", "5", "6", "7", "8", "9"]);
+    const rec = recordFeed(feed, () => {});
+    const result = await scanFeed(feed, rec, { ...FAST, ...CONTINUE_SCAN, knownIds: known, idleRounds: 2, scrollStep });
+    rec.stop();
+    expect(result.stoppedBecause).toBe("end-of-feed");
+    expect(rec.posts().map((p) => p.key)).toContain("post:12");
+    expect(result).toMatchObject({ posts: 12, newPosts: 5 }); // 1, 2 and 10..12.
+  });
+
+  it("offers Continue unless the feed ended or a dialog opened", () => {
+    expect(["caught-up", "aborted", "max-posts", "max-scrolls", "hidden"].every((s) => canContinue(s as ScanResult["stoppedBecause"]))).toBe(true);
+    expect(canContinue("end-of-feed")).toBe(false);
+    expect(canContinue("dialog-opened")).toBe(false);
   });
 
   it("doesn't reopen 'Se mer' on a post whose full text is already saved", async () => {

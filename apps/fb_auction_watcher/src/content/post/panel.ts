@@ -39,7 +39,8 @@ export type Panel = {
   /** Feed recording mode; `sampleHtml` builds the download from everything recorded so far. */
   showFeedRecorder(sampleHtml: () => string, openOverview: () => void): void;
   setScanProgress(progress: ScanProgress): void;
-  showScanDone(result: ScanResult): void;
+  /** `onContinue`: offer "Continue to older posts" (left out where the feed ended or a dialog opened). */
+  showScanDone(result: ScanResult, onContinue?: () => void): void;
 };
 
 function download(filename: string, content: string, type: string) {
@@ -159,13 +160,27 @@ export function showPanel(): Panel {
       html.className = "";
       buttons.prepend(overview, html);
     },
-    setScanProgress({ posts, scrolls, seeMoreClicks, paused }) {
+    setScanProgress({ posts, newPosts, scrolls, seeMoreClicks, paused }) {
       status.textContent = paused
         ? `Paused while this tab is in the background (${posts} posts so far). Come back to this tab to continue.`
-        : `Scanning… ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
+        : `Scanning… ${posts} posts saved (${newPosts} new), ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
     },
-    showScanDone({ posts, scrolls, seeMoreClicks, stoppedBecause }) {
+    showScanDone({ posts, newPosts, scrolls, seeMoreClicks, stoppedBecause }, onContinue) {
       stop.remove();
+      if (onContinue) {
+        const more = document.createElement("button");
+        more.type = "button";
+        more.className = "primary";
+        more.textContent = "Continue to older posts";
+        more.title =
+          "Scroll on from here, past posts already saved, and save the older ones an earlier scan didn't reach. Stops at the end of the feed, after 400 posts, or when you press Stop.";
+        more.addEventListener("click", () => {
+          more.disabled = true;
+          more.textContent = "Starting…";
+          onContinue();
+        });
+        buttons.prepend(more);
+      }
       const why: Record<ScanResult["stoppedBecause"], string> = {
         "caught-up": "caught up: reached posts saved in an earlier scan",
         hidden: "the tab went to the background",
@@ -175,7 +190,7 @@ export function showPanel(): Panel {
         aborted: "stopped",
         "dialog-opened": "stopped: a \"Se mer\" click opened a dialog instead of expanding the text",
       };
-      status.textContent = `Done (${why[stoppedBecause]}): ${posts} posts saved, ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
+      status.textContent = `Done (${why[stoppedBecause]}): ${posts} posts saved (${newPosts} new), ${scrolls} scrolls, ${seeMoreClicks} "Se mer" opened.`;
     },
     showError(text) {
       stop.remove();

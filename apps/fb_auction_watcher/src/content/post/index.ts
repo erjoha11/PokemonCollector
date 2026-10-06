@@ -4,6 +4,7 @@ import {
   isReadPostMessage,
   MSG_ACTIVITY_DONE,
   MSG_AUTO_SCAN_DONE,
+  MSG_CONTINUE_SCAN,
   MSG_GET_KNOWN_POSTS,
   MSG_READ_DONE,
   MSG_OPEN_OVERVIEW,
@@ -17,7 +18,7 @@ import {
 } from "../../shared/messages";
 import { extractFeedPost } from "../feed/extract";
 import { feedPosts, feedSampleHtml, recordFeed } from "../feed/recorder";
-import { scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
+import { canContinue, CONTINUE_SCAN, scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
 import { expandAll } from "./expand";
 import { countLoaded, extractCapture, findPostDialog, findPostRoot } from "./extract";
 import { showPanel, type Panel } from "./panel";
@@ -72,7 +73,7 @@ async function runFeedScan(feed: Element, options: ScanOptions & { panel?: Panel
   }
 }
 
-async function readOpenPost({ waitForPost = false, silent = false } = {}) {
+async function readOpenPost({ waitForPost = false, silent = false, continueOlder = false } = {}) {
   // A background read always reports back, so the reader queue can close the tab and move on.
   const report = (ok: boolean, outcome: string) => {
     if (!silent) return;
@@ -110,7 +111,10 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
       if (feed && /^\/groups\/[^/]+\/?$/.test(location.pathname)) {
         const controller = new AbortController();
         panel.onStop(() => controller.abort());
-        panel.showScanDone(await runFeedScan(feed, { panel, signal: controller.signal }));
+        const result = await runFeedScan(feed, { panel, signal: controller.signal, ...(continueOlder ? CONTINUE_SCAN : {}) });
+        // "Continue to older posts" goes through the service worker, which takes the Facebook slot first.
+        const onContinue = canContinue(result.stoppedBecause) ? () => void chrome.runtime.sendMessage({ type: MSG_CONTINUE_SCAN }).catch(() => {}) : undefined;
+        panel.showScanDone(result, onContinue);
         return;
       }
       panel.showError(
@@ -189,6 +193,6 @@ async function autoScan() {
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (isReadPostMessage(msg)) void readOpenPost({ waitForPost: msg.waitForPost, silent: msg.silent });
+  if (isReadPostMessage(msg)) void readOpenPost({ waitForPost: msg.waitForPost, silent: msg.silent, continueOlder: msg.continueOlder });
   if (isAutoScanMessage(msg)) void autoScan();
 });

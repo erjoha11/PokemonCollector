@@ -3,6 +3,7 @@ import { mergeCaptures } from "../domain/captures";
 import {
   isActivityDoneMessage,
   isAutoScanDoneMessage,
+  isContinueScanMessage,
   isGetKnownPostsMessage,
   isReloadFbTabsMessage,
   isStartMessage,
@@ -110,6 +111,20 @@ async function scanFeedInNewTab(feedUrl: string) {
     void chrome.action.setBadgeText({ tabId, text: "!" });
     void chrome.action.setTitle({ tabId, title: "Reload this Facebook tab, then try again." });
   });
+}
+
+/**
+ * The scan panel's "Continue to older posts": the same feed tab, not reloaded (it goes on from
+ * where it is), once the Facebook slot is free, so it never runs alongside another read or scan.
+ */
+async function continueScan(tabId: number) {
+  if (!(await facebookSlot.acquireWhenFree("menu-scan", tabId))) {
+    void chrome.action.setBadgeText({ tabId, text: "!" });
+    void chrome.action.setTitle({ tabId, title: "Facebook was busy for too long (another read or scan). Try Continue again." });
+    return;
+  }
+  const msg: ReadPostMessage = { type: MSG_READ_POST, continueOlder: true };
+  await chrome.tabs.sendMessage(tabId, msg).catch(() => void facebookSlot.release("menu-scan", tabId));
 }
 
 async function reloadFacebookTabs() {
@@ -220,6 +235,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   if (isScanFeedNewTabMessage(msg)) {
     void scanFeedInNewTab(msg.url);
+    return;
+  }
+  if (isContinueScanMessage(msg)) {
+    if (sender.tab?.id !== undefined) void continueScan(sender.tab.id);
     return;
   }
   if (isReloadFbTabsMessage(msg)) {

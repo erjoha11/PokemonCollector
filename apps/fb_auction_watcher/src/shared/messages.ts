@@ -10,7 +10,14 @@ export type ReadPostMessage = {
   waitForPost?: boolean;
   /** A background read: no panel, report back with MSG_READ_DONE. */
   silent?: boolean;
+  /** On the feed: go on to older posts from where it is, past saved ones (the scan panel's "Continue to older posts"). */
+  continueOlder?: boolean;
 };
+
+/** Content script → service worker: the scan panel's "Continue to older posts". Takes the Facebook slot, then scans on in the same tab. */
+export const MSG_CONTINUE_SCAN = "fbaw/continue-scan" as const;
+export const isContinueScanMessage = (m: unknown): m is { type: typeof MSG_CONTINUE_SCAN } =>
+  typeof m === "object" && m !== null && (m as { type?: unknown }).type === MSG_CONTINUE_SCAN;
 
 export function isReadPostMessage(msg: unknown): msg is ReadPostMessage {
   return typeof msg === "object" && msg !== null && (msg as { type?: unknown }).type === MSG_READ_POST;

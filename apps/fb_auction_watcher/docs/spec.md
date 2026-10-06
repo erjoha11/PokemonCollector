@@ -81,7 +81,16 @@ Post = listing: overview photos of the whole auction, rules, end time
 
 - **First-time backfill:** sort by "New posts" ("Nye innlegg"), scroll slowly, save each post as
   it renders, stop at posts 3 days old. After that, incremental: stop at the first known post.
-- A less frequent pass sorted by "New activity" ("Ny aktivitet") catches older posts with new bids.
+  As built: a scan stops after 5 saved posts in a row ("caught up") or 150 posts (60 for the
+  automatic scan), not at an age.
+- **Continue to older posts** (2026-10-06): a scan stopped early (Stop, its post limit, a hidden
+  tab) leaves a gap, and later scans stop at the saved posts above it. When a scan you started is
+  done, its panel offers "Continue to older posts": the service worker takes the Facebook slot,
+  and the same tab scans on from where it is (no reload), past saved posts without reopening
+  their "Se mer", until the end of the feed, 400 posts, or Stop (`CONTINUE_SCAN`). Not offered
+  when the feed ended or a "Se mer" opened a dialog. Progress shows how many posts were new.
+- Not built yet: a pass sorted by "Nylig aktivitet" (recent activity) to catch older posts with
+  new bids; its sort value/label needs checking against a real feed first.
 - **Detail reads (lots/bids)** only: when I open a post, and automatically every 15 min for
   auctions I have bid on. Everything else is not read until opened.
 
