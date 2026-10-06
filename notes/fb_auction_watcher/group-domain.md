@@ -109,7 +109,7 @@ Bekreftelse: …
 | Minstepris (MP) | Minimum price | **Binding**: seller must sell if reached. Can be per post, per card, or per lot. |
 | Minimum budøkning | Minimum bid increment | At least 5 kr. |
 | Sluttid | End time | Required on all auctions. Date + time. |
-| Startid | Start time | Claim sales only. |
+| Startid | Start time | Claim sales only, and optional. Sellers usually don't post the lots until then (confirmed by the user, 2026-10-06). |
 | Antisnipe 5 min | Anti-sniping | `Ja`/`Nei`. See §4.2. |
 | Fastpris | Fixed price | |
 | Tilstand | Condition | Mint / NM / LP / MP / HP / D (TCGplayer scale). Note: **MP is also used as an abbreviation for Minstepris** in lot comments. Disambiguate by context. |
@@ -203,6 +203,8 @@ Parsing notes:
 
 - Many top-level comments containing only `.` (users following the post). Ignore them.
 - After start: seller comments image + price per lot; replies containing "claim" are claims. First one by timestamp wins.
+- The template's first line carries an instruction in brackets ("Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker å delta)"); it isn't the sale's name, `Objektbeskrivelse` is.
+- A lot's text, when there is one, often gives the name, price and condition on one line ("Umbreon VMAX 215/203 NM - 1200kr"); "MP - 250kr" there means Moderately Played, not minimum price.
 
 ### 5.3 DOM hooks (observed, fragile, verify before relying on them)
 
