@@ -108,18 +108,37 @@ type Thing = {
   data: CapturedReply;
 };
 
-function readArticle(article: Element): Thing | null {
+/** Whether an article is a comment or a reply (or neither, e.g. the post itself), and its permalink. */
+function articleKind(article: Element) {
   const owns = (e: Element) => e.closest(ARTICLE) === article;
   const anchors = Array.from(article.querySelectorAll("a")).filter(owns);
-
   // The timestamp link is the comment's permalink and carries its IDs.
   const permalink = anchors.find((a) => commentIdsFromHref(a.getAttribute("href")).commentId !== null) ?? null;
   const ids = commentIdsFromHref(permalink?.getAttribute("href"));
-  const ariaLabel = article.getAttribute("aria-label");
-  const labelKind = ariaKind(ariaLabel);
-  if (!permalink && !labelKind) return null; // Not a comment (e.g. the post itself).
+  const labelKind = ariaKind(article.getAttribute("aria-label"));
+  const kind: "comment" | "reply" | null = !permalink && !labelKind ? null : ids.replyCommentId ? "reply" : (labelKind ?? "comment");
+  return { owns, anchors, permalink, ids, kind };
+}
 
-  const kind: "comment" | "reply" = ids.replyCommentId ? "reply" : (labelKind ?? "comment");
+/**
+ * How many comments and replies have loaded so far, counted as extractCapture counts them, without
+ * reading their text or photos: cheap enough for every step of expanding.
+ */
+export function countLoaded(root: Element): { comments: number; replies: number } {
+  let comments = 0;
+  let replies = 0;
+  for (const article of Array.from(root.querySelectorAll(ARTICLE))) {
+    const { kind } = articleKind(article);
+    if (kind === "comment") comments++;
+    else if (kind === "reply") replies++;
+  }
+  return { comments, replies };
+}
+
+function readArticle(article: Element): Thing | null {
+  const { owns, anchors, permalink, ids, kind } = articleKind(article);
+  if (!kind) return null; // Not a comment (e.g. the post itself).
+  const ariaLabel = article.getAttribute("aria-label");
   const authorLink =
     anchors.find((a) => a !== permalink && a.getAttribute("role") !== "button" && normalize(a.textContent) !== "") ??
     null;

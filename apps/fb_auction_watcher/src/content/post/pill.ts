@@ -45,6 +45,11 @@ button:hover { color: #1b1f24; text-decoration: underline; }
 }
 `;
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+/** "84 comments, 212 replies": a read's counts, in the overlay and the panel. */
+export const readCounts = ({ comments, replies }: { comments: number; replies: number }) =>
+  `${plural(comments, "comment", "comments")}, ${plural(replies, "reply", "replies")}`;
+
 /** "100 lots · 13 bids · Leading 1 · Outbid 2" (or claims: "18 lots · 3 claims · Claimed 1"). */
 async function summary(capture: PostCapture): Promise<{ text: string; lead: number; outbid: number; labels: [string, string] }> {
   const listing = interpretListing(capture.post.text, new Date(capture.capturedAt));
@@ -68,7 +73,7 @@ export function showStatusPill(): Panel {
     <style>${STYLE}</style>
     <div class="pill" role="status" aria-live="polite">
       <div class="spin" aria-hidden="true"></div>
-      <div class="text"><div class="title">Auction Watcher</div><div class="line">Starting…</div></div>
+      <div class="text"><div class="title">FB Auction Watcher: read post</div><div class="line">Starting…</div></div>
       <button class="stop" type="button">Stop</button>
       <button class="close" type="button" aria-label="Close">×</button>
     </div>`;
@@ -109,9 +114,10 @@ export function showStatusPill(): Panel {
       stop.remove();
       pill.classList.add("done");
       const s = capture.stats;
-      line.textContent = `Read ${s.topLevelComments} comments, ${s.replies} replies`;
+      const done = `Done: ${readCounts({ comments: s.topLevelComments, replies: s.replies })} saved`;
+      line.textContent = done;
       void summary(capture).then(({ text, lead, outbid, labels }) => {
-        line.textContent = `Saved · ${text}`;
+        line.textContent = `${done} · ${text}`;
         if (lead) line.append(" · ", Object.assign(document.createElement("span"), { className: labels[0] === "Won" ? "won" : "lead", textContent: `${labels[0]} ${lead}` }));
         if (outbid) line.append(" · ", Object.assign(document.createElement("span"), { className: "outbid", textContent: `${labels[1]} ${outbid}` }));
       });

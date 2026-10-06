@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { showStatusPill } from "../src/content/post/pill";
 import type { PostCapture } from "../src/shared/capture";
 
-// The quiet read's status overlay: progress line, then a green "Saved" with lots and your
+// The quiet read's status overlay: progress line, then a green "Done: … saved" with lots and your
 // status, or a red error that stays. Invented names.
 const pill = () => document.getElementById("fbaw-pill-host")!.shadowRoot!;
 
@@ -28,14 +28,15 @@ const capture: PostCapture = {
 };
 
 describe("status overlay", () => {
-  it("shows progress, then a green 'Saved' with your status", async () => {
+  it("is titled like the read-post panel, shows progress, then a green 'Done' with counts and your status", async () => {
     const p = showStatusPill();
-    p.setStatus("Loading comments and bids… 3 steps");
-    expect(pill().querySelector(".line")!.textContent).toBe("Loading comments and bids… 3 steps");
+    expect(pill().querySelector(".title")!.textContent).toBe("FB Auction Watcher: read post");
+    p.setStatus("Reading… 3 comments, 1 reply loaded, 2 scrolls, 1 expanded.");
+    expect(pill().querySelector(".line")!.textContent).toBe("Reading… 3 comments, 1 reply loaded, 2 scrolls, 1 expanded.");
     p.showResult(capture, "");
     await new Promise((r) => setTimeout(r, 0));
     expect(pill().querySelector(".pill")!.classList.contains("done")).toBe(true);
-    expect(pill().querySelector(".line")!.textContent).toBe("Saved · 1 lot · 1 bid · Leading 1");
+    expect(pill().querySelector(".line")!.textContent).toBe("Done: 1 comment, 1 reply saved · 1 lot · 1 bid · Leading 1");
     expect(pill().querySelector(".stop")).toBeNull();
   });
 

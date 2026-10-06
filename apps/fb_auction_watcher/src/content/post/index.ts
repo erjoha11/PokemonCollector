@@ -19,9 +19,9 @@ import { extractFeedPost } from "../feed/extract";
 import { feedPosts, feedSampleHtml, recordFeed } from "../feed/recorder";
 import { scanFeed, type ScanOptions, type ScanResult } from "../feed/scan";
 import { expandAll } from "./expand";
-import { extractCapture, findPostDialog, findPostRoot } from "./extract";
+import { countLoaded, extractCapture, findPostDialog, findPostRoot } from "./extract";
 import { showPanel, type Panel } from "./panel";
-import { showStatusPill } from "./pill";
+import { readCounts, showStatusPill } from "./pill";
 import { ensureAllComments } from "./sort";
 
 // Content script on facebook.com. Two jobs, both read-only:
@@ -35,6 +35,7 @@ let running = false;
 let activeRecorder: { stop(): void } | null = null;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 
 /** Scans the feed and saves posts as it goes. Shared by the icon (with a panel) and the automatic scan. */
 async function runFeedScan(feed: Element, options: ScanOptions & { panel?: Panel }): Promise<ScanResult> {
@@ -126,12 +127,10 @@ async function readOpenPost({ waitForPost = false, silent = false } = {}) {
     panel.setStatus("Loading all comments and replies…");
     const result = await expandAll(root, {
       signal: controller.signal,
-      onProgress: ({ clicks, scrolls, lastLabel }) =>
-        panel.setStatus(
-          silent
-            ? `Loading comments and bids… ${clicks + scrolls} step${clicks + scrolls === 1 ? "" : "s"}`
-            : `Expanding… ${clicks} clicked, ${scrolls} scrolled (last: "${lastLabel}")`,
-        ),
+      // Worded like the feed scan's progress ("Scanning… 12 posts saved, 3 scrolls, …"), in both
+      // the overlay and the panel: what's loaded so far, counted as the read will count it.
+      onProgress: ({ clicks, scrolls }) =>
+        panel.setStatus(`Reading… ${readCounts(countLoaded(root))} loaded, ${scrolls} scrolls, ${clicks} expanded.`),
     });
     if (cap) clearTimeout(cap);
     panel.setStatus("Reading…");
