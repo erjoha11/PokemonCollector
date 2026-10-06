@@ -10,7 +10,8 @@
   `notes/fb_auction_watcher/overview-plan.md`. Automatic re-reads of auctions you're in
   (every 15 min, plus a final read on its own alarm 2 min after the close) and desktop notifications
   (outbid, ends in 10 min, won/lost; `src/background/watch.ts`, `notify.ts`; each message starts
-  with the sale's type in the badge's words, "Auction · Gengar · …", #322) are built. Not built: overlay, side panel.
+  with the sale's type in the badge's words, "Auction · Gengar · …", #322) are built. The overlay on the post and the side panel (modules 6–7) were dropped on
+  2026-10-06: the overview covers what they were for.
 
 The whole app is in English: code, commits, docs, and UI. Norwegian only appears where it is
 input: Facebook's own UI labels and sellers' post text (the examples below are quoted as-is).
@@ -26,7 +27,7 @@ of what ends when, and where I'm leading or have been outbid.
 
 - One table of every sale in the group, grouped and sorted by end time, with a live countdown.
 - Lots I have bid on are highlighted (Leading / Outbid).
-- Open an auction and see its lots and bids in a clean overlay instead of the comment thread.
+- See an auction's lots and bids in the overview (click its row) instead of the comment thread.
 - Chrome on PC/Mac only. No mobile, no server, no webapp. One exception (2026-10-04, #309): it
   may send **my own wins, nothing else**, to my own tcg_inventory (see "Sending wins to
   tcg_inventory").
@@ -71,10 +72,10 @@ Post = listing: overview photos of the whole auction, rules, end time
 
 ## Architecture
 
-- **Content scripts:** (a) feed scan in a pinned group tab, (b) post reader + overlay (Shadow DOM).
+- **Content scripts:** (a) feed scan in a pinned group tab, (b) post reader, with its panel and the quiet-read status overlay (Shadow DOM).
 - **Service worker:** coordination, Claude API calls for interpretation, persistence.
 - **Storage:** IndexedDB (`idb`) behind a `Store` interface, so Supabase can be swapped in later.
-- **Extension pages:** table page (`dashboard.html`), Chrome Side Panel.
+- **Extension pages:** table page (`dashboard.html`), toolbar menu (`popup.html`).
 - **Tech:** TypeScript, Vite, Preact, idb, zod. API key in `chrome.storage.local`.
 
 ## Population
@@ -430,23 +431,6 @@ what for the active tab is the pure `popupActions()` in `src/pages/popup/actions
 - **Reload Facebook tabs** stays off the menu: it's on the icon's right-click menu (with Open
   overview and Reload extension, which is there too), where it already was.
 
-### Side panel
-
-- Toggle Capturing / Paused.
-- Counters: within 1 h, outbid, new.
-- Filters: All / My bids / Within 1 h.
-- Compact list + link to the full table.
-
-### Overlay on the post
-
-- Header: seller, title, large countdown, close rule, the seller's rules verbatim +
-  interpretation, shipping, "Re-read".
-- Selector: "All lots" / "Mine only".
-- "Your lots" first (outbid first, blue/orange border, my bid shown), then "Other lots".
-- Selected lot: bid list, highest and next valid bid, a "Bid on Facebook"
-  button that hides the overlay and scrolls to the reply field under the lot (never types).
-- "Show Facebook page".
-
 ## Plan
 
 One module at a time; I test between each.
@@ -459,11 +443,11 @@ One module at a time; I test between each.
 | 3 | Interpretation | Claude API + zod + post-processing, tested against samples |
 | 4 | Feed scan | Backfill + incremental + idle pause |
 | 5 | Table page | |
-| 6 | Overlay | Incl. automatic re-read every 15 min of auctions I've bid on |
-| 7 | Side panel | |
+| 6 | ~~Overlay~~ | Dropped 2026-10-06. Its automatic re-read of auctions I've bid on was built anyway (`watch.ts`) |
+| 7 | ~~Side panel~~ | Dropped 2026-10-06 |
 | 8 | Later | Pricing, notifications, Supabase, lot view |
 
-Build order in practice: 0 → 1 → 3 → 2 → 4 → 5 → 6 → 7 (interpretation is tested against
+Build order in practice: 0 → 1 → 3 → 2 → 4 → 5 (interpretation is tested against
 the spike's JSON before storage is wired in).
 
 ## Module 1 status (spike)

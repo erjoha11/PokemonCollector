@@ -2,7 +2,7 @@
 
 Chrome extension (Manifest V3) that gives a read-only overview of auctions in a Facebook buy/sell group for Pokémon cards: every sale sorted by end time, with live countdowns and Leading/Outbid status on lots you've bid on.
 
-**Status:** the overview works: feed scans (by hand and automatic), post reads, your Leading/Outbid/Won status, claim sales with what's still for sale, and Claude (through your Claude Code login) for what the rules can't read. Not built yet: an overlay on the post itself and a side panel. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
+**Status:** the overview works: feed scans (by hand and automatic), post reads, your Leading/Outbid/Won status, claim sales with what's still for sale, and Claude (through your Claude Code login) for what the rules can't read. See [`docs/spec.md`](docs/spec.md) for scope and rules, and [`CLAUDE.md`](CLAUDE.md) for development guidance.
 
 ## Build
 
@@ -252,6 +252,5 @@ like the others, and never commit it.
 
 ## What it doesn't do (yet)
 
-- No overlay on the Facebook post itself, and no side panel (modules 6–7 in the spec).
 - No absolute timestamps: Facebook shows relative ones ("2 t") and only shows the exact time on hover, which the extension doesn't do.
 - No notifications.
