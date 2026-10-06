@@ -56,8 +56,19 @@ export type Claim = {
 /** Your claim on a lot: first on what you named (you won it), someone was earlier, or no claim. */
 export type MyClaim = "none" | "claimed" | "check";
 
-/** Claude's reading of a claim lot (photo + replies): every card, its price, who got it (null = for sale). */
+/** A claim lot's cards: from Claude's reading of the photo, who got each by the rules (or Claude on the text), null = for sale. */
 export type ClaimCards = { card: string; price: number | null; claimedBy: string | null; isMe: boolean }[];
+
+/** Claude's reading of a lot photo: the cards in it and their prices (null = can't tell). Read once per photo; no names. */
+export type PhotoCards = { card: string; price: number | null }[];
+
+/**
+ * Claims the rules couldn't match to the photo's cards, for Claude (text only). No names: you're
+ * "Me", the others "Claimer 1", "Claimer 2"… in the order they first claimed; the seller's tag is "@Seller".
+ */
+export type ClaimMatchInput = { cards: string[]; claims: { who: string; text: string }[] };
+/** Who got each card ("Me", "Claimer N"), in the order of `cards`; null = still for sale. */
+export type ClaimMatchAnswer = (string | null)[];
 
 export type Lot = {
   /** The post itself is the lot (no lot comments; bids right under the post). */
@@ -81,8 +92,10 @@ export type Lot = {
   /** Claim-sale and fixed-price lots: claims instead of bids. */
   claims: Claim[];
   myClaim: MyClaim;
-  /** From Claude, when asked: every card in the photo, its price, and who got it (null = still for sale). */
+  /** Every card in the photo, its price, and who got it (null = still for sale); null until the photo is read and the claims matched. */
   claimCards: ClaimCards | null;
+  /** The photo is read but the rules couldn't match the claims to its cards: this goes to Claude (text only). */
+  claimMatchInput?: ClaimMatchInput | null;
   /** Cards still for sale (from claimCards), or null when Claude hasn't read the lot yet. */
   available: number | null;
   /**
@@ -164,10 +177,12 @@ function lotStartBid(text: string): number | null {
 }
 
 /** The lot's title: the name in its own text, else Claude's name (from the text and photo), else "Lot N"; then the condition. */
-function lotTitleFor(c: CapturedComment, position: number, options: LotOptions): { title: string; untitled: boolean; namedByClaude: boolean } {
+function lotTitleFor(c: CapturedComment, position: number, options: LotOptions, photoCards?: PhotoCards): { title: string; untitled: boolean; namedByClaude: boolean } {
   const { name, condition } = lotTextInfo(c.text);
   const photo = c.images[0]?.src;
-  const fromClaude = !name && photo ? options.lotName?.(fullSizePhoto(photo), c.text) : undefined;
+  // A claim lot's photo read lists its cards: they name it ("Marowak, Kingler", "8 cards").
+  const fromCards = photoCards?.length ? (photoCards.length <= 3 ? photoCards.map((x) => x.card).join(", ") : `${photoCards.length} cards`) : undefined;
+  const fromClaude = !name && photo ? (fromCards ?? options.lotName?.(fullSizePhoto(photo), c.text)) : undefined;
   const title = name ?? fromClaude ?? `Lot ${position}`;
   return { title: condition ? `${title} · ${condition}` : title, untitled: !name, namedByClaude: !name && !!fromClaude };
 }
@@ -210,6 +225,11 @@ export function lotTextInfo(text: string): { name: string | null; condition: str
       .replace(/\s+/g, " ")
       .replace(/^[\s|,\-–:.]+|[\s|,\-–:]+$/g, "")
       .trim();
+    // A condition left on its own once the price is out ("MP - 250kr", "LP+"): not a name.
+    if (/^(?:mp|lp|nm|ex|gd|hp)\+?$/i.test(line)) {
+      condition ??= line.toUpperCase();
+      continue;
+    }
     if (!name && /\p{L}/u.test(line) && !GENERIC.test(line)) name = line;
   }
   return { name, condition };
@@ -230,8 +250,10 @@ export type LotOptions = {
   listingMinPrice: number | null;
   /** Claude's name for a lot (its full-size photo URL and its text), when the lot's text doesn't name it. */
   lotName?: (imageUrl: string, text: string) => string | null | undefined;
-  /** Claude's reading of a claim lot (see claimLotInput), or undefined when not asked yet. */
-  claimAnswer?: (input: ClaimLotInput) => { cards: { card: string; price: number | null; claimedBy: string | null }[] } | undefined;
+  /** Claude's reading of a claim lot's photo (see claimPhotoInput), or undefined when not read yet. */
+  claimPhoto?: (input: ClaimPhotoInput) => PhotoCards | undefined;
+  /** Claude's matching of claims the rules couldn't match (see ClaimMatchInput), or undefined when not asked yet. */
+  claimMatch?: (input: ClaimMatchInput) => ClaimMatchAnswer | undefined;
   /** Claude's reading of a reply the rules weren't sure about: an amount, null (not a bid), or undefined (not asked yet). */
   answer?: (seller: string | null, text: string) => number | null | undefined;
 };
@@ -300,20 +322,31 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     const claims = options.claims ? readClaims(replies, seller, me) : [];
     const mineClaims = claims.filter((x) => x.isMe);
     let myClaim: MyClaim = mineClaims.length === 0 ? "none" : mineClaims.some((x) => !x.contested) ? "claimed" : "check";
-    // Claude has read the photo and replies: it decides who got what (and the prices).
+    // Claude has read the photo (which cards, what they cost): the rules decide who got what, and
+    // Claude (text only, no names) only when they can't match a claim to a card.
     let claimCards: ClaimCards | null = null;
-    const lotInput = options.claims ? claimLotInput(c, seller) : null;
-    const answer = lotInput ? options.claimAnswer?.(lotInput) : undefined;
+    let claimMatchInput: ClaimMatchInput | null = null;
+    const photoInput = options.claims ? claimPhotoInput(c) : null;
+    const photoCards = photoInput ? options.claimPhoto?.(photoInput) : undefined;
     const textPrice = options.claims ? lotTextPrice(c.text) : null;
-    if (answer?.cards) {
-      // A card whose price Claude couldn't read from the photo takes the lot's per-card text price.
-      const fallback = textPrice?.perCard || answer.cards.length === 1 ? (textPrice?.kr ?? null) : null;
-      claimCards = answer.cards.map((x) => ({
-        ...x,
-        price: x.price ?? fallback,
-        isMe: !!me && !!x.claimedBy && normalizeName(x.claimedBy) === me,
-      }));
-      if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
+    if (photoCards) {
+      let owners = matchClaims(photoCards, claims);
+      if (!owners) {
+        claimMatchInput = toClaimMatchInput(photoCards, claims, seller);
+        const answer = options.claimMatch?.(claimMatchInput);
+        if (answer) owners = fromClaimMatchAnswer(answer, photoCards.length, claims);
+      }
+      if (owners) {
+        // A card whose price Claude couldn't read from the photo takes the lot's per-card text price.
+        const fallback = textPrice?.perCard || photoCards.length === 1 ? (textPrice?.kr ?? null) : null;
+        claimCards = photoCards.map((x, k) => ({
+          card: x.card,
+          price: x.price ?? fallback,
+          claimedBy: owners[k],
+          isMe: !!me && !!owners[k] && normalizeName(owners[k]) === me,
+        }));
+        if (mineClaims.length > 0) myClaim = claimCards.some((x) => x.isMe) ? "claimed" : "check";
+      }
     }
     for (const r of options.claims ? [] : replies) {
       const bid = toBid(r, seller, me, options, !!whole && whole.underReply.has(r.id));
@@ -361,7 +394,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
     lots.push({
       commentId: c.id,
       position: lots.length + 1,
-      ...(whole ? { title: whole.title, untitled: false, namedByClaude: false } : lotTitleFor(c, lots.length + 1, options)),
+      ...(whole ? { title: whole.title, untitled: false, namedByClaude: false } : lotTitleFor(c, lots.length + 1, options, photoCards)),
       wholePost: !!whole,
       rawText: c.text,
       imageUrl: c.images[0]?.src ?? null,
@@ -377,6 +410,7 @@ export function interpretLots(capture: PostCapture, options: LotOptions): Lot[] 
       claims,
       myClaim,
       claimCards,
+      claimMatchInput,
       available: claimCards ? claimCards.filter((x) => !x.claimedBy).length : null,
       textPrice,
     });
@@ -400,47 +434,107 @@ export function claimItems(text: string, seller: string | null): { items: string
   return { items, all: false };
 }
 
-export type ClaimLotInput = {
-  seller: string | null;
-  imageUrl: string;
-  replies: { author: string; text: string }[];
-  /** The lot comment's own text: some sellers write the price there ("10kr per stk"). */
-  lotText?: string;
-};
+/** What Claude reads a claim lot's photo from: the full-size photo and the seller's text with it (prices are often there). No replies, no names. */
+export type ClaimPhotoInput = { imageUrl: string; lotText: string };
 
 /** The full-size version of a Facebook CDN photo: the `ctp` parameter asks for a small crop. */
 export const fullSizePhoto = (url: string) => url.replace(/([?&])ctp=[^&]*&?/, "$1").replace(/[?&]$/, "");
 
-/** What Claude needs for a claim lot: its full-size photo and the replies (not the seller's), oldest first. */
-export function claimLotInput(c: CapturedComment, seller: string | null): ClaimLotInput | null {
+export function claimPhotoInput(c: CapturedComment): ClaimPhotoInput | null {
   const photo = c.images[0]?.src;
-  if (!photo) return null;
-  const replies = [...c.replies]
-    .sort((a, b) => compareIds(a.id, b.id))
-    .filter((r) => !seller || normalizeName(r.author) !== normalizeName(seller))
-    .map((r) => ({ author: r.author ?? "", text: r.text }));
-  return { seller, imageUrl: fullSizePhoto(photo), replies, lotText: c.text };
+  return photo ? { imageUrl: fullSizePhoto(photo), lotText: c.text } : null;
 }
 
-/** Claim lots you've claimed on (photo prices, who got what). */
-export function myClaimLots(capture: PostCapture, myName: string): ClaimLotInput[] {
+/** Every lot photo in a claim sale, the ones you claimed on first: read once each, for what's taken and what's still for sale. */
+export function claimLotsToRead(capture: PostCapture, myName: string): ClaimPhotoInput[] {
   const seller = sellerOf(capture);
   const me = normalizeName(myName);
-  return capture.comments
-    .filter((c) => isLot(c, seller) && c.replies.some((r) => normalizeName(r.author) === me && claimItems(r.text, seller)))
-    .flatMap((c) => claimLotInput(c, seller) ?? []);
+  const lots = capture.comments.filter((c) => isLot(c, seller));
+  const mine = (c: CapturedComment) => !!me && c.replies.some((r) => normalizeName(r.author) === me && claimItems(r.text, seller));
+  return [...lots.filter(mine), ...lots.filter((c) => !mine(c))].flatMap((c) => claimPhotoInput(c) ?? []);
 }
 
-/** Every lot in a claim sale, yours first: what's taken and what's still for sale. */
-export function claimLotsToRead(capture: PostCapture, myName: string): ClaimLotInput[] {
-  const seller = sellerOf(capture);
-  const mine = myClaimLots(capture, myName);
-  const mineUrls = new Set(mine.map((x) => x.imageUrl));
-  const rest = capture.comments
-    .filter((c) => isLot(c, seller))
-    .flatMap((c) => claimLotInput(c, seller) ?? [])
-    .filter((x) => !mineUrls.has(x.imageUrl));
-  return [...mine, ...rest];
+/** Card and claim names compared loosely: no accents, case or punctuation. */
+const looseName = (s: string) =>
+  s.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\d ]+/gu, " ").replace(/\s+/g, " ").trim();
+
+/** Letters to change to turn one word into the other (for misspellings: "feraligator" → "feraligatr"). */
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) row[j] = Math.min(prev[j] + 1, row[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = row;
+  }
+  return prev[b.length];
+}
+
+/** Does a claimed item name this card? "marowak" → "Marowak", "the zard"… no; "feraligator" → "Feraligatr" (two letters off at most, long words only). */
+export function namesCard(card: string, item: string): boolean {
+  const c = looseName(card);
+  const i = looseName(item);
+  if (i.length < 3) return false;
+  if (c.includes(i) || i.includes(c)) return true;
+  const words = c.split(" ");
+  return i.split(" ").every((w) => words.some((x) => x === w || (w.length >= 5 && x.length >= 5 && editDistance(x, w) <= 2)));
+}
+
+/**
+ * Who got each card, by the rules: claims in the order placed (not those under another reply),
+ * first claim on a card wins, "alle" takes everything still free, a claim naming nothing takes a
+ * one-card lot. Null when a claim can't be matched for sure (names no card, or two different
+ * cards): then Claude matches them from the text.
+ */
+export function matchClaims(cards: PhotoCards, claims: Claim[]): (string | null)[] | null {
+  const owners: (string | null)[] = cards.map(() => null);
+  for (const cl of claims) {
+    if (cl.underReply) continue;
+    if (cl.all || (cl.items.length === 0 && cards.length === 1)) {
+      cards.forEach((_, k) => (owners[k] ??= cl.claimer));
+      continue;
+    }
+    if (cl.items.length === 0) return null;
+    for (const item of cl.items) {
+      const hits = cards.map((_, k) => k).filter((k) => namesCard(cards[k].card, item));
+      // Copies of the same card are interchangeable; a claim that fits two different cards isn't sure.
+      if (hits.length === 0 || new Set(hits.map((k) => looseName(cards[k].card))).size > 1) return null;
+      const free = hits.find((k) => owners[k] === null);
+      if (free !== undefined) owners[free] = cl.claimer;
+    }
+  }
+  return owners;
+}
+
+/** Claimers' labels for Claude, in the order they first claimed: you're "Me", the others "Claimer 1", "Claimer 2"… */
+function claimLabels(claims: Claim[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  for (const cl of claims) {
+    const name = normalizeName(cl.claimer);
+    if (!labels.has(name)) labels.set(name, cl.isMe ? "Me" : `Claimer ${[...labels.values()].filter((l) => l !== "Me").length + 1}`);
+  }
+  return labels;
+}
+
+/** The seller's name in a reply, as "@Seller": Claude needs to know it's the tag, not who it is. */
+export function tagAsSeller(text: string, seller: string | null): string {
+  if (!seller?.trim()) return text;
+  const names = [seller.trim(), seller.trim().split(/\s+/)[0]].map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return text.replace(new RegExp(`(?<![\\p{L}])(?:${names.join("|")})(?![\\p{L}])`, "giu"), "@Seller");
+}
+
+function toClaimMatchInput(cards: PhotoCards, claims: Claim[], seller: string | null): ClaimMatchInput {
+  const labels = claimLabels(claims);
+  return {
+    cards: cards.map((x) => x.card),
+    claims: claims.filter((cl) => !cl.underReply).map((cl) => ({ who: labels.get(normalizeName(cl.claimer))!, text: tagAsSeller(cl.rawText, seller) })),
+  };
+}
+
+/** Claude's labels back to the claimers' names; null if the answer doesn't fit the lot. */
+function fromClaimMatchAnswer(answer: ClaimMatchAnswer, cardCount: number, claims: Claim[]): (string | null)[] | null {
+  if (!Array.isArray(answer) || answer.length !== cardCount) return null;
+  const byLabel = new Map([...claimLabels(claims)].map(([name, label]) => [label, claims.find((cl) => normalizeName(cl.claimer) === name)!.claimer]));
+  return answer.map((label) => (label && byLabel.get(label)) || null);
 }
 
 const sameItem = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);

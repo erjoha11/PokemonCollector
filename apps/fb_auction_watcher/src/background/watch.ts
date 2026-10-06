@@ -1,7 +1,7 @@
 import { interpretLots, summarizeLots, type Lot } from "../domain/bids";
 import { interpretListing, type Interpretation, type SaleType } from "../domain/listing";
 import { saleLines } from "../domain/saleLines";
-import { bidAnswerKey, lotNameAnswerKey } from "../llm/prompts";
+import { answerLookups } from "../llm/answers";
 import type { PostCapture } from "../shared/capture";
 import type { StoredPost } from "../shared/feed";
 import { canonicalPostUrl } from "../shared/urls";
@@ -44,11 +44,7 @@ export function readLots(post: Pick<StoredPost, "text" | "firstSeenAt">, capture
     myName,
     listingIncrement: listing.increment,
     listingMinPrice: listing.minPrice,
-    lotName: (imageUrl, text) => answers.get(lotNameAnswerKey(imageUrl, text)) as string | null | undefined,
-    answer: (seller, text) => {
-      const key = bidAnswerKey(seller, text);
-      return answers.has(key) ? (answers.get(key) as number | null) : undefined;
-    },
+    ...answerLookups(answers),
   });
   return { listing, lots };
 }

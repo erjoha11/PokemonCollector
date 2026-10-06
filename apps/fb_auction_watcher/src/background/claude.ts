@@ -1,4 +1,4 @@
-import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, type ClaudeRequest, type TimesAnswer } from "../llm/prompts";
+import { bidRequest, claimMatchRequest, claimPhotoRequest, endTimeRequest, lotNameRequest, type ClaudeRequest, type TimesAnswer } from "../llm/prompts";
 import { getClaudeState, getSettings, updateClaudeState } from "../shared/settings";
 import type { Store, StoredAnswer } from "../store";
 import {
@@ -87,15 +87,15 @@ async function run(store: Store, onAnswered: () => void) {
     let failures: Failures = pruneFailures(await loadFailures(store), now);
     let photoCalls = recentPhotoCalls(state.photoCalls ?? [], now);
     const pending = await pendingItems(store, { myName: settings.myName, now, failures, photoCallsLeft: photoCallsLeft(photoCalls, now) });
-    const { endTimes, bids, claimLots, lotNames } = pending;
-    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0 && lotNames.length === 0) {
+    const { endTimes, bids, claimLots, claimMatches, lotNames } = pending;
+    if (endTimes.length === 0 && bids.length === 0 && claimLots.length === 0 && claimMatches.length === 0 && lotNames.length === 0) {
       await saveFailures(store, failures);
       if (pending.photoLimited) await updateClaudeState({ photoLimitUntil: photoLimitFreesAt(photoCalls, now), photoCalls });
       return;
     }
 
     const saved: StoredAnswer[] = [];
-    const read = { endTimes: 0, bids: 0, claimLots: 0, lotNames: 0 };
+    const read = { endTimes: 0, bids: 0, claimLots: 0, claimMatches: 0, lotNames: 0 };
     let failed = 0;
     const newlySkipped: ItemFailure[] = [];
     const answered = (key: string, value: unknown) => {
@@ -117,9 +117,12 @@ async function run(store: Store, onAnswered: () => void) {
 
     const times = (r: Record<string, unknown>): TimesAnswer => ({ endsAt: (r.endsAt as string) ?? null, startsAt: (r.startsAt as string) ?? null });
     const amount = (r: Record<string, unknown>) => r.amount ?? null;
+    const owners = (r: Record<string, unknown>) => (Array.isArray(r.owners) ? r.owners : null);
+    // Text only, batched (Haiku): end times, unsure bids, and claims the rules couldn't match (no names).
     for (const [items, request, value, count] of [
       [endTimes, endTimes.length ? endTimeRequest(endTimes) : null, times, "endTimes"],
       [bids, bids.length ? bidRequest(bids) : null, amount, "bids"],
+      [claimMatches, claimMatches.length ? claimMatchRequest(claimMatches) : null, owners, "claimMatches"],
     ] as const) {
       if (!request) continue;
       const reply = await ask(request);
@@ -142,7 +145,7 @@ async function run(store: Store, onAnswered: () => void) {
       // so a worker restart mid-run can't forget it.
       photoCalls = [...photoCalls, new Date().toISOString()];
       await updateClaudeState({ photoCalls });
-      const reply = await ask(claimLotRequest(lot));
+      const reply = await ask(claimPhotoRequest(lot));
       if (!reply.ok) {
         if (reply.global) return await stop(reply.error);
         failedItem(lot.key, "claim-lot", reply.error);
@@ -151,6 +154,8 @@ async function run(store: Store, onAnswered: () => void) {
       answered(lot.key, reply.result);
       read.claimLots++;
     }
+    // Newly read photos may have claims the rules can't match: those are asked in the next run.
+    if (read.claimLots > 0) again = true;
     // Name lots from their photos, several per call; each photo counts against the hourly cap.
     for (const batch of lotNameBatches(lotNames, failures)) {
       const stamp = new Date().toISOString();

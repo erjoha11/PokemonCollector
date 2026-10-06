@@ -1,4 +1,5 @@
-import { claimLotAnswerKey, bidAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../llm/prompts";
+import { bidAnswerKey, claimMatchAnswerKey, claimPhotoAnswerKey, endTimeAnswerKey, lotNameAnswerKey } from "../llm/prompts";
+import { answerLookups } from "../llm/answers";
 import { claimLotsToRead, interpretLots, summarizeLots, untitledLotPhotos, unsureReplies } from "../domain/bids";
 import { claudeEndsAt } from "../domain/endTime";
 import { interpretListing } from "../domain/listing";
@@ -46,24 +47,23 @@ function isMine(capture: PostCapture, text: string, firstSeenAt: string, myName:
     claims: listing.type === "claim" || listing.type === "fixed",
     listingIncrement: listing.increment,
     listingMinPrice: listing.minPrice,
-    claimAnswer: (input) => answers.get(claimLotAnswerKey(input)) as ClaimLotAnswer | undefined,
-    answer: (seller, t) => {
-      const key = bidAnswerKey(seller, t);
-      return answers.has(key) ? (answers.get(key) as number | null) : undefined;
-    },
+    ...answerLookups(answers),
   });
   const s = summarizeLots(lots);
   return s.lead + s.outbid + s.unclear + s.claimed + s.check > 0;
 }
 
 /** Every Claude answer key a post or its read can look up (the same helpers that ask Claude). */
-function answerKeysFor(post: StoredPost | null, capture: PostCapture | null, myName: string): string[] {
+function answerKeysFor(post: StoredPost | null, capture: PostCapture | null, myName: string, answers: Map<string, unknown>): string[] {
   const keys: string[] = [];
   if (post) keys.push(endTimeAnswerKey(post.text));
   if (capture) {
     keys.push(endTimeAnswerKey(capture.post.text));
     for (const u of unsureReplies(capture)) keys.push(bidAnswerKey(u.seller, u.text));
-    for (const lot of claimLotsToRead(capture, myName)) keys.push(claimLotAnswerKey(lot));
+    for (const photo of claimLotsToRead(capture, myName)) keys.push(claimPhotoAnswerKey(photo));
+    // Claims matched by Claude: the lots whose photo is read and whose claims the rules couldn't match.
+    const lots = interpretLots(capture, { myName, claims: true, listingIncrement: null, listingMinPrice: null, ...answerLookups(answers) });
+    for (const l of lots) if (l.claimMatchInput) keys.push(claimMatchAnswerKey(l.claimMatchInput));
     for (const l of untitledLotPhotos(capture)) keys.push(lotNameAnswerKey(l.imageUrl, l.text));
   }
   return keys;
@@ -109,7 +109,7 @@ export function planRetention(data: RetentionData, myName: string, now: Date): R
 
     if (post && !keepPost) plan.posts.push(id);
     if (capture && !keepCapture) plan.captures.push(id);
-    for (const key of answerKeysFor(keepPost ? post : null, keepCapture ? capture : null, myName)) usedKeys.add(key);
+    for (const key of answerKeysFor(keepPost ? post : null, keepCapture ? capture : null, myName, answers)) usedKeys.add(key);
   }
 
   plan.answers = data.answers.filter((a) => !usedKeys.has(a.key)).map((a) => a.key);

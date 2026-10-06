@@ -5,7 +5,8 @@ export { lotUrl } from "../../shared/urls";
 import { canonicalPostUrl } from "../../shared/urls";
 import { interpretListing, isUntypedSale, type Interpretation } from "../../domain/listing";
 import { claudeEndsAt, claudeStartsAt, osloDate } from "../../domain/endTime";
-import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
+import { endTimeAnswerKey } from "../../llm/prompts";
+import { answerLookups } from "../../llm/answers";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
 
@@ -73,6 +74,7 @@ export const ENDED_GRACE_MS = 30 * 60_000;
 export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null, extras: RowExtras = {}): Row[] {
   const { captures = new Map(), answers = new Map(), myName = "", endedMarks = {}, notWonMarks = {} } = extras;
   const rows: Row[] = [];
+  const lookups = answerLookups(answers);
   for (const p of posts) {
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
     if (i.type === "wanted" || i.type === "trade" || (i.type === "other" && !isUntypedSale(i))) continue;
@@ -94,12 +96,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
           claims: i.type === "claim" || i.type === "fixed",
           listingIncrement: i.increment,
           listingMinPrice: i.minPrice,
-          claimAnswer: (input) => answers.get(claimLotAnswerKey(input)) as ClaimLotAnswer | undefined,
-          lotName: (imageUrl, text) => answers.get(lotNameAnswerKey(imageUrl, text)) as string | null | undefined,
-          answer: (seller, text) => {
-            const key = bidAnswerKey(seller, text);
-            return answers.has(key) ? (answers.get(key) as number | null) : undefined;
-          },
+          ...lookups,
         })
       : null;
     const endsAtMs = i.endsAt ? Date.parse(i.endsAt) : null;

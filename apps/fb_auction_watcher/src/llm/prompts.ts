@@ -2,9 +2,11 @@
 // bridge (native/fbaw_claude_host.py). No API key: it runs on the user's own Claude login.
 // Tried on src/llm/cases.ts (23 cases, Haiku, batched): 23/23 on 2026-10-03.
 
+import { tagAsSeller, type ClaimMatchInput, type ClaimPhotoInput, type PhotoCards } from "../domain/bids";
+
 export type ClaudeRequest = {
   /** A short name for logs. */
-  task: "end-time" | "bid" | "claim-lot" | "lot-name";
+  task: "end-time" | "bid" | "claim-lot" | "claim-match" | "lot-name";
   /** Haiku unless set; photos need Sonnet (Haiku misread prices on a real lot). */
   model?: "haiku" | "sonnet";
   /** Photo URLs (Facebook's CDN) the bridge downloads and sends along. */
@@ -53,10 +55,11 @@ export type TimesAnswer = { endsAt: string | null; startsAt: string | null };
 export function bidRequest(items: BidItem[]): ClaudeRequest {
   return {
     task: "bid",
-    system: `You read replies under a lot in a Norwegian Facebook auction for Pokémon cards. Each reply says who the seller is; bidders usually tag the seller's name, then give an amount in NOK.
+    system: `You read replies under a lot in a Norwegian Facebook auction for Pokémon cards. Bidders usually tag the seller, shown as "@Seller", then give an amount in NOK.
 For each reply give amount: the bid as an integer in NOK, or null if the reply is not a bid with a definite amount (a question, a dot to follow the lot, a message, or a relative amount like "10 more than the highest").
 If the bidder corrects themselves, use the corrected amount. "2.5k" means 2500, "1.400" means 1400. A number followed by "?" is still a bid.`,
-    input: items.map((i) => `${i.id}: (seller: ${i.seller ?? "unknown"}) ${JSON.stringify(i.text)}`).join("\n"),
+    // No names (2026-10-06): the seller's tag is "@Seller"; the cache key (bidAnswerKey) still uses the real text.
+    input: items.map((i) => `${i.id}: ${JSON.stringify(tagAsSeller(i.text, i.seller))}`).join("\n"),
     schema: {
       type: "object",
       properties: {
@@ -88,21 +91,20 @@ export const endTimeAnswerKey = (text: string) => `end-time:${hashText(text)}`;
 
 export const bidAnswerKey = (seller: string | null, text: string) => `bid:${hashText(`${seller ?? ""}\n${text}`)}`;
 
-/** One claim-sale lot: its full-size photo and the replies under it, oldest first. */
-export type ClaimLotItem = { seller: string | null; imageUrl: string; replies: { author: string; text: string }[]; lotText?: string };
-/** Every card in the photo: its price, and who claimed it first (null = still for sale). */
-export type ClaimLotAnswer = { cards: { card: string; price: number | null; claimedBy: string | null }[] };
+/** Every card in a claim lot's photo and its price (null = can't tell). */
+export type ClaimPhotoAnswer = { cards: PhotoCards };
 
 // Tried 2026-10-03 on a real lot (8 cards, prices on notes, 2 claimers): Sonnet listed all 8 with the
-// right prices and claims in 9 s; with only the claimed cards asked for, Haiku misread a price.
-export function claimLotRequest(item: ClaimLotItem): ClaudeRequest {
+// right prices in 9 s; Haiku misread a price. Since 2026-10-06 the photo is read once, without the
+// replies: who got what is matched by the rules (src/domain/bids.ts matchClaims), else claimMatchRequest.
+export function claimPhotoRequest(item: ClaimPhotoInput): ClaudeRequest {
   return {
     task: "claim-lot",
     model: "sonnet",
     images: [item.imageUrl],
-    system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards, the seller's text with the photo, and the replies under it, oldest first. Prices are written on the photo (a note by each card) or in the seller's text, sometimes per card for a kind of card ("Holo/rev.holo 5kr per stk", "EX/V/IR 10kr per stk": each such card costs that). Replies claim cards by name (often tagging the seller first, sometimes misspelled, e.g. "feraligator"), or "alle" for everything.
-First to claim a card gets it. List every card in the photo, left to right, top to bottom: its name as printed on the card, its price (from the photo or the seller's text), and who claimed it first, or null if nobody has (it's still for sale). Use null for a price you can't tell. Two copies of the same card are two entries.`,
-    input: `Seller: ${item.seller ?? "unknown"}\n${item.lotText ? `The seller's text with the photo: ${JSON.stringify(item.lotText)}\n` : ""}Replies (oldest first):\n${item.replies.length ? item.replies.map((r, i) => `${i + 1}. ${r.author}: ${r.text || "(photo)"}`).join("\n") : "(none yet)"}`,
+    system: `You read one lot in a Norwegian Facebook claim sale for Pokémon cards: a photo of the cards and the seller's text with the photo. Prices are written on the photo (a note by each card) or in the seller's text, sometimes per card for a kind of card ("Holo/rev.holo 5kr per stk", "EX/V/IR 10kr per stk": each such card costs that).
+List every card in the photo, left to right, top to bottom: its name as printed on the card, and its price (from the photo or the seller's text). Use null for a price you can't tell. Two copies of the same card are two entries.`,
+    input: item.lotText.trim() ? `The seller's text with the photo: ${JSON.stringify(item.lotText.trim())}` : "The seller wrote no text with the photo.",
     schema: {
       type: "object",
       properties: {
@@ -110,8 +112,8 @@ First to claim a card gets it. List every card in the photo, left to right, top 
           type: "array",
           items: {
             type: "object",
-            properties: { card: { type: "string" }, price: { type: ["integer", "null"] }, claimedBy: { type: ["string", "null"] } },
-            required: ["card", "price", "claimedBy"],
+            properties: { card: { type: "string" }, price: { type: ["integer", "null"] } },
+            required: ["card", "price"],
           },
         },
       },
@@ -120,9 +122,42 @@ First to claim a card gets it. List every card in the photo, left to right, top 
   };
 }
 
-/** Same photo and same replies → same answer; a new reply asks again. The URL's query changes per read, so only its path counts. */
-export const claimLotAnswerKey = (item: ClaimLotItem) =>
-  `claim-lot-cards:${hashText(`${item.imageUrl.split("?")[0]}\n${item.replies.map((r) => `${r.author}: ${r.text}`).join("\n")}`)}`;
+/** The same photo and text, the same cards: read once. The URL's query changes per read, so only its path counts. */
+export const claimPhotoAnswerKey = (item: ClaimPhotoInput) => `claim-photo:${hashText(`${item.imageUrl.split("?")[0]}\n${item.lotText.trim()}`)}`;
+
+export type ClaimMatchItem = ClaimMatchInput & { id: number };
+
+/** Claims the rules couldn't match to a lot's cards, several lots per call (Haiku, text only, no names). */
+export function claimMatchRequest(items: ClaimMatchItem[]): ClaudeRequest {
+  return {
+    task: "claim-match",
+    system: `You read claims under lots in a Norwegian Facebook claim sale for Pokémon cards. For each lot you get its cards (numbered, as read from the photo) and the replies claiming them, oldest first. Each reply says who wrote it ("Me", "Claimer 1", ...); "@Seller" is the seller being tagged. Replies claim cards by name (sometimes misspelled or shortened, e.g. "feraligator", "zard"), several at once ("kingler og rapidash"), or "alle" for everything; a reply that's a question or a message claims nothing.
+The first to claim a card gets it; a later claim on a taken card gets nothing, but a second copy of the same card goes to the next one to claim it. For each lot, give owners: one entry per card, in the cards' order, with who got it ("Me", "Claimer 1", ...) or null if nobody has claimed it.`,
+    input: items
+      .map(
+        (i) =>
+          `### lot ${i.id}\nCards:\n${i.cards.map((c, k) => `${k + 1}. ${c}`).join("\n")}\nReplies (oldest first):\n${i.claims.map((c, k) => `${k + 1}. ${c.who}: ${JSON.stringify(c.text)}`).join("\n")}`,
+      )
+      .join("\n\n"),
+    schema: {
+      type: "object",
+      properties: {
+        results: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { id: { type: "integer" }, owners: { type: "array", items: { type: ["string", "null"] } } },
+            required: ["id", "owners"],
+          },
+        },
+      },
+      required: ["results"],
+    },
+  };
+}
+
+/** Same cards and same claims (by label, never names) → same answer; a new claim asks again. */
+export const claimMatchAnswerKey = (input: ClaimMatchInput) => `claim-match:${hashText(JSON.stringify([input.cards, input.claims]))}`;
 
 /**
  * A lot to name: the rules found no name in its text (only a price, a word like "Holo", or
