@@ -372,6 +372,13 @@ what for the active tab is the pure `popupActions()` in `src/pages/popup/actions
   when the active tab isn't a Facebook post (`isPostUrl` in `src/shared/urls.ts`: a group post or
   permalink, a profile/page post, `permalink.php` / `story.php`) it's disabled with "Open a post on
   Facebook to read it." instead of doing nothing or navigating.
+- **Progress, worded alike** (2026-10-06): the read-post panel and the quiet-read overlay (bottom
+  right, a sale opened from the overview; `pill.ts`) are both titled "FB Auction Watcher: read
+  post" and show the same line as the feed scan's "Scanning… 12 posts saved, 3 scrolls, 2 "Se mer"
+  opened.": "Reading… 84 comments, 212 replies loaded, 30 scrolls, 12 expanded." (counted as the
+  read counts them, `countLoaded` in `extract.ts`), then "Done: 84 comments, 212 replies saved ·
+  3 lots · 13 bids · Leading 1". The extension's name is "FB Auction Watcher" everywhere (manifest
+  `name` and `short_name`, toolbar menu, panels).
 - Not buttons: the auto-scan status line (on/off, next run, last outcome). Its **off switch stays in
   the dashboard's Settings** (pacing rule: a user-facing off switch); the menu says where.
 - **Reload extension:** `chrome.runtime.reload()`, the same call the menu's button made before #320.

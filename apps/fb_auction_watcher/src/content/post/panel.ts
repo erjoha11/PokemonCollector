@@ -1,4 +1,5 @@
 import type { PostCapture } from "../../shared/capture";
+import { readCounts } from "./pill";
 import type { ScanProgress, ScanResult } from "../feed/scan";
 
 // Small status panel for the module 1 spike, in a Shadow DOM so Facebook's CSS can't
@@ -100,7 +101,7 @@ export function showPanel(): Panel {
     showResult(capture, snapshotHtml) {
       stop.remove();
       const s = capture.stats;
-      status.textContent = "Done. Only clicked: comment sort, more comments/replies, See more. Scrolled to load comments.";
+      status.textContent = `Done: ${readCounts({ comments: s.topLevelComments, replies: s.replies })} saved. Only clicked: comment sort, more comments/replies, See more. Scrolled to load comments.`;
       const stats = document.createElement("p");
       stats.className = "stats";
       stats.textContent = [
