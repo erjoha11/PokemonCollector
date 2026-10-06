@@ -34,6 +34,15 @@ describe("start time", () => {
     ["Start:\n04.10 kl 20.00", "Start: 04.10 kl 20.00"],
   ])("finds %j", (text, line) => expect(findStartLine(text)).toBe(line));
 
+  it("reads 'kl19:00' with no space and a capitalised month (a real claim sale, 2026-10-06)", () => {
+    const text = "Claim salg-annonse - Etter sluttid merkes innlegget “Solgt”\nClaim-salg (Tagg deg selv i kommentarfeltet om du ønsker å delta)\nStartid: 6. Oktober kl19:00\nSluttid (maks 24 timer): 7 Oktober kl19:00";
+    expect(interpretListing(text, new Date("2026-10-05T21:00:00Z"))).toMatchObject({
+      startsAt: oslo(2026, 10, 6, 19, 0),
+      endsAt: oslo(2026, 10, 7, 19, 0),
+      sure: true,
+    });
+  });
+
   it("isn't a start bid or other text", () => {
     expect(findStartLine("Startbud: 100kr\nSluttid: 04.10 kl 20")).toBeNull();
     expect(findStartLine("Starter med de eldste kortene")).toBeNull();
