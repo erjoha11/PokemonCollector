@@ -38,6 +38,30 @@ export function findEndLine(text: string): string | null {
   return null;
 }
 
+// "Startid", "Starttid", "Start tid", "Start:"; not "Startbud" (a start bid).
+const START_LABEL = /^start(?:\s*-?\s*t?id\b|\s*:)/i;
+
+/** The start-time line ("Startid: 20:00 søndag 4. oktober"), joined with the next line when empty. Claim sales use it. */
+export function findStartLine(text: string): string | null {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+  for (let i = 0; i < lines.length; i++) {
+    if (!START_LABEL.test(lines[i])) continue;
+    // Only an empty "Startid:" takes the next line: anything else written there is the start.
+    const empty = /^[\s:.\-–]*$/.test(lines[i].replace(START_LABEL, ""));
+    return empty && i + 1 < lines.length && !/^slutt/i.test(lines[i + 1]) ? `${lines[i]} ${lines[i + 1]}` : lines[i];
+  }
+  return null;
+}
+
+/** When the sale starts (lots are usually posted then), read like an end time. */
+export type StartTime = { startsAt: string | null; startsAtText: string | null };
+
+export function parseStartTime(line: string | null, ref: Date): StartTime {
+  if (!line) return { startsAt: null, startsAtText: null };
+  const { endsAt } = parseEndTime(line.replace(START_LABEL, " "), ref);
+  return { startsAt: endsAt, startsAtText: line };
+}
+
 /** Offset of Oslo local time from UTC at `utcMs`, in ms. */
 function osloOffsetMs(utcMs: number): number {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -56,10 +80,22 @@ export function osloToUtc(year: number, month: number, day: number, hour: number
   return new Date(t);
 }
 
-/** Claude's end-time answer, "YYYY-MM-DD HH:mm" (Oslo), as an ISO timestamp, or null. */
-export function claudeEndsAt(value: unknown): string | null {
+/** "YYYY-MM-DD HH:mm" (Oslo) as an ISO timestamp, or null. */
+function osloStamp(value: unknown): string | null {
   const m = typeof value === "string" ? value.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/) : null;
   return m ? osloToUtc(+m[1], +m[2], +m[3], +m[4], +m[5]).toISOString() : null;
+}
+
+/**
+ * Claude's answer about a post's times: `{ endsAt, startsAt }`, each "YYYY-MM-DD HH:mm" (Oslo) or
+ * null. Answers stored before start times were asked for are the end time alone, as a string.
+ */
+export function claudeEndsAt(value: unknown): string | null {
+  return osloStamp(value && typeof value === "object" ? (value as { endsAt?: unknown }).endsAt : value);
+}
+
+export function claudeStartsAt(value: unknown): string | null {
+  return value && typeof value === "object" ? osloStamp((value as { startsAt?: unknown }).startsAt) : null;
 }
 
 /** The Oslo calendar date of a moment. */

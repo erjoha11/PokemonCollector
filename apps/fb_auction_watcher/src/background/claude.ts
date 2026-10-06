@@ -1,4 +1,4 @@
-import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, type ClaudeRequest } from "../llm/prompts";
+import { bidRequest, claimLotRequest, endTimeRequest, lotNameRequest, type ClaudeRequest, type TimesAnswer } from "../llm/prompts";
 import { getClaudeState, getSettings, updateClaudeState } from "../shared/settings";
 import type { Store, StoredAnswer } from "../store";
 import {
@@ -115,9 +115,11 @@ async function run(store: Store, onAnswered: () => void) {
       if (saved.length) onAnswered();
     };
 
-    for (const [items, request, field, count] of [
-      [endTimes, endTimes.length ? endTimeRequest(endTimes) : null, "endsAt", "endTimes"],
-      [bids, bids.length ? bidRequest(bids) : null, "amount", "bids"],
+    const times = (r: Record<string, unknown>): TimesAnswer => ({ endsAt: (r.endsAt as string) ?? null, startsAt: (r.startsAt as string) ?? null });
+    const amount = (r: Record<string, unknown>) => r.amount ?? null;
+    for (const [items, request, value, count] of [
+      [endTimes, endTimes.length ? endTimeRequest(endTimes) : null, times, "endTimes"],
+      [bids, bids.length ? bidRequest(bids) : null, amount, "bids"],
     ] as const) {
       if (!request) continue;
       const reply = await ask(request);
@@ -130,7 +132,7 @@ async function run(store: Store, onAnswered: () => void) {
       for (const r of reply.result.results) {
         const item = items.find((i) => i.id === r.id);
         if (item) {
-          answered(item.key, r[field] ?? null);
+          answered(item.key, value(r));
           read[count]++;
         }
       }

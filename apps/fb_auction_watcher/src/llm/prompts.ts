@@ -26,9 +26,9 @@ export const osloDay = (iso: string) => `${WEEKDAY.format(new Date(iso))} ${DAY.
 export function endTimeRequest(items: EndTimeItem[]): ClaudeRequest {
   return {
     task: "end-time",
-    system: `You read Norwegian Facebook posts selling Pokémon cards. For each post, find when the sale ends.
+    system: `You read Norwegian Facebook posts selling Pokémon cards. For each post, find when the sale ends, and when it starts if the post says ("Startid:", claim sales).
 Each post says the day it was captured, time zone Europe/Oslo. Resolve weekdays and words like "ikveld" (tonight) and "i morgen" (tomorrow) relative to that day.
-Give endsAt as local time "YYYY-MM-DD HH:mm", or null if the post gives no clock time for the end (a day alone is not enough) or no end at all.`,
+Give endsAt and startsAt as local time "YYYY-MM-DD HH:mm", or null if the post gives no clock time for it (a day alone is not enough) or doesn't say at all.`,
     input: items.map((i) => `### post ${i.id} (captured ${osloDay(i.capturedAt)})\n${i.text}`).join("\n\n"),
     schema: {
       type: "object",
@@ -37,8 +37,8 @@ Give endsAt as local time "YYYY-MM-DD HH:mm", or null if the post gives no clock
           type: "array",
           items: {
             type: "object",
-            properties: { id: { type: "integer" }, endsAt: { type: ["string", "null"] } },
-            required: ["id", "endsAt"],
+            properties: { id: { type: "integer" }, endsAt: { type: ["string", "null"] }, startsAt: { type: ["string", "null"] } },
+            required: ["id", "endsAt", "startsAt"],
           },
         },
       },
@@ -46,6 +46,9 @@ Give endsAt as local time "YYYY-MM-DD HH:mm", or null if the post gives no clock
     },
   };
 }
+
+/** What's stored for a post's times: see claudeEndsAt / claudeStartsAt in src/domain/endTime.ts. */
+export type TimesAnswer = { endsAt: string | null; startsAt: string | null };
 
 export function bidRequest(items: BidItem[]): ClaudeRequest {
   return {

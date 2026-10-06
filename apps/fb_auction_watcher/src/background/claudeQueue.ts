@@ -178,7 +178,9 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
   for (const p of posts) {
     if (!p.textComplete) continue;
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
-    if ((i.type !== "auction" && i.type !== "claim") || i.endsAt) continue;
+    if (i.type !== "auction" && i.type !== "claim") continue;
+    // Asked when the rules couldn't read the end, or a start line they couldn't read either.
+    if (i.endsAt && !(i.startsAtText && !i.startsAt)) continue;
     // No end time is known (that's the question), so only the age limit applies.
     if (isSaleOver(null, p.lastSeenAt, now)) continue;
     const key = endTimeAnswerKey(p.text);

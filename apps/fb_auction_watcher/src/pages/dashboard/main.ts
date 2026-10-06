@@ -339,6 +339,12 @@ function endsCell(r: Row, now: Date): HTMLTableCellElement {
       .filter(Boolean)
       .join("\n");
   }
+  // Claim sales with a start time to come: the lots usually aren't posted until then.
+  if (r.notStarted && r.startsAtMs !== null) {
+    const starts = `Starts ${endLabel(r.startsAtMs, now)}`;
+    td.append(el("div", "when one-line", r.lots?.length ? starts : `${starts} · lots not posted yet`));
+    td.title = [td.title, starts, r.startsAtText ? `The seller's text: ${r.startsAtText}` : ""].filter(Boolean).join("\n");
+  }
   return td;
 }
 
@@ -451,9 +457,10 @@ function saleCell(r: Row): HTMLTableCellElement {
   box.append(title);
   const { detail } = saleLines(r.title, r.description);
   if (detail) box.append(el("div", "desc", detail));
+  if (r.conditionText) box.append(el("div", "muted small", `Condition: ${r.conditionText}`));
   wrap.append(box, saleActions(r));
   // The full text, and when it was first seen (the Seen column until 2026-10-04).
-  td.title = [r.title, r.description && r.description !== r.title ? r.description : ""]
+  td.title = [r.title, r.description && r.description !== r.title ? r.description : "", r.conditionText ? `Tilstand: ${r.conditionText}` : ""]
     .filter(Boolean)
     .join("\n");
   return td;

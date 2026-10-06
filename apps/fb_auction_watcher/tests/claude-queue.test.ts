@@ -182,6 +182,14 @@ describe("pendingItems", () => {
     expect(p.endTimes.map((e) => e.text)).toEqual(["AUKSJON\nAvsluttes søndag kveld klokka ni"]);
   });
 
+  it("a readable end with an unreadable start line is asked about too; a readable or missing start isn't", async () => {
+    const store = memoryStore();
+    store.posts.set("a", post("a", "Claim-salg\nStartid: når middagen er spist\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    store.posts.set("b", post("b", "Claim-salg\nStartid: 03.10.26 kl 20:00\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    store.posts.set("c", post("c", "Claim-salg\nSluttid: 04.10.26 kl 21:00", ago(HOUR)));
+    expect((await pendingItems(store, { now: NOW })).endTimes.map((e) => e.text)).toEqual([store.posts.get("a")!.text]);
+  });
+
   it("a failed lot waits, then is skipped, and never blocks the lots behind it", async () => {
     const store = memoryStore();
     claimSale(store, "p1", "03.10.26 kl 21:00", ago(HOUR), MAX_CLAIM_LOTS + 1);

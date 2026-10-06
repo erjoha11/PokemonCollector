@@ -4,7 +4,7 @@ export { saleLines } from "../../domain/saleLines";
 export { lotUrl } from "../../shared/urls";
 import { canonicalPostUrl } from "../../shared/urls";
 import { interpretListing, isUntypedSale, type Interpretation } from "../../domain/listing";
-import { claudeEndsAt, osloDate } from "../../domain/endTime";
+import { claudeEndsAt, claudeStartsAt, osloDate } from "../../domain/endTime";
 import { bidAnswerKey, claimLotAnswerKey, endTimeAnswerKey, lotNameAnswerKey, type ClaimLotAnswer } from "../../llm/prompts";
 import type { PostCapture } from "../../shared/capture";
 import type { StoredPost } from "../../shared/feed";
@@ -14,6 +14,9 @@ import type { StoredPost } from "../../shared/feed";
 export type Row = StoredPost &
   Interpretation & {
     endsAtMs: number | null;
+    startsAtMs: number | null;
+    /** The post gives a start time that hasn't come yet: lots are usually posted at the start. */
+    notStarted: boolean;
     /** First seen after the previous visit to this page, or less than 30 min ago (NEW_WINDOW_MS; a rescan or visit inside that window doesn't clear it). */
     isNew: boolean;
     /** End time passed, but within the antisnipe window: bids may still extend it. */
@@ -74,8 +77,10 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
     const i = interpretListing(p.text, new Date(p.firstSeenAt));
     if (i.type === "wanted" || i.type === "trade" || (i.type === "other" && !isUntypedSale(i))) continue;
     let endsViaClaude = false;
+    const timesAnswer = answers.get(endTimeAnswerKey(p.text));
+    if (!i.startsAt) i.startsAt = claudeStartsAt(timesAnswer);
     if (!i.endsAt) {
-      const fromClaude = claudeEndsAt(answers.get(endTimeAnswerKey(p.text)));
+      const fromClaude = claudeEndsAt(timesAnswer);
       if (fromClaude) {
         i.endsAt = fromClaude;
         i.sure = true;
@@ -98,6 +103,7 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
         })
       : null;
     const endsAtMs = i.endsAt ? Date.parse(i.endsAt) : null;
+    const startsAtMs = i.startsAt ? Date.parse(i.startsAt) : null;
     const softMs = (i.softCloseMinutes ?? 0) * 60_000;
     const t = now.getTime();
     const endedByYouAt = endedMarks[p.id] ?? null;
@@ -116,6 +122,8 @@ export function buildRows(posts: StoredPost[], now: Date, lastVisit: Date | null
       url: canonicalPostUrl(p.url, p.id, p.groupSlug),
       ...i,
       endsAtMs,
+      startsAtMs,
+      notStarted: startsAtMs !== null && t < startsAtMs,
       isNew: (lastVisit !== null && firstSeen > lastVisit.getTime()) || t - firstSeen < NEW_WINDOW_MS,
       maybeEnded: !endedByYouAt && endsAtMs !== null && t >= endsAtMs && t < endsAtMs + softMs,
       ended,
