@@ -120,7 +120,9 @@ what they leave, and never other people's names.
 - **Lot names**: from the lot's own text first (`lotTextInfo`: every line, prices and the
   condition taken out, "Holo"/"Promo" alone isn't a name). An auction lot whose text names
   nothing goes to Claude with its text and photo (Sonnet, batched). A claim lot is named from
-  its photo read's cards, with no second look at the photo.
+  its photo read's cards, with no second look at the photo. The price labels taken out of the
+  name and the ones read as the start bid are one list (`START_LABEL`/`STEP_LABEL` in
+  `bids.ts`), so a price left out of the title is always read as the lot's start bid (#352).
 
 **Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
 - Only live sales: nothing from a sale that ended more than 6 h ago (late bids and claims are
@@ -566,6 +568,18 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   minimum price, "den er grei"), and "<Seller> ." (following a single lot, not a bid).
 - **Minimum price per lot:** "Mp 10kr" (lower case, no colon) as well as "MP: 1400"; one lot
   had a bare "700kr".
+- **Lot texts that are only a number and a price** (2026-10-07, #352): a multi-lot auction
+  where every lot came out "Lot N" with no start bid. The rules took "Pris: 200", "Mp. 200",
+  "Startpris 150kr", "Start 90" and a mid-line "300,-" out of the name, but `lotStartBid` only
+  knew "MP"/"Minstepris"/"Startbud" (no dot) or a line holding nothing but an amount, so the
+  price was dropped from both. Now the start bid reads every label the name stripping knows
+  ("MP", "M.P", "Mp.", "Pris", "Startpris", "Start bud", "Start", "Min. pris", "Minstebud",
+  "Fastpris", with ":", "." or "="), else the first amount in kr ("kr", ",-", "nok") anywhere
+  in the text that isn't the bid step ("MB 10kr") or a reference price ("Markedspris",
+  "TCGplayer", "Verdi"). A bare number without a label or "kr" is still not a price (it may be
+  a card number). The overview also showed the lot text without its first line, so a one-line
+  text ("Lot 1 - Pris: 200kr") showed nothing; it now shows every line. No saved sample of the
+  reported post was available: the shape is assumed from the report.
 - **End time formats:** "Sluttid: 2026-10-02 22.00", "Sluttid (Lørdag 3. oktober 23.59):",
   "Sluttid: 03.10 Lørdag kl22:00", "Sluttid: Søndag 04.10 kl 21:00", and "Slutt: 05.10.26
   kl 21:00" (label "Slutt", not "Sluttid").

@@ -168,12 +168,39 @@ export function lotTextPrice(text: string): { kr: number; perCard: boolean } | n
   return kr !== null ? { kr, perCard: false } : null;
 }
 
-/** "MP: 1400", "Mp 10kr", "Holo, mp 30kr", "Minstepris 500", or a bare "700kr" on its own line. */
-function lotStartBid(text: string): number | null {
-  const m = text.match(/(?<![\p{L}\d])(?:mp|minstepris|startbud)\s*:?\s*(\d[^\n]*)/iu);
-  if (m) return parseAmount(m[1]);
-  const bare = text.match(/(?:^|\n)\s*(\d[\d .]*)\s*(?:kr|,-)\s*(?:\n|$)/i);
-  return bare ? parseAmount(bare[1]) : null;
+// A lot's start bid (minimum price) and bid step, as sellers label them. `lotStartBid` and
+// `lotTextInfo` (via PRICE_PARTS) share these, so a price the title leaves out is always the one
+// read as the start bid (#352: "Pris: 200", "Mp. 200", "Startpris 200kr" were taken out of the
+// name but never read as a price, so the lot showed "Lot N" and no start bid).
+// "Min. bud" / "Minimum budøkning" is the group's bid step; "Minstebud" is the minimum bid.
+const START_LABEL = String.raw`m\.?p|minstepris|minimumspris|min(?:imum)?\.?\s*pris|start\s*(?:pris|bud)|minstebud|start|fastpris|pris`;
+const STEP_LABEL = String.raw`mb|min(?:imum)?\.?\s*bud(?:økning)?|budøkning`;
+/** "Lot 1:", "Nr. 2 -", "#3" at the start of a line: the lot's number, not a name or a price. */
+const LOT_NUMBER = /^\s*(?:lot|nr\.?|#)\s*\d+\s*[:.)\-–]?\s*/i;
+const REFERENCE_PRICE = /(?<![\p{L}])(?:verdi|markeds?(?:pris|verdi)|market|tcg\s*player|cardmarket|pricecharting|solgt\s+for)/iu;
+
+/**
+ * "MP: 1400", "Mp 10kr", "Mp. 200", "Holo, mp 30kr", "Minstepris 500", "Startpris: 200kr",
+ * "Pris 150,-", else an amount in kr anywhere ("Charizard 4/102 - 200kr", "700kr" on its own
+ * line) that isn't the bid step ("MB 10kr"). A bare number with no label and no "kr" is not
+ * read: it may be a card number.
+ */
+export function lotStartBid(text: string): number | null {
+  const lines = text.split("\n").map((l) => l.replace(LOT_NUMBER, ""));
+  const labelled = new RegExp(String.raw`(?<![\p{L}\d])(?:${START_LABEL})[ \t]*[:.=]?[ \t]*(?:kr\.?[ \t]*)?(\d[^\n]*)`, "iu");
+  for (const line of lines) {
+    const m = line.match(labelled);
+    const kr = m ? parseAmount(m[1]) : null;
+    if (kr !== null) return kr;
+  }
+  const step = new RegExp(String.raw`(?<![\p{L}\d])(?:${STEP_LABEL})[ \t]*[:.=]?[ \t]*\d[\d .,]*(?:[ \t]*(?:kr\.?|,-|nok))?`, "giu");
+  for (const line of lines) {
+    if (REFERENCE_PRICE.test(line)) continue; // "Markedspris 900kr", "TCGplayer $40": what it's worth, not the start bid.
+    const m = line.replace(step, " ").match(/(?<![\p{L}\d/.,])(\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:kr\.?|,-|nok)(?![\p{L}])/iu);
+    const kr = m ? parseAmount(m[1]) : null;
+    if (kr !== null) return kr;
+  }
+  return null;
 }
 
 /** The lot's title: the name in its own text, else Claude's name (from the text and photo), else "Lot N"; then the condition. */
@@ -201,7 +228,7 @@ export function untitledLotPhotos(capture: PostCapture): { imageUrl: string; tex
 // minimum price, not Moderately Played, unless it follows "Tilstand:".
 const AMOUNT_TEXT = String.raw`\d[\d .,]*(?:\s*k\b)?\s*(?:kr\.?|,-|nok)?`;
 const PRICE_PARTS = new RegExp(
-  String.raw`(?<![\p{L}\d])(?:mp|mb|minstepris|startbud|start|min\.?\s*bud(?:økning)?|budøkning|fastpris|pris)\s*[:.]?\s*${AMOUNT_TEXT}` +
+  String.raw`(?<![\p{L}\d])(?:${START_LABEL}|${STEP_LABEL})\s*[:.=]?\s*(?:kr\.?\s*)?${AMOUNT_TEXT}` +
     String.raw`|(?<![\p{L}\d/])\d[\d .,]*\s*(?:kr\.?|,-|nok)(?:\s*(?:per|pr\.?|/)\s*(?:stk|stykk|kort|card)\.?)?(?![\p{L}])`,
   "giu",
 );
@@ -213,7 +240,7 @@ export function lotTextInfo(text: string): { name: string | null; condition: str
   let name: string | null = null;
   let condition: string | null = null;
   for (const raw of text.split("\n")) {
-    let line = raw.replace(/^\s*(?:lot|nr\.?|#)\s*\d+\s*[:.)\-–]?\s*/i, ""); // "Lot 1: Charizard" → "Charizard".
+    let line = raw.replace(LOT_NUMBER, ""); // "Lot 1: Charizard" → "Charizard".
     line = line.replace(PRICE_PARTS, " ");
     line = line.replace(CONDITION, (m) => {
       condition ??= m.replace(/^tilstand\s*:?\s*/i, "").replace(/\s+/g, " ").toUpperCase().replace(/^(PSA|CGC|BGS|TAG|BECKETT)\s*/, "$1 ");

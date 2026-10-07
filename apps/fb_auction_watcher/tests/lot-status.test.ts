@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Lot } from "../src/domain/bids";
-import { krText, lotStatus, readAfterEnd, wonTotal, type Row } from "../src/pages/dashboard/model";
+import { krText, lotOrigText, lotStatus, readAfterEnd, wonTotal, type Row } from "../src/pages/dashboard/model";
 
 // The overview's one place for "how does this lot show for you" (review H3, H4, M7).
 const END = Date.parse("2026-10-04T16:00:00Z");
@@ -58,5 +58,13 @@ describe("wonTotal", () => {
     const t = wonTotal(lots);
     expect(t).toEqual({ cards: 2, kr: 200, unknown: 1 });
     expect(krText(t)).toBe("200 kr + ?");
+  });
+});
+
+describe("a lot's own text next to its title (#352)", () => {
+  it("shows every line, the first too: a one-line lot text (only its price) isn't hidden", () => {
+    expect(lotOrigText("Lot 1 - Pris: 200kr")).toBe("Lot 1 - Pris: 200kr");
+    expect(lotOrigText("Lot 2\n  Startpris 150kr \n\nMB 20")).toBe("Lot 2 · Startpris 150kr · MB 20");
+    expect(lotOrigText("")).toBe("");
   });
 });
