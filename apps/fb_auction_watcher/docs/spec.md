@@ -125,7 +125,7 @@ what they leave, and never other people's names.
   `bids.ts`), so a price left out of the title is always read as the lot's start bid (#352).
   The rules name the lot when the post is read (the overview, the pill and the watcher interpret
   the stored read directly); Claude's photo naming is only the fallback for a lot whose text has
-  no name, and it keeps its limits below (live sales, the hourly photo cap). See "Lot text" under
+  no name, and it keeps its limits below (open sales only, the hourly photo cap). See "Lot text" under
   findings for the free-text rules and the "MP" rule.
 
 **Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
@@ -133,6 +133,11 @@ what they leave, and never other people's names.
   read after the end, and Won/Lost needs a read after it, so a few hours' grace), and for sales
   with no known end (fixed price, or an end nobody could read) nothing once the post hasn't been
   seen or read for 3 days. The end is the one the overview shows: rules, else Claude's answer.
+- Lot names from photos have no such grace (#352, the user: "stop claude when the sale ends"):
+  they're asked only while the sale is open, i.e. until its end time plus any antisnipe window
+  (`hasSaleClosed`, the moment the overview marks it ended). A sale with no known end (the "No
+  end" tab) hasn't ended, so its lots are still named, under the same 3-day age limit. End times,
+  odd bids, claim-lot photos and claim matches keep the 6 h grace.
 - Photos sent to Sonnet are capped at 20 per rolling hour, counted in `chrome.storage.local` so
   a worker restart doesn't reset it: one per claim lot call (at most 5 per run), and each photo of
   a lot-name batch (up to 12 per call, at most 24 per run; claim lots go first, lot names get what

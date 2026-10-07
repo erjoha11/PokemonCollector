@@ -200,14 +200,14 @@ End times written as free text ("avsluttes søndag kveld klokka ni") and bids th
 no API key), batched, the smallest model (Haiku), no tools, each answer cached so it's asked only once.
 Lots whose text doesn't name them (only "Mp 20kr", or nothing) are named from their photo: the seller's text
 on the photo if there is some, else the card name and number as printed ("Pikachu 74/112"); up to 12 photos
-per call to Sonnet, posts you're in first, not for sales that ended hours ago, each name asked once, and
+per call to Sonnet, posts you're in first, only while the sale is still open (none once it has ended), each name asked once, and
 each photo counts against the hourly photo cap.
 Claim lots you've claimed on go one at a time with their full-size photo to Sonnet, which reads prices on
 photos reliably (Haiku misread one on a real lot); the bridge downloads photos only from Facebook's CDN. The
 extension reaches it through Chrome's native messaging: a small script, `native/fbaw_claude_host.py`,
 which only passes the text to `claude -p` and the answer back.
 
-Only live sales are asked about: nothing from a sale that ended more than 6 hours ago, and for sales with no
+Only live sales are asked about: nothing from a sale that ended more than 6 hours ago (lot names: nothing once it has ended), and for sales with no
 end time (fixed price) nothing once the post hasn't been seen or read for 3 days. Photo calls (Sonnet) are capped
 at 20 an hour; the rest waits for later runs. If one item fails (typically a lot photo Facebook's CDN no longer
 serves: its links expire), it's tried again after 15 minutes, then after an hour, and then skipped; the other

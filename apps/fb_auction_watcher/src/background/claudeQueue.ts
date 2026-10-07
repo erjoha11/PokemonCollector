@@ -47,6 +47,7 @@ export const PHOTO_CALLS_PER_HOUR = 20;
  * How long after its end a sale's items are still worth asking about: bids and claims placed in
  * the last minutes are read after the end (the reader reads your auctions every 15 min, and Won/
  * Lost needs a complete read after the end), so allow a few hours, then the result is settled.
+ * Not for naming lots from photos: that stops when the sale ends (hasSaleClosed, #352).
  */
 export const ENDED_GRACE_MS = 6 * HOUR;
 /**
@@ -142,6 +143,17 @@ export function isSaleOver(endsAt: string | null, lastActivityAt: string, now: D
   return now.getTime() - Date.parse(lastActivityAt) > STALE_AFTER_MS;
 }
 
+/**
+ * Whether a sale has closed: its end time plus the antisnipe window has passed, the same moment
+ * the overview marks it ended (src/pages/dashboard/model.ts). No known end: not closed (the
+ * "No end" tab; isSaleOver's age limit still applies). Lot naming from photos stops here, with
+ * no grace (the user, #352: "stop claude when the sale ends"); the other jobs keep ENDED_GRACE_MS.
+ */
+export function hasSaleClosed(endsAt: string | null, softCloseMinutes: number | null, now: Date): boolean {
+  if (!endsAt) return false;
+  return now.getTime() >= Date.parse(endsAt) + (softCloseMinutes ?? 0) * MINUTE;
+}
+
 const later = (a: string, b: string | undefined) => (b && b > a ? b : a);
 
 export type PendingOptions = {
@@ -216,16 +228,20 @@ export async function pendingItems(store: Store, opts: PendingOptions = {}): Pro
     // The sale's end as the overview shows it (src/pages/dashboard/model.ts): the rules on the
     // feed text from when it was first seen, else on the read's text, else Claude's answer.
     const ref = new Date(post?.firstSeenAt ?? capture.capturedAt);
+    const postListing = post ? interpretListing(post.text, ref) : null;
     const endsAt =
-      (post && interpretListing(post.text, ref).endsAt) ||
+      postListing?.endsAt ||
       interpretListing(capture.post.text, ref).endsAt ||
       claudeEndsAt(answerMap.get(endTimeAnswerKey(post?.text ?? capture.post.text)));
     if (isSaleOver(endsAt, later(capture.capturedAt, post?.lastSeenAt), now)) continue;
+    const softClose = (postListing ?? interpretListing(capture.post.text, ref)).softCloseMinutes;
 
     // Auction lots whose text doesn't name them: Claude names them from the text and photo. (A claim
-    // lot is named from the cards its photo read finds: no second look at the same photo.)
+    // lot is named from the cards its photo read finds: no second look at the same photo.) Only
+    // while the sale is open: none once it has closed, not even within ENDED_GRACE_MS.
     const mine = !!me && capture.comments.some((c) => c.replies.some((r) => normalizeName(r.author) === me));
-    for (const { imageUrl, text } of type === "claim" || type === "fixed" ? [] : untitledLotPhotos(capture)) {
+    const nameLots = type !== "claim" && type !== "fixed" && !hasSaleClosed(endsAt, softClose, now);
+    for (const { imageUrl, text } of nameLots ? untitledLotPhotos(capture) : []) {
       const key = lotNameAnswerKey(imageUrl, text);
       if (wanted(key)) lotNames.push({ imageUrl, text, key, mine });
     }

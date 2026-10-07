@@ -324,7 +324,8 @@ describe("pendingItems: what the rules couldn't read", () => {
 });
 
 // Lot names from photos (#289): lots whose text is only a price ("Mp 20kr") are named by Claude
-// from the photo, batched, under the same failure tracking, ended-sale rule and photo cap.
+// from the photo, batched, under the same failure tracking and photo cap, but only while the sale
+// is open (#352: no ENDED_GRACE_MS for naming).
 describe("pendingItems: lot names", () => {
   const AT = new Date("2026-10-04T12:00:00Z"); // The auction ends 19:00 UTC.
   const untitled = (id: number, replies: ReturnType<typeof fx.reply>[] = []) => fx.lot(id, replies, "Mp 20kr");
@@ -349,10 +350,34 @@ describe("pendingItems: lot names", () => {
     expect(again.lotNames[0].key).toBe(lotNameAnswerKey(again.lotNames[0].imageUrl, again.lotNames[0].text));
   });
 
-  it("skips sales that ended over a few hours ago", async () => {
+  // The user (#352): "stop claude when the sale ends". No ENDED_GRACE_MS for naming lots.
+  it("names lots only while the sale is open: none once it has ended, not even within the grace", async () => {
     const store = memoryStore({ captures: [auction("a", [untitled(1)])] });
-    expect((await pendingItems(store, { now: new Date("2026-10-04T20:00:00Z") })).lotNames).toHaveLength(1); // Ended 1 h ago.
-    expect((await pendingItems(store, { now: new Date("2026-10-05T02:00:00Z") })).lotNames).toHaveLength(0); // Ended 7 h ago.
+    const at = (iso: string) => pendingItems(store, { now: new Date(iso) });
+    expect((await at("2026-10-04T18:59:00Z")).lotNames).toHaveLength(1); // Ends in 1 min.
+    expect((await at("2026-10-04T19:00:00Z")).lotNames).toHaveLength(0); // Just ended.
+    expect((await at("2026-10-04T20:00:00Z")).lotNames).toHaveLength(0); // Ended 1 h ago (named before #352).
+  });
+
+  it("with antisnipe, the sale ends when its soft close does", async () => {
+    const store = memoryStore({ captures: [{ postId: "a", capture: fx.capture("a", fx.auctionText("Ja"), [untitled(1)]) }] });
+    expect((await pendingItems(store, { now: new Date("2026-10-04T19:04:00Z") })).lotNames).toHaveLength(1);
+    expect((await pendingItems(store, { now: new Date("2026-10-04T19:05:00Z") })).lotNames).toHaveLength(0);
+  });
+
+  it("no known end time (the No end tab): still named, until the sale goes stale", async () => {
+    const noEnd = "AUKSJON/BUDRUNDE-annonse\nMinimum budøkning: 10kr\nSluttid: når budene stilner";
+    const store = memoryStore({ captures: [{ postId: "a", capture: fx.capture("a", noEnd, [untitled(1)]) }] });
+    expect((await pendingItems(store, { now: new Date("2026-10-05T12:00:00Z") })).lotNames).toHaveLength(1);
+    expect((await pendingItems(store, { now: new Date(AT.getTime() + STALE_AFTER_MS + HOUR) })).lotNames).toHaveLength(0);
+  });
+
+  it("the other jobs keep ENDED_GRACE_MS: an unsure bid 1 h after the end is still asked, its lot isn't named", async () => {
+    const store = memoryStore({ captures: [auction("a", [untitled(1, [fx.reply("Budgiver Ola", `${fx.SELLER} 580?`)])])] });
+    const p = await pendingItems(store, { now: new Date("2026-10-04T20:00:00Z") });
+    expect(p.bids).toHaveLength(1);
+    expect(p.lotNames).toHaveLength(0);
+    expect((await pendingItems(store, { now: new Date("2026-10-05T02:00:00Z") })).bids).toHaveLength(0); // Ended 7 h ago.
   });
 
   it("each photo counts against the hourly cap, after claim lots; at most MAX_LOT_NAMES per run", async () => {
