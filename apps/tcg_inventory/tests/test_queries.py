@@ -1,5 +1,5 @@
 import pytest
-from conftest import make_csv
+from conftest import make_csv, owned_first
 
 import queries
 from importer import import_dex_csv_files
@@ -101,11 +101,10 @@ def test_qty_zero_card_unique_value_is_zero_but_total_value_stays_zero_too(db_se
     # Issue #132: unique_value wasn't gated on qty > 0 the way
     # duplicates/total_value already were, so a traded/sold-away (qty=0)
     # card's full market price still counted toward "Value" KPIs.
-    main = make_csv(
-        "My Collection",
-        [{"id": "traded-away", "qty": 0, "price": "400"}],
-    )
-    import_dex_csv_files(db_session, [("main.csv", main)])
+    rows = [{"id": "traded-away", "qty": 0, "price": "400"}]
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
     card = db_session.query(Card).filter(Card.card_id == "traded-away").one()
     assert card.qty == 0
     assert card.unique_value == 0.0
@@ -114,27 +113,25 @@ def test_qty_zero_card_unique_value_is_zero_but_total_value_stays_zero_too(db_se
 
 
 def test_top_valuable_cards_excludes_qty_zero_cards(db_session):
-    main = make_csv(
-        "My Collection",
-        [
-            {"id": "traded-away", "qty": 0, "price": "9999"},
-            {"id": "still-owned", "qty": 1, "price": "10"},
-        ],
-    )
-    import_dex_csv_files(db_session, [("main.csv", main)])
+    rows = [
+        {"id": "traded-away", "qty": 0, "price": "9999"},
+        {"id": "still-owned", "qty": 1, "price": "10"},
+    ]
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
     top = queries.top_valuable_cards(db_session, limit=10)
     assert [c.card_id for c in top] == ["still-owned"]
 
 
 def test_headline_and_bucket_unique_value_exclude_qty_zero_cards(db_session):
-    main = make_csv(
-        "My Collection",
-        [
-            {"id": "traded-away", "name": "Pikachu", "qty": 0, "price": "9999", "series": "Test Series"},
-            {"id": "still-owned", "name": "Charizard", "qty": 1, "price": "10", "series": "Test Series"},
-        ],
-    )
-    import_dex_csv_files(db_session, [("main.csv", main)])
+    rows = [
+        {"id": "traded-away", "name": "Pikachu", "qty": 0, "price": "9999", "series": "Test Series"},
+        {"id": "still-owned", "name": "Charizard", "qty": 1, "price": "10", "series": "Test Series"},
+    ]
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
 
     headline = queries.headline_summary(db_session)
     assert headline["unique_value"] == 10
@@ -278,15 +275,14 @@ def test_set_bucket_completion_pct_computed_from_total_cards_and_partial_ownersh
     ownership computes `owned_numbers / total_cards * 100` -- never stored,
     computed live, qty>0-gated.
     """
-    main = make_csv(
-        "My Collection",
-        [
-            {"id": "a", "series": "Original", "set": "Base Set", "qty": 1},
-            {"id": "b", "series": "Original", "set": "Base Set", "qty": 0},
-            {"id": "c", "series": "Original", "set": "Base Set", "qty": 3},
-        ],
-    )
-    import_dex_csv_files(db_session, [("main.csv", main)])
+    rows = [
+        {"id": "a", "series": "Original", "set": "Base Set", "qty": 1},
+        {"id": "b", "series": "Original", "set": "Base Set", "qty": 0},
+        {"id": "c", "series": "Original", "set": "Base Set", "qty": 3},
+    ]
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
 
     _link_set(db_session, "Original", "Base Set", release_rank=1, total_cards=102)
 
@@ -577,8 +573,10 @@ def test_value_change_breakdown_splits_price_moves_from_new_cards(db_session):
     import snapshots
     from models import Card
 
-    main = make_csv("My Collection", [{"id": "a", "qty": 1, "price": "100"}, {"id": "b", "qty": 0, "price": "50"}])
-    import_dex_csv_files(db_session, [("main.csv", main)])
+    rows = [{"id": "a", "qty": 1, "price": "100"}, {"id": "b", "qty": 0, "price": "50"}]
+    # A qty-0 row only updates an existing card (#340), so owned first.
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", owned_first(rows)))])
+    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", rows))])
     a = db_session.query(Card).filter(Card.card_id == "a").one()
     b = db_session.query(Card).filter(Card.card_id == "b").one()
     start, end = dt.date(2026, 1, 1), dt.date(2026, 1, 10)

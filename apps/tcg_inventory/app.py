@@ -3291,6 +3291,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             f"collections={sorted(result.collections_touched)} "
             f"binders={sorted(result.binders_touched)} "
             f"warnings={len(result.warnings)} "
+            f"unowned_skipped={result.unowned_rows_skipped} "
             f"snapshotted={snapshotted}"
         )
         return {
@@ -3306,6 +3307,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
             "collections_touched": sorted(result.collections_touched),
             "binders_touched": sorted(result.binders_touched),
             "warnings": result.warnings,
+            "unowned_rows_skipped": result.unowned_rows_skipped,
             "cards_snapshotted": snapshotted,
         }
     except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:

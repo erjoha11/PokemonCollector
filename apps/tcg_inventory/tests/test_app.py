@@ -3,7 +3,7 @@ import re
 
 import pytest
 
-from conftest import make_csv, seed_import
+from conftest import make_csv, owned_first, seed_import
 
 
 # --- Transactions "Order history" helpers ---------------------------------
@@ -2228,14 +2228,12 @@ def test_inventory_accepts_an_empty_dup_query_value(client):
 
 
 def test_inventory_hides_qty_zero_cards_by_default_and_unowned_toggle_reveals_them(client):
-    main = make_csv(
-        "My Collection",
-        [
-            {"id": "a", "name": "Pikachu", "qty": 1},
-            {"id": "b", "name": "Charizard", "qty": 0},
-        ],
-    )
-    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    rows = [
+        {"id": "a", "name": "Pikachu", "qty": 1},
+        {"id": "b", "name": "Charizard", "qty": 0},
+    ]
+    seed_import(client, [("files", ("main.csv", make_csv("My Collection", owned_first(rows)), "text/csv"))])
+    seed_import(client, [("files", ("main.csv", make_csv("My Collection", rows), "text/csv"))])
 
     default_response = client.get("/inventory")
     assert "Pikachu" in default_response.text

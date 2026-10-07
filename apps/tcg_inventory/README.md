@@ -709,9 +709,9 @@ without updating both the code and this doc.
    separate set of cards. "Wishlist", "Incoming", and any category starting
    with "151 Fullarts" are always fully ignored: never a collection, a
    binder, or an importer warning. "Incoming" is the Dex folder of won cards
-   that haven't arrived yet (added at qty 0, removed on arrival). Dex doesn't
-   export qty-0 rows, so its only exported rows are cards already in My
-   Collection; what's on the way is tracked in Dex and the Facebook wins
+   that haven't arrived yet (added at qty 0, removed on arrival). Its
+   qty-0 rows never become cards (see "Quantity-0 rows" under Sync
+   semantics), so what's on the way is tracked in Dex and the Facebook wins
    inbox, not here (#311). Ignoring a category never touches an existing
    collection of the same name: an "Incoming" collection created by an
    earlier sync keeps its old tags until it is cleaned up by hand.
@@ -765,6 +765,22 @@ without updating both the code and this doc.
        `allow_mass_missing` override still exists for a deliberate big
        clear-out, but no page offers it since the manual Dropbox picker was
        removed (#264).
+   - **Quantity-0 rows (#340).** Dex can export "all variants", which
+     lists every unowned variant with Quantity 0 (one real export had 823
+     of its 1,686 My Collection rows at 0, and importing them all ran the
+     sync past Vercel's 300 s limit). The importer skips a qty-0 My
+     Collection row whose `(Id, Variant)` isn't already a card: no card is
+     created, nothing is linked or looked up. A card that **is** already in
+     the database and comes back at qty 0 is updated exactly as before (qty
+     set to 0, price updated, un-flagged if it was flagged missing), so a
+     sold card still goes to 0 rather than being flagged. In every other
+     category, a qty-0 row that matches no card is skipped without a
+     warning (it used to be one "finnes ikke i databasen" warning per row);
+     a row with a quantity that matches no card still warns as before.
+     Rows that match a card keep their tagging behaviour unchanged. The
+     number skipped is `ImportResult.unowned_rows_skipped`, returned by
+     `/cron/dropbox-sync` as `unowned_rows_skipped` and shown in the run's
+     Details column on Sync status ("Skipped N rows with quantity 0 ...").
    - Every sync is expected to include both the main export and the
      Vintage Collection export together — the cron sync takes every CSV
      in the Dropbox folder at once for exactly this reason.
@@ -785,7 +801,10 @@ without updating both the code and this doc.
    silently skipped. `db.py`'s `_backfill_sets()` (part of `init_db()`,
    re-run on every app startup, not just once) does the same get-or-create
    for every distinct `(series, set)` pair seen on `cards` and links every
-   matching card's `set_id`; since #134 this is no longer the primary
+   matching card's `set_id` — writing only cards whose `set_id` actually
+   differs, and nothing at all when every card is already linked (#340: it
+   used to UPDATE every card on every cold start, which row-locked `cards`
+   and deadlocked a concurrent Dex sync); since #134 this is no longer the primary
    linking mechanism, just a catch-all/safety net for cards that predate
    that change or otherwise reached the database unlinked (nothing needs
    to be imported or seeded by hand for the link itself to exist either
@@ -2015,8 +2034,8 @@ network access or the app's real `tcg_inventory.db` involved.
     will skip a migration that should still run.
   - `_enable_row_level_security()` (#239, Postgres only, no-op on SQLite)
     runs `ALTER TABLE public."<name>" ENABLE ROW LEVEL SECURITY` for every
-    table in `Base.metadata.sorted_tables`. Idempotent (re-enabling is a
-    no-op) and adds no policies: Supabase's `anon`/`authenticated` roles
+    table in `Base.metadata.sorted_tables` that doesn't have RLS yet
+    (`pg_class.relrowsecurity`, #340). Idempotent and adds no policies: Supabase's `anon`/`authenticated` roles
     get no rows, while the app connects as `postgres` (`BYPASSRLS`) and is
     unaffected. Because it's version-gated, a new table gets RLS on the
     first start after the deploy that bumps `CURRENT_SCHEMA_VERSION` for
@@ -2029,5 +2048,14 @@ network access or the app's real `tcg_inventory.db` involved.
     primary mechanism keeping cards linked — it's an ongoing catch-all for
     any card that ends up unlinked some other way, not one-time
     schema/data cleanup like the rest of the chain.
+  - **A cold start against an up-to-date database writes nothing** (#340,
+    guarded by `tests/test_db.py::test_cold_start_against_up_to_date_database_writes_nothing`).
+    The every-start backfills only touch rows that still need it, and the
+    version-gated chain's lock-taking DDL (`_enable_row_level_security()`,
+    the `card_snapshots.source` ALTERs) only runs for a table/column not
+    already in its final state, since even a no-op `ALTER TABLE` takes an
+    `ACCESS EXCLUSIVE` lock on Postgres. A new every-start backfill must
+    keep that property: a write on each cold start locks rows a running
+    sync may be updating.
 - Silent session refresh — an expired Supabase session redirects to
   `/login` instead of refreshing quietly in the background.

@@ -215,10 +215,18 @@ def _widen_card_snapshot_source_constraint():
     inspector = inspect(engine)
     if not inspector.has_table("card_snapshots"):
         return
+    # The ALTERs take an ACCESS EXCLUSIVE lock even when they change
+    # nothing, so they only run when the column isn't in its final shape
+    # yet (issue #340).
+    source_column = next(
+        (col for col in inspector.get_columns("card_snapshots") if col["name"] == "source"), None
+    )
     with engine.begin() as conn:
         conn.execute(text("UPDATE card_snapshots SET source = 'cron' WHERE source IS NULL"))
-        conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET DEFAULT 'cron'"))
-        conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET NOT NULL"))
+        if source_column is None or not source_column.get("default"):
+            conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET DEFAULT 'cron'"))
+        if source_column is None or source_column.get("nullable", True):
+            conn.execute(text("ALTER TABLE card_snapshots ALTER COLUMN source SET NOT NULL"))
         constraints = {c["name"] for c in inspector.get_unique_constraints("card_snapshots")}
         if "uq_card_snapshots_card_id_date" in constraints:
             conn.execute(text("ALTER TABLE card_snapshots DROP CONSTRAINT uq_card_snapshots_card_id_date"))
@@ -246,7 +254,21 @@ def _enable_row_level_security():
     if engine.dialect.name != "postgresql":
         return
     with engine.begin() as conn:
+        # Only tables that don't have it yet (issue #340): even a no-op
+        # ENABLE takes an ACCESS EXCLUSIVE lock on the table, so running it
+        # on `cards` while a Dex sync is writing would stall or deadlock.
+        already = {
+            row[0]
+            for row in conn.execute(
+                text(
+                    "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = 'public' AND c.relrowsecurity"
+                )
+            )
+        }
         for table in Base.metadata.sorted_tables:
+            if table.name in already:
+                continue
             conn.execute(text(f'ALTER TABLE public."{table.name}" ENABLE ROW LEVEL SECURITY'))
 
 
@@ -307,10 +329,15 @@ def _backfill_sets():
     as it writes each card, so this function is no longer the *primary*
     linking mechanism -- it's now mainly a catch-all/safety net for cards
     that predate that change (or reached the database some other way, e.g.
-    a direct edit) and would otherwise stay unlinked. Cheap enough (a
-    handful of read/write statements over at most a few hundred distinct
-    sets) to keep running unconditionally rather than adding a separate
-    one-time-migration path for it.
+    a direct edit) and would otherwise stay unlinked.
+
+    **Writes nothing when everything is already linked** (issue #340). It
+    used to run `UPDATE cards SET set_id = ...` for every (series, set)
+    pair on every cold start, which row-locked every card and deadlocked a
+    Dex sync running at the same time in another instance. Now one SELECT
+    of the distinct (series, set, set_id) triples decides which pairs have
+    a card that isn't linked to its set yet, and only those pairs get an
+    UPDATE -- itself limited to the rows whose `set_id` actually differs.
     """
     import models
 
@@ -318,14 +345,28 @@ def _backfill_sets():
     if not inspector.has_table("cards") or not inspector.has_table("sets"):
         return  # brand new database -- create_all() hasn't run yet this call
     with SessionLocal() as session:
-        pairs = (
-            session.query(models.Card.series, models.Card.set)
+        triples = (
+            session.query(models.Card.series, models.Card.set, models.Card.set_id)
             .filter(models.Card.series.isnot(None), models.Card.set.isnot(None))
             .distinct()
             .all()
         )
-        if not pairs:
+        if not triples:
             return
+
+        cache = {(s.series, s.name): s for s in session.query(models.Set).all()}
+
+        linked_to: dict[tuple[str, str], set] = {}
+        for series, set_name, set_id in triples:
+            linked_to.setdefault((series, set_name), set()).add(set_id)
+
+        stale_pairs = []
+        for pair, set_ids in linked_to.items():
+            set_row = cache.get(pair)
+            if set_row is None or set_ids != {set_row.id}:
+                stale_pairs.append(pair)
+        if not stale_pairs:
+            return  # the normal cold start: nothing to create, nothing to link
 
         release_ranks = {}
         if inspector.has_table("set_release_order"):
@@ -338,15 +379,15 @@ def _backfill_sets():
                 )
             }
 
-        cache = {(s.series, s.name): s for s in session.query(models.Set).all()}
-
-        for series, set_name in pairs:
+        for series, set_name in stale_pairs:
             set_row = get_or_create_set(
                 session, series, set_name, release_rank=release_ranks.get((series, set_name)), cache=cache
             )
 
             session.query(models.Card).filter(
-                models.Card.series == series, models.Card.set == set_name
+                models.Card.series == series,
+                models.Card.set == set_name,
+                models.Card.set_id.is_distinct_from(set_row.id),
             ).update({models.Card.set_id: set_row.id}, synchronize_session=False)
 
         session.commit()

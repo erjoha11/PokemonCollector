@@ -350,11 +350,17 @@ def test_card_price_backfill_failure_is_never_fatal(monkeypatch, tmp_path):
 
 
 class _RecordingConn:
-    def __init__(self, statements):
+    def __init__(self, statements, rls_enabled=()):
         self._statements = statements
+        self._rls_enabled = rls_enabled
 
     def execute(self, clause, *args, **kwargs):
-        self._statements.append(str(clause))
+        sql = str(clause)
+        if sql.startswith("SELECT"):
+            # The pg_class lookup of tables that already have RLS (#340).
+            return [(name,) for name in self._rls_enabled]
+        self._statements.append(sql)
+        return []
 
 
 class _FakePostgresEngine:
@@ -362,8 +368,9 @@ class _FakePostgresEngine:
     postgresql dialect name and a begin() context manager whose connection
     records every statement instead of sending it anywhere."""
 
-    def __init__(self):
+    def __init__(self, rls_enabled=()):
         self.statements = []
+        self.rls_enabled = tuple(rls_enabled)
         self.dialect = type("Dialect", (), {"name": "postgresql"})()
 
     def begin(self):
@@ -371,7 +378,7 @@ class _FakePostgresEngine:
 
         @contextmanager
         def _cm():
-            yield _RecordingConn(self.statements)
+            yield _RecordingConn(self.statements, self.rls_enabled)
 
         return _cm()
 
@@ -392,6 +399,26 @@ def test_enable_rls_emits_statement_for_every_table_on_postgres(monkeypatch):
     # Sanity: covers real app tables plus init_db's own bookkeeping table.
     names = {t.name for t in db_module.Base.metadata.sorted_tables}
     assert {"cards", "transactions", "schema_meta"} <= names
+
+
+def test_enable_rls_skips_tables_that_already_have_it(monkeypatch):
+    """#340: even a no-op ENABLE takes an ACCESS EXCLUSIVE lock, so tables
+    that already have RLS on Postgres get no ALTER at all."""
+    import models  # noqa: F401
+
+    fake = _FakePostgresEngine(rls_enabled=["cards", "transactions"])
+    monkeypatch.setattr(db_module, "engine", fake)
+
+    db_module._enable_row_level_security()
+
+    assert 'ALTER TABLE public."cards" ENABLE ROW LEVEL SECURITY' not in fake.statements
+    assert 'ALTER TABLE public."transactions" ENABLE ROW LEVEL SECURITY' not in fake.statements
+    assert 'ALTER TABLE public."won_items" ENABLE ROW LEVEL SECURITY' in fake.statements
+
+    everything = _FakePostgresEngine(rls_enabled=[t.name for t in db_module.Base.metadata.sorted_tables])
+    monkeypatch.setattr(db_module, "engine", everything)
+    db_module._enable_row_level_security()
+    assert everything.statements == []
 
 
 def test_enable_rls_is_noop_on_sqlite(monkeypatch):
@@ -446,3 +473,82 @@ def test_migration_from_v12_creates_won_items_with_rls(monkeypatch):
     monkeypatch.setattr(db_module, "engine", fake)
     db_module._enable_row_level_security()
     assert 'ALTER TABLE public."won_items" ENABLE ROW LEVEL SECURITY' in fake.statements
+
+
+def _record_writes(engine):
+    """Collects every data-changing statement (INSERT/UPDATE/DELETE/ALTER/
+    CREATE/DROP) sent on `engine`, via SQLAlchemy's cursor event."""
+    from sqlalchemy import event
+
+    writes = []
+
+    def before(conn, cursor, statement, parameters, context, executemany):
+        verb = statement.lstrip().split(None, 1)[0].upper()
+        if verb in {"INSERT", "UPDATE", "DELETE", "ALTER", "CREATE", "DROP"}:
+            writes.append(statement)
+
+    event.listen(engine, "before_cursor_execute", before)
+    return writes
+
+
+def test_cold_start_against_up_to_date_database_writes_nothing(monkeypatch):
+    """#340: a cold start's init_db() used to UPDATE every card's set_id on
+    every start, row-locking all of `cards` and deadlocking a Dex sync
+    running at the same time. Against a database that is already migrated,
+    linked and priced, init_db() must not write anything."""
+    from conftest import make_csv
+    from importer import import_dex_csv_files
+
+    engine = _fresh_engine()
+    _init(monkeypatch, engine)
+    session = db_module.SessionLocal()
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "jpn_sv2a-1", "series": "Scarlet & Violet", "set": "151", "number": "001/165"},
+            {"id": "jpn_sv2a-2", "series": "Scarlet & Violet", "set": "151", "number": "002/165", "variant": "Holo"},
+            {"id": "base1-4", "series": "Base", "set": "Base Set", "number": "4/102", "locale": "ENG"},
+            {"id": "nameless", "series": "", "set": "", "number": ""},
+        ],
+    )
+    import_dex_csv_files(session, [("main.csv", csv)])
+    session.close()
+    db_module.init_db()  # catches up anything the import left (none expected)
+
+    writes = _record_writes(engine)
+    db_module.init_db()
+    db_module.init_db()
+
+    assert writes == []
+
+
+def test_backfill_sets_updates_only_cards_whose_set_id_differs(monkeypatch):
+    """#340: a pair with one stale card relinks that card only."""
+    import models
+
+    engine = _fresh_engine()
+    _init(monkeypatch, engine)
+    session = db_module.SessionLocal()
+    session.add_all(
+        [
+            models.Card(card_id="1", variant=None, name="Pikachu", series="Base", set="Base Set"),
+            models.Card(card_id="2", variant=None, name="Charizard", series="Base", set="Base Set"),
+        ]
+    )
+    session.commit()
+    session.close()
+    db_module.init_db()
+
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE cards SET set_id = NULL WHERE card_id = '2'"))
+
+    writes = _record_writes(engine)
+    db_module.init_db()
+
+    updates = [w for w in writes if w.lstrip().upper().startswith("UPDATE CARDS")]
+    assert len(updates) == 1
+    assert "set_id IS NOT" in updates[0]  # only rows whose set_id differs
+    session = db_module.SessionLocal()
+    set_id = session.query(models.Set).one().id
+    assert {c.set_id for c in session.query(models.Card)} == {set_id}
+    session.close()

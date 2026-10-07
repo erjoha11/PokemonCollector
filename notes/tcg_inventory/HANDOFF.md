@@ -1899,3 +1899,41 @@ None. No production DB read or write.
   can be too large (bounded by the cap). Documented in the README.
 - **`ux` follow-up** (UX_NOTES 2026-10-04: the Imported items panel with
   10+ items from one sale) is still open; not reviewed this session.
+
+
+# Handoff notes — 2026-10-06 session (#340 PR A: cold-start writes, qty-0 rows)
+
+## Code (in git, PR A for #340)
+
+- **Cold start writes nothing on an up-to-date DB.** `_backfill_sets()`
+  reads the distinct `(series, set, set_id)` triples once and only UPDATEs
+  pairs with an unlinked/mislinked card, limited to rows whose `set_id`
+  differs. It used to UPDATE every card on every cold start, which
+  deadlocked concurrent syncs (import_log #47, #48). `_backfill_master_cards`
+  and `_backfill_card_prices` were audited: already no-writes once done.
+  The version-gated chain's DDL is now conditional too: RLS is only enabled
+  on tables without it, and the `card_snapshots.source` ALTERs only run if
+  the column lacks its default / NOT NULL. That matters for the first cold
+  start after any schema-version bump (PR B bumps it).
+- **Qty-0 rows.** A qty-0 My Collection row for a `(card_id, variant)` not
+  in the DB is skipped (no card). Existing cards going to 0 behave as before.
+  Unmatched qty-0 rows in other categories no longer warn one by one; the
+  count goes in `ImportResult.unowned_rows_skipped`, the cron JSON and the
+  run's `message` on Sync status. Tests that seeded sold-out cards straight
+  from a qty-0 row now import them owned first (`conftest.owned_first`).
+
+## Direct database changes
+
+None. No production DB read or write.
+
+## Open items
+
+- **Qty-0 rows that *match* a card in a collection/binder export still tag
+  it**, as before. With an "all variants" export that can tag an owned
+  variant into a folder it isn't in (e.g. you own a Reverse Holo kept in
+  Collection, and Vintage's all-variants export lists it at 0). Not changed
+  here because the issue asked for sync semantics to stay unchanged; needs
+  a decision on whether a qty-0 row should count as membership.
+- The conditional `card_snapshots.source` ALTERs rely on SQLAlchemy's
+  Postgres inspector reporting `default`/`nullable`; only exercised on
+  Postgres, not covered by the SQLite suite.
