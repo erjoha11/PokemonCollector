@@ -976,14 +976,37 @@ of these does:
 
 | Job (`job`) | Recorded outcomes (`status`) | Written by |
 |---|---|---|
-| `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error, or "Interrupted": a run killed before it finished, #340) | `importer._log_import` (ok), `/cron/dropbox-sync` (the rest), `job_locks` (interrupted) |
-| `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `degraded` (no prices written, only the FX fallback constant was available, #229; shown as a problem), `failed` | `/cron/price-refresh` |
-| `set-sync` | `ok`, `failed` (API call failed, or an error) | `/cron/set-sync` |
-| `image-backfill` | `ok`, `failed` | `/cron/image-backfill` |
+| `dex-sync` | `ok` (with the warning text), `empty` (no CSV files in the folder), `aborted` (import circuit breaker, #225), `failed` (Dropbox or unexpected error, or "Interrupted": a run killed before it finished, #340) | `importer._log_import` (ok), `jobs.run_dex_sync` (the rest), `job_locks` (interrupted) |
+| `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `degraded` (no prices written, only the FX fallback constant was available, #229; shown as a problem), `failed` | `jobs.run_price_refresh` |
+| `set-sync` | `ok`, `failed` (API call failed, or an error) | `jobs.run_set_sync` |
+| `image-backfill` | `ok`, `failed` | `jobs.run_image_backfill` |
 
-`source` is `cron` only for the real scheduled Vercel call (it carries
-`Authorization: Bearer <CRON_SECRET>`), else `manual` (a `?secret=` call, a
-local run). Older rows may say `dropbox` (the removed manual picker).
+`source` is the run's **trigger**, i.e. who started it:
+
+| `source` | Meaning |
+|---|---|
+| `cron` | The real scheduled Vercel call (it carries `Authorization: Bearer <CRON_SECRET>`) |
+| `manual` | A person: a `/cron/*` call with `?secret=`, a local run, later #199's Run-now buttons |
+| `connector` | The Claude connector (#276, not built yet) |
+
+Older rows may say `dropbox` (the removed manual picker). An interrupted
+run's row carries the trigger its lock recorded.
+
+**One code path per job (issue #274).** Every job body lives in
+`jobs.py` (`run_dex_sync`, `run_price_refresh`, `run_image_backfill`,
+`run_set_sync`), each taking `trigger=` and returning a result dataclass;
+the `/cron/*` routes are thin wrappers that only map that result to JSON
+and status codes (aborted → 409 `{"status": "aborted"}`, a run in
+progress → 409 `{"status": "already_running"}`, a Dropbox error → 502,
+`degraded` stays a 200). The trigger is kept apart from the *snapshot*
+source (`card_snapshots.source`), which stays `cron` / `price-cron` /
+`manual`: a `connector` run snapshots as `manual`, so
+`queries._SNAPSHOT_SOURCE_ORDER` and the one-point-per-(day, source) rule
+are unchanged. The circuit breaker is the same for every trigger: only
+`run_dex_sync(..., allow_mass_missing=True)` skips the mass-missing check,
+and no `/cron/*` route can pass it. An abort's `importer.ImportAborted`
+carries `newly_missing`, `total_cards`, `limit_fraction` and the first 10
+`sample_names`, so callers never parse its message.
 
 **Schema (additive only).** No new table: `import_log` gained four nullable
 columns — `job`, `status`, `message` (summary or error/abort reason) and
@@ -1002,21 +1025,23 @@ its row on its own, so an aborted import's rollback never takes the log row
 with it. It never raises: a failure to write the log is printed and rolled
 back rather than masking the job's real response.
 
-### Single-flight guard (issue #340)
+### Single-flight guard (issues #340, #274)
 
-Only one Dex sync (`/cron/dropbox-sync`) runs at a time. Two overlapping
-runs (a manual trigger plus a retry) deadlocked on `cards`, and a run
-killed by Vercel's 300 s limit left no trace at all. Built to #274's
-design so #274 can extend it to every job:
+Only one run of each job runs at a time (`jobs._single_flight`, every
+job since #274; the Dex sync since #340). Two overlapping Dex syncs (a
+manual trigger plus a retry) deadlocked on `cards`, and a run killed by
+Vercel's 300 s limit left no trace at all. Different jobs don't block each
+other (a price refresh can run during a Dex sync, as before).
 
 - **`job_locks` table** (`models.JobLock`: `job` primary key,
-  `started_at`, `trigger`, `token`; schema version 14). A run inserts the
-  `dex-sync` row before doing anything (before Dropbox) and deletes it when
-  it ends, whatever the outcome. `job_locks.py` holds the logic; the lock
+  `started_at`, `trigger`, `token`; schema version 14). A run inserts its
+  job's row (`dex-sync`, `price-refresh`, `set-sync`, `image-backfill`)
+  before doing anything (before Dropbox or any API) and deletes it when it
+  ends, whatever the outcome. `job_locks.py` holds the logic; the lock
   uses its own session, so its commits never mix with the sync's.
 - **Already running.** A second run while the row is live gets HTTP 409
   `{"status": "already_running", "job", "started_at", "trigger", "error"}`
-  and writes nothing (no `import_log` row, no Dropbox call).
+  and writes nothing (no `import_log` row, no Dropbox or API call).
 - **Killed runs.** A row older than `job_locks.STALE_AFTER` (15 min,
   well above Vercel's limit) belongs to a run that died. The next run takes
   it over, and the dead run gets a `failed` row on Sync status, dated when
@@ -1529,7 +1554,7 @@ than 30 days ago isn't used (so a frozen upstream can't pass as fresh).
 
 **Refresh.** Inside `/cron/price-refresh`, after the pokemontcg pass and
 before the re-resolve + snapshot: up to 125 cards (`MAX_LOOKUPS_PER_RUN`,
-~870 cards on a 7-day cadence), time-boxed to 90 s (`app.TCGDEX_SECONDS`;
+~870 cards on a 7-day cadence), time-boxed to 90 s (`jobs.TCGDEX_SECONDS`;
 ~0.75 s per card), sequential with a 0.2 s pause between requests. Resolving
 a new ID costs one set-list request per set per run on top. Order: cards
 with no market price at all first, then stale TCGdex prices (oldest first),
@@ -1611,7 +1636,7 @@ image pass. The Dex sync no longer looks up pokemontcg.io prices at all
   that request's cards: no price, no stamp, they're due again tomorrow (or
   on a manual re-run). 3 such failures in a row, or one persisting 429,
   stop the pass for the day (`stopped: "errors"` / `"rate_limited"`), and
-  so does the time budget, 100 s (`app.POKEMONTCG_SECONDS`, `stopped:
+  so does the time budget, 100 s (`jobs.POKEMONTCG_SECONDS`, `stopped:
   "time"`). The cron still runs TCGdex, resolves and snapshots.
 - **Reported.** The cron JSON has `requests` (HTTP requests, retries
   included), `batch_requests`, `fallback_searches`, `cards_checked`,

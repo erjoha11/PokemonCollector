@@ -2065,3 +2065,41 @@ None. Read-only prod queries only (session forced read-only).
   card the next day.
 - The 393 old `ja`/`zh-hans` `pokemontcg` rows (failure stamps only) are
   left as they are.
+
+
+# Handoff notes — 2026-10-07 session (#274: shared job-run service, jobs.py)
+
+## Code (in git, PR for #274)
+
+- New `jobs.py`: `run_dex_sync(db, *, trigger, allow_mass_missing=False)`,
+  `run_price_refresh`, `run_image_backfill`, `run_set_sync`, each returning
+  a result dataclass (or `AlreadyRunningResult`). The four `/cron/*` routes
+  are thin wrappers with the same JSON and status codes as before; their
+  auth checks are untouched (that's #226, PR #361).
+- `trigger` (`cron` / `manual` / `connector`) is what `import_log.source`
+  records; the snapshot source stays `cron` / `price-cron` / `manual`
+  (`connector` → `manual`). Today only `cron` and `manual` occur: nothing
+  passes `connector` until #276.
+- Single-flight (`job_locks`, from #340) now covers all four jobs, not just
+  the Dex sync: an overlapping run of the same job gets 409
+  `already_running`; a stale lock is taken over and the killed run recorded
+  as `failed`, "Interrupted". New for price-refresh, image-backfill and
+  set-sync.
+- `importer.ImportAborted` gained `newly_missing`, `total_cards`,
+  `limit_fraction`, `sample_names` (first 10) for the mass-missing abort.
+- Vercel log lines from these jobs now start `[jobs/<job>]` (with
+  `trigger=`) instead of `[cron/<route>]`.
+- No schema change (`job_locks` already had everything; still version 14).
+
+## Direct database changes
+
+None.
+
+## Open items
+
+- #199 (Run-now buttons), #275 (in-app override) and #276 (connector) are
+  the consumers this was built for; none built here.
+- #226 (PR #361) and this PR both edit the `/cron/*` block of `app.py` and
+  append here: whichever merges second needs a small rebase (keep #226's
+  `trigger: str = Depends(cron_auth.require_cron_secret)` signatures and
+  this PR's `jobs.run_*` bodies).

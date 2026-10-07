@@ -40,7 +40,7 @@ How it works:
   up the next day. (This differs from the per-card search days, when a
   stamped card wasn't asked for at all: with batches the backoff only has
   to save the search.)
-- **Budgets.** A time budget (app.POKEMONTCG_SECONDS), at most
+- **Budgets.** A time budget (jobs.POKEMONTCG_SECONDS), at most
   MAX_FALLBACK_SEARCHES_PER_RUN searches, and MAX_CONSECUTIVE_ERRORS
   transient failures in a row (or one persisting 429) stop the pass for
   the day. Whatever wasn't reached stays due.

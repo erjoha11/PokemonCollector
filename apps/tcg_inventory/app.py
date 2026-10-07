@@ -36,17 +36,12 @@ load_dotenv(APP_DIR / ".env")
 
 import ads
 import auth
-import backfill_images
-import dropbox_client
 import job_locks
+import jobs
 import missing_cards
-import price_refresh
 import pricing
-import set_sync
 import sync_status
 import queries
-import snapshots
-import tcgdex_prices
 import won_inbox
 import constants
 import form_validation
@@ -60,7 +55,6 @@ from form_validation import (
     parse_tx_type,
     require_same_length,
 )
-from importer import ImportAborted, import_dex_csv_files
 from models import (
     Binder,
     Card,
@@ -3193,24 +3187,33 @@ def _run_source(request: Request) -> str:
     return "cron" if cron_secret and request.headers.get("authorization") == f"Bearer {cron_secret}" else "manual"
 
 
-def _resolve_all_prices(db: Session) -> None:
-    """Full DB-only re-resolve of every card's market price (pricing.py,
-    issue #210) -- run at the end of each sync/cron, right before its
-    snapshot. This is what applies freshness expiry (a source going stale)
-    to cards nothing re-priced today. No HTTP, a few statements."""
-    pricing.resolve_cards(db)
-    db.commit()
+def _already_running_response(result: jobs.AlreadyRunningResult) -> JSONResponse:
+    return JSONResponse(
+        status_code=409,
+        content={
+            "status": "already_running",
+            "job": result.job,
+            "started_at": result.started_at.isoformat(),
+            "trigger": result.trigger,
+            "error": result.message,
+        },
+    )
 
 
 @app.get("/cron/dropbox-sync")
 def cron_dropbox_sync(request: Request, secret: str = ""):
     """Scheduled sync, triggered by the Vercel Cron job in vercel.json.
 
+    A thin wrapper over `jobs.run_dex_sync` (issue #274), which holds the
+    job body, its /sync-status rows and its single-flight lock; this only
+    checks the secret and maps the result to JSON.
+
     Pulls every CSV currently in the configured Dropbox folder and runs a
     normal sync -- no sync ever deletes cards, only flags missing ones (see
     importer.py). If the import's circuit breaker trips (empty/header-only
     My Collection, or a mass drop), nothing is written and this returns 409
-    with `"status": "aborted"` -- the cron never overrides the breaker. Protected by
+    with `"status": "aborted"` -- the cron never overrides the breaker (it
+    has no way to pass `allow_mass_missing`). Protected by
     CRON_SECRET rather than the Supabase login: Vercel's cron invocations
     carry no browser session to log in with. Vercel automatically sends
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
@@ -3218,168 +3221,62 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     from a tool that can't set custom headers, or a person running this by
     hand mid-day) may instead pass the same value as `?secret=`.
 
-    The two are told apart for snapshotting purposes: only a request
-    carrying that exact header is trusted as the real scheduled Vercel
-    invocation (CardSnapshot.source="cron"); a `?secret=` request is treated
-    as a manual off-schedule run (source="manual") even though it hits this
-    same route -- see snapshots.record_daily_snapshot and HANDOFF.md. With
-    no CRON_SECRET configured at all there's no way to tell the two apart,
-    so every request is treated as "manual".
+    The two are told apart: only a request carrying that exact header is
+    trusted as the real scheduled Vercel invocation (trigger "cron",
+    CardSnapshot.source="cron"); a `?secret=` request is a manual
+    off-schedule run (trigger and snapshot source "manual") even though it
+    hits this same route -- see snapshots.record_daily_snapshot and
+    HANDOFF.md. With no CRON_SECRET configured at all there's no way to
+    tell the two apart, so every request is treated as "manual".
 
-    Every outcome leaves an `import_log` row for /sync-status (issue #264):
-    a successful import writes its own (importer._log_import); an empty
-    folder, a circuit-breaker abort and a Dropbox or unexpected error are
-    recorded here via sync_status.record_run, committed separately after
-    the rollback so the row survives it.
-
-    Single-flight (issue #340, #274's design): a run holds the `dex-sync`
-    row in `job_locks` for its whole duration. A second request while one
-    is running gets 409 `{"status": "already_running"}` and writes nothing
-    (overlapping runs deadlocked on `cards`). A run killed before it could
-    release the lock (Vercel's 300 s limit) is recorded as `failed`,
-    "interrupted", once its lock goes stale -- see job_locks.py.
+    A second request while a run is in progress gets 409
+    `{"status": "already_running"}` and writes nothing (issue #340).
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
     authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
     if not authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    snapshot_source = "cron" if is_scheduled_invocation else "manual"
+    trigger = jobs.CRON if is_scheduled_invocation else jobs.MANUAL
 
-    # Its own session: the lock commits must never carry (or be rolled back
-    # with) the sync's work, and vice versa.
-    lock_db = get_db_session()
-    try:
-        try:
-            lock = job_locks.acquire(lock_db, sync_status.DEX_SYNC, trigger=snapshot_source)
-        except job_locks.AlreadyRunning as running:
-            print(f"[cron/dropbox-sync] already running since {running.started_at} ({running.trigger})")
-            return JSONResponse(
-                status_code=409,
-                content={
-                    "status": "already_running",
-                    "job": running.job,
-                    "started_at": running.started_at.isoformat(),
-                    "trigger": running.trigger,
-                    "error": str(running),
-                },
-            )
-        try:
-            return _dropbox_sync(snapshot_source)
-        finally:
-            job_locks.release(lock_db, lock)
-    finally:
-        lock_db.close()
-
-
-def _dropbox_sync(snapshot_source: str):
-    """The body of /cron/dropbox-sync, run while holding its job lock."""
-    folder = dropbox_client.default_folder()
     db = get_db_session()
-    file_names: list[str] = []
     try:
-        dbx = dropbox_client.build_client_from_env()
-        files = dropbox_client.list_csv_files(dbx, folder)
-        file_names = [f.name for f in files]
-        if not files:
-            _resolve_all_prices(db)
-            snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
-            sync_status.record_run(
-                db,
-                job=sync_status.DEX_SYNC,
-                status=sync_status.EMPTY,
-                source=snapshot_source,
-                message=f"No CSV files found in {folder}",
-            )
-            print(f"[cron/dropbox-sync] empty: no CSV files in {folder}")
-            return {
-                "status": "ok",
-                "folder": folder,
-                "message": "No CSV files found",
-                "cards_snapshotted": snapshotted,
-            }
-        payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
-        try:
-            # Export dates (issue #351): the dex prices are dated at their
-            # export, not at this re-read, and the newest file wins a category.
-            result = import_dex_csv_files(
-                db, payload, source=snapshot_source, file_dates={f.name: f.export_date for f in files}
-            )
-        except ImportAborted as exc:
-            # Unattended: a non-2xx so the cron run shows as failed, plus a
-            # row on /sync-status. No snapshot -- nothing ran. The rollback
-            # discards the import; the log row is its own commit after it.
-            db.rollback()
-            print(f"[cron/dropbox-sync] aborted: files={file_names} reason={exc}")
-            sync_status.record_run(
-                db,
-                job=sync_status.DEX_SYNC,
-                status=sync_status.ABORTED,
-                source=snapshot_source,
-                files=file_names,
-                message=str(exc),
-            )
-            return JSONResponse(
-                status_code=409,
-                content={"status": "aborted", "folder": folder, "files": file_names, "error": str(exc)},
-            )
-        # Snapshot after the sync, not before -- a cron run should always
-        # record today's post-sync qty/price, never yesterday's leftover
-        # state (see snapshots.record_daily_snapshot / README "Value history").
-        _resolve_all_prices(db)
-        snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
-        print(
-            f"[cron/dropbox-sync] ok: files={[f.name for f in files]} "
-            f"created={result.cards_created} updated={result.cards_updated} "
-            f"flagged={result.cards_flagged_missing} "
-            f"collections={sorted(result.collections_touched)} "
-            f"binders={sorted(result.binders_touched)} "
-            f"warnings={len(result.warnings)} "
-            f"unowned_skipped={result.unowned_rows_skipped} "
-            f"snapshotted={snapshotted}"
-        )
-        return {
-            # Always "ok" since #349: the sync no longer looks up TCGplayer
-            # prices, so it can't be degraded by the FX fallback (#229).
-            "status": "ok",
-            "folder": folder,
-            "files_synced": [f.name for f in files],
-            "cards_created": result.cards_created,
-            "cards_updated": result.cards_updated,
-            "cards_flagged_missing": result.cards_flagged_missing,
-            "collections_touched": sorted(result.collections_touched),
-            "binders_touched": sorted(result.binders_touched),
-            "warnings": result.warnings,
-            "unowned_rows_skipped": result.unowned_rows_skipped,
-            "cards_snapshotted": snapshotted,
-        }
-    except (dropbox_client.DropboxNotConfigured, dropbox_client.DropboxImportError) as exc:
-        # Cron runs unattended -- nobody's watching a response body, so this
-        # lands in Vercel's runtime logs and on /sync-status.
-        print(f"[cron/dropbox-sync] failed: {exc}")
-        db.rollback()
-        sync_status.record_run(
-            db,
-            job=sync_status.DEX_SYNC,
-            status=sync_status.FAILED,
-            source=snapshot_source,
-            files=file_names,
-            message=f"Dropbox error: {exc}",
-        )
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except Exception as exc:
-        db.rollback()
-        sync_status.record_run(
-            db,
-            job=sync_status.DEX_SYNC,
-            status=sync_status.FAILED,
-            source=snapshot_source,
-            files=file_names,
-            message=f"{exc.__class__.__name__}: {exc}",
-        )
-        raise
+        result = jobs.run_dex_sync(db, trigger=trigger)
     finally:
         db.close()
+    if isinstance(result, jobs.AlreadyRunningResult):
+        return _already_running_response(result)
+    if result.status == "failed":
+        raise HTTPException(status_code=502, detail=result.error)
+    if result.status == "aborted":
+        # Unattended: a non-2xx so the cron run shows as failed.
+        return JSONResponse(
+            status_code=409,
+            content={"status": "aborted", "folder": result.folder, "files": result.files, "error": result.error},
+        )
+    if result.status == "empty":
+        return {
+            "status": "ok",
+            "folder": result.folder,
+            "message": "No CSV files found",
+            "cards_snapshotted": result.cards_snapshotted,
+        }
+    imported = result.import_result
+    return {
+        # Always "ok" since #349: the sync no longer looks up TCGplayer
+        # prices, so it can't be degraded by the FX fallback (#229).
+        "status": "ok",
+        "folder": result.folder,
+        "files_synced": result.files,
+        "cards_created": imported.cards_created,
+        "cards_updated": imported.cards_updated,
+        "cards_flagged_missing": imported.cards_flagged_missing,
+        "collections_touched": sorted(imported.collections_touched),
+        "binders_touched": sorted(imported.binders_touched),
+        "warnings": imported.warnings,
+        "unowned_rows_skipped": imported.unowned_rows_skipped,
+        "cards_snapshotted": result.cards_snapshotted,
+    }
 
 
 @app.get("/cron/price-refresh")
@@ -3387,161 +3284,56 @@ def cron_price_refresh(request: Request, secret: str = ""):
     """Scheduled TCGplayer price refresh, decoupled from Dex sync (see
     price_refresh.py and issue #93) -- its own Vercel Cron entry in
     vercel.json, separate from /cron/dropbox-sync's schedule so pricing
-    keeps moving even on a day the Dex sync doesn't run (or once Dex sync
-    becomes optional). Same CRON_SECRET-gated pattern as
-    /cron/dropbox-sync -- see that route's docstring for the
+    keeps moving even on a day the Dex sync doesn't run. A thin wrapper over
+    `jobs.run_price_refresh` (issue #274). Same CRON_SECRET-gated pattern
+    as /cron/dropbox-sync -- see that route's docstring for the
     scheduled-vs-manual distinction, which also decides the CardSnapshot
-    source recorded here ("price-cron" vs "manual", both distinct from the
-    Dex sync's own "cron"/"manual" sources -- see queries.real_value_history,
-    which already labels charts by source when more than one exists for a
-    given day).
+    source recorded ("price-cron" vs "manual", both distinct from the Dex
+    sync's own "cron"/"manual" sources -- see queries.real_value_history).
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
     authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
     if not authorized:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    snapshot_source = "price-cron" if is_scheduled_invocation else "manual"
+    trigger = jobs.CRON if is_scheduled_invocation else jobs.MANUAL
 
     db = get_db_session()
     try:
-        # pokemontcg.io prices by stored ID, ~10 batch requests plus a few
-        # fallback searches (issue #349), time-boxed. Transient failures are
-        # counted and stop the pass, never raised.
-        result = price_refresh.refresh_stale_prices(db, time_budget_s=POKEMONTCG_SECONDS)
-        # Then TCGdex (issue #211): both its TCGplayer and Cardmarket prices,
-        # one request per card, time-boxed so the whole invocation stays
-        # inside the function limit. A TCGdex problem must never cost the
-        # day's snapshot, so it's contained here.
-        tcgdex = _run_tcgdex_refresh(db)
-        # Snapshot right after refreshing, same reasoning as
-        # /cron/dropbox-sync: today's post-refresh prices, not yesterday's.
-        _resolve_all_prices(db)
-        snapshotted = snapshots.record_daily_snapshot(db, source=snapshot_source)
-        # Then a small pass of missing card images (backfill_images.py),
-        # time-boxed so the whole invocation stays inside the function limit.
-        images = backfill_images.run_backfill(db, limit=IMAGE_BACKFILL_PER_CRON, time_budget_s=IMAGE_BACKFILL_SECONDS)
-        print(
-            f"[cron/price-refresh] images: attempted={images.attempted} filled={images.filled}"
-        )
-        print(f"[cron/price-refresh] pokemontcg: {price_refresh.summary_line(result)} snapshotted={snapshotted}")
-        if tcgdex is not None:
-            print(
-                f"[cron/price-refresh] tcgdex: checked={tcgdex.cards_checked} priced={tcgdex.cards_priced} "
-                f"ids_matched={tcgdex.ids_matched} unmatched={len(tcgdex.cards_unmatched)} "
-                f"variant_uncertain={len(tcgdex.cards_variant_uncertain)} "
-                f"transient_errors={tcgdex.transient_errors} stopped={tcgdex.stopped} "
-                f"http_calls={tcgdex.http_calls} eur_to_nok={tcgdex.eur_to_nok}"
-            )
-        # Degraded (issue #229) when either price pass had only fx_rates'
-        # fallback constant and so wrote nothing -- still a 200 (the snapshot
-        # and image pass ran), but never reported as "ok".
-        degraded_reasons = list(
-            dict.fromkeys(
-                r.degraded_reason for r in (result, tcgdex) if r is not None and r.status != "ok" and r.degraded_reason
-            )
-        )
-        status = "degraded" if degraded_reasons else "ok"
-        if degraded_reasons:
-            print(f"[cron/price-refresh] DEGRADED: {' '.join(degraded_reasons)}")
-        message = _price_refresh_message(result, tcgdex, images, snapshotted)
-        sync_status.record_run(
-            db,
-            job=sync_status.PRICE_REFRESH,
-            status=sync_status.DEGRADED if degraded_reasons else sync_status.OK,
-            source=_run_source(request),
-            message=f"{' '.join(degraded_reasons)} {message}" if degraded_reasons else message,
-        )
-        return {
-            "status": status,
-            "degraded_reason": " ".join(degraded_reasons) or None,
-            "usd_to_nok": result.usd_to_nok,
-            "fx_source": result.fx_source,
-            "fx_as_of": result.fx_as_of.isoformat() if result.fx_as_of else None,
-            # The pokemontcg.io pass (issue #349).
-            "requests": result.requests,
-            "batch_requests": result.batch_requests,
-            "fallback_searches": result.fallback_searches,
-            "cards_checked": result.cards_checked,
-            "cards_updated": result.cards_updated,
-            "cards_unmatched": result.cards_unmatched,
-            "cards_low_confidence": result.cards_low_confidence,
-            "cards_variant_uncertain": result.cards_variant_uncertain,
-            "cards_backed_off": result.cards_backed_off,
-            "cards_deferred": result.cards_deferred,
-            "ids_found": result.ids_found,
-            "transient_errors": result.transient_errors,
-            "stopped": result.stopped,
-            "cards_skipped": result.cards_skipped,
-            "cards_snapshotted": snapshotted,
-            "images_attempted": images.attempted,
-            "images_filled": images.filled,
-            "tcgdex": _tcgdex_summary(tcgdex),
-        }
-    except Exception as exc:
-        db.rollback()
-        sync_status.record_run(
-            db,
-            job=sync_status.PRICE_REFRESH,
-            status=sync_status.FAILED,
-            source=_run_source(request),
-            message=f"{exc.__class__.__name__}: {exc}",
-        )
-        raise
+        run = jobs.run_price_refresh(db, trigger=trigger)
     finally:
         db.close()
-
-
-def _price_refresh_message(result, tcgdex, images, snapshotted: int) -> str:
-    """One-line /sync-status summary of a /cron/price-refresh run."""
-    tcgplayer = (
-        f"TCGplayer (pokemontcg.io): {result.requests} requests, "
-        f"priced {result.cards_updated} of {result.cards_checked}, "
-        f"{len(result.cards_unmatched)} unmatched, {result.transient_errors} transient errors"
-    )
-    if result.stopped:
-        tcgplayer += f", stopped ({result.stopped}), {result.cards_deferred} cards left for tomorrow"
-    parts = [tcgplayer]
-    if result.ids_found:
-        parts.append(f"{result.ids_found} pokemontcg IDs found by search")
-    if result.cards_variant_uncertain:
-        parts.append(f"{len(result.cards_variant_uncertain)} variant uncertain")
-    if tcgdex is None:
-        parts.append("TCGdex: failed")
-    else:
-        parts.append(f"TCGdex: checked {tcgdex.cards_checked}, priced {tcgdex.cards_priced}")
-    parts.append(f"images: filled {images.filled} of {images.attempted}")
-    parts.append(f"{snapshotted} cards snapshotted")
-    if result.usd_to_nok is not None:
-        parts.append(f"USD/NOK {result.usd_to_nok:g} ({result.fx_source})")
-    return "; ".join(parts)
-
-
-# Per daily /cron/price-refresh run: the pokemontcg.io pass (issue #349) is
-# ~10 batch requests of ~6 s each (measured 2026-10-07 on prod's 452 IDs)
-# plus the first days' fallback searches (~1-2 s each, at most
-# price_refresh.MAX_FALLBACK_SEARCHES_PER_RUN). Checked before each request,
-# so the worst overrun is one request with its retry
-# (pokemontcg_client: 2 x 12 s timeout + 3 s back-off)...
-POKEMONTCG_SECONDS = 100.0
-# ...a modest image pass after prices...
-IMAGE_BACKFILL_PER_CRON = 60
-IMAGE_BACKFILL_SECONDS = 25.0
-# ...and the TCGdex price pass (issue #211): ~0.75 s per card sequentially,
-# so ~120 of the 125-card budget fits; the rest wait for tomorrow.
-TCGDEX_SECONDS = 90.0
-
-
-def _run_tcgdex_refresh(db: Session):
-    """tcgdex_prices.refresh_tcgdex_prices, contained: an unexpected error is
-    logged and rolled back (whatever it committed so far stays) so the cron
-    still resolves and snapshots. Returns None when it failed."""
-    try:
-        return tcgdex_prices.refresh_tcgdex_prices(db, time_budget_s=TCGDEX_SECONDS)
-    except Exception as exc:  # noqa: BLE001 -- see docstring
-        db.rollback()
-        print(f"[cron/price-refresh] tcgdex failed: {exc.__class__.__name__}: {exc}")
-        return None
+    if isinstance(run, jobs.AlreadyRunningResult):
+        return _already_running_response(run)
+    result, images = run.pokemontcg, run.images
+    return {
+        # "degraded" (issue #229) is still a 200: the snapshot and image
+        # pass ran.
+        "status": run.status,
+        "degraded_reason": run.degraded_reason,
+        "usd_to_nok": result.usd_to_nok,
+        "fx_source": result.fx_source,
+        "fx_as_of": result.fx_as_of.isoformat() if result.fx_as_of else None,
+        # The pokemontcg.io pass (issue #349).
+        "requests": result.requests,
+        "batch_requests": result.batch_requests,
+        "fallback_searches": result.fallback_searches,
+        "cards_checked": result.cards_checked,
+        "cards_updated": result.cards_updated,
+        "cards_unmatched": result.cards_unmatched,
+        "cards_low_confidence": result.cards_low_confidence,
+        "cards_variant_uncertain": result.cards_variant_uncertain,
+        "cards_backed_off": result.cards_backed_off,
+        "cards_deferred": result.cards_deferred,
+        "ids_found": result.ids_found,
+        "transient_errors": result.transient_errors,
+        "stopped": result.stopped,
+        "cards_skipped": result.cards_skipped,
+        "cards_snapshotted": run.cards_snapshotted,
+        "images_attempted": images.attempted,
+        "images_filled": images.filled,
+        "tcgdex": _tcgdex_summary(run.tcgdex),
+    }
 
 
 def _tcgdex_summary(result) -> dict | None:
@@ -3568,7 +3360,8 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
     """Manual catch-up pass for missing card images (backfill_images.py) --
     the daily /cron/price-refresh already does a small one; this lets a
     person fill in a whole collection in a few calls instead of waiting.
-    Same CRON_SECRET gate as the other /cron routes. Time-boxed, so call it
+    A thin wrapper over `jobs.run_image_backfill` (issue #274). Same
+    CRON_SECRET gate as the other /cron routes. Time-boxed, so call it
     again while `remaining` > 0.
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
@@ -3579,36 +3372,18 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
         raise HTTPException(status_code=401, detail="Unauthorized")
     db = get_db_session()
     try:
-        result = backfill_images.run_backfill(db, limit=max(1, min(limit, 300)), time_budget_s=50.0)
-        remaining = db.query(Card).filter(Card.image_url.is_(None), Card.image_lookup_failed_at.is_(None)).count()
-        with_image = db.query(Card).filter(Card.image_url.isnot(None)).count()
-        print(f"[cron/image-backfill] attempted={result.attempted} filled={result.filled} remaining={remaining}")
-        sync_status.record_run(
-            db,
-            job=sync_status.IMAGE_BACKFILL,
-            status=sync_status.OK,
-            source=_run_source(request),
-            message=f"Filled {result.filled} of {result.attempted} attempted; {remaining} still missing",
-        )
-        return {
-            "status": "ok",
-            "attempted": result.attempted,
-            "filled": result.filled,
-            "cards_with_image": with_image,
-            "remaining": remaining,
-        }
-    except Exception as exc:
-        db.rollback()
-        sync_status.record_run(
-            db,
-            job=sync_status.IMAGE_BACKFILL,
-            status=sync_status.FAILED,
-            source=_run_source(request),
-            message=f"{exc.__class__.__name__}: {exc}",
-        )
-        raise
+        result = jobs.run_image_backfill(db, trigger=_run_source(request), limit=limit)
     finally:
         db.close()
+    if isinstance(result, jobs.AlreadyRunningResult):
+        return _already_running_response(result)
+    return {
+        "status": result.status,
+        "attempted": result.attempted,
+        "filled": result.filled,
+        "cards_with_image": result.cards_with_image,
+        "remaining": result.remaining,
+    }
 
 
 @app.get("/cron/set-sync")
@@ -3619,7 +3394,8 @@ def cron_set_sync(request: Request, secret: str = ""):
     `set_sync.sync_set_metadata`). A route rather than only the script
     because Vercel is where api.pokemontcg.io is reachable from, and
     without it `total_cards` stayed empty on prod (0 of 109 sets, found
-    24.09.2026). Same CRON_SECRET gate as the other /cron routes.
+    24.09.2026). A thin wrapper over `jobs.run_set_sync` (issue #274).
+    Same CRON_SECRET gate as the other /cron routes.
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     authorized = not cron_secret or secret == cron_secret or (
@@ -3629,39 +3405,12 @@ def cron_set_sync(request: Request, secret: str = ""):
         raise HTTPException(status_code=401, detail="Unauthorized")
     db = get_db_session()
     try:
-        result = set_sync.sync_set_metadata(db)
-        print(
-            f"[cron/set-sync] api_ok={result.api_call_succeeded} "
-            f"matched={len(result.matched)} unmatched={len(result.unmatched)}"
-        )
-        sync_status.record_run(
-            db,
-            job=sync_status.SET_SYNC,
-            status=sync_status.OK if result.api_call_succeeded else sync_status.FAILED,
-            source=_run_source(request),
-            message=(
-                f"Matched {len(result.matched)} sets, {len(result.unmatched)} unmatched"
-                if result.api_call_succeeded
-                else "api.pokemontcg.io call failed; nothing updated"
-            ),
-        )
-        return {
-            "status": "ok" if result.api_call_succeeded else "api_call_failed",
-            "matched": len(result.matched),
-            "unmatched": sorted(result.unmatched),
-        }
-    except Exception as exc:
-        db.rollback()
-        sync_status.record_run(
-            db,
-            job=sync_status.SET_SYNC,
-            status=sync_status.FAILED,
-            source=_run_source(request),
-            message=f"{exc.__class__.__name__}: {exc}",
-        )
-        raise
+        result = jobs.run_set_sync(db, trigger=_run_source(request))
     finally:
         db.close()
+    if isinstance(result, jobs.AlreadyRunningResult):
+        return _already_running_response(result)
+    return {"status": result.status, "matched": result.matched, "unmatched": result.unmatched}
 
 
 # --------------------------------------------------------------------------

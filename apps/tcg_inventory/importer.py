@@ -53,14 +53,38 @@ MISSING_ABORT_FRACTION = 0.05
 MISSING_ABORT_MIN_CARDS = 10
 
 
+# How many card names an ImportAborted carries as a sample (issue #274).
+ABORT_SAMPLE_NAMES = 10
+
+
 class ImportAborted(Exception):
     """Raised before anything is written when a sync fails a safety check
     (issue #225). The message is user-facing. `overridable` is True only for
-    the mass-missing check -- an empty My Collection can't be overridden."""
+    the mass-missing check -- an empty My Collection can't be overridden.
 
-    def __init__(self, message: str, overridable: bool = False):
+    The mass-missing check also fills in structured fields (issue #274), so
+    callers never parse the message: `newly_missing` (cards this sync would
+    newly flag), `total_cards` (cards in the database), `limit_fraction`
+    (MISSING_ABORT_FRACTION) and `sample_names` (the first
+    ABORT_SAMPLE_NAMES of those cards' names, sorted). All None/empty for
+    the empty-My-Collection abort."""
+
+    def __init__(
+        self,
+        message: str,
+        overridable: bool = False,
+        *,
+        newly_missing: int | None = None,
+        total_cards: int | None = None,
+        limit_fraction: float | None = None,
+        sample_names: list[str] | None = None,
+    ):
         super().__init__(message)
         self.overridable = overridable
+        self.newly_missing = newly_missing
+        self.total_cards = total_cards
+        self.limit_fraction = limit_fraction
+        self.sample_names = list(sample_names or [])
 
 
 @dataclass
@@ -509,10 +533,13 @@ def _check_circuit_breaker(
         for row in my_collection_rows
         if (row.get("Id") or "").strip()
     }
-    existing = db.query(Card.card_id, Card.variant, Card.flagged_missing_since).all()
-    newly_missing = sum(
-        1 for card_id, variant, flagged in existing if flagged is None and (card_id, variant) not in seen_keys
-    )
+    existing = db.query(Card.card_id, Card.variant, Card.flagged_missing_since, Card.name).all()
+    missing_names = [
+        name or card_id
+        for card_id, variant, flagged, name in existing
+        if flagged is None and (card_id, variant) not in seen_keys
+    ]
+    newly_missing = len(missing_names)
     limit = max(len(existing) * MISSING_ABORT_FRACTION, MISSING_ABORT_MIN_CARDS)
     if newly_missing > limit:
         raise ImportAborted(
@@ -522,6 +549,10 @@ def _check_circuit_breaker(
             "export -- re-export from Dex and sync again. If you really did remove that "
             "many cards, run the sync again with the override.",
             overridable=True,
+            newly_missing=newly_missing,
+            total_cards=len(existing),
+            limit_fraction=MISSING_ABORT_FRACTION,
+            sample_names=sorted(missing_names, key=lambda n: (n or "").casefold())[:ABORT_SAMPLE_NAMES],
         )
 
 
