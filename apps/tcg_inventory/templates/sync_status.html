@@ -1,11 +1,8 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import info %}
 {% block title %}Sync status – TCG Inventory{% endblock %}
 {% block content %}
-<h1>Sync status</h1>
-<p class="muted">
-  When each background job last ran, and what happened. Nothing runs from this page; the only action here is deleting a card flagged missing from Dex.
-  Times are UTC.
-</p>
+<h1>Sync status {{ info("When each background job last ran, and what happened. Nothing runs from this page; the only action here is deleting a card flagged missing from Dex. Times are UTC. Price refresh, set sync, image backfill, empty-folder runs and aborted or failed syncs have only been recorded since 2026-10-01; older runs of those left no row.", below=true) }}</h1>
 
 {% macro run_time(log) %}{{ log.ran_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endmacro %}
 
@@ -40,10 +37,6 @@
   </section>
   {% endfor %}
 </div>
-<p class="muted" style="font-size: 0.85rem;">
-  Price refresh, set sync, image backfill, empty-folder runs and aborted or failed syncs have only been
-  recorded since 2026-10-01 (issue #264); older runs of those left no row.
-</p>
 
 {% include "partials/missing_cards.html" %}
 

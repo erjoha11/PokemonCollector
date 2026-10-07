@@ -1,14 +1,11 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import info %}
 {% block title %}Mark Listing Sold – TCG Inventory{% endblock %}
 {% block content %}
 <h1>Mark Listing Sold</h1>
 <p class="muted">
-  "{{ listing.title }}" — confirm the real price each card actually sold for. Nothing is recorded
-  until you submit: this creates one real sale per card below (all sharing one order, shown on the
-  <a href="/orders/sold">Sold</a> tab), then marks the listing sold. Prices are pre-filled as an even split of the
-  listed price ({{ listing.suggested_price | kr }}) — edit each one to what the card actually sold
-  for before saving. Fees and the shipping you paid are optional and come off what the sale
-  brought in. See <a href="{{ cancel_url }}">Listings</a>.
+  "{{ listing.title }}" — confirm what each card actually sold for.
+  {{ info("Nothing is recorded until you submit: this creates one sale per card below (sharing one order, shown on the Sold tab), then marks the listing sold. Prices are pre-filled as an even split of the listed price (" ~ (listing.suggested_price | kr) ~ "). Fees and the shipping you paid are optional and come off what the sale brought in.") }}
 </p>
 
 {% if error %}

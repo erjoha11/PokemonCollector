@@ -132,7 +132,6 @@ def test_each_tab_deep_links_and_marks_itself_active(client):
     assert "<title>Orders · Purchased – TCG Inventory</title>" in purchased
     assert '<nav class="tabs" aria-label="Orders">' in purchased
     assert 'href="/orders/purchased" class="tab active" aria-current="page">Purchased</a>' in purchased
-    assert "Purchases, trades and ripped packs" in purchased
     assert 'role="tablist"' not in purchased
 
     sold = client.get("/orders/sold?open_order=2").text

@@ -279,15 +279,13 @@
 
     <details style="margin-bottom: 1.1rem;"{% if open_pokemon_folder %} open{% endif %}>
       <summary>Put Pokemon in the same folder (e.g. Celebi + Dark Celebi, or Slowpoke + Slowbro)</summary>
-      <p class="muted" style="margin: 0.5rem 0;">
-        This only changes the display here on the Dashboard — your cards, prices, and export are not affected.
-      </p>
       <form method="post" action="/pokemon/merge" class="merge-form"
             hx-post="/pokemon/merge" hx-select="#dashboard-pokemon-cards" hx-target="#dashboard-pokemon-cards" hx-swap="outerHTML">
         <input type="text" name="name" list="pokemon-names-list" placeholder="Name to move (e.g. Slowpoke)" required>
         <span>into the same folder as</span>
         <input type="text" name="canonical" list="pokemon-names-list" placeholder="Folder name (e.g. Slowbro)" required>
         <button type="submit">Add to folder</button>
+        {{ info("Only changes the display here on the Dashboard; your cards, prices and export are not affected.") }}
       </form>
       <datalist id="pokemon-names-list">
         {% for pname in all_pokemon_names %}

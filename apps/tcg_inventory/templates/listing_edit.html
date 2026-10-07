@@ -1,12 +1,8 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import info %}
 {% block title %}Edit Listing – TCG Inventory{% endblock %}
 {% block content %}
 <h1>Edit Listing</h1>
-<p class="muted">
-  Update the ad text, asking price, or which cards are in this lot. "Regenerate ad text" rebuilds
-  title/description from the cards currently listed below (not the original draft) — see
-  <a href="/orders/listings">Listings</a>.
-</p>
 
 {% if error %}
 <p class="warnings" role="alert">{{ error }}</p>
@@ -29,7 +25,8 @@
             hx-include="#selected-cards-body input[name='card_id']" hx-target="this" hx-swap="none">
       Regenerate ad text
     </button>
-    <span class="muted" id="regenerate-hint">Uses the cards listed below, including any not-yet-saved additions/removals.</span>
+    {{ info("Rebuilds title, description and price from the cards listed below (not the original draft), including any not-yet-saved additions/removals.") }}
+    <span id="regenerate-hint"></span>
   </p>
 
   <h3>Cards in this lot</h3>

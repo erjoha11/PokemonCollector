@@ -1,21 +1,15 @@
 {% extends "base.html" %}
+{% from "partials/macros.html" import info %}
 {% block title %}Orders · Listings – TCG Inventory{% endblock %}
 {% block content %}
 {# The Orders page's Listings tab (issue #255; was /listings). No money
    header -- just the way into the ad builder and the existing filters. #}
 {% include "partials/orders_tabs.html" %}
 
-<p class="muted">
-  Every ad recorded via "Mark as listed" on Sell on finn.no, with cost, market,
-  listed, and (once sold) sold price side by side per card. Removing a listing here only changes its
-  status — quantity/collection changes never happen from here. A real sale is recorded via each
-  listing's own "Mark sold" action below, which requires confirming each card's actual sold price
-  first (see README's "Sales listings (finn.no)").
-</p>
-
 <div class="orders-tab-actions">
   <a class="button" href="/sales">Sell on finn.no</a>
   <span class="muted">{{ active_count }} active</span>
+  {{ info("Every ad recorded via Mark as listed on Sell on finn.no, with cost, market, listed and (once sold) sold price per card. Removing a listing only changes its status, never quantities or collections. Record a real sale with the listing's Mark sold.") }}
 </div>
 
 {# hx-gets target #listings-results, which is what makes /orders/listings
