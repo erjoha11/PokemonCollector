@@ -1137,7 +1137,7 @@ function draw() {
       b.setAttribute("aria-controls", "groups");
       b.tabIndex = x.id === tab ? 0 : -1;
       b.dataset.tab = x.id;
-      b.append(x.label, " ", el("span", "group-count", String(x.count)));
+      b.append(x.label, " ", el("span", x.count === 0 ? "group-count zero" : "group-count", String(x.count)));
       return b;
     }),
   );

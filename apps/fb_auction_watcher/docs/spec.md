@@ -399,6 +399,11 @@ Per lot: **Leading** / **Outbid**. A listing shows a summary, e.g. "Leading 2 ·
   yours first with Won/Lost, flagged "at last read" when not final.
 - Filters: All / Auction / Claim / Fixed price + search (My bids and New are tabs). The same words as
   the type badges (a test checks it); Unknown sales show under All only.
+- **Navigation order and look** (2026-10-07, #363): the type filter and search sit **above** the
+  tabs. The filter is a segmented pill control (the chosen one lifted out in a light blue tint, a dot
+  in each type's `--type-*` colour), search is a rounded field on the right; the tabs below are
+  underlined tabs sitting on the table, the selected one's count tinted blue and empty counts dimmed.
+  Hover and focus-visible states on both rows; looks only, no change to filtering or tabs.
 - Rows I'm active in get a colored left border and can expand to "Your lots in this
   auction" (image, highest bid, my bid, status).
 - Clicking the title opens the Facebook post.
