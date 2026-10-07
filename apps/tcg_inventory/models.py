@@ -826,3 +826,31 @@ class WonItem(Base):
     # "pending" | "registered" | "ignored"
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending", index=True)
     purchase_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class JobLock(Base):
+    """Single-flight guard for background jobs (issue #340, designed in
+    #274 point 2). A row exists while a run of `job` is in progress: the
+    run inserts it before doing anything and deletes it when it finishes,
+    whatever the outcome. A second run that finds a live row refuses with
+    `already_running`. A row older than `job_locks.STALE_AFTER` belongs to a
+    run that was killed (e.g. Vercel's 300 s timeout) before it could clean
+    up: it's taken over, and that run is recorded on /sync-status as
+    `failed` ("interrupted"), so a killed run no longer leaves no trace.
+
+    Stored in the database because an in-process lock doesn't reach other
+    serverless instances, and session-level `pg_advisory_lock` isn't held
+    reliably with NullPool + Supabase's transaction-mode pooler (db.py).
+    Only `dex-sync` uses it for now; #274 generalizes it to every job.
+    """
+
+    __tablename__ = "job_locks"
+
+    # A sync_status job name, e.g. "dex-sync".
+    job: Mapped[str] = mapped_column(String, primary_key=True)
+    started_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)  # naive UTC
+    # Who started the run: "cron" / "manual" (later "connector", #274).
+    trigger: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Random per-run token, so a run only ever releases (or a takeover only
+    # replaces) the exact lock it saw -- never a newer run's.
+    token: Mapped[str] = mapped_column(String, nullable=False)

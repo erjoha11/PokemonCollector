@@ -38,6 +38,7 @@ import ads
 import auth
 import backfill_images
 import dropbox_client
+import job_locks
 import missing_cards
 import price_refresh
 import pricing
@@ -3129,6 +3130,10 @@ def _recent_import_logs(
 def sync_status_page(request: Request, lsort: str = "ran_at", ldir: str = "desc"):
     db = get_db_session()
     try:
+        # A run killed before releasing its job lock (issue #340) shows up
+        # here as "failed, interrupted" once the lock is stale, instead of
+        # only on that job's next run. One SELECT when nothing is held.
+        job_locks.reap_stale(db)
         context = {
             "overview": sync_status.overview(db),
             "missing": missing_cards.flagged_cards(db),
@@ -3226,6 +3231,13 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     folder, a circuit-breaker abort and a Dropbox or unexpected error are
     recorded here via sync_status.record_run, committed separately after
     the rollback so the row survives it.
+
+    Single-flight (issue #340, #274's design): a run holds the `dex-sync`
+    row in `job_locks` for its whole duration. A second request while one
+    is running gets 409 `{"status": "already_running"}` and writes nothing
+    (overlapping runs deadlocked on `cards`). A run killed before it could
+    release the lock (Vercel's 300 s limit) is recorded as `failed`,
+    "interrupted", once its lock goes stale -- see job_locks.py.
     """
     cron_secret = os.environ.get("CRON_SECRET", "")
     is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
@@ -3234,6 +3246,34 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
         raise HTTPException(status_code=401, detail="Unauthorized")
     snapshot_source = "cron" if is_scheduled_invocation else "manual"
 
+    # Its own session: the lock commits must never carry (or be rolled back
+    # with) the sync's work, and vice versa.
+    lock_db = get_db_session()
+    try:
+        try:
+            lock = job_locks.acquire(lock_db, sync_status.DEX_SYNC, trigger=snapshot_source)
+        except job_locks.AlreadyRunning as running:
+            print(f"[cron/dropbox-sync] already running since {running.started_at} ({running.trigger})")
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "status": "already_running",
+                    "job": running.job,
+                    "started_at": running.started_at.isoformat(),
+                    "trigger": running.trigger,
+                    "error": str(running),
+                },
+            )
+        try:
+            return _dropbox_sync(snapshot_source)
+        finally:
+            job_locks.release(lock_db, lock)
+    finally:
+        lock_db.close()
+
+
+def _dropbox_sync(snapshot_source: str):
+    """The body of /cron/dropbox-sync, run while holding its job lock."""
     folder = dropbox_client.default_folder()
     db = get_db_session()
     file_names: list[str] = []

@@ -1937,3 +1937,36 @@ None. No production DB read or write.
 - The conditional `card_snapshots.source` ALTERs rely on SQLAlchemy's
   Postgres inspector reporting `default`/`nullable`; only exercised on
   Postgres, not covered by the SQLite suite.
+
+
+# Handoff notes — 2026-10-06 session (#340 PR B: single-flight guard for Dex sync)
+
+## Code (in git, PR B for #340)
+
+- **`job_locks` table + `job_locks.py`** (schema version 14), built to
+  #274 point 2: `/cron/dropbox-sync` holds the `dex-sync` row for its whole
+  run. A second run gets 409 `already_running` and writes nothing. A lock
+  older than 15 min is a killed run: the next run takes it over, and
+  loading `/sync-status` reaps it; either way the dead run gets a `failed`
+  "Interrupted" row dated when it started. Token-conditional writes, so
+  races record it once. Only dex-sync uses it; #274 extends it to the other
+  jobs (job name is a parameter, nothing Dex-specific in the module).
+
+## Direct database changes
+
+None. No production DB read or write.
+
+## Expect after deploy
+
+- The first cold start runs the version-gated chain once (13 → 14):
+  creates `job_locks`, RLS on it. PR A (#341) merged first, so the RLS
+  step only touches `job_locks` (tables without RLS). Still deploy outside
+  the 05:00 UTC sync.
+- Runs killed before this deploy (import_log has no row for them) stay
+  invisible; only runs from now on are tracked.
+
+## Open items
+
+- `/sync-status` doesn't show a *running* sync ("running since ..."); the
+  lock row has what it needs. Left out to keep this PR free of UI changes.
+- #274 (shared `jobs.py`, other jobs, `connector` trigger) still to do.
