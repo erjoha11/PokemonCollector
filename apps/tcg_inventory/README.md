@@ -677,7 +677,10 @@ never overwritten automatically, so that's how a wrong match gets fixed.
 - Seeded automatically: `dex` (the Dex ID) for every card, and
   `pokemontcg` (`derived`, same ID) for international prints. Other sources
   get added via `masterdata.set_external_id()` as those integrations are
-  built.
+  built. A `derived` ID never overwrites one that isn't `derived` (issue
+  #349): when Dex's ID isn't pokemontcg.io's (`sv35-27` vs `sv3pt5-27`), the
+  price refresh finds the real one by search and stores it as `heuristic`,
+  and re-linking a card keeps it.
 - `tcgdex` (issue #211) is written by the TCGdex price refresh, and only
   after a verified match (see "Pricing" → "TCGdex"): `verified` = set,
   printed number, printed set size and name agree; `verified_number` =
@@ -1377,7 +1380,7 @@ TCGplayer-first by the owner's choice, epic #213):
 |---|---|---|---|---|
 | 1 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
 | 2 | `tcgdex_tcgplayer` | TCGdex's TCGplayer `marketPrice` | USD | `tcgdex_prices.py` (#211) |
-| 3 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py`, `importer.py` |
+| 3 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py` (daily, by ID, #349) |
 | 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket `trend` (else `avg30`) | EUR | `tcgdex_prices.py` (#211) |
 
 Dex is TCGplayer-sourced for Japanese cards too, but it's the only
@@ -1411,13 +1414,14 @@ prod estimate.
 
 **Resolution** (`pricing.resolve`): the first *fresh* price in chain order
 wins -- fresh means fetched within **14 days** (`FRESH_DAYS`), deliberately
-longer than the 7-day refresh cadence so prices don't expire right before
-their refresh and flap between sources. If no source is fresh, the most
+longer than the refresh cadences (daily for `pokemontcg`, weekly for TCGdex)
+so prices don't expire right before their refresh and flap between sources. If no source is fresh, the most
 recently fetched price is kept and flagged `stale`: a price never drops to
 0 or blank once one ever existed. Only a card with no price from any source
 is flagged `no_price`. The winning row's own flags carry over
 (`variant_price_uncertain`: pokemontcg.io had several prints and the Dex
-variant couldn't be matched to one).
+variant couldn't be matched to one). A `pokemontcg` row also records
+TCGplayer's own last update (`tcgplayer.updatedAt`) in `source_updated_at`.
 
 **Materialized on `cards`**: the result is written to `cards.market_price`,
 `market_price_source`, `market_price_as_of` and `price_flags`, and every
@@ -1557,38 +1561,66 @@ python tcgdex_prices.py [--limit N]    # one refresh pass
 
 ### Price refresh (Vercel Cron)
 
-Each card's `pokemontcg` price (see "Pricing" above) is normally
-refreshed as a side effect of a Dex sync — but that means pricing only gets
-fresher when a sync happens to run. `vercel.json` schedules a second,
-independent cron job, `GET /cron/price-refresh` (`0 6 * * *`, one hour after
-the Dropbox sync — edit `vercel.json` to change it), so pricing keeps moving
-on its own schedule regardless of Dex sync frequency. It looks up at most
-100 due cards per run (`price_refresh.py`), using the same `CRON_SECRET` auth pattern as
-`/cron/dropbox-sync` (see that section above for setup), then re-resolves
-every card's market price and writes its own `card_snapshots` row
-(`source="price-cron"`).
+`vercel.json` schedules `GET /cron/price-refresh` (`0 6 * * *`, one hour
+after the Dropbox sync — edit `vercel.json` to change it), with the same
+`CRON_SECRET` auth pattern as `/cron/dropbox-sync` (see that section above
+for setup). It runs the pokemontcg.io pass below, then the TCGdex pass (see
+"TCGdex" under "Pricing"), then re-resolves every card's market price and
+writes its own `card_snapshots` row (`source="price-cron"`), then a small
+image pass. The Dex sync no longer looks up pokemontcg.io prices at all
+(issue #349): it writes the Dex price and fills images, nothing else.
 
-**Which cards, in what order** (issues #216, #210). A card is due when its
-`pokemontcg` price is missing or older than 7 days
-(`PRICE_STALE_AFTER_DAYS`). A lookup that yields no usable price (no match,
-low-confidence match, no TCGplayer data) stamps that row's
-`card_prices.lookup_failed_at`, and the card is skipped for 14 days
-(`PRICE_RETRY_AFTER_DAYS`) before being tried again; a successful lookup
-clears the stamp. The budget is spent in this order:
+**pokemontcg.io prices by stored ID, daily, in batches** (issue #349,
+`price_refresh.py` + `pokemontcg_client.py`):
 
-1. already-priced stale cards, oldest price first, so existing prices are
-   refreshed every day;
-2. never-priced cards that have never failed;
-3. failed cards past their retry window, oldest failure first.
-
-Without this, hundreds of cards TCGplayer doesn't list (mostly Japanese
-prints) sorted first and took the whole budget every day. The Dex sync's
-own price lookups (`importer.py`, 25 per sync) use the same due/backoff
-rule (`price_refresh.price_lookup_due` / `apply_price_lookup`), in CSV
-order. A pokemontcg.io outage looks the same as "no match", so a flaky day
-can back off cards that would have priced; they simply retry after the
-window. The 7-day refresh cadence is shorter than the resolver's 14-day
-freshness window on purpose (see "Pricing").
+- **Which cards.** Every international card (masterdata language `int`)
+  with a `pokemontcg` ID in `master_card_ids`, a print TCGplayer has a key
+  for (see the variant table below), and no `pokemontcg` price fetched
+  today. Dex's international `card_id` is the pokemontcg.io ID (stored as
+  `derived` by masterdata). Japanese and zh-hans cards aren't on
+  pokemontcg.io and are never asked for.
+- **How.** The due cards' distinct IDs (variants of one printed card share
+  one) are asked for 50 at a time (`pokemontcg_client.CHUNK_SIZE`):
+  `GET /v2/cards?q=id:"a" OR id:"b" ...&select=id,name,number,tcgplayer`.
+  Prod's 472 international cards (452 distinct IDs) are 10 requests a day,
+  ~6 s each (measured 2026-10-07). Each
+  card then picks its own print (`card_images._choose_tcgplayer_price`).
+- **Verified.** A returned card must have the requested ID, Dex's printed
+  number and a name that overlaps Dex's (the same check as the by-ID image
+  lookup). A price TCGplayer itself last updated more than 30 days ago
+  (`tcgplayer.updatedAt`, same limit as TCGdex) isn't used.
+- **Fallback search.** An ID missing from a successful response isn't on
+  pokemontcg.io under Dex's ID (Dex writes `sv35-27` for pokemontcg.io's
+  `sv3pt5-27`, `sv65-*` for `sv6pt5-*`). For that card the old name + set
+  name + number search runs once; a confident hit (exact name and number)
+  is priced and its ID stored in `master_card_ids` as `heuristic`, so the
+  next runs go by ID. The Dex sync never reverts it (a `derived` ID never
+  overwrites a non-`derived` one, see "Masterdata"). A `manual` mapping is
+  never searched past. At most 40 searches per run
+  (`MAX_FALLBACK_SEARCHES_PER_RUN`); the rest wait for the next day.
+- **No match.** A card is stamped `card_prices.lookup_failed_at` and listed
+  in `cards_unmatched` (with the reason) only when a successful response
+  says there's nothing usable: its ID is missing and the search found
+  nothing confident, it failed verification, or it has no usable TCGplayer
+  price. Its old price is kept. A stamped card isn't searched again for 14
+  days (`PRICE_RETRY_AFTER_DAYS`), but it stays in the daily ID batch
+  (that costs nothing), so a price that appears is picked up the next day
+  and clears the stamp.
+- **Outages.** A timeout, 429 or 5xx is retried once after a 3 s back-off
+  (honouring `Retry-After`, capped). If it persists, nothing is written for
+  that request's cards: no price, no stamp, they're due again tomorrow (or
+  on a manual re-run). 3 such failures in a row, or one persisting 429,
+  stop the pass for the day (`stopped: "errors"` / `"rate_limited"`), and
+  so does the time budget, 100 s (`app.POKEMONTCG_SECONDS`, `stopped:
+  "time"`). The cron still runs TCGdex, resolves and snapshots.
+- **Reported.** The cron JSON has `requests` (HTTP requests, retries
+  included), `batch_requests`, `fallback_searches`, `cards_checked`,
+  `cards_updated`, `cards_unmatched`, `cards_low_confidence` (a search hit
+  that wasn't a confident match), `cards_variant_uncertain`,
+  `cards_backed_off`, `cards_deferred` (due but not reached), `ids_found`,
+  `transient_errors` and `stopped`. The Sync status line reads e.g.
+  "TCGplayer (pokemontcg.io): 10 requests, priced 452 of 470, 18 unmatched,
+  0 transient errors".
 
 **Currency.** TCGplayer prices come back in USD and are stored in NOK,
 converted at **Norges Bank's daily USD/NOK spot rate** (`fx_rates.py`,
@@ -1605,17 +1637,15 @@ response reports `usd_to_nok`, `fx_source` (`live` / `last-known` /
 the ~10%-inflated rate #209 removed). When the only rate available is
 `fallback` (Norges Bank has never answered and `fx_rates` is empty), or a
 currency was filled in from the constant (`FxRates.usable()`), every price
-write path skips: `price_refresh` (cron and `--reprice-all`) looks nothing
-up, the TCGdex pass stops before any request (`stopped: "fx_unavailable"`),
-and a Dex sync skips its TCGplayer lookups (images still fill, the Dex
-price is unaffected). Nothing is stamped, neither a price nor
+write path skips: `price_refresh` (cron and `--reprice-all`) requests
+nothing, and the TCGdex pass stops before any request (`stopped:
+"fx_unavailable"`). The Dex sync needs no rate (it writes NOK prices only).
+Nothing is stamped, neither a price nor
 `lookup_failed_at`, so freshness doesn't advance and every card stays due
 for the next run. The run is reported as degraded, not "ok":
 `/cron/price-refresh` returns HTTP 200 with `"status": "degraded"`, a
 `degraded_reason` and `cards_skipped`, and its `tcgdex` summary has its own
-`status`/`degraded_reason`. `/cron/dropbox-sync` returns
-`"status": "degraded"` with the reason in `warnings` (its Sync status row
-stays `ok`, with that warning in its text). A degraded price refresh is
+`status`/`degraded_reason`. A degraded price refresh is
 logged on Sync status as `degraded`. The snapshot and image passes still
 run. EUR/NOK comes
 in the same request and is used for Cardmarket via TCGdex (see "TCGdex"
@@ -1624,29 +1654,26 @@ and the rate it was converted at (`card_prices.price`/`fx_rate`); rows
 seeded from before #210 have only the NOK value. Prices stored before
 issue #209 were converted at the fixed 10.5, ~10% too high, until re-fetched.
 
-**Forcing a full re-price** (ignores staleness and the 100-per-run budget;
-only cards that already have a `pokemontcg` price; a failed lookup keeps the
-old price and date, and is not stamped as failed, so the cron retries it;
+**Forcing a full re-price** (every card that already has a `pokemontcg`
+price, whatever its date, through the same batch path; no fallback search;
+a card with nothing usable keeps its old price and date and is not stamped;
 stored values are never rescaled):
 
 ```bash
 cd apps/tcg_inventory
-python price_refresh.py --reprice-all --dry-run   # count + the FX rate it would use
-python price_refresh.py --reprice-all             # [--limit N]
+python price_refresh.py --reprice-all --dry-run   # cards, IDs, requests + the FX rate it would use
+python price_refresh.py --reprice-all             # [--limit N distinct IDs, oldest-priced first]
 ```
 
 Same `DATABASE_URL` convention as `seed_set_release_order.py`. Without
-`--reprice-all` it runs one normal stale-price pass (`--limit` = budget).
+`--reprice-all` it runs one normal daily pass (no time budget).
 
-The underlying `pokemontcg.io` lookup (`card_images.fetch_card_data`, also
-used for card images) does fuzzy name matching, so its top result isn't
-guaranteed to be the exact card searched for. A returned card's name and
-printed number must match exactly before its price is trusted — a
-low-confidence match still yields an image (cosmetic, low stakes) but never
-a price (would silently corrupt the Market Value KPI and value-growth
-charts). Low-confidence matches are skipped and listed in the response's
-`cards_low_confidence` (also surfaced as an import warning when triggered
-via a Dex sync instead) — worth a manual look, not auto-corrected.
+The fallback name search (`card_images._search_card`, also the Dex sync's
+image fallback) does fuzzy name matching, so its top result isn't
+guaranteed to be the exact card searched for. Its name and printed number
+must match exactly (`_is_confident_match`) before its price is trusted;
+otherwise the card is listed in `cards_low_confidence` and stamped, never
+priced from a guess.
 
 A confidently-matched card can still have more than one print (normal,
 holofoil, reverse holofoil, 1st edition, ...), each with its own
@@ -1675,7 +1702,7 @@ cards only have `normal` / `holofoil` / `reverseHolofoil`). Such a card
 gets nothing from either TCGplayer source, not even when the card has just
 one priced print, so the chain falls through to Dex or Cardmarket (which
 prices ball patterns as their own product). The pokemontcg refresh doesn't
-look those cards up at all (`price_lookup_due`, `refresh_stale_prices`).
+ask for those cards at all (`price_refresh._load_cards`).
 Rows stored before #350 by the old rule are deleted at the start of each
 price cron (`pricing.drop_other_print_tcgplayer_rows`, run by both
 `refresh_stale_prices` and `refresh_tcgdex_prices`, which also clears the
@@ -1686,7 +1713,7 @@ For a TCGplayer-keyed variant (or a blank one) on a card with one priced
 print, that print is used. With several priced prints and no exact key
 (a blank variant, or a WotC "Holo"), the first one present is still used
 (better than no price) but flagged — listed in the response's
-`cards_variant_uncertain` (or as an import warning via a Dex sync) — worth
+`cards_variant_uncertain` — worth
 a manual look, unlike a low-confidence match this still updates the price
 rather than withholding it, since it's still the right card, just possibly
 the wrong print.

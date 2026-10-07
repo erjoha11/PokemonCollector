@@ -3339,10 +3339,9 @@ def _dropbox_sync(snapshot_source: str):
             f"snapshotted={snapshotted}"
         )
         return {
-            # "degraded" (issue #229): the sync itself went through, but its
-            # TCGplayer price lookups were skipped -- only fx_rates' fallback
-            # constant was available. Details in `warnings`.
-            "status": "degraded" if result.price_lookup_degraded else "ok",
+            # Always "ok" since #349: the sync no longer looks up TCGplayer
+            # prices, so it can't be degraded by the FX fallback (#229).
+            "status": "ok",
             "folder": folder,
             "files_synced": [f.name for f in files],
             "cards_created": result.cards_created,
@@ -3406,7 +3405,10 @@ def cron_price_refresh(request: Request, secret: str = ""):
 
     db = get_db_session()
     try:
-        result = price_refresh.refresh_stale_prices(db)
+        # pokemontcg.io prices by stored ID, ~10 batch requests plus a few
+        # fallback searches (issue #349), time-boxed. Transient failures are
+        # counted and stop the pass, never raised.
+        result = price_refresh.refresh_stale_prices(db, time_budget_s=POKEMONTCG_SECONDS)
         # Then TCGdex (issue #211): both its TCGplayer and Cardmarket prices,
         # one request per card, time-boxed so the whole invocation stays
         # inside the function limit. A TCGdex problem must never cost the
@@ -3422,14 +3424,7 @@ def cron_price_refresh(request: Request, secret: str = ""):
         print(
             f"[cron/price-refresh] images: attempted={images.attempted} filled={images.filled}"
         )
-        print(
-            f"[cron/price-refresh] {result.status}: checked={result.cards_checked} "
-            f"updated={result.cards_updated} "
-            f"low_confidence={len(result.cards_low_confidence)} "
-            f"variant_uncertain={len(result.cards_variant_uncertain)} "
-            f"usd_to_nok={result.usd_to_nok} fx_source={result.fx_source} "
-            f"snapshotted={snapshotted}"
-        )
+        print(f"[cron/price-refresh] pokemontcg: {price_refresh.summary_line(result)} snapshotted={snapshotted}")
         if tcgdex is not None:
             print(
                 f"[cron/price-refresh] tcgdex: checked={tcgdex.cards_checked} priced={tcgdex.cards_priced} "
@@ -3463,10 +3458,20 @@ def cron_price_refresh(request: Request, secret: str = ""):
             "usd_to_nok": result.usd_to_nok,
             "fx_source": result.fx_source,
             "fx_as_of": result.fx_as_of.isoformat() if result.fx_as_of else None,
+            # The pokemontcg.io pass (issue #349).
+            "requests": result.requests,
+            "batch_requests": result.batch_requests,
+            "fallback_searches": result.fallback_searches,
             "cards_checked": result.cards_checked,
             "cards_updated": result.cards_updated,
+            "cards_unmatched": result.cards_unmatched,
             "cards_low_confidence": result.cards_low_confidence,
             "cards_variant_uncertain": result.cards_variant_uncertain,
+            "cards_backed_off": result.cards_backed_off,
+            "cards_deferred": result.cards_deferred,
+            "ids_found": result.ids_found,
+            "transient_errors": result.transient_errors,
+            "stopped": result.stopped,
             "cards_skipped": result.cards_skipped,
             "cards_snapshotted": snapshotted,
             "images_attempted": images.attempted,
@@ -3489,12 +3494,18 @@ def cron_price_refresh(request: Request, secret: str = ""):
 
 def _price_refresh_message(result, tcgdex, images, snapshotted: int) -> str:
     """One-line /sync-status summary of a /cron/price-refresh run."""
-    parts = [f"TCGplayer: checked {result.cards_checked}, updated {result.cards_updated}"]
-    if result.cards_low_confidence or result.cards_variant_uncertain:
-        parts.append(
-            f"{len(result.cards_low_confidence)} low confidence, "
-            f"{len(result.cards_variant_uncertain)} variant uncertain"
-        )
+    tcgplayer = (
+        f"TCGplayer (pokemontcg.io): {result.requests} requests, "
+        f"priced {result.cards_updated} of {result.cards_checked}, "
+        f"{len(result.cards_unmatched)} unmatched, {result.transient_errors} transient errors"
+    )
+    if result.stopped:
+        tcgplayer += f", stopped ({result.stopped}), {result.cards_deferred} cards left for tomorrow"
+    parts = [tcgplayer]
+    if result.ids_found:
+        parts.append(f"{result.ids_found} pokemontcg IDs found by search")
+    if result.cards_variant_uncertain:
+        parts.append(f"{len(result.cards_variant_uncertain)} variant uncertain")
     if tcgdex is None:
         parts.append("TCGdex: failed")
     else:
@@ -3506,7 +3517,14 @@ def _price_refresh_message(result, tcgdex, images, snapshotted: int) -> str:
     return "; ".join(parts)
 
 
-# Per daily /cron/price-refresh run: a modest image pass after prices.
+# Per daily /cron/price-refresh run: the pokemontcg.io pass (issue #349) is
+# ~10 batch requests of ~6 s each (measured 2026-10-07 on prod's 452 IDs)
+# plus the first days' fallback searches (~1-2 s each, at most
+# price_refresh.MAX_FALLBACK_SEARCHES_PER_RUN). Checked before each request,
+# so the worst overrun is one request with its retry
+# (pokemontcg_client: 2 x 12 s timeout + 3 s back-off)...
+POKEMONTCG_SECONDS = 100.0
+# ...a modest image pass after prices...
 IMAGE_BACKFILL_PER_CRON = 60
 IMAGE_BACKFILL_SECONDS = 25.0
 # ...and the TCGdex price pass (issue #211): ~0.75 s per card sequentially,
