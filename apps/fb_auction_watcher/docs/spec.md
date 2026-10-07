@@ -586,6 +586,14 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   "PSA 10 300kr" is 300, not 10 300. A bare number with no label and no "kr"/",-" is never a
   price (a card number, or "151" the set). The seller's text is always shown in full next to
   the title.
+- **Spaced thousands vs a number in the name** (2026-10-07, #356). A space joins thousands
+  ("1 200kr", "Pris: 2 500", "14 000kr"), but a three-digit group written straight after a word is
+  the name's number ("151" the set, "094"), and the next group is the price: "Pikachu 151 200kr"
+  is "Pikachu 151" at 200. The groups still join when a label or a separator comes before them
+  ("Pris: 150 500", "NM - 120 500kr"), when the next group starts with 0 ("Charizard 120 000kr"),
+  when the separator is a dot ("151.200kr"), and when the first group has one or two digits
+  ("Charizard 1 200kr" is 1 200). Known limit: so "Pikachu 25 200kr" reads as 25 200 kr. A reply
+  that is only an amount ("151 200") is always one bid.
 - **"MP": start bid or condition** (2026-10-07, #352). In this group "MP" in a lot comment is
   normally Minstepris; on the TCGplayer scale it's Moderately Played (group-domain.md §3.2,
   §5.2). The rule, first match wins:
@@ -604,9 +612,7 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   MP-NM (blir beskrevet over hvert bilde)", so each lot's price and condition are meant to be
   written above its photo. "MP" there is Moderately Played, as rules 1 and 2 expect. The read
   held no lot comments at all (it stopped at the first 10 comments, see "Loading comments"
-  above), so the free-text and MP rules are still not checked against real lot text, nor is
-  the "151 200kr" case: "Pikachu 151 200kr" still reads as 151200 kr, since the space-thousands
-  rule joins "151 200". Condition ranges ("MP-NM", "MP/NM") in a lot's text show only one end.
+  above), so the free-text and MP rules are still not checked against real lot text. Condition ranges ("MP-NM", "MP/NM") in a lot's text show only one end.
 - **Claim-sale template** (2026-10-06): "Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker
   å delta)" then "Startid:", "Sluttid (maks 24 timer):", "Objektbeskrivelse:", "Tilstand:". The
   bracketed instruction isn't a name, so "Objektbeskrivelse" names the sale. "Startid" is

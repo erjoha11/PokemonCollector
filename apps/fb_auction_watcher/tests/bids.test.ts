@@ -537,6 +537,48 @@ describe("\"MP\": start bid or condition (#352)", () => {
   ])("claim lot %j", (text, name, condition) => expect(lotTextInfo(text, { claims: true })).toEqual({ name, condition }));
 });
 
+// #356: a space joins thousands ("1 200kr"), but a three-digit number written straight after a
+// word is the name's ("151", the set) and the next group is the price. Both sides of the ambiguity.
+describe("spaced thousands vs a number in the name (#356)", () => {
+  it.each([
+    // The name's number stays in the name.
+    ["Pikachu 151 200kr", "Pikachu 151", 200],
+    ["Pikachu 151 200,-", "Pikachu 151", 200],
+    ["Mew ex 151 450 kr", "Mew ex 151", 450],
+    ["Gengar 094 300kr NM", "Gengar 094", 300],
+    ["Snorlax 143 1 200kr", "Snorlax 143", 1200], // The price after it is itself spaced thousands.
+    // Already right before #356, kept.
+    ["Pikachu 151 - 200kr", "Pikachu 151", 200],
+    ["Pikachu 151 200 kr\nPris: 200", "Pikachu 151", 200],
+    // Real spaced thousands.
+    ["1 200kr", null, 1200],
+    ["Pris: 2 500", null, 2500],
+    ["Charizard 1 200kr", "Charizard", 1200], // One or two digits before the group: thousands.
+    ["Umbreon VMAX 215/203 - 14 000kr", "Umbreon VMAX 215/203", 14000],
+    ["Lugia NM - 120 500kr", "Lugia", 120500], // A separator before it: the whole amount is the price.
+    ["Pris: 150 500\nLugia", "Lugia", 150500], // So is a label.
+    ["Charizard 120 000kr", "Charizard", 120000], // "000" can't be a price on its own.
+    ["Blastoise 151.200kr", "Blastoise", 151200], // A dot binds the groups.
+    // The known limit: a one- or two-digit number in the name before a spaced price reads as thousands.
+    ["Pikachu 25 200kr", "Pikachu", 25200],
+  ])("%j", (text, name, startBid) => {
+    expect(lotTextInfo(text).name).toBe(name);
+    expect(lotStartBid(text)).toBe(startBid);
+  });
+
+  it.each([
+    ["Pikachu 151 200kr", { kr: 200, perCard: false }],
+    ["Pikachu 151 10kr per stk", { kr: 10, perCard: true }],
+    ["1 200kr", { kr: 1200, perCard: false }],
+    ["NM - 2 500kr", { kr: 2500, perCard: false }],
+  ])("claim lot price %j", (text, want) => expect(lotTextPrice(text)).toEqual(want));
+
+  it("a reply that is only an amount is still thousands", () => {
+    expect(readBid("151 200", SELLER)).toEqual({ kind: "bid", amount: 151200 });
+    expect(readBid("1 200kr", SELLER)).toEqual({ kind: "bid", amount: 1200 });
+  });
+});
+
 describe("conditions, normalized for display (#352)", () => {
   it.each([
     ["nm", "NM"], ["Lp+", "LP+"], ["m/nm", "M/NM"], ["NM / M", "NM/M"], ["near  mint", "NM"], ["Near Mint", "NM"],

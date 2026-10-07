@@ -1,5 +1,5 @@
 import type { CapturedComment, CapturedReply, PostCapture } from "../shared/capture";
-import { parseAmount } from "./amount";
+import { AMOUNT_DIGITS, parseAmount } from "./amount";
 import { saleLines } from "./saleLines";
 
 // Lots and bids from a post read with the toolbar icon (module 1's capture), by rules, with
@@ -152,18 +152,21 @@ function compareIds(a: string | null, b: string | null): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
+const PER_CARD_PRICE = new RegExp(String.raw`(${AMOUNT_DIGITS})\s*(?:kr|,-)\.?\s*(?:per|pr\.?|\/)\s*(?:stk|stykk|kort|card)`, "iu");
+const LOT_PRICE = new RegExp(String.raw`(${AMOUNT_DIGITS})\s*(?:kr|,-)(?![\p{L}])`, "iu");
+
 /**
  * A claim/fixed-price lot's price from its own text (sellers who write "Fastpris: Blir oppgitt
  * over hvert bilde" put it there): "Holo/rev.holo 5kr per stk", "EX/V/IR10kr per stk",
  * "10 kr pr kort" (per card), or "NM - 1200kr" / "200kr" (the lot, usually one card).
  */
 export function lotTextPrice(text: string): { kr: number; perCard: boolean } | null {
-  const perCard = text.match(/(?<!\d)(\d[\d .]*?)\s*(?:kr|,-)\.?\s*(?:per|pr\.?|\/)\s*(?:stk|stykk|kort|card)/i);
+  const perCard = text.match(PER_CARD_PRICE);
   if (perCard) {
     const kr = parseAmount(perCard[1]);
     if (kr !== null) return { kr, perCard: true };
   }
-  const amount = text.match(/(?<!\d)(\d[\d .]*?)\s*(?:kr|,-)(?![\p{L}])/iu);
+  const amount = text.match(LOT_PRICE);
   const kr = amount ? parseAmount(amount[1]) : null;
   return kr !== null ? { kr, perCard: false } : null;
 }
@@ -218,6 +221,9 @@ export function normalizeCondition(raw: string): string {
   return CONDITION_NAMES[s] ?? s.replace(/ ?\/ ?/g, "/").toUpperCase();
 }
 
+/** An amount in kr anywhere in a line, read where no label marks it: "200kr", "1 200,-" (#356: "Pikachu 151 200kr" is 200). */
+const SEARCHED_PRICE = new RegExp(String.raw`(?<![\p{L}\d/.,])(${AMOUNT_DIGITS})\s*(?:kr\.?|,-|nok)(?![\p{L}])`, "iu");
+
 /**
  * "MP: 1400", "Mp 10kr", "Mp. 200", "MP - 200", "Holo, mp 30kr", "Minstepris 500", "Startpris:
  * 200kr", "Pris 150,-", else an amount in kr anywhere ("Charizard 4/102 - 200kr", "700kr" on its
@@ -236,7 +242,7 @@ export function lotStartBid(text: string): number | null {
   const step = new RegExp(String.raw`(?<![\p{L}\d])(?:${STEP_LABEL})${LABEL_GAP}\d[\d .,]*(?:[ \t]*(?:kr\.?|,-|nok))?`, "giu");
   for (const line of lines) {
     if (REFERENCE_PRICE.test(line)) continue; // "Markedspris 900kr", "TCGplayer $40": what it's worth, not the start bid.
-    const m = line.replace(step, " ").match(/(?<![\p{L}\d/.,])(\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:kr\.?|,-|nok)(?![\p{L}])/iu);
+    const m = line.replace(step, " ").match(SEARCHED_PRICE);
     const kr = m ? parseAmount(m[1]) : null;
     if (kr !== null) return kr;
   }
@@ -269,7 +275,7 @@ export function untitledLotPhotos(capture: PostCapture): { imageUrl: string; tex
 const AMOUNT_TEXT = String.raw`\d[\d .,]*(?:\s*k\b)?\s*(?:kr\.?|,-|nok)?`;
 const PRICE_PARTS = new RegExp(
   String.raw`(?<![\p{L}\d])(?:${START_LABEL}|${STEP_LABEL})${LABEL_GAP}${NOT_CARD_NUMBER}${AMOUNT_TEXT}` +
-    String.raw`|(?<![\p{L}\d/])\d[\d .,]*\s*(?:kr\.?|,-|nok)(?:\s*(?:per|pr\.?|/)\s*(?:stk|stykk|kort|card)\.?)?(?![\p{L}])`,
+    String.raw`|(?<![\p{L}\d/])(?:${AMOUNT_DIGITS})(?:[.,]\d+)?\s*(?:kr\.?|,-|nok)(?:\s*(?:per|pr\.?|/)\s*(?:stk|stykk|kort|card)\.?)?(?![\p{L}])`,
   "giu",
 );
 const GENERIC = /^(?:(?:rev(?:erse)?|reverse|rev\.?)?\s*\.?\s*holo|holo|promo|lot|kort|card|cards|stk|bulk|div(?:erse)?|og|and|[&+/,.()\-–|:\s])*$/iu;
