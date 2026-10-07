@@ -241,6 +241,17 @@ yet.
 
 ### tcg_inventory
 
+**Helper text trimmed; longer explanations moved into (i) tooltips (#347)**
+- Templates only. Visible helper text that restated a heading, tab or button
+  is gone (e.g. the Orders tab subtitles, the Sell on finn.no intro).
+- Longer explanations still worth having moved into the existing `info()`
+  (i) tooltip: Orders → Sold and Listings, Edit Listing's regenerate hint,
+  Mark Listing Sold, Sync status, Missing from Dex, Edit Order (intro,
+  Distribute, Order ID column), New Order from Facebook, and the Dashboard
+  folder merge.
+- Kept as is: empty states, warnings/errors, status messages, data-bearing
+  captions, and the card page's "can't be deleted" notice.
+
 **Facebook wins inbox (#314, slice 1 of #309)**
 - New `won_items` staging table (`models.WonItem`, logic in `won_inbox.py`).
   `CURRENT_SCHEMA_VERSION` 12 → 13; `init_db()` creates it with RLS.
