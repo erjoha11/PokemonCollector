@@ -155,7 +155,8 @@ async function readOpenPost({ waitForPost = false, silent = false, continueOlder
     report(
       true,
       `${capture.stats.topLevelComments} comments, ${capture.stats.replies} replies` +
-        (result.stoppedBecause === "aborted" ? " (took too long; some may be missing)" : ""),
+        (result.stoppedBecause === "aborted" ? " (took too long; some may be missing)" : "") +
+        (result.stoppedBecause === "still-loading" ? " (Facebook was still loading comments; some may be missing)" : ""),
     );
     panel.showResult(capture, `<!doctype html>\n<!-- ${location.href} -->\n${root.outerHTML}`);
   } catch (err) {

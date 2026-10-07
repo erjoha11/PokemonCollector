@@ -4,6 +4,8 @@ import { isClickableExpanderLabel } from "./patterns";
 // "See more" until none are left. These are the only clicks this module makes: see isSafeToClick.
 // A post opened in a dialog loads further comments on scroll instead of a button, so when no
 // expander is left it scrolls the last comment into view (a scroll, never a click) and waits.
+// While Facebook still shows its "Laster inn…" placeholders below the last comment, more
+// comments are on their way: it scrolls those into view too and waits longer before giving up.
 
 export type ExpandProgress = { clicks: number; scrolls: number; lastLabel: string };
 
@@ -18,13 +20,16 @@ export type ExpandOptions = {
   maxDelayMs?: number;
   /** Rounds with no expander found before giving up (content can load late). */
   idleRounds?: number;
+  /** Idle rounds allowed while Facebook still shows a loading placeholder below the comments. */
+  loadingRounds?: number;
 };
 
 export type ExpandResult = {
   clicks: number;
   /** Scrolls that loaded more comments. */
   scrolls: number;
-  stoppedBecause: "done" | "aborted" | "max-clicks";
+  /** "still-loading": gave up while Facebook still showed comments loading, so some are missing. */
+  stoppedBecause: "done" | "aborted" | "max-clicks" | "still-loading";
 };
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -56,10 +61,32 @@ export function findExpanders(root: Element): Element[] {
 
 const ARTICLE = "[role='article']";
 
-/** Scrolls the last loaded comment into view so Facebook loads the next batch. */
+// Facebook's grey "Laster inn…" glimmer where the next comments will appear. Matched by role
+// and a data attribute, never by class or by its (translated) label.
+const LOADING = "[role='status'][data-visualcompletion='loading-state']";
+
+/**
+ * Loading placeholders after the last loaded comment: more comments are still coming. A real
+ * read (2026-10-07, a claim sale with 121 comments) stopped at the first 10 with three of these
+ * left below them, and every lot comment missing.
+ */
+export function pendingLoaders(root: Element): Element[] {
+  const articles = root.querySelectorAll(ARTICLE);
+  const last = articles[articles.length - 1];
+  return Array.from(root.querySelectorAll(LOADING)).filter(
+    (el) => !last || (!last.contains(el) && !!(last.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)),
+  );
+}
+
+/**
+ * Scrolls the last loaded comment into view so Facebook loads the next batch, then the loading
+ * placeholder below it, if any: Facebook loads the next batch when that comes into view, and
+ * the last comment's bottom edge alone may stop short of it.
+ */
 function scrollToLastComment(root: Element): void {
   const articles = root.querySelectorAll(ARTICLE);
   articles[articles.length - 1]?.scrollIntoView?.({ block: "end" });
+  pendingLoaders(root)[0]?.scrollIntoView?.({ block: "end" });
 }
 
 export async function expandAll(root: Element, options: ExpandOptions = {}): Promise<ExpandResult> {
@@ -71,6 +98,7 @@ export async function expandAll(root: Element, options: ExpandOptions = {}): Pro
     minDelayMs = 700,
     maxDelayMs = 1600,
     idleRounds = 4,
+    loadingRounds = 12,
   } = options;
   const clicked = new WeakSet<Element>();
   let clicks = 0;
@@ -94,7 +122,13 @@ export async function expandAll(root: Element, options: ExpandOptions = {}): Pro
         onProgress?.({ clicks, scrolls, lastLabel: "scrolled for more comments" });
         continue;
       }
-      if (++idle >= idleRounds) return { clicks, scrolls, stoppedBecause: "done" };
+      ++idle;
+      if (pendingLoaders(root).length > 0) {
+        // Still loading: wait longer, but not forever (a placeholder that never resolves).
+        if (idle >= Math.max(idleRounds, loadingRounds)) return { clicks, scrolls, stoppedBecause: "still-loading" };
+        continue;
+      }
+      if (idle >= idleRounds) return { clicks, scrolls, stoppedBecause: "done" };
       continue;
     }
     idle = 0;

@@ -498,6 +498,14 @@ DOM findings from the real run (2026-10-03):
   scroll**, with no "Vis flere kommentarer" button. The first build only clicked buttons and
   stopped at 10. `expand.ts` now scrolls the last loaded comment into view (never a click)
   when no expander is left, and stops after a few rounds with no new comments.
+  A real claim-sale read (2026-10-07, 121 comments) still stopped "done" at the first 10, all
+  "." from people following the sale, with every lot comment from the seller missing: below
+  the 10th comment Facebook still showed three "Laster inn …" placeholders (`role="status"`,
+  `data-visualcompletion="loading-state"`). Scrolling the last comment's bottom edge into view
+  didn't load the next batch. `expand.ts` now also scrolls the first placeholder below the last
+  comment into view (`pendingLoaders`), keeps waiting while one is there (up to 12 idle rounds
+  instead of 4), and if it never resolves stops as `still-loading`: the read gets a warning
+  and doesn't count as complete (`isCompleteRead`), so it can't settle "Won"/"Lost".
 - Post types seen: "AUKSJON/BUDRUNDE" (bids, `MP`/`MB` = minimum price/minimum increment
   per lot, "Antisnipe 5 min") and "Claim salg" (fixed price per lot, first to claim). Both
   use the group's template ("Sluttid:", "Betalingsalternativ:", …).
@@ -586,6 +594,14 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   4. No amount after it ("Pikachu MP", "MP" on its own line): the condition, but only if the
      text gives no other one ("Onix LP MP" is LP). Either way it's not part of the name.
   A card number straight after it ("Onix MP 4/102") is not its amount, so that MP is bare (rule 4).
+- **First real sample against these rules** (2026-10-07): a claim sale whose post says
+  "Fastpris: Blir oppgitt over hvert bilde i kommentarfeltet" and "Tilstand: sealed, gradert,
+  MP-NM (blir beskrevet over hvert bilde)", so each lot's price and condition are meant to be
+  written above its photo. "MP" there is Moderately Played, as rules 1 and 2 expect. The read
+  held no lot comments at all (it stopped at the first 10 comments, see "Loading comments"
+  above), so the free-text and MP rules are still not checked against real lot text, nor is
+  the "151 200kr" case: "Pikachu 151 200kr" still reads as 151200 kr, since the space-thousands
+  rule joins "151 200". Condition ranges ("MP-NM", "MP/NM") in a lot's text show only one end.
 - **Claim-sale template** (2026-10-06): "Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker
   å delta)" then "Startid:", "Sluttid (maks 24 timer):", "Objektbeskrivelse:", "Tilstand:". The
   bracketed instruction isn't a name, so "Objektbeskrivelse" names the sale. "Startid" is
