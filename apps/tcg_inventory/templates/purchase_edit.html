@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Edit Order #{{ purchase_id }} – TCG Inventory{% endblock %}
 {% from "partials/purchase_edit_row.html" import purchase_edit_row %}
+{% from "partials/macros.html" import info %}
 {% block content %}
 <p class="mb-05">
   {# Back to the tab this order is on now (issue #255) -- not a fixed
@@ -8,12 +9,8 @@
   <a href="{{ back_url }}" hx-get="{{ back_url }}"
      hx-select="#main-content" hx-target="#main-content" hx-swap="outerHTML" hx-push-url="true">&larr; Back to {{ order_tab_label }}</a>
 </p>
-<h1>Edit Order #{{ purchase_id }}</h1>
+<h1>Edit Order #{{ purchase_id }} {{ info("Retype, relink, add a note, delete a row, or change a row's Order ID to move it to another order, merge it into one, or split it into a new one.", below=true) }}</h1>
 {% if saved %}<p class="saved-note" role="status">Saved ✓</p>{% endif %}
-<p class="muted">
-  Retype, relink, add a note, delete a row, or reassign a row's Order ID to move it to another order,
-  merge it into one, or split it into a new one — reassigning Order ID is the one primitive behind all three.
-</p>
 
 <form method="post" action="/transactions/purchase/{{ purchase_id }}/edit"
       hx-post="/transactions/purchase/{{ purchase_id }}/edit"
@@ -29,7 +26,7 @@
           <th class="num">Price</th>
           <th>Platform</th>
           <th>Note</th>
-          <th>Order ID</th>
+          <th>Order ID {{ info("Moving a row to another Order ID clears this order's Total/shipping for that row; set the destination order's afterwards on the Orders page. Start new order blanks a row's Order ID: every blank row moves into one new order, numbered when you save.", below=true, align_right=true) }}</th>
           <th>Delete</th>
         </tr>
       </thead>
@@ -73,24 +70,9 @@
             title="Splits what's left of the Total after the cards already priced across the cards that still have no price. Trade rows and rows marked for deletion are skipped.">
       Distribute remaining across unpriced cards
     </button>
+    {{ info("Type what you actually paid as Total, then Distribute spreads what's left after the priced cards over the unpriced ones (price 0). By market value: shares follow each card's current price (no price gets the average share). Evenly: same amount each. With Include shipping on, the unpriced cards absorb the shipping too and Shipping is set to 0, so it's never counted twice. Nothing is saved until Save changes.", align_right=true) }}
   </div>
-  <p class="muted">
-    Total defaults to shipping + the cards already priced, but type over it with what you actually paid for the
-    order, then use "Distribute remaining across unpriced cards" to spread the difference over the ones you haven't
-    priced individually (price 0) — useful for a lot where you know a few cards' values and want the rest to absorb
-    the remainder. "By market value" gives each card a share proportional to its current price (a card with no price
-    gets the average share); "Evenly" gives every card the same amount. Either way the cents add up exactly to the
-    remainder. With "Include shipping" on, the cards you already priced keep their price and the unpriced ones absorb
-    the rest <em>including shipping</em> — Shipping is set to 0 because it now lives in those cards' prices, so it's
-    never counted twice. With it off, shipping stays a separate line and is split across all the order's cards by
-    price. This doesn't save until you click "Save changes" below.
-    <span id="distribute_note" class="muted"></span>
-  </p>
-  <p class="muted">
-    Moving a row to a different Order ID clears this order's Total/shipping for that row —
-    set the destination order's total/shipping afterward from the Orders page, it's never guessed or split automatically.
-    "Start new order" blanks a row's Order ID: every blank row moves into one new order, whose ID is assigned when you save.
-  </p>
+  <p class="muted"><span id="distribute_note"></span></p>
 
   {# A failed save -- a 422's own message, else the generic "Could not
      save" -- shows here (static/form-errors.js, issue #228). #}

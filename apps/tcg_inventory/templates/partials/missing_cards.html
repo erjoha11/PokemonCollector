@@ -4,19 +4,13 @@
    form posts to /cards/{id}/delete-missing, which re-renders this whole
    section (200 for every handled outcome -- htmx 1.9 drops 4xx) with
    `result` shown at the top. See missing_cards.py for the guard rules. #}
-{% from "partials/macros.html" import card_link %}
+{% from "partials/macros.html" import card_link, info %}
 <div class="card" id="missing-cards" tabindex="-1" style="margin-top: 1.5rem;">
-  <h2>Missing from Dex{% if missing %} <span class="muted">(<span data-missing-count>{{ missing | length }}</span>)</span>{% endif %}</h2>
+  <h2>Missing from Dex{% if missing %} <span class="muted">(<span data-missing-count>{{ missing | length }}</span>)</span> {{ info("Cards the last Dex syncs didn't find any more. A sync never deletes a card, so these still count in every total until removed. Delete one only if it was registered in error: it is removed permanently with its collection tags, value-history snapshots and prices. Cards with order rows or listings can't be deleted here, since that would destroy their order history.") }}{% endif %}</h2>
   {% if result %}
   <p class="{{ 'saved-note' if result.ok else 'warnings' }}" role="{{ 'status' if result.ok else 'alert' }}">{{ result.message }}</p>
   {% endif %}
   {% if missing %}
-  <p class="muted">
-    Cards the last Dex syncs didn't find any more. A sync never deletes a card, so these still count in
-    every total until removed. Delete one only if it was registered in error: it is removed permanently
-    together with its collection tags, value-history snapshots and prices. Cards with order rows or
-    listings can't be deleted here &mdash; that would destroy their order history.
-  </p>
   <div class="table-scroll">
     <table class="missing-cards-table">
       <thead>

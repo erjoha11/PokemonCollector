@@ -187,7 +187,7 @@
         <span class="tx-kpi-label">Fees &amp; shipping {{ info("Sale fees plus the shipping you paid as seller.") }}</span> <span class="tx-kpi-value">{{ sold.fees_and_shipping | kr }}</span>
         <span class="tx-kpi-label">Net received {{ info("Sold for minus fees and seller-paid shipping — what the sales actually brought in, the same amount Net invested subtracts.") }}</span> <span class="tx-kpi-value">{{ sold.net_received | kr }}</span>
         <span class="tx-kpi-label">Realized gain {{ info("Net received minus what each sold copy cost, taking the oldest copy you acquired first (first in, first out). Cards whose copy has no known cost are left out (marked *) rather than counted as pure profit.") }}</span> <span class="tx-kpi-value">{{ realized_value(sold.realized.gain, sold.realized.unknown) }}</span>
-        <span class="muted">{{ sold.sales }} sale{{ 's' if sold.sales != 1 }} / {{ sold.cards }} card{{ 's' if sold.cards != 1 }}</span>
+        <span class="muted">{{ sold.sales }} sale{{ 's' if sold.sales != 1 }} / {{ sold.cards }} card{{ 's' if sold.cards != 1 }}</span> {{ info("Card quantities update at the next Dex sync.") }}
       </span>
       <a class="button" href="/sales">Sell on finn.no</a>
       {# In-person / other-platform sales have no listing to Mark sold. #}
@@ -213,9 +213,6 @@
       {% endif %}
     </div>
   </div>
-  {% if tab == 'sold' %}
-  <p class="muted sold-caveat">Card quantities update at the next Dex sync.</p>
-  {% endif %}
 
   {% if tab == 'purchased' %}
   {# ?type= pills (issue #255): plain links keeping every other param, same
@@ -365,8 +362,7 @@
            targets a sale order (see add_cards_to_existing_order). #}
         {% if tab == 'purchased' %}
         <div class="order-add-cards">
-          <button type="button" onclick="pickCardsFor({{ group.purchase_id }})">+ Add cards to this order</button>
-          <span class="muted">Opens the card list below, set to add to order #{{ group.purchase_id }}.</span>
+          <button type="button" onclick="pickCardsFor({{ group.purchase_id }})" title="Opens the card list below, set to add to order #{{ group.purchase_id }}.">+ Add cards to this order</button>
         </div>
         {% endif %}
       </div>

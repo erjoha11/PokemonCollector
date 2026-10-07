@@ -4,6 +4,7 @@
    type input, no select, and no "Show cards without an order", since
    unacquired cards make no sense to sell). The cart JS reads the type via
    form.elements.type, which works for either. #}
+{% from "partials/macros.html" import info %}
 <div class="card mb-15">
   {# The Order ID is assigned when the cart is registered, not reserved
      when it opens (issue #228 b), so another tab can't take the same one. #}
@@ -18,7 +19,7 @@
      complete" (form="purchase-cart-form"), per item, not per row. #}
   {% set sale = imported.sale %}
   <section class="fb-import" data-imported-sale aria-labelledby="fb-import-title">
-    <h3 id="fb-import-title">Imported items
+    <h3 id="fb-import-title">Imported items {{ info("Tick the card each item is, then Link selected: it's added to the order below with the item's price (a lot's price is split evenly over its cards). Nothing is linked until you do.") }}
       <span class="muted small">· {{ sale.items | length }} from <a href="{{ sale.post_url }}" target="_blank" rel="noopener">this Facebook post ↗</a>{% if sale.ended_on %}, ended {{ sale.ended_on.isoformat() }}{% endif %}</span>
     </h3>
     {% if sale.payment_text %}<p class="muted small fb-win-terms">Pay: {{ sale.payment_text }}</p>{% endif %}
@@ -31,7 +32,6 @@
       {% else %}{{ 'They don’t' if imported.registered_orders | length > 1 else 'It doesn’t' }} count these items yet, so the Total below is their full known price.
       {% endif %}Or add these cards to that order with Edit order instead.</p>
     {% endif %}
-    <p class="muted small">Tick the card each item is, then <strong>Link selected</strong>: it's added to the order below with the item's price (a lot's price is split evenly over its cards). Nothing is linked until you do.</p>
     <ul class="fb-import-items">
       {% for item in sale.items %}
       <li class="fb-import-item" id="fb-import-item-{{ item.id }}" data-item-id="{{ item.id }}"

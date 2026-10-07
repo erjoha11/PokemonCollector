@@ -17,7 +17,6 @@
 </p>
 <script src="/static/sale-list.js"></script>
 {% else %}
-<p class="muted">Review quantity, condition, and asking price for each card, then generate the ad text.</p>
 {% set already_listed = cards | selectattr('id', 'in', listed_by_card) | list %}
 {% if already_listed %}
 <p class="warnings" role="status" id="already-listed-warning">

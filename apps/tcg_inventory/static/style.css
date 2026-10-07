@@ -79,7 +79,7 @@ nav.tabs {
   display: flex;
   gap: 0.25rem;
   padding: 0;
-  margin: 0 0 0.35rem;
+  margin: 0 0 1rem;
   border-bottom: 1px solid var(--border);
 }
 nav.tabs a {
@@ -95,8 +95,6 @@ nav.tabs a.active {
   font-weight: 700;
   border-bottom-color: var(--accent);
 }
-.tab-subtitle { margin: 0 0 1rem; font-size: 0.85rem; }
-.sold-caveat { margin: 0.2rem 0 0; font-size: 0.82rem; }
 .orders-tab-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin: 0.5rem 0 1rem; }
 /* A link styled as the primary button (e.g. "Sell on finn.no" on the Sold
    and Listings tabs) -- same look as `button` below. */
