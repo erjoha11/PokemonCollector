@@ -4,9 +4,15 @@ importer.py's own Dex-CSV "Price" column is the only price signal otherwise.
 That API's card IDs don't correspond to Dex's own `card_id`, so lookup is by
 name + set + printed number instead, best-effort: any failure (network, no
 match, ambiguous set name) just leaves the card without an image/price rather
-than blocking an import. See importer.py for how often each is looked up --
-image_url once and cached forever (a card's image never changes), tcgplayer
-price on a staleness schedule (prices move).
+than blocking an import. Images are looked up once and cached forever (a
+card's image never changes), by the Dex sync and backfill_images.py.
+
+Prices (issue #349) are no longer searched card by card: price_refresh.py
+fetches them daily by stored pokemontcg.io ID in batches
+(pokemontcg_client.py) and only falls back to this module's search for a
+card whose ID isn't on pokemontcg.io. The price rules (_choose_tcgplayer_
+price, _is_confident_match, _same_number, _names_overlap) live here and are
+shared by both paths.
 """
 from __future__ import annotations
 
@@ -229,6 +235,51 @@ def _is_confident_match(name: str, number: str | None, card: dict) -> bool:
     return True
 
 
+def search_query(name: str, set_name: str | None, number: str | None) -> str:
+    """The name + set name + printed number query for the card search
+    (also pokemontcg_client.Client.search's)."""
+    query_parts = [f'name:"{name}"']
+    if set_name:
+        query_parts.append(f'set.name:"{set_name}"')
+    printed_number = _printed_number(number)
+    if printed_number:
+        query_parts.append(f"number:{printed_number}")
+    return " ".join(query_parts)
+
+
+def _search_card(name: str, set_name: str | None, number: str | None) -> dict | None:
+    """The search's top hit, or None (no name, no match, or the API failed
+    twice). Never raises."""
+    if not name:
+        return None
+    # The free tier of this API is noticeably flaky in practice -- repeated,
+    # identical queries routinely 500/502 for no apparent reason -- so one
+    # retry roughly doubles the real-world match rate instead of leaving a
+    # card without an image/price over one bad response.
+    data = None
+    for _attempt in range(2):
+        try:
+            response = httpx.get(
+                _API_URL,
+                params={"q": search_query(name, set_name, number), "pageSize": 1},
+                timeout=_TIMEOUT,
+            )
+            response.raise_for_status()
+            data = response.json().get("data") or []
+            break
+        except (httpx.HTTPError, ValueError):
+            continue
+    return data[0] if data else None
+
+
+def search_image_url(name: str, set_name: str | None, number: str | None) -> str | None:
+    """The image of the search's top hit, best-effort, with no price and no
+    exchange rate involved. The Dex sync's fallback when the by-ID image
+    lookup found nothing (it no longer looks up prices, issue #349)."""
+    card = _search_card(name, set_name, number)
+    return ((card or {}).get("images") or {}).get("small")
+
+
 def fetch_card_data(
     name: str, set_name: str | None, number: str | None, variant: str | None = None
 ) -> CardApiData:
@@ -239,37 +290,10 @@ def fetch_card_data(
     disambiguate which print's price to trust when a card has more than
     one -- see _best_tcgplayer_price.
     """
-    if not name:
+    card = _search_card(name, set_name, number)
+    if card is None:
         return CardApiData(image_url=None, tcgplayer_price=None)
 
-    query_parts = [f'name:"{name}"']
-    if set_name:
-        query_parts.append(f'set.name:"{set_name}"')
-    printed_number = _printed_number(number)
-    if printed_number:
-        query_parts.append(f"number:{printed_number}")
-
-    # The free tier of this API is noticeably flaky in practice -- repeated,
-    # identical queries routinely 500/502 for no apparent reason -- so one
-    # retry roughly doubles the real-world match rate instead of leaving a
-    # card without an image/price over one bad response.
-    data = None
-    for _attempt in range(2):
-        try:
-            response = httpx.get(
-                _API_URL,
-                params={"q": " ".join(query_parts), "pageSize": 1},
-                timeout=_TIMEOUT,
-            )
-            response.raise_for_status()
-            data = response.json().get("data") or []
-            break
-        except (httpx.HTTPError, ValueError):
-            continue
-    if not data:
-        return CardApiData(image_url=None, tcgplayer_price=None)
-
-    card = data[0]
     confident = _is_confident_match(name, number, card)
     # Never convert at the fallback constant (issue #229, fx_rates docstring):
     # no price this time, flagged so the caller leaves the card due.

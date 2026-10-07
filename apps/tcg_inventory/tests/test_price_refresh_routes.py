@@ -1,13 +1,31 @@
-import card_images
+import masterdata
+import pokemontcg_client
 from models import Card, CardSnapshot
+from test_price_refresh import FakeClient, api
 
 
 def _add_card(client, name="Shellder"):
+    """An international card (so the pokemontcg pass asks for it, issue
+    #349) with id "a" kept for the assertions below: its pokemontcg ID is
+    stored by hand."""
     import db as db_module
 
     with db_module.SessionLocal() as db:
-        db.add(Card(card_id="a", variant=None, name=name))
+        card = Card(card_id="xy1-1", variant=None, name=name, number="1/146", qty=1)
+        db.add(card)
+        masterdata.link_card(db, card)
+        card.card_id = "a"
         db.commit()
+
+
+def _pokemontcg(monkeypatch, *cards, **kw):
+    fake = FakeClient(cards, **kw)
+    monkeypatch.setattr(pokemontcg_client, "Client", lambda: fake)
+    return fake
+
+
+def _shellder(usd=0.999):
+    return api("xy1-1", "Shellder", "1", {"normal": usd})
 
 
 def test_cron_price_refresh_requires_secret_when_configured(client, monkeypatch):
@@ -19,9 +37,7 @@ def test_cron_price_refresh_requires_secret_when_configured(client, monkeypatch)
 def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     _add_card(client)
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
-    )
+    _pokemontcg(monkeypatch, _shellder())
 
     response = client.get("/cron/price-refresh", headers={"Authorization": "Bearer s3cr3t"})
 
@@ -30,6 +46,7 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
     assert body["cards_checked"] == 1
     assert body["cards_updated"] == 1
     assert body["cards_snapshotted"] == 1
+    assert (body["requests"], body["batch_requests"], body["transient_errors"], body["stopped"]) == (1, 1, 0, None)
 
     import db as db_module
 
@@ -45,9 +62,7 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
 def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     _add_card(client)
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
-    )
+    _pokemontcg(monkeypatch, _shellder())
 
     response = client.get("/cron/price-refresh?secret=s3cr3t")
 
@@ -63,20 +78,36 @@ def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):
 def test_cron_price_refresh_reports_low_confidence_matches(client, monkeypatch):
     monkeypatch.delenv("CRON_SECRET", raising=False)
     _add_card(client)
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(
-            image_url=None, tcgplayer_price=None, low_confidence_match=True
-        ),
-    )
+    _pokemontcg(monkeypatch, searches={"Shellder": api("xy99-1", "Shellder ex", "1")})  # ID missing
 
     response = client.get("/cron/price-refresh")
 
     assert response.status_code == 200
     body = response.json()
     assert body["cards_updated"] == 0
-    assert body["cards_low_confidence"] == ["Shellder (? ?)"]
+    assert body["cards_low_confidence"] == ["Shellder (a)"]
+    assert len(body["cards_unmatched"]) == 1
+    assert (body["requests"], body["batch_requests"], body["fallback_searches"]) == (2, 1, 1)
+
+
+def test_cron_price_refresh_survives_a_pokemontcg_outage(client, monkeypatch):
+    """Every pokemontcg.io request fails: nothing written or stamped, the
+    pass stops at the error limit, and the cron still resolves and
+    snapshots (issue #349)."""
+    import db as db_module
+    import pricing
+
+    _add_card(client)
+    _pokemontcg(monkeypatch, fail=pokemontcg_client.TransientError("HTTP 502"))
+
+    response = client.get("/cron/price-refresh")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["status"], body["transient_errors"], body["cards_deferred"]) == ("ok", 1, 1)
+    assert body["cards_snapshotted"] == 1
+    with db_module.SessionLocal() as db:
+        assert pricing.get_row(db.query(Card).one(), "pokemontcg") is None
 
 
 def test_cron_price_refresh_re_resolves_every_card_before_its_snapshot(client, monkeypatch):
@@ -141,9 +172,7 @@ def test_cron_price_refresh_reports_degraded_at_the_fx_fallback_rate(client, mon
 
     _add_card(client)
     fx_rates.reset_cache()
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
-    )
+    _pokemontcg(monkeypatch, _shellder())
 
     response = client.get("/cron/price-refresh")
 
@@ -169,8 +198,6 @@ def test_cron_price_refresh_reports_degraded_at_the_fx_fallback_rate(client, mon
 
 def test_cron_price_refresh_status_ok_with_a_real_rate(client, monkeypatch):
     _add_card(client)
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
-    )
+    _pokemontcg(monkeypatch, _shellder())
     body = client.get("/cron/price-refresh").json()
     assert (body["status"], body["degraded_reason"], body["tcgdex"]["status"]) == ("ok", None, "ok")

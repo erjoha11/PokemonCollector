@@ -120,6 +120,42 @@ def test_manual_mapping_is_not_overwritten(db_session):
     assert _ids(master)["tcgplayer"] == ("12345", "heuristic")
 
 
+@pytest.mark.parametrize(
+    "matched_by", [masterdata.MATCHED_HEURISTIC, masterdata.MATCHED_VERIFIED, masterdata.MATCHED_EXACT]
+)
+def test_a_derived_id_never_overwrites_a_non_derived_one(db_session, matched_by):
+    """Issue #349: a pokemontcg ID the price refresh found by search
+    ("sv3pt5-27" for Dex's "sv35-27") must survive link_card and
+    backfill_master_cards, which re-derive it from the Dex ID."""
+    card = Card(card_id="sv35-27", variant="Normal", name="Sandshrew", qty=1)
+    db_session.add(card)
+    master = masterdata.link_card(db_session, card)
+    masterdata.set_external_id(db_session, master, "pokemontcg", "sv3pt5-27", matched_by)
+    db_session.commit()
+
+    masterdata.link_card(db_session, card)
+    assert _ids(master)["pokemontcg"] == ("sv3pt5-27", matched_by)
+
+    # Unlinked again, the backfill finds the same master by key and re-seeds.
+    card.master_card = None
+    db_session.commit()
+    assert masterdata.backfill_master_cards(db_session) == 1
+    db_session.expire_all()
+    assert db_session.get(Card, card.id).master_card_id == master.id
+    assert _ids(master)["pokemontcg"] == ("sv3pt5-27", matched_by)
+    # ...while a derived one is still re-derived as before.
+    masterdata.set_external_id(db_session, master, "pokemontcg", "sv35-27", masterdata.MATCHED_DERIVED)
+    assert _ids(master)["pokemontcg"] == ("sv3pt5-27", matched_by)
+
+
+def test_a_derived_id_still_replaces_a_derived_one(db_session):
+    card = Card(card_id="sv2-109", variant="Normal", name="Pikachu", qty=1)
+    db_session.add(card)
+    master = masterdata.link_card(db_session, card)
+    masterdata.set_external_id(db_session, master, "pokemontcg", "sv2-110", masterdata.MATCHED_DERIVED)
+    assert _ids(master)["pokemontcg"] == ("sv2-110", "derived")
+
+
 def test_init_db_backfills_existing_cards(monkeypatch):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     monkeypatch.setattr(db_module, "engine", engine)

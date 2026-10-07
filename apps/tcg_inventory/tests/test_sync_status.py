@@ -103,18 +103,17 @@ def test_cron_source_is_cron_only_for_the_real_scheduled_header(client, monkeypa
 
 
 def test_price_refresh_run_is_recorded(client, monkeypatch):
-    import card_images
+    import pokemontcg_client
+    from test_price_refresh import FakeClient
 
     monkeypatch.delenv("CRON_SECRET", raising=False)
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 9.99)
-    )
+    monkeypatch.setattr(pokemontcg_client, "Client", lambda: FakeClient())
 
     assert client.get("/cron/price-refresh").status_code == 200
 
     [(job, status, _source, message, _files)] = _logs()
     assert (job, status) == ("price-refresh", "ok")
-    assert message.startswith("TCGplayer: checked")
+    assert message.startswith("TCGplayer (pokemontcg.io): 0 requests, priced 0 of 0, 0 unmatched, 0 transient errors")
 
 
 def test_set_sync_run_is_recorded_including_api_failure(client, monkeypatch):

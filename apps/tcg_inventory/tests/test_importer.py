@@ -78,142 +78,46 @@ def test_my_collection_imports_utf16le_bom_export(db_session):
     assert card.reference_price == 0.48
 
 
-def test_my_collection_fetches_tcgplayer_price_for_a_card_missing_one(db_session, monkeypatch):
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-    card = db_session.query(Card).filter(Card.card_id == "a").one()
-    assert card.tcgplayer_price == 9.99
-    assert card.tcgplayer_price_updated_at == dt.date.today()
-    # Dex's own Price column is still recorded independently.
-    assert card.reference_price == 0.48
+def test_sync_never_looks_up_tcgplayer_prices(db_session, monkeypatch):
+    """Issue #349: pokemontcg.io prices come from the daily price cron, by
+    ID. The sync writes only the Dex price, and asks for no exchange rate."""
+    import fx_rates
 
-
-def test_my_collection_does_not_refetch_a_fresh_tcgplayer_price(db_session, monkeypatch):
-    # image_url is set on the fake response too, so the image side of the
-    # lookup also stops asking for more once satisfied -- otherwise a
-    # still-missing image would keep triggering the shared API call and mask
-    # what this test is actually checking (price staleness).
-    calls = []
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: calls.append(1)
-        or card_images.CardApiData("https://example.com/a.png", 5.0),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-    assert len(calls) == 1
-
-    # Re-import the same day: price was just fetched, so it's not stale yet.
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-    assert len(calls) == 1
-
-
-def test_my_collection_refetches_a_stale_tcgplayer_price(db_session, monkeypatch):
-    card = Card(card_id="a", variant=None, name="Shellder", tcgplayer_price=1.0)
-    stale_on = dt.date.today() - dt.timedelta(days=importer._PRICE_STALE_AFTER_DAYS + 1)
-    pricing.record_price(card, pricing.SOURCE_POKEMONTCG, price_nok=1.0, fetched_at=stale_on)
-    db_session.add(card)
-    db_session.commit()
-
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(None, 42.0),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-
-    refreshed = db_session.query(Card).filter(Card.card_id == "a").one()
-    assert refreshed.tcgplayer_price == 42.0
-    assert refreshed.tcgplayer_price_updated_at == dt.date.today()
-
-
-def test_my_collection_backs_off_a_failed_price_lookup(db_session, monkeypatch):
-    # Issue #216: a card that can't be priced is stamped and skipped by later
-    # syncs inside the retry window, instead of taking the budget every time.
-    card = Card(card_id="a", variant=None, name="Japanese Print", image_url="https://example.com/a.png")
-    db_session.add(card)
-    db_session.commit()
-    calls = []
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: calls.append(1) or card_images.CardApiData(None, None),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Japanese Print"}])
-
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-    assert len(calls) == 1
-    row = pricing.get_row(db_session.query(Card).one(), pricing.SOURCE_POKEMONTCG)
-    assert row.lookup_failed_at == dt.date.today()
-
-    import_dex_csv_files(db_session, [("main.csv", csv)])
-    assert len(calls) == 1  # backed off
-
-
-def test_my_collection_price_success_clears_the_failure_stamp(db_session, monkeypatch):
-    card = Card(card_id="a", variant=None, name="Shellder", image_url="https://example.com/a.png")
-    pricing.record_failure(
-        card,
-        pricing.SOURCE_POKEMONTCG,
-        dt.date.today() - dt.timedelta(days=importer.price_refresh.PRICE_RETRY_AFTER_DAYS + 1),
-    )
-    db_session.add(card)
-    db_session.commit()
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda name, set_name, number, variant=None: card_images.CardApiData(None, 3.0)
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
+    monkeypatch.setattr(card_images, "fetch_card_data", lambda *a, **kw: pytest.fail("price lookup in the sync"))
+    monkeypatch.setattr(fx_rates, "get_rates", lambda *a, **kw: pytest.fail("FX lookup in the sync"))
+    csv = make_csv("My Collection", [{"id": "sv2-109", "name": "Sudowoodo", "price": "kr 0,48"}])
 
     import_dex_csv_files(db_session, [("main.csv", csv)])
 
     card = db_session.query(Card).one()
-    assert card.tcgplayer_price == 3.0
-    assert pricing.get_row(card, pricing.SOURCE_POKEMONTCG).lookup_failed_at is None
+    assert pricing.get_row(card, pricing.SOURCE_POKEMONTCG) is None
+    assert (card.reference_price, card.market_price_source) == (0.48, "dex")
 
 
-def test_my_collection_warns_instead_of_pricing_on_low_confidence_match(db_session, monkeypatch):
+def test_sync_image_lookup_by_id_first_then_search_except_for_japanese(db_session, monkeypatch):
+    by_id, searched = [], []
     monkeypatch.setattr(
         card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(
-            image_url=None, tcgplayer_price=None, low_confidence_match=True
-        ),
+        "fetch_image_by_card_id",
+        lambda card_id, name, number: by_id.append(card_id) or ("https://img/by-id.png" if card_id == "sv2-1" else None),
     )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
-    result = import_dex_csv_files(db_session, [("main.csv", csv)])
-
-    card = db_session.query(Card).filter(Card.card_id == "a").one()
-    assert card.tcgplayer_price is None
-    assert any("confident enough" in w for w in result.warnings)
-    # Dex's own price is untouched -- a low-confidence API match should never
-    # clobber a price the collection already had.
-    assert card.reference_price == 0.48
-
-
-def test_my_collection_warns_but_still_prices_on_variant_uncertain_match(db_session, monkeypatch):
     monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(
-            image_url=None, tcgplayer_price=99.0, variant_price_uncertain=True
-        ),
+        card_images, "search_image_url", lambda name, set_name, number: searched.append(name) or "https://img/search.png"
     )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "variant": "Holo"}])
-    result = import_dex_csv_files(db_session, [("main.csv", csv)])
+    csv = make_csv(
+        "My Collection",
+        [
+            {"id": "sv2-1", "name": "By Id"},
+            {"id": "sv35-27", "name": "Searched"},
+            {"id": "jpn_sv2a-1", "name": "Japanese"},
+        ],
+    )
 
-    card = db_session.query(Card).filter(Card.card_id == "a").one()
-    # Unlike a low-confidence name/number match, a variant-uncertain match
-    # is still trusted for pricing (same card, just possibly the wrong
-    # print) -- just surfaced as worth a manual look.
-    assert card.tcgplayer_price == 99.0
-    assert any("multiple TCGPlayer prints" in w for w in result.warnings)
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+
+    images = {c.name: c.image_url for c in db_session.query(Card)}
+    assert images == {"By Id": "https://img/by-id.png", "Searched": "https://img/search.png", "Japanese": None}
+    assert by_id == ["sv2-1", "sv35-27", "jpn_sv2a-1"] and searched == ["Searched"]
 
 
 def test_my_collection_same_id_different_variant_creates_two_cards(db_session):
@@ -826,63 +730,6 @@ def test_import_updates_set_id_when_an_existing_card_moves_sets(db_session):
     card = db_session.query(Card).filter(Card.card_id == "a").one()
     assert card.set_id != first_set_id
     assert card.linked_set.name == "Vivid Voltage"
-
-
-# --------------------------------------------------------------------------
-# FX fallback guard on the import-time price lookup (issue #229)
-# --------------------------------------------------------------------------
-def test_import_skips_tcgplayer_prices_at_the_fx_fallback_rate(db_session, monkeypatch):
-    import fx_rates
-
-    fx_rates.reset_cache()  # live fetch fails (network off), fx_rates table empty
-    # Resolve the rate up front: db_session is a single shared in-memory
-    # connection (StaticPool), so fx_rates reading the table mid-import would
-    # roll back the import's own pending writes -- a test-only artefact.
-    assert fx_rates.get_rates(db_session.get_bind()).source == "fallback"
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder", "price": "kr 0,48"}])
-
-    result = import_dex_csv_files(db_session, [("main.csv", csv)])
-
-    card = db_session.query(Card).filter(Card.card_id == "a").one()
-    assert result.price_lookup_degraded is True
-    assert any(fx_rates.FALLBACK_REASON in w for w in result.warnings)
-    assert card.tcgplayer_price is None
-    assert pricing.get_row(card, pricing.SOURCE_POKEMONTCG) is None  # no price, no failure stamp
-    assert card.reference_price == 0.48  # the Dex (NOK) price is unaffected
-    assert importer.price_refresh.price_lookup_due(card, dt.date.today())
-
-
-def test_import_with_a_stored_fx_rate_prices_as_before(db_session, monkeypatch):
-    import fx_rates
-    from models import FxRate
-
-    old = dt.datetime.utcnow() - dt.timedelta(days=3)
-    db_session.add_all(
-        [
-            FxRate(date=dt.date.today(), currency="USD", rate_nok=9.4, fetched_at=old),
-            FxRate(date=dt.date.today(), currency="EUR", rate_nok=10.9, fetched_at=old),
-        ]
-    )
-    db_session.commit()
-    fx_rates.reset_cache()
-    assert fx_rates.get_rates(db_session.get_bind()).source == "stored"  # see the test above
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda name, set_name, number, variant=None: card_images.CardApiData(image_url=None, tcgplayer_price=9.99),
-    )
-    csv = make_csv("My Collection", [{"id": "a", "name": "Shellder"}])
-
-    result = import_dex_csv_files(db_session, [("main.csv", csv)])
-
-    card = db_session.query(Card).filter(Card.card_id == "a").one()
-    assert result.price_lookup_degraded is False
-    assert card.tcgplayer_price == 9.99
 
 
 # --- Quantity-0 rows from Dex's "all variants" export (issue #340) ---

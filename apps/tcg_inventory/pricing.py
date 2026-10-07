@@ -12,8 +12,9 @@ Resolution rule (`resolve`):
 
 1. The first *fresh* and *confident* price in `CHAIN` order wins. Fresh =
    fetched within `FRESH_DAYS` (14). That's deliberately longer than the
-   7-day refresh cadence (price_refresh.PRICE_STALE_AFTER_DAYS), or every
-   price would expire right before its refresh and the source would flap.
+   refresh cadences (daily for pokemontcg, price_refresh.REFRESH_EVERY_DAYS;
+   weekly for TCGdex, tcgdex_prices.STALE_AFTER_DAYS), or a price would
+   expire right before its refresh and the source would flap.
 2. If no source is fresh, the most recently fetched price is kept, flagged
    `stale` -- never 0 and never None while any price ever existed.
 3. Only a card with no price from any source at all is flagged `no_price`.

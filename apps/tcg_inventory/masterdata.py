@@ -140,13 +140,20 @@ def set_external_id(
     session: Session, master: MasterCard, source: str, external_id: str, matched_by: str
 ) -> MasterCardId:
     """Record `master`'s ID in `source`. One ID per source per master card.
-    A "manual" mapping is never overwritten by an automatic one.
+    A "manual" mapping is never overwritten by an automatic one, and a
+    "derived" one (computed from Dex's ID by link_card / backfill_master_
+    cards) never overwrites anything that isn't itself derived: e.g. a
+    pokemontcg ID the price refresh found by search (heuristic, issue #349)
+    for a card whose Dex ID isn't on pokemontcg.io ("sv35-27" is pokemontcg's
+    "sv3pt5-27") must survive the next Dex sync.
     """
     existing = next((row for row in master.external_ids if row.source == source), None)
     if existing is None:
         existing = MasterCardId(source=source)
         master.external_ids.append(existing)
     elif existing.matched_by == MATCHED_MANUAL and matched_by != MATCHED_MANUAL:
+        return existing
+    elif matched_by == MATCHED_DERIVED and existing.matched_by != MATCHED_DERIVED:
         return existing
     if existing.external_id != external_id or existing.matched_by != matched_by:
         existing.external_id = external_id

@@ -20,6 +20,7 @@ import auth as auth_module  # noqa: E402
 import card_images  # noqa: E402
 import fx_rates  # noqa: E402
 import tcgdex_prices  # noqa: E402
+import pokemontcg_client  # noqa: E402
 
 # The USD/NOK rate every test converts at (see fixed_fx_rates below).
 TEST_USD_TO_NOK = 10.0
@@ -89,6 +90,8 @@ def no_tcgdex_pauses(monkeypatch):
     stub above also covers tcgdex_prices); this just makes the pauses
     instant so e.g. the /cron/price-refresh tests don't sit in back-offs."""
     monkeypatch.setattr(tcgdex_prices, "_SLEEP", lambda seconds: None)
+    # Same for the pokemontcg.io price pass's client (issue #349).
+    monkeypatch.setattr(pokemontcg_client, "_SLEEP", lambda seconds: None)
 
 
 @pytest.fixture(autouse=True)

@@ -70,7 +70,7 @@ SOURCES = (SOURCE_CM, SOURCE_TP)
 # masterdata language -> TCGdex catalog. zh-hans (3 cards) isn't covered.
 LANGUAGES = {"int": "en", "ja": "ja"}
 
-# ~870 cards refreshed weekly (price_refresh.PRICE_STALE_AFTER_DAYS) is ~125
+# ~870 cards refreshed weekly (STALE_AFTER_DAYS below) is ~125
 # card lookups a day. Set/set-list requests needed to resolve new IDs come on
 # top, but are cached per run (one per set, not per card).
 MAX_LOOKUPS_PER_RUN = 125

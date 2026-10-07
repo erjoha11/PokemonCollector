@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 from conftest import make_csv
 
-import card_images
 import pricing
 import snapshots
 from importer import import_dex_csv_files
@@ -36,7 +35,7 @@ def test_a_stale_source_falls_through_to_the_next_fresh_one():
 def test_freshness_window_is_inclusive_and_longer_than_the_refresh_cadence():
     import price_refresh
 
-    assert pricing.FRESH_DAYS > price_refresh.PRICE_STALE_AFTER_DAYS
+    assert pricing.FRESH_DAYS > price_refresh.REFRESH_EVERY_DAYS
     res = pricing.resolve([_row("dex", 100.0, pricing.FRESH_DAYS)], TODAY)
     assert res.flags is None
 
@@ -140,38 +139,38 @@ def test_an_empty_dex_price_cell_keeps_the_last_known_price(db_session):
     assert card.market_price == 10.0
 
 
-def test_import_records_pokemontcg_with_native_price_rate_and_variant_flag(db_session, monkeypatch):
-    monkeypatch.setattr(
-        card_images,
-        "fetch_card_data",
-        lambda *a, **kw: card_images.CardApiData(
-            image_url=None,
-            tcgplayer_price=95.0,
-            variant_price_uncertain=True,
-            tcgplayer_price_usd=9.5,
-            tcgplayer_variant_key="holofoil",
-            usd_to_nok=10.0,
-        ),
-    )
-    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a", "price": ""}]))])
+def _price_by_id(db_session, usd_prices):
+    """Run the pokemontcg pass (issue #349) for card "a" imported as sv2-109."""
+    import price_refresh
+    from test_price_refresh import FakeClient, api
+
+    client = FakeClient([api("sv2-109", "Card 0", "0", usd_prices)])
+    price_refresh.refresh_stale_prices(db_session, client=client)
+    db_session.expire_all()
+
+
+def test_pokemontcg_records_native_price_rate_and_variant_flag(db_session):
+    csv = make_csv("My Collection", [{"id": "sv2-109", "number": "0/193", "price": ""}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    _price_by_id(db_session, {"normal": 1.0, "holofoil": 9.5})  # blank variant: uncertain
 
     card = db_session.query(Card).one()
     row = db_session.query(CardPrice).filter_by(source="pokemontcg").one()
-    assert (row.price, row.currency, row.fx_rate, row.price_nok, row.variant_key) == (9.5, "USD", 10.0, 95.0, "holofoil")
+    assert (row.price, row.currency, row.fx_rate, row.price_nok, row.variant_key) == (1.0, "USD", 10.0, 10.0, "normal")
     assert row.flags == "variant_price_uncertain"
     # No Dex price, so TCGplayer via pokemontcg.io wins, flag and all.
-    assert (card.market_price, card.market_price_source, card.price_flags) == (95.0, "pokemontcg", "variant_price_uncertain")
-    assert card.tcgplayer_price == 95.0  # mirror
+    assert (card.market_price, card.market_price_source, card.price_flags) == (10.0, "pokemontcg", "variant_price_uncertain")
+    assert card.tcgplayer_price == 10.0  # mirror
 
 
-def test_dex_outranks_pokemontcg_when_both_are_fresh(db_session, monkeypatch):
-    monkeypatch.setattr(
-        card_images, "fetch_card_data", lambda *a, **kw: card_images.CardApiData(image_url=None, tcgplayer_price=95.0)
-    )
-    import_dex_csv_files(db_session, [("main.csv", make_csv("My Collection", [{"id": "a", "price": "80"}]))])
+def test_dex_outranks_pokemontcg_when_both_are_fresh(db_session):
+    csv = make_csv("My Collection", [{"id": "sv2-109", "number": "0/193", "price": "80"}])
+    import_dex_csv_files(db_session, [("main.csv", csv)])
+    _price_by_id(db_session, {"normal": 9.5})
 
     card = db_session.query(Card).one()
     assert (card.market_price, card.market_price_source) == (80.0, "dex")
+    assert db_session.query(CardPrice).filter_by(source="pokemontcg").one().price_nok == 95.0
 
 
 def test_card_missing_from_export_keeps_its_price_rows(db_session):

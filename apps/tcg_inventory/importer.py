@@ -23,9 +23,7 @@ from sqlalchemy.orm import Session, selectinload
 
 import card_images
 import constants
-import fx_rates
 import masterdata
-import price_refresh
 import pricing
 from db import get_or_create_set
 from models import Binder, Card, Collection, ImportLog, Set
@@ -39,14 +37,10 @@ MY_COLLECTION_CATEGORY = constants.MY_COLLECTION_CATEGORY
 # since the condition below is "still missing one", not "just created".
 _MAX_IMAGE_LOOKUPS_PER_IMPORT = 25
 
-# Same reasoning, separate budget: unlike images (fetched once and cached
-# forever), a TCGPlayer price needs periodic refreshing since prices move,
-# so this budget is spent on stale-or-missing prices every sync rather than
-# only ever-missing ones. Which cards are due (stale/missing, and not inside
-# a failed-lookup backoff window, issue #216) is price_refresh's rule,
-# shared with the daily price cron -- see price_refresh.price_lookup_due.
-_MAX_PRICE_LOOKUPS_PER_IMPORT = 25
-_PRICE_STALE_AFTER_DAYS = price_refresh.PRICE_STALE_AFTER_DAYS
+# The sync used to look up up to 25 pokemontcg.io prices per run as well.
+# Since issue #349 the daily price cron (price_refresh.py) fetches every
+# international card's price by ID in a few batch requests, so the sync
+# only writes the Dex price and fills images.
 
 # Sync circuit breaker (issue #225). A sync that would newly flag more than
 # this share of the existing cards as "missing from My Collection" is almost
@@ -77,9 +71,6 @@ class ImportResult:
     collections_touched: set[str] = field(default_factory=set)
     binders_touched: set[str] = field(default_factory=set)
     warnings: list[str] = field(default_factory=list)
-    # True when this sync's TCGplayer price lookups were skipped because the
-    # only exchange rate available was fx_rates' fallback constant (#229).
-    price_lookup_degraded: bool = False
     # Quantity-0 rows for cards that aren't in the database (Dex's "all
     # variants" export lists every unowned variant, issue #340). Skipped, not
     # warned about: My Collection rows and other categories' rows alike.
@@ -268,7 +259,6 @@ def import_dex_csv_files(
         )
         cards_by_key: dict[tuple[str, str | None], Card] = {(c.card_id, c.variant): c for c in existing}
         image_lookup_budget = _MAX_IMAGE_LOOKUPS_PER_IMPORT
-        price_lookup_budget = _MAX_PRICE_LOOKUPS_PER_IMPORT
         # Reused across every row in this import call so get_or_create_set()
         # only queries/creates once per distinct (series, set) pair seen in
         # this sync, not once per card -- see get_or_create_set()'s docstring
@@ -280,8 +270,6 @@ def import_dex_csv_files(
         # one UPDATE per card per sync (issue #210, and #193's timeout).
         dex_prices: dict[Card, float] = {}
         imported_cards: list[Card] = []
-        fx_primed = False
-        fx_fallback = False
 
         for row in my_collection_rows:
             card_id = (row.get("Id") or "").strip()
@@ -344,53 +332,19 @@ def import_dex_csv_files(
                 card.notes = notes
             card.flagged_missing_since = None  # it's back, un-flag it
 
-            needs_image = card.image_url is None and image_lookup_budget > 0
-            needs_price = price_lookup_budget > 0 and price_refresh.price_lookup_due(card, today)
-            if (needs_image or needs_price) and not fx_primed:
-                # Resolve the USD/NOK rate once, with the DB, so it's
-                # stored / reused / falls back to the last stored rate
-                # (fx_rates.py); fetch_card_data then hits the cache.
-                fx_primed = True
-                if not fx_rates.get_rates(db.get_bind()).usable("USD"):
-                    # Only the fixed fallback constant is available: no
-                    # TCGplayer price is written this sync (issue #229) and
-                    # nothing is stamped, so every card stays due.
-                    fx_fallback = True
-                    result.price_lookup_degraded = True
-                    result.warnings.append(f"TCGPlayer prices: {fx_rates.FALLBACK_REASON}")
-            if fx_fallback:
-                needs_price = False
-            if needs_image or needs_price:
-                api_data = card_images.fetch_card_data(card.name, card.set, card.number, card.variant)
-                if needs_image:
-                    # By Dex's own card_id first (see card_images.
-                    # fetch_image_by_card_id); the name search's image only
-                    # for non-Japanese prints -- Japanese ones aren't in
-                    # that API, so its hit could only be the wrong card.
-                    card.image_url = card_images.fetch_image_by_card_id(card.card_id, card.name, card.number) or (
-                        None if (card.card_id or "").startswith("jpn_") else api_data.image_url
-                    )
-                    image_lookup_budget -= 1
-                if needs_price:
-                    # Stamps the pokemontcg row's lookup_failed_at on a miss, so a card
-                    # that can't be priced stops taking this budget every
-                    # sync (issue #216).
-                    if price_refresh.apply_price_lookup(card, api_data, today):
-                        if api_data.variant_price_uncertain:
-                            result.warnings.append(
-                                f"{card.name} ({card.set or '?'} {card.number or '?'}"
-                                f"{f', {card.variant}' if card.variant else ''}): "
-                                "card has multiple TCGPlayer prints and the price used "
-                                "couldn't be matched to this card's variant -- worth a "
-                                "manual look."
-                            )
-                    elif api_data.low_confidence_match:
-                        result.warnings.append(
-                            f"{card.name} ({card.set or '?'} {card.number or '?'}): "
-                            "TCGPlayer API match wasn't confident enough to trust for "
-                            "pricing -- price left unchanged, worth a manual look."
-                        )
-                    price_lookup_budget -= 1
+            if card.image_url is None and image_lookup_budget > 0:
+                # By Dex's own card_id first (see card_images.
+                # fetch_image_by_card_id); the name search only for
+                # non-Japanese prints -- Japanese ones aren't in that API, so
+                # its hit could only be the wrong card. No price lookups here
+                # (issue #349): the daily price cron fetches pokemontcg.io
+                # prices by ID, see price_refresh.py.
+                card.image_url = card_images.fetch_image_by_card_id(card.card_id, card.name, card.number) or (
+                    None
+                    if (card.card_id or "").startswith("jpn_")
+                    else card_images.search_image_url(card.name, card.set, card.number)
+                )
+                image_lookup_budget -= 1
 
             if is_new:
                 result.cards_created += 1
