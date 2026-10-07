@@ -1,7 +1,7 @@
 """Single-flight guard for background jobs, stored in the database (issue
 #340, built to #274 point 2's design).
 
-Usage (see `/cron/dropbox-sync` in app.py):
+Usage (see `jobs._single_flight`, which every job in jobs.py runs under):
 
     try:
         lock = job_locks.acquire(lock_db, sync_status.DEX_SYNC, trigger="cron")
@@ -30,8 +30,8 @@ Every function here commits on its own: pass a session that isn't also
 carrying the job's own work, so a lock commit never commits half a job and
 a job rollback never drops the lock.
 
-Only `dex-sync` uses this for now; #274 moves every job behind it, which is
-why the job name is a parameter and nothing here is Dex-specific.
+Every job in jobs.py runs behind it since #274 (one lock row per job name,
+the `sync_status` job constants); nothing here is job-specific.
 """
 from __future__ import annotations
 

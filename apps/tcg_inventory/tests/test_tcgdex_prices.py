@@ -503,8 +503,8 @@ def test_cron_price_refresh_runs_the_tcgdex_pass_before_its_snapshot(client, fak
 
 
 def test_cron_price_refresh_survives_a_tcgdex_crash(client, monkeypatch):
-    import app as app_module
     import db as db_module
+    import jobs
     from models import CardSnapshot
 
     _seed_cron_card()
@@ -512,7 +512,7 @@ def test_cron_price_refresh_survives_a_tcgdex_crash(client, monkeypatch):
     def boom(*args, **kwargs):
         raise RuntimeError("tcgdex bug")
 
-    monkeypatch.setattr(app_module.tcgdex_prices, "refresh_tcgdex_prices", boom)
+    monkeypatch.setattr(jobs.tcgdex_prices, "refresh_tcgdex_prices", boom)
     response = client.get("/cron/price-refresh")
     assert response.status_code == 200
     assert response.json()["tcgdex"] is None
