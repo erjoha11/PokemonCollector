@@ -5,8 +5,8 @@ Two calls:
 
 - `cards_by_ids(ids)`: one request for up to CHUNK_SIZE cards by their
   pokemontcg.io IDs (`q=id:"a" OR id:"b" ...`), only the fields the price
-  pass needs. Every international card in the collection fits in ~10 of
-  these (checked 2026-10-07: 50 IDs in one request, ~2 s, ~15 KB).
+  pass needs. Every international card in the collection fits in 10 of
+  these (checked 2026-10-07: 50 IDs in one request, ~6 s).
 - `search(name, set_name, number)`: the old name + set name + number search
   (card_images.fetch_card_data's query), used only as a fallback for a card
   whose stored ID isn't on pokemontcg.io.
@@ -30,7 +30,7 @@ import card_images
 API_URL = "https://api.pokemontcg.io/v2/cards"
 CHUNK_SIZE = 50
 SELECT = "id,name,number,tcgplayer"
-_TIMEOUT = 15.0
+_TIMEOUT = 12.0
 REQUEST_INTERVAL_S = 0.5  # pause between requests (keyless tier, limits unknown)
 BACKOFF_S = 3.0  # wait before the one retry of a 429/5xx/timeout
 MAX_RETRY_AFTER_S = 15.0

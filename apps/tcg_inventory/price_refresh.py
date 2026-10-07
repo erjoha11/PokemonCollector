@@ -16,7 +16,7 @@ How it works:
   zh-hans cards aren't on pokemontcg.io and are never asked for.
 - **By ID, in batches.** The due cards' distinct IDs (variants of one
   printed card share one) go to pokemontcg.io CHUNK_SIZE at a time
-  (pokemontcg_client.Client.cards_by_ids): ~460 IDs is ~10 requests a day.
+  (pokemontcg_client.Client.cards_by_ids): prod's 452 IDs are 10 requests a day.
   Each card then picks its own print from the returned `tcgplayer.prices`
   (card_images._choose_tcgplayer_price).
 - **Verified.** A returned card must have the requested ID, Dex's printed

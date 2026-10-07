@@ -66,9 +66,10 @@ def no_inbox_token_from_dotenv(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_card_image_network_calls(monkeypatch):
-    """Every CSV import calls card_images.fetch_card_data for cards missing
-    an image or with a stale price (see importer.py), which otherwise hits
-    the real Pokemon TCG API. Stubbed at the httpx.get boundary (not
+    """Every CSV import looks up images for cards missing one (see
+    importer.py), and the price cron calls pokemontcg_client, which
+    otherwise hit the real Pokemon TCG API (httpx is one module, so this
+    stub covers both). Stubbed at the httpx.get boundary (not
     fetch_card_data itself) so fetch_card_data's own query-building/parsing
     logic still runs -- a simulated connection failure exercises the same
     "lookup didn't work" path a real offline/rate-limited run would.

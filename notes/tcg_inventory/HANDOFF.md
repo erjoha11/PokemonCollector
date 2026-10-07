@@ -2013,3 +2013,55 @@ None. Read-only prod queries only (session forced read-only).
 
 - If the user wants Dex to win for longer between manual exports, the knob
   is a per-source freshness window (a longer one for `dex`). Not built.
+
+
+# Handoff notes — 2026-10-07 session (#349: pokemontcg.io prices by stored ID, daily batches)
+
+## Code (in git, PR for #349)
+
+- New `pokemontcg_client.py` (batched `cards_by_ids`, 50 IDs per request,
+  `select=id,name,number,tcgplayer`; fallback `search`; one retry after a
+  back-off, then `TransientError`/`RateLimited`). `price_refresh.py`
+  rewritten around it: every `int` card with a `pokemontcg` ID and a
+  TCGplayer print is due daily; verified by ID + number + name; prices
+  older than `MAX_UPSTREAM_AGE_DAYS` (TCGplayer `updatedAt`) not used;
+  transient failures write nothing; fallback search only for an ID missing
+  from a 200 response, a confident hit stored as `heuristic`.
+- `masterdata.set_external_id`: a `derived` ID never overwrites a
+  non-`derived` one, so the Dex sync keeps a found ID.
+- `importer.py` no longer looks up pokemontcg.io prices (images only);
+  `/cron/dropbox-sync` can no longer be `degraded` by the FX fallback.
+- `/cron/price-refresh`: pokemontcg pass time-boxed at 100 s
+  (`app.POKEMONTCG_SECONDS`); JSON + Sync status line report requests,
+  priced, unmatched, transient errors, stopped.
+- No schema change.
+
+## Direct database changes
+
+None. Read-only prod queries only (session forced read-only).
+
+## Expect after deploy (read-only prod query + 3 live probes, 2026-10-07)
+
+- 479 `int` cards, all with a `derived` pokemontcg ID; 472 have a TCGplayer
+  print (7 ball-pattern/special prints excluded), 452 distinct IDs ->
+  **10 batch requests a day**, ~6 s each. 390 `ja` + 3 `zh-hans` cards are
+  never asked for (they only have old `lookup_failed_at` stamps, no prices).
+- In one probed batch of 50, 18 IDs were missing (`sv35-*` = pokemontcg's
+  `sv3pt5-*`, `sv65-*`, `sv105b-*`); the other 50-ID batch found all 50
+  (`swshp-SWSH104` included). Newer sets (`me4`/`me5`/`me25`, ~75 IDs) may
+  not be on pokemontcg.io yet. So the first days spend up to 40 fallback
+  searches per run; found IDs become `heuristic` rows in `master_card_ids`,
+  the rest get stamped and are re-searched after 14 days.
+- One of the three probe requests 500'd twice (retry included): expect
+  some `transient_errors` on a normal day.
+- `pokemontcg` is third in `pricing.CHAIN`; today 830 cards win on `dex`,
+  none on `pokemontcg`, so displayed prices barely move.
+
+## Open items
+
+- A stamped card stays in the daily ID batch (only its fallback search
+  backs off), unlike the issue's "due = not inside the backoff". It costs
+  no extra requests at this collection size and picks up a newly listed
+  card the next day.
+- The 393 old `ja`/`zh-hans` `pokemontcg` rows (failure stamps only) are
+  left as they are.

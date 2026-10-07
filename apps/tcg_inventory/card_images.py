@@ -68,8 +68,8 @@ class CardApiData:
     # True when the API had a confident match but the only USD/NOK rate
     # available was fx_rates' fixed fallback constant (issue #229): no price
     # is returned (tcgplayer_price is None), and callers must treat this as
-    # "try again later", not as a failed lookup -- see
-    # price_refresh.apply_price_lookup.
+    # "try again later", not as a failed lookup. (The daily price pass,
+    # price_refresh.py, checks the rate itself before it starts, issue #349.)
     fx_unavailable: bool = False
 
 

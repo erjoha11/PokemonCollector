@@ -3518,9 +3518,12 @@ def _price_refresh_message(result, tcgdex, images, snapshotted: int) -> str:
 
 
 # Per daily /cron/price-refresh run: the pokemontcg.io pass (issue #349) is
-# ~10 batch requests of ~2 s each plus the first days' fallback searches
-# (~1-2 s each, at most price_refresh.MAX_FALLBACK_SEARCHES_PER_RUN)...
-POKEMONTCG_SECONDS = 60.0
+# ~10 batch requests of ~6 s each (measured 2026-10-07 on prod's 452 IDs)
+# plus the first days' fallback searches (~1-2 s each, at most
+# price_refresh.MAX_FALLBACK_SEARCHES_PER_RUN). Checked before each request,
+# so the worst overrun is one request with its retry
+# (pokemontcg_client: 2 x 12 s timeout + 3 s back-off)...
+POKEMONTCG_SECONDS = 100.0
 # ...a modest image pass after prices...
 IMAGE_BACKFILL_PER_CRON = 60
 IMAGE_BACKFILL_SECONDS = 25.0

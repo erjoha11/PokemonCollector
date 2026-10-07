@@ -1582,7 +1582,8 @@ image pass. The Dex sync no longer looks up pokemontcg.io prices at all
 - **How.** The due cards' distinct IDs (variants of one printed card share
   one) are asked for 50 at a time (`pokemontcg_client.CHUNK_SIZE`):
   `GET /v2/cards?q=id:"a" OR id:"b" ...&select=id,name,number,tcgplayer`.
-  Prod's ~470 international cards are ~10 requests a day, ~2 s each. Each
+  Prod's 472 international cards (452 distinct IDs) are 10 requests a day,
+  ~6 s each (measured 2026-10-07). Each
   card then picks its own print (`card_images._choose_tcgplayer_price`).
 - **Verified.** A returned card must have the requested ID, Dex's printed
   number and a name that overlaps Dex's (the same check as the by-ID image
@@ -1610,7 +1611,7 @@ image pass. The Dex sync no longer looks up pokemontcg.io prices at all
   that request's cards: no price, no stamp, they're due again tomorrow (or
   on a manual re-run). 3 such failures in a row, or one persisting 429,
   stop the pass for the day (`stopped: "errors"` / `"rate_limited"`), and
-  so does the time budget, 60 s (`app.POKEMONTCG_SECONDS`, `stopped:
+  so does the time budget, 100 s (`app.POKEMONTCG_SECONDS`, `stopped:
   "time"`). The cron still runs TCGdex, resolves and snapshots.
 - **Reported.** The cron JSON has `requests` (HTTP requests, retries
   included), `batch_requests`, `fallback_searches`, `cards_checked`,
