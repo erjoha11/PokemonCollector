@@ -234,7 +234,9 @@ def bulk_record_prices(
     fx_rate: float = 1.0,
 ) -> None:
     """Upsert many NOK-denominated prices for one source in a few statements
-    (importer.py's Dex Price column, ~every card every sync). Rows that
+    (importer.py's Dex Price column, ~every card every sync). `today` is
+    the rows' `fetched_at`: for `dex` that's the export's date, not the
+    sync's (issue #351). Rows that
     already exist are updated with one UPDATE ... CASE per chunk -- the
     ORM would issue one UPDATE per row, which is what timed out on Vercel
     in #193."""

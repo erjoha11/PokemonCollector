@@ -1970,3 +1970,46 @@ None. No production DB read or write.
 - `/sync-status` doesn't show a *running* sync ("running since ..."); the
   lock row has what it needs. Left out to keep this PR free of UI changes.
 - #274 (shared `jobs.py`, other jobs, `connector` trigger) still to do.
+
+
+# Handoff notes — 2026-10-07 session (#351: Dex price freshness = export date)
+
+## Code (in git, PR for #351)
+
+- `/cron/dropbox-sync` passes each file's export date
+  (`DropboxFile.export_date`, Dropbox `client_modified` as a UTC date) into
+  `import_dex_csv_files(file_dates=...)`. The `dex` card_prices rows get the
+  My Collection file's export date as `fetched_at` (capped at today)
+  instead of the sync date. No date = today.
+- A category found in more than one dated file is read from the newest file
+  only, with a warning (REVIEW.md's "old export can overwrite a newer one").
+  Undated files merge as before.
+- No schema change.
+
+## Direct database changes
+
+None. Read-only prod queries only (session forced read-only).
+
+## Expect after deploy (read-only prod query, 2026-10-07)
+
+- Prod has 831 `dex` rows; 830 cards currently win on `dex` (818 rows
+  stamped 2026-10-07 by today's re-read). Dex prices changed in the 10-01,
+  10-04 and 10-06 snapshots, and `dexcollection.csv` became the newest file
+  between the 10-06 05:38 and 14:01 runs, so the current export is most
+  likely from 2026-10-06. The exact `client_modified` wasn't readable: no
+  Dropbox credentials in the local `.env`.
+- **First sync after deploy: about 0 cards switch source**, since that
+  export is inside the 14-day window. Only `market_price_as_of` moves back
+  to the export date (the "· N d ago" text).
+- **When an export passes 14 days with no new one**: with today's
+  live-source rows, 819 of the 830 dex-winning cards switch at once (463 to
+  TCGplayer via TCGdex, 352 to Cardmarket via TCGdex, 4 to pokemontcg.io);
+  11 stay on Dex, flagged `stale`. Market Value goes from about 12,900 to
+  about 13,559 NOK (+5%). The next export switches them back. Both show as
+  a source switch on the Market Value chart, and that day's snapshots
+  record the new source and price.
+
+## Open items
+
+- If the user wants Dex to win for longer between manual exports, the knob
+  is a per-source freshness window (a longer one for `dex`). Not built.
