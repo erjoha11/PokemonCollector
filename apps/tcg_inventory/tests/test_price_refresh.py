@@ -468,3 +468,34 @@ def test_fetch_card_data_returns_no_price_at_the_fx_fallback_rate(monkeypatch):
     card = Card(card_id="a", variant=None, name="Shellder")
     assert price_refresh.apply_price_lookup(card, data, dt.date.today()) is False
     assert _row(card) is None
+
+
+# --- prints TCGplayer has no key for (issue #350) -----------------------------
+
+
+def test_a_ball_pattern_card_is_never_looked_up_and_loses_its_old_price(db_session, monkeypatch):
+    stale = dt.date.today() - dt.timedelta(days=price_refresh.PRICE_STALE_AFTER_DAYS + 1)
+    ball = _priced(Card(card_id="a", variant="Poké Ball Holo", name="Eevee"), 0.3, stale)
+    plain = _priced(Card(card_id="b", variant="Normal", name="Eevee"), 0.3, stale)
+    db_session.add_all([ball, plain])
+    db_session.commit()
+
+    looked_up = []
+    monkeypatch.setattr(
+        card_images,
+        "fetch_card_data",
+        lambda name, set_name, number, variant=None: looked_up.append(variant) or card_images.CardApiData(None, 4.0),
+    )
+
+    assert price_refresh.price_lookup_due(ball, dt.date.today()) is False
+    assert price_refresh.price_lookup_due(plain, dt.date.today()) is True
+
+    result = price_refresh.refresh_stale_prices(db_session)
+
+    assert looked_up == ["Normal"]
+    assert (result.other_print_dropped, result.cards_checked) == (1, 1)
+    db_session.expire_all()
+    ball = db_session.query(Card).filter_by(card_id="a").one()
+    assert ball.prices == [] and ball.tcgplayer_price is None
+    assert ball.market_price_source is None
+    assert db_session.query(Card).filter_by(card_id="b").one().tcgplayer_price == 4.0

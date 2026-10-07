@@ -199,11 +199,12 @@ def _fake_multi_variant_response(**prices):
 
 
 def test_fetch_card_data_single_priced_variant_is_never_uncertain(monkeypatch):
-    # Only one priced print exists -- nothing to disambiguate, regardless of
-    # what Dex's own Variant says (or doesn't say).
+    # Only one priced print exists -- nothing to disambiguate, whichever
+    # TCGplayer-keyed print Dex's own Variant names (or none at all). A print
+    # TCGplayer has no key for is the exception, see the #350 tests below.
     monkeypatch.setattr(card_images.httpx, "get", lambda *a, **kw: _fake_multi_variant_response(holofoil=12.5))
 
-    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Some Unrelated Variant Text")
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Normal")
 
     assert result.tcgplayer_price == round(12.5 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is False
@@ -248,21 +249,52 @@ def test_fetch_card_data_matches_1st_edition_variant_among_several(monkeypatch):
     assert result.variant_price_uncertain is False
 
 
-def test_fetch_card_data_ambiguous_variant_among_several_falls_back_but_flags_uncertain(monkeypatch):
-    # A plain "Holo" doesn't disambiguate between holofoil/reverseHolofoil/
-    # unlimitedHolofoil on purpose (see _VARIANT_HINTS) -- still returns a
-    # best-effort price (the first one present) rather than none at all, but
-    # flags it so callers can surface it instead of trusting a guess.
+def test_fetch_card_data_matches_plain_holo_to_holofoil_among_several(monkeypatch):
+    # Issue #350: a plain "Holo" is the `holofoil` key when that exact key
+    # exists, whatever order the API lists the prints in.
     monkeypatch.setattr(
         card_images.httpx,
         "get",
-        lambda *a, **kw: _fake_multi_variant_response(holofoil=12.5, reverseHolofoil=20.0),
+        lambda *a, **kw: _fake_multi_variant_response(reverseHolofoil=20.0, holofoil=12.5),
     )
 
     result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Holo")
 
     assert result.tcgplayer_price == round(12.5 * TEST_USD_TO_NOK, 2)
+    assert result.tcgplayer_variant_key == "holofoil"
+    assert result.variant_price_uncertain is False
+
+
+def test_fetch_card_data_unmatched_variant_among_several_falls_back_but_flags_uncertain(monkeypatch):
+    # A WotC "Holo" has no plain `holofoil` key to match (only 1st Edition /
+    # Unlimited holofoil) -- still returns a best-effort price (the first one
+    # present) rather than none at all, but flags it so callers can surface
+    # it instead of trusting a guess.
+    monkeypatch.setattr(
+        card_images.httpx,
+        "get",
+        lambda *a, **kw: _fake_multi_variant_response(**{"1stEditionHolofoil": 50.0, "unlimitedHolofoil": 12.5}),
+    )
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Holo")
+
+    assert result.tcgplayer_price == round(50.0 * TEST_USD_TO_NOK, 2)
     assert result.variant_price_uncertain is True
+
+
+def test_fetch_card_data_ball_pattern_gets_no_price_even_with_one_priced_print(monkeypatch):
+    # Issue #350: pokemontcg.io has no Poké Ball / Master Ball keys, so its
+    # one price is another print's. No price and no uncertain flag; the
+    # image is still returned.
+    monkeypatch.setattr(card_images.httpx, "get", lambda *a, **kw: _fake_multi_variant_response(normal=0.25))
+
+    result = card_images.fetch_card_data("Pikachu", "Base Set", "58/102", "Poké Ball Holo")
+
+    assert result.tcgplayer_price is None
+    assert result.tcgplayer_variant_key is None
+    assert result.variant_price_uncertain is False
+    assert result.low_confidence_match is False
+    assert result.image_url == "https://example.com/a.png"
 
 
 def test_fetch_card_data_missing_variant_with_several_priced_prints_is_uncertain(monkeypatch):

@@ -469,10 +469,14 @@ def choose_cardmarket(payload: dict, dex_variant: str | None) -> SourcePrice | N
 
 def choose_tcgplayer(payload: dict, dex_variant: str | None) -> SourcePrice | None:
     """The TCGplayer market price (USD) for the Dex card's print, or None --
-    card_images' pokemontcg rule verbatim (single print -> it; else Dex's
-    Variant via _match_variant_key; else the first print, flagged). TCGdex
-    spells the keys "reverse-holofoil" where pokemontcg.io has
-    "reverseHolofoil"; they're compared with the hyphens removed."""
+    card_images' pokemontcg rule verbatim (a print TCGplayer has no key for,
+    e.g. a Poké Ball / Master Ball pattern -> None, issue #350; single
+    print -> it; else the key that is Dex's print via _match_variant_key;
+    else the first print, flagged). TCGdex spells the keys
+    "reverse-holofoil" where pokemontcg.io has "reverseHolofoil";
+    _match_variant_key compares them with the hyphens removed."""
+    if not card_images.has_tcgplayer_print(dex_variant):
+        return None
     block = (payload.get("pricing") or {}).get("tcgplayer")
     if not isinstance(block, dict):
         return None
@@ -484,15 +488,13 @@ def choose_tcgplayer(payload: dict, dex_variant: str | None) -> SourcePrice | No
                 prices[key] = value
     if not prices:
         return None
-    normalized = {key.replace("-", ""): key for key in prices}
     updated = _parse_date(block.get("updated"))
     if len(prices) == 1:
         key = next(iter(prices))
         return SourcePrice(prices[key], "USD", key, updated, False)
-    matched = card_images._match_variant_key(dex_variant, list(normalized))
+    matched = card_images._match_variant_key(dex_variant, list(prices))
     if matched:
-        key = normalized[matched]
-        return SourcePrice(prices[key], "USD", key, updated, False)
+        return SourcePrice(prices[matched], "USD", matched, updated, False)
     key = next(iter(prices))
     return SourcePrice(prices[key], "USD", key, updated, True)
 
@@ -563,6 +565,9 @@ class TcgdexRefreshResult:
     # no price, no failure stamp -- and every due card is retried next run.
     status: str = "ok"
     degraded_reason: str | None = None
+    # Cards whose stored TCGplayer price was for another print and was
+    # dropped this run (pricing.drop_other_print_tcgplayer_rows, issue #350).
+    other_print_dropped: int = 0
 
 
 def _label(card: Card) -> str:
@@ -679,6 +684,11 @@ def refresh_tcgdex_prices(
     today = today or dt.date.today()
     client = client or Client()
     result = TcgdexRefreshResult()
+    # Stored TCGplayer prices for a print TCGplayer has no key for (issue
+    # #350) go first, whatever the exchange rate.
+    result.other_print_dropped = pricing.drop_other_print_tcgplayer_rows(db, today)
+    if result.other_print_dropped:
+        db.commit()
     rates = fx_rates.get_rates(db.get_bind())
     result.eur_to_nok = rates.to_nok("EUR")
     result.usd_to_nok = rates.to_nok("USD")

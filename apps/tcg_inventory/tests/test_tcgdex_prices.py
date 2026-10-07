@@ -572,3 +572,30 @@ def test_refresh_with_a_stored_rate_is_unchanged(db_session, fake_api):
     assert (result.status, result.fx_source, result.cards_priced) == ("ok", "stored", 1)
     row = pricing.get_row(card, T.SOURCE_CM)
     assert (row.fx_rate, row.price_nok) == (10.9, round(0.59 * 10.9, 2))
+
+
+# --------------------------------------------------------------------------
+# Prints TCGplayer has no key for (issue #350)
+# --------------------------------------------------------------------------
+def test_a_ball_pattern_card_drops_its_old_tcgplayer_prices_and_falls_through_to_cardmarket(db_session, fake_api):
+    # Before #350 a Poké Ball print got the base print's TCGplayer price
+    # (flagged uncertain, but still winning). The refresh now writes no
+    # TCGplayer price for it and drops the stored ones, from both sources.
+    card = add_card(db_session, card_id="swsh3-150", name="Bunnelby", number="150/189", variant="Poké Ball Holo")
+    for source in (pricing.SOURCE_TCGDEX_TCGPLAYER, pricing.SOURCE_POKEMONTCG):
+        pricing.record_price(card, source, price_nok=0.7, fetched_at=TODAY, flags=[pricing.FLAG_VARIANT_UNCERTAIN])
+    card.tcgplayer_price, card.tcgplayer_price_updated_at = 0.7, TODAY
+    pricing.resolve_cards(db_session, [card.id], today=TODAY)
+    db_session.commit()
+    db_session.refresh(card)
+    assert card.market_price_source == pricing.SOURCE_TCGDEX_TCGPLAYER
+
+    fake_api(en_routes())
+    result = T.refresh_tcgdex_prices(db_session, today=TODAY)
+
+    assert (result.other_print_dropped, result.cards_priced) == (1, 1)
+    db_session.expire_all()
+    card = db_session.get(Card, card.id)
+    assert {p.source for p in card.prices} == {T.SOURCE_CM}
+    assert card.market_price_source == T.SOURCE_CM
+    assert card.tcgplayer_price is None

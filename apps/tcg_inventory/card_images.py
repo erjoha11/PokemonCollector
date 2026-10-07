@@ -16,6 +16,7 @@ from dataclasses import dataclass
 import httpx
 
 import fx_rates
+import masterdata
 
 _API_URL = "https://api.pokemontcg.io/v2/cards"
 _TIMEOUT = 5.0
@@ -76,37 +77,66 @@ def _printed_number(number: str | None) -> str | None:
     return match.group(0) if match else None
 
 
-# Dex's free-text `Variant` field and the API's `tcgplayer.prices` keys
-# don't share a vocabulary, so this is a deliberately conservative,
-# ordered (substring-in-Dex-variant -> candidate API key substrings) rule
-# set -- first match wins. Only covers cases that are genuinely
-# unambiguous; e.g. a plain "Holo" is left unmapped on purpose, since it
-# could mean holofoil, reverseHolofoil, or unlimitedHolofoil and guessing
-# wrong here would silently misprice a card exactly like the case this is
-# meant to prevent. See _match_variant_key.
-_VARIANT_HINTS: list[tuple[str, tuple[str, ...]]] = [
-    ("1st edition", ("1stedition",)),
-    ("reverse holo", ("reverseholofoil",)),
-    ("normal", ("normal", "unlimited")),
-]
+# Which `tcgplayer.prices` key is which Dex print (issue #350). Keyed by
+# masterdata's variant code (masterdata.normalize_variant of Dex's Variant),
+# never by substrings of the raw text. Each code lists the keys that are
+# exactly that print, in order of preference. Keys are compared lowercased
+# with hyphens removed, because pokemontcg.io spells "reverseHolofoil" and
+# TCGdex spells "reverse-holofoil". Deliberately narrow:
+#
+# - "holo" is only ever `holofoil`. WotC sets have `unlimitedHolofoil` /
+#   `1stEditionHolofoil` instead, and those stay unmatched.
+# - "normal" is `normal`, or WotC's `unlimited` (the non-holo print that
+#   isn't 1st Edition; Dex has its own "1st Edition" variant for that one).
+#   The old substring rule matched `unlimited` too, so this keeps WotC
+#   "Normal" cards on the right print.
+# - "first_edition" is WotC's non-holo `1stEdition` key. On a holo-only card
+#   (`1stEditionHolofoil` + `unlimitedHolofoil`) the one 1st Edition key is
+#   that print, see _match_variant_key.
+#
+# A code missing from this table, other than "unspecified", is a print
+# TCGplayer has no key for: Poké Ball / Master Ball / any "<x> Ball Holo"
+# pattern, cosmos and cracked-ice holos, stamped and shadowless prints, and
+# any variant code Dex adds later. It never gets a TCGplayer price (see
+# has_tcgplayer_print).
+_TCGPLAYER_KEYS: dict[str, tuple[str, ...]] = {
+    "normal": ("normal", "unlimited"),
+    "holo": ("holofoil",),
+    "reverse_holo": ("reverseholofoil",),
+    "first_edition": ("1stedition", "1steditionnormal"),
+    "first_edition_holo": ("1steditionholofoil",),
+}
+_UNSPECIFIED = "unspecified"
+
+
+def _key_form(key: str) -> str:
+    return key.replace("-", "").lower()
+
+
+def has_tcgplayer_print(variant: str | None) -> bool:
+    """False when Dex's `Variant` is a print TCGplayer has no price key for
+    (a Poké Ball / Master Ball pattern, a cosmos holo, ...). Such a card
+    gets no price from pokemontcg.io or TCGdex's TCGplayer block, because
+    the only prices there are for other prints of it (issue #350). A blank
+    variant ("unspecified") is still priceable."""
+    code = masterdata.normalize_variant(variant)
+    return code == _UNSPECIFIED or code in _TCGPLAYER_KEYS
 
 
 def _match_variant_key(variant: str | None, price_keys: list[str]) -> str | None:
-    """Best-effort match from Dex's own `Variant` value to one of the
-    `tcgplayer.prices` keys actually present on this card. Returns None
-    (never guesses) when the variant is missing or doesn't hit one of the
-    unambiguous hints in _VARIANT_HINTS.
-    """
-    if not variant:
-        return None
-    lowered = variant.strip().lower()
-    for hint, candidates in _VARIANT_HINTS:
-        if hint not in lowered:
-            continue
-        for candidate in candidates:
-            for key in price_keys:
-                if candidate in key.lower():
-                    return key
+    """The `tcgplayer.prices` key (as given in `price_keys`) that is exactly
+    Dex's print, by masterdata variant code (_TCGPLAYER_KEYS), or None when
+    no key is that print. Never guesses; whether to fall back to another
+    print is the caller's decision (see _choose_tcgplayer_price)."""
+    code = masterdata.normalize_variant(variant)
+    by_form = {_key_form(key): key for key in price_keys}
+    for candidate in _TCGPLAYER_KEYS.get(code, ()):
+        if candidate in by_form:
+            return by_form[candidate]
+    if code == "first_edition":
+        first_edition = [key for form, key in by_form.items() if form.startswith("1stedition")]
+        if len(first_edition) == 1:
+            return first_edition[0]
     return None
 
 
@@ -131,12 +161,18 @@ def _choose_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) 
     in USD. Returns the chosen print's price (NOK and native USD), its key,
     the rate used and whether the choice is uncertain:
 
+    - Dex's `Variant` is a print TCGplayer has no key for (a Poké Ball /
+      Master Ball pattern, ..., see has_tcgplayer_print) -> None, even when
+      the card has just one priced print: that price is another print's
+      (issue #350). Nothing is written, so the price chain falls through
+      to Cardmarket, which prices ball patterns as their own product.
     - No priced variant at all -> None.
     - Exactly one priced variant -> that one, not uncertain (nothing to
       disambiguate regardless of what Dex's `Variant` says).
-    - Multiple priced variants -> try to match Dex's own `Variant` field via
-      _match_variant_key; if that succeeds, use it, not uncertain. If it
-      can't be matched, fall back to the first priced variant present
+    - Multiple priced variants -> the key that is exactly Dex's print
+      (_match_variant_key), not uncertain. If there's none (a blank
+      variant, or e.g. a WotC "Holo" between `1stEditionHolofoil` and
+      `unlimitedHolofoil`), fall back to the first priced variant present
       (better than no price at all) but flag it `uncertain=True` so callers
       can surface it rather than trust a guess silently -- different prints
       of the same card can have very different market prices.
@@ -146,7 +182,7 @@ def _choose_tcgplayer_price(tcgplayer: dict | None, variant: str | None = None) 
     column included -- is NOK; returning raw USD would silently understate
     these cards' value by ~10x wherever it's displayed.
     """
-    if not tcgplayer:
+    if not tcgplayer or not has_tcgplayer_print(variant):
         return None
     prices = tcgplayer.get("prices") or {}
     price_keys = [key for key, variant_prices in prices.items() if (variant_prices or {}).get("market") is not None]
