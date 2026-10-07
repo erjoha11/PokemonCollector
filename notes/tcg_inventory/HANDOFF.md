@@ -2103,3 +2103,39 @@ None.
   append here: whichever merges second needs a small rebase (keep #226's
   `trigger: str = Depends(cron_auth.require_cron_secret)` signatures and
   this PR's `jobs.run_*` bodies).
+
+
+# Handoff notes — 2026-10-07 session (#226: cron endpoints fail closed)
+
+## Code (in git, PR #361 for #226, rebased onto #274's `jobs.py`)
+
+- New `cron_auth.py`: `require_cron_secret`, one FastAPI dependency for all
+  four `/cron/*` routes. `Authorization: Bearer <CRON_SECRET>` compared with
+  `hmac.compare_digest`; returns the trigger (`cron` for the Bearer header,
+  else `manual`), which each route passes to its `jobs.run_*` call as
+  `trigger=` and so records as `import_log.source`. The snapshot sources are
+  unchanged (`cron`/`price-cron`/`manual`). Replaces the per-route checks
+  and `app._run_source` that #274 still had.
+- **Fails closed:** with login configured (`SUPABASE_URL` +
+  `SUPABASE_ANON_KEY`) and `CRON_SECRET` missing/empty, every `/cron/*`
+  request gets 503. Local no-login `python app.py` with no secret stays open.
+- No schema change.
+
+## Direct database changes
+
+None.
+
+## Deploy requirement
+
+- Prod must have `CRON_SECRET` set in Vercel (it reportedly does, see the
+  rotation entry above). If it didn't, every scheduled run would start
+  failing with 503 after this deploys: check Vercel → Cron Jobs the morning
+  after.
+
+## Open items
+
+- **`?secret=` is still accepted, deprecated** (constant-time, same
+  fail-closed rule, recorded as `manual`). #226 asked to drop it, but #199's
+  Run-now buttons aren't built and it's the only browser-based manual
+  trigger. Dropping it is `cron_auth.ACCEPT_QUERY_SECRET = False`; do that
+  with #199. User's call.

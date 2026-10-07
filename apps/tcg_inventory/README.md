@@ -985,7 +985,7 @@ of these does:
 
 | `source` | Meaning |
 |---|---|
-| `cron` | The real scheduled Vercel call (it carries `Authorization: Bearer <CRON_SECRET>`) |
+| `cron` | The real scheduled Vercel call (it carries `Authorization: Bearer <CRON_SECRET>`; checked by `cron_auth.require_cron_secret`, #226) |
 | `manual` | A person: a `/cron/*` call with `?secret=`, a local run, later #199's Run-now buttons |
 | `connector` | The Claude connector (#276, not built yet) |
 
@@ -1123,7 +1123,9 @@ One-time setup:
 5. Restart `python app.py`. The daily cron (see "Automatic daily sync"
    below) picks up every CSV currently in that folder automatically — for
    an immediate off-schedule sync instead of waiting for it, hit
-   `GET /cron/dropbox-sync?secret=<CRON_SECRET>` directly. There is no
+   `GET /cron/dropbox-sync?secret=<CRON_SECRET>` directly (deprecated, see
+   "Cron endpoint auth" below; `curl -H "Authorization: Bearer
+   <CRON_SECRET>"` works too and keeps the secret out of logs). There is no
    in-app file picker: its UI was removed earlier (HANDOFF.md #87) and its
    leftover `/import/dropbox/list` and `/import/dropbox/sync` routes in
    #264 (#199's "Run now" is the planned replacement).
@@ -1242,11 +1244,11 @@ To turn it on:
 
 1. Make sure `DROPBOX_APP_KEY`/`DROPBOX_APP_SECRET`/`DROPBOX_REFRESH_TOKEN`/
    `DROPBOX_FOLDER` are already set in Vercel (see "Dropbox import setup").
-2. Add a `CRON_SECRET` environment variable in Vercel (any random string —
-   Vercel automatically sends it back as `Authorization: Bearer
-   <CRON_SECRET>` on its own cron requests, and `/cron/dropbox-sync`
-   checks it). Without this set, the endpoint runs unauthenticated, which
-   still works but means anyone who finds the URL could trigger a sync.
+2. Add a `CRON_SECRET` environment variable in Vercel (any long random
+   string — Vercel automatically sends it back as `Authorization: Bearer
+   <CRON_SECRET>` on its own cron requests, and every `/cron/*` route
+   checks it). **Required on a deploy:** without it, every `/cron/*`
+   request is refused with HTTP 503 (see "Cron endpoint auth" below).
 3. Redeploy. Vercel's dashboard (Project → Cron Jobs) shows each run and
    its response — `cards_created`/`cards_updated`/etc. and any warnings.
    The in-app Sync status page (`/sync-status`) shows the same runs.
@@ -1262,6 +1264,28 @@ for it and the run gets a warning naming the skipped files (issue #351; it
 used to let an older export overwrite a newer one). Re-reading an unchanged
 export doesn't make its prices fresh: they're dated at the export (see
 "Pricing").
+
+### Cron endpoint auth (issue #226)
+
+The four `/cron/*` routes (`dropbox-sync`, `price-refresh`,
+`image-backfill`, `set-sync`) skip the login (a scheduled call has no
+session) and share one check, `cron_auth.require_cron_secret`:
+
+| `CRON_SECRET` | Login configured (`SUPABASE_*`) | Result |
+|---|---|---|
+| set | either | Only a matching secret runs the job (constant-time compare); anything else is 401 |
+| missing/empty | yes (a deploy) | **Every request refused, 503** — fails closed |
+| missing/empty | no (local `python app.py`) | Open, as before |
+
+- **`Authorization: Bearer <CRON_SECRET>`** is the primary path. Vercel
+  Cron sends it itself, and it's the only one recorded as `source=cron`
+  (and the `cron`/`price-cron` snapshot slot).
+- **`?secret=<CRON_SECRET>` is deprecated.** It lands in request logs and
+  browser history, but until #199's logged-in Run-now buttons exist it's
+  the only way to start a job by hand from a browser, so it's still
+  accepted (recorded as `manual`). Removing it is one line
+  (`cron_auth.ACCEPT_QUERY_SECRET = False`), planned with #199. From a
+  terminal, prefer `curl -H "Authorization: Bearer <CRON_SECRET>" ...`.
 
 ### Facebook wins inbox (issue #309)
 
@@ -1293,7 +1317,7 @@ or cards — only you do, in the cart.
   inbox rows. With login configured (`SUPABASE_*`) and `INBOX_TOKEN`
   unset, the endpoint refuses everything (503); only a local no-login run
   accepts sends without a token, and if you set one locally it's required
-  there too. (This is the design #226 targets for the `/cron/*` routes.)
+  there too. (The `/cron/*` routes work the same way since #226, see "Cron endpoint auth".)
 - **Limits:** bodies over 512 KB are refused (413), as is anything that
   isn't valid JSON (400) or any item that doesn't check out (422: unknown
   sale type, a non-Facebook or non-https link, a negative price, a bad
@@ -1766,7 +1790,9 @@ instead of blocking the queue. It runs:
 
 - daily, after prices, inside `/cron/price-refresh` (up to 60 cards, 25 s);
 - on demand via `GET /cron/image-backfill?secret=<CRON_SECRET>[&limit=N]`
-  (time-boxed to ~50 s; call again while `remaining` > 0);
+  (time-boxed to ~50 s; call again while `remaining` > 0; better with
+  `Authorization: Bearer <CRON_SECRET>`, `?secret=` is deprecated, see
+  "Cron endpoint auth");
 - by hand: `python backfill_images.py [--limit N]` (same `DATABASE_URL`
   convention as `seed_set_release_order.py`).
 
