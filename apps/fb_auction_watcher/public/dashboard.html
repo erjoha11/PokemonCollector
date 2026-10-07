@@ -50,15 +50,17 @@
       <a class="counter won" href="#topay" title="Lots you've won. Click to go to To pay."><span id="count-won" class="num">–</span><span class="label">Won lots</span></a>
       <div class="counter"><span id="count-new" class="num">–</span><span class="label">New since last visit</span></div>
     </div>
-    <nav id="tabs" class="tabs" role="tablist" aria-label="Sales"></nav>
-    <div class="controls">
-      <div class="filters" role="group" aria-label="Filter by type">
-        <button type="button" data-filter="all">All</button>
-        <button type="button" data-filter="auction">Auction</button>
-        <button type="button" data-filter="claim">Claim</button>
-        <button type="button" data-filter="fixed">Fixed price</button>
+    <div class="sales-nav">
+      <div class="controls">
+        <div class="filters" role="group" aria-label="Filter by type">
+          <button type="button" data-filter="all">All</button>
+          <button type="button" data-filter="auction">Auction</button>
+          <button type="button" data-filter="claim">Claim</button>
+          <button type="button" data-filter="fixed">Fixed price</button>
+        </div>
+        <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
       </div>
-      <input id="search" type="search" placeholder="Search title, seller, text" aria-label="Search">
+      <nav id="tabs" class="tabs" role="tablist" aria-label="Sales"></nav>
     </div>
   </header>
   <main id="groups" role="tabpanel"></main>
