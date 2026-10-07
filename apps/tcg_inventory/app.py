@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -36,6 +36,7 @@ load_dotenv(APP_DIR / ".env")
 
 import ads
 import auth
+import cron_auth
 import job_locks
 import jobs
 import missing_cards
@@ -232,9 +233,9 @@ templates.env.globals["type_filter_url"] = _type_filter_url
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
-# /cron/dropbox-sync and /cron/price-refresh have their own separate auth
-# (CRON_SECRET) -- a scheduled job has no browser session to log in with.
-# /cron/image-backfill (a manual catch-up pass) and /cron/set-sync too, same secret.
+# The four /cron/* routes have their own separate auth (CRON_SECRET, via
+# cron_auth.require_cron_secret, failing closed, #226) -- a scheduled job has
+# no browser session to log in with.
 # /inbox/fb-wins (fb_auction_watcher sending your Facebook wins, #309) has its
 # own secret, INBOX_TOKEN, and fails closed -- see _inbox_auth_error.
 _PUBLIC_PATHS = {
@@ -3179,14 +3180,6 @@ def releases_sync_log_redirect(request: Request):
     return _redirect_keeping_query(request, "/sync-status/log")
 
 
-def _run_source(request: Request) -> str:
-    """"cron" only for the real scheduled Vercel call (it carries
-    `Authorization: Bearer <CRON_SECRET>`), else "manual" -- the same split
-    the /cron routes use for snapshot sources."""
-    cron_secret = os.environ.get("CRON_SECRET", "")
-    return "cron" if cron_secret and request.headers.get("authorization") == f"Bearer {cron_secret}" else "manual"
-
-
 def _already_running_response(result: jobs.AlreadyRunningResult) -> JSONResponse:
     return JSONResponse(
         status_code=409,
@@ -3201,7 +3194,7 @@ def _already_running_response(result: jobs.AlreadyRunningResult) -> JSONResponse
 
 
 @app.get("/cron/dropbox-sync")
-def cron_dropbox_sync(request: Request, secret: str = ""):
+def cron_dropbox_sync(trigger: str = Depends(cron_auth.require_cron_secret)):
     """Scheduled sync, triggered by the Vercel Cron job in vercel.json.
 
     A thin wrapper over `jobs.run_dex_sync` (issue #274), which holds the
@@ -3219,26 +3212,24 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
     var is set -- see README "Automatic daily sync". A manual trigger (e.g.
     from a tool that can't set custom headers, or a person running this by
-    hand mid-day) may instead pass the same value as `?secret=`.
+    hand mid-day) may instead pass the same value as `?secret=` (deprecated,
+    kept until #199's Run-now buttons exist). The check itself, shared by
+    every /cron route and failing closed, is cron_auth.require_cron_secret.
 
     The two are told apart: only a request carrying that exact header is
     trusted as the real scheduled Vercel invocation (trigger "cron",
     CardSnapshot.source="cron"); a `?secret=` request is a manual
     off-schedule run (trigger and snapshot source "manual") even though it
     hits this same route -- see snapshots.record_daily_snapshot and
-    HANDOFF.md. With no CRON_SECRET configured at all there's no way to
-    tell the two apart, so every request is treated as "manual".
+    HANDOFF.md. With no CRON_SECRET configured (only allowed locally,
+    without login) there's no way to tell the two apart, so every request
+    is treated as "manual".
 
     A second request while a run is in progress gets 409
     `{"status": "already_running"}` and writes nothing (issue #340).
     """
-    cron_secret = os.environ.get("CRON_SECRET", "")
-    is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
-    authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
-    if not authorized:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    trigger = jobs.CRON if is_scheduled_invocation else jobs.MANUAL
-
+    # Auth and trigger ("cron" for the Bearer header, else "manual"):
+    # cron_auth.require_cron_secret (#226), shared by every /cron route.
     db = get_db_session()
     try:
         result = jobs.run_dex_sync(db, trigger=trigger)
@@ -3280,7 +3271,7 @@ def cron_dropbox_sync(request: Request, secret: str = ""):
 
 
 @app.get("/cron/price-refresh")
-def cron_price_refresh(request: Request, secret: str = ""):
+def cron_price_refresh(trigger: str = Depends(cron_auth.require_cron_secret)):
     """Scheduled TCGplayer price refresh, decoupled from Dex sync (see
     price_refresh.py and issue #93) -- its own Vercel Cron entry in
     vercel.json, separate from /cron/dropbox-sync's schedule so pricing
@@ -3291,13 +3282,8 @@ def cron_price_refresh(request: Request, secret: str = ""):
     source recorded ("price-cron" vs "manual", both distinct from the Dex
     sync's own "cron"/"manual" sources -- see queries.real_value_history).
     """
-    cron_secret = os.environ.get("CRON_SECRET", "")
-    is_scheduled_invocation = bool(cron_secret) and request.headers.get("authorization") == f"Bearer {cron_secret}"
-    authorized = not cron_secret or is_scheduled_invocation or secret == cron_secret
-    if not authorized:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    trigger = jobs.CRON if is_scheduled_invocation else jobs.MANUAL
-
+    # Auth and trigger ("cron" for the Bearer header, else "manual"):
+    # cron_auth.require_cron_secret (#226), shared by every /cron route.
     db = get_db_session()
     try:
         run = jobs.run_price_refresh(db, trigger=trigger)
@@ -3356,7 +3342,7 @@ def _tcgdex_summary(result) -> dict | None:
 
 
 @app.get("/cron/image-backfill")
-def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
+def cron_image_backfill(limit: int = 100, trigger: str = Depends(cron_auth.require_cron_secret)):
     """Manual catch-up pass for missing card images (backfill_images.py) --
     the daily /cron/price-refresh already does a small one; this lets a
     person fill in a whole collection in a few calls instead of waiting.
@@ -3364,15 +3350,9 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
     CRON_SECRET gate as the other /cron routes. Time-boxed, so call it
     again while `remaining` > 0.
     """
-    cron_secret = os.environ.get("CRON_SECRET", "")
-    authorized = not cron_secret or secret == cron_secret or (
-        request.headers.get("authorization") == f"Bearer {cron_secret}"
-    )
-    if not authorized:
-        raise HTTPException(status_code=401, detail="Unauthorized")
     db = get_db_session()
     try:
-        result = jobs.run_image_backfill(db, trigger=_run_source(request), limit=limit)
+        result = jobs.run_image_backfill(db, trigger=trigger, limit=limit)
     finally:
         db.close()
     if isinstance(result, jobs.AlreadyRunningResult):
@@ -3387,7 +3367,7 @@ def cron_image_backfill(request: Request, secret: str = "", limit: int = 100):
 
 
 @app.get("/cron/set-sync")
-def cron_set_sync(request: Request, secret: str = ""):
+def cron_set_sync(trigger: str = Depends(cron_auth.require_cron_secret)):
     """Monthly set metadata sync (set_sync.py): `total_cards` for Dashboard
     completion, plus a `release_rank` for any set still missing one --
     existing ranks are never overwritten from here (see
@@ -3397,15 +3377,9 @@ def cron_set_sync(request: Request, secret: str = ""):
     24.09.2026). A thin wrapper over `jobs.run_set_sync` (issue #274).
     Same CRON_SECRET gate as the other /cron routes.
     """
-    cron_secret = os.environ.get("CRON_SECRET", "")
-    authorized = not cron_secret or secret == cron_secret or (
-        request.headers.get("authorization") == f"Bearer {cron_secret}"
-    )
-    if not authorized:
-        raise HTTPException(status_code=401, detail="Unauthorized")
     db = get_db_session()
     try:
-        result = jobs.run_set_sync(db, trigger=_run_source(request))
+        result = jobs.run_set_sync(db, trigger=trigger)
     finally:
         db.close()
     if isinstance(result, jobs.AlreadyRunningResult):
@@ -3423,7 +3397,7 @@ def cron_set_sync(request: Request, secret: str = ""):
 def _inbox_auth_error(request: Request) -> JSONResponse | None:
     """None if the request may write to the inbox, else the refusal.
 
-    Fails closed (the design #226 targets for the cron routes): with
+    Fails closed (like the cron routes, cron_auth.py, #226): with
     INBOX_TOKEN set, only `Authorization: Bearer <INBOX_TOKEN>` is accepted,
     compared in constant time, and never a query-string secret. With it
     unset, the endpoint is refused whenever login is configured (a deploy

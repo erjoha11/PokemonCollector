@@ -84,9 +84,13 @@ def test_cron_sync_rejects_wrong_query_param_secret(client, monkeypatch):
     assert response.status_code == 401
 
 
-def test_cron_sync_works_without_secret_configured(client, monkeypatch):
-    # No CRON_SECRET env var set at all -- open endpoint (still requires
-    # Dropbox to be configured to do anything, but no auth check blocks it).
+def test_cron_sync_works_without_secret_in_local_no_login_dev(client, monkeypatch):
+    # No CRON_SECRET and no login configured (local `python app.py`) -- open
+    # endpoint. A deploy with login but no CRON_SECRET refuses instead (fails
+    # closed, #226): see test_cron_auth.py.
+    import auth
+
+    assert not auth.is_configured()
     monkeypatch.delenv("CRON_SECRET", raising=False)
     fake = FakeDropbox(pages=[FakeListFolderResult([])])
     monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
