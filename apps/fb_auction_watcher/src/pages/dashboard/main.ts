@@ -36,6 +36,7 @@ import {
   endLabel,
   krText,
   leadingBySale,
+  lotOrigText,
   lotStatus,
   lotUrl,
   readAfterEnd,
@@ -642,7 +643,11 @@ function lotsRow(r: Row, columns: number): HTMLTableRowElement {
     body.append(line("div", lotLink(r, l, `${l.position}. ${l.title}`, "lot-title")));
     if (l.wholePost) body.append(el("div", "via", "The post itself is the lot: bids are the comments right under it"));
     if (l.namedByClaude) body.append(el("div", "via", "Named by Claude from the photo"));
-    body.append(el("div", "orig", l.rawText.split("\n").slice(1).join(" · ")));
+    // The seller's own text for the lot, in full (#352: its first line was dropped, so a lot whose
+    // text is one line, e.g. only its price, showed none of it). Hover for all of it.
+    const orig = el("div", "orig", lotOrigText(l.rawText));
+    orig.title = l.rawText;
+    body.append(orig);
     if (isClaims) {
       if (l.claimCards) {
         // Claude read the photo and the replies: every card, its price, taken or still for sale.

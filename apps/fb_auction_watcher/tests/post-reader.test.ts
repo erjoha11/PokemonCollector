@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { expandAll, findExpanders } from "../src/content/post/expand";
+import { expandAll, findExpanders, pendingLoaders } from "../src/content/post/expand";
+import { interpretLots } from "../src/domain/bids";
+import { isCompleteRead } from "../src/domain/captures";
 import { extractCapture, findPostRoot } from "../src/content/post/extract";
 import fixture from "./fixtures/post-dialog.html?raw";
 
@@ -120,6 +122,126 @@ describe("expandAll", () => {
       expect(clicked.sort()).toEqual(["Se mer", "Vis 2 flere svar", "Vis flere kommentarer"]);
     } finally {
       proto.scrollIntoView = original;
+    }
+  });
+});
+
+// The shape of a real claim-sale read (2026-10-07; names and wording invented): a dialog with
+// 121 comments showed the first 10, all "." from people following the sale, then three of
+// Facebook's "Laster inn…" placeholders. No expander, and scrolling the last "." comment loaded
+// nothing, so the read stopped "done" at 10 with every lot comment from the seller missing.
+const CLAIM_DIALOG = (followers: number) => `
+<div role="dialog">
+  <h2><span>Selger Testesen sitt innlegg</span></h2>
+  <div role="article">
+    <a href="https://www.facebook.com/groups/123/user/900/">Selger Testesen</a>
+    <div data-ad-preview="message"><div dir="auto">Claim salg-annonse
+Fastpris: Blir oppgitt over hvert bilde i kommentarfeltet
+Sluttid (maks 24 timer): 7 Oktober kl19:00</div></div>
+    <div role="button">Alle kommentarer</div>
+    <ul id="comments">${Array.from({ length: followers }, (_, i) => `
+      <li><div role="article" aria-label="Kommentar fra Følger ${i + 1} for én dag siden">
+        <a href="https://www.facebook.com/groups/123/user/${950 + i}/">Følger ${i + 1}</a>
+        <div dir="auto">.</div>
+        <a href="https://www.facebook.com/groups/123/posts/777/?comment_id=${200 + i}">1 d</a>
+        <div role="button">Liker</div><div role="button">Svar</div>
+      </div></li>`).join("")}
+    </ul>
+    <div id="loaders">
+      <div aria-label="Laster inn …" role="status" data-visualcompletion="loading-state" tabindex="-1"><div></div></div>
+      <div aria-label="Laster inn …" role="status" data-visualcompletion="loading-state" tabindex="-1"><div></div></div>
+    </div>
+  </div>
+  <form><div role="textbox" contenteditable="true" aria-label="Kommenter som Meg"></div></form>
+</div>`;
+
+const LOT = (n: number) => `
+  <div role="article" aria-label="Kommentar fra Selger Testesen for én dag siden">
+    <a href="https://www.facebook.com/groups/123/user/900/">Selger Testesen</a>
+    <div dir="auto">Fastpris ${n}00kr</div>
+    <a href="https://www.facebook.com/photo/?fbid=30${n}"><img src="https://scontent.example/claim${n}.jpg" alt="" width="300" height="420"></a>
+    <a href="https://www.facebook.com/groups/123/posts/777/?comment_id=${300 + n}">1 d</a>
+  </div>`;
+
+describe("expandAll: comments still loading (real claim-sale shape)", () => {
+  type ScrollProto = Element & { scrollIntoView: (arg?: unknown) => void };
+  const proto = Element.prototype as ScrollProto;
+  let original: ScrollProto["scrollIntoView"];
+  beforeEach(() => {
+    original = proto.scrollIntoView;
+  });
+  const restore = () => {
+    proto.scrollIntoView = original;
+  };
+  const capture = (stoppedBecause: string) =>
+    extractCapture(findPostRoot(document)!, {
+      pageUrl: "https://www.facebook.com/groups/123/posts/777/", pageLang: "nb", expandClicks: 0,
+      expandStoppedBecause: stoppedBecause, commentSortAction: "already-all",
+    });
+
+  it("sees the placeholders below the last comment as pending, not ones inside or above it", () => {
+    document.body.innerHTML = CLAIM_DIALOG(10);
+    expect(pendingLoaders(findPostRoot(document)!)).toHaveLength(2);
+    document.getElementById("loaders")!.remove();
+    // A loading image inside a comment, or a glimmer above the comments, isn't a comment batch.
+    const first = document.querySelector("#comments [role='article']")!;
+    first.insertAdjacentHTML("beforeend", `<div role="status" data-visualcompletion="loading-state"></div>`);
+    document.getElementById("comments")!.insertAdjacentHTML("beforebegin", `<div role="status" data-visualcompletion="loading-state"></div>`);
+    expect(pendingLoaders(findPostRoot(document)!)).toHaveLength(0);
+  });
+
+  it("scrolls the loading placeholder into view and reads the lots it loads", async () => {
+    document.body.innerHTML = CLAIM_DIALOG(10);
+    // Fake Facebook: only the placeholder coming into view loads the next batch (the seller's
+    // lots); scrolling the last comment alone loads nothing, as in the real read.
+    let batches = 2;
+    proto.scrollIntoView = function (this: Element) {
+      if (this.getAttribute("data-visualcompletion") !== "loading-state" || batches === 0) return;
+      batches--;
+      const list = document.getElementById("comments")!;
+      list.insertAdjacentHTML("beforeend", `<li>${LOT(2 - batches)}</li>`);
+      if (batches === 0) document.getElementById("loaders")!.remove();
+    };
+    try {
+      const result = await expandAll(findPostRoot(document)!, { ...FAST, idleRounds: 2 });
+      expect(result).toMatchObject({ scrolls: 2, stoppedBecause: "done" });
+      const read = capture(result.stoppedBecause);
+      expect(read.comments).toHaveLength(12);
+      const lots = interpretLots(read, { myName: "Meg", claims: true, listingIncrement: null, listingMinPrice: null });
+      expect(lots.map((l) => l.startBid)).toEqual([100, 200]);
+    } finally {
+      restore();
+    }
+  });
+
+  it("gives up as still-loading (not done) when the placeholders never resolve", async () => {
+    document.body.innerHTML = CLAIM_DIALOG(10);
+    proto.scrollIntoView = () => {};
+    try {
+      const result = await expandAll(findPostRoot(document)!, { ...FAST, idleRounds: 1, loadingRounds: 3 });
+      expect(result.stoppedBecause).toBe("still-loading");
+      const read = capture(result.stoppedBecause);
+      expect(read.warnings.join("\n")).toMatch(/still-loading/);
+      // A partial read: it can't settle "Won"/"Lost" or replace what an earlier read saw.
+      expect(isCompleteRead(read, null)).toBe(false);
+    } finally {
+      restore();
+    }
+  });
+
+  it("waits longer while loading, then stops done once Facebook has loaded everything", async () => {
+    document.body.innerHTML = CLAIM_DIALOG(10);
+    // Facebook is slow: the placeholders go away (nothing more to load) after a few scrolls.
+    let calls = 0;
+    proto.scrollIntoView = function (this: Element) {
+      if (++calls === 6) document.getElementById("loaders")?.remove();
+    };
+    try {
+      const result = await expandAll(findPostRoot(document)!, { ...FAST, idleRounds: 1, loadingRounds: 10 });
+      expect(result.stoppedBecause).toBe("done");
+      expect(calls).toBeGreaterThanOrEqual(6);
+    } finally {
+      restore();
     }
   });
 });

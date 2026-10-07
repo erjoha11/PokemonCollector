@@ -168,17 +168,84 @@ export function lotTextPrice(text: string): { kr: number; perCard: boolean } | n
   return kr !== null ? { kr, perCard: false } : null;
 }
 
-/** "MP: 1400", "Mp 10kr", "Holo, mp 30kr", "Minstepris 500", or a bare "700kr" on its own line. */
-function lotStartBid(text: string): number | null {
-  const m = text.match(/(?<![\p{L}\d])(?:mp|minstepris|startbud)\s*:?\s*(\d[^\n]*)/iu);
-  if (m) return parseAmount(m[1]);
-  const bare = text.match(/(?:^|\n)\s*(\d[\d .]*)\s*(?:kr|,-)\s*(?:\n|$)/i);
-  return bare ? parseAmount(bare[1]) : null;
+// A lot's start bid (minimum price) and bid step, as sellers label them. `lotStartBid` and
+// `lotTextInfo` (via PRICE_PARTS) share these, so a price the title leaves out is always the one
+// read as the start bid (#352: "Pris: 200", "Mp. 200", "Startpris 200kr" were taken out of the
+// name but never read as a price, so the lot showed "Lot N" and no start bid).
+// "Min. bud" / "Minimum budøkning" is the group's bid step; "Minstebud" is the minimum bid.
+const START_LABEL = String.raw`m\.?p|minstepris|minimumspris|min(?:imum)?\.?\s*pris|start\s*(?:pris|bud|price)|minstebud|start|fastpris|pris|price`;
+const STEP_LABEL = String.raw`mb|min(?:imum)?\.?\s*bud(?:økning)?|budøkning`;
+/** Between a price label and its amount: "MP: 200", "Mp. 200", "MP=200", "MP - 200", "Pris kr 250". */
+const LABEL_GAP = String.raw`[ \t]*[:.=\-–]?[ \t]*(?:kr\.?[ \t]*)?`;
+/** A card number ("4/102") right after a label is never its amount: "MP 4/102" is a bare MP and the number. */
+const NOT_CARD_NUMBER = String.raw`(?!\d+[ \t]*\/[ \t]*\d)`;
+/** "Lot 1:", "Nr. 2 -", "#3" at the start of a line: the lot's number, not a name or a price. */
+const LOT_NUMBER = /^\s*(?:lot|nr\.?|#)\s*\d+\s*[:.)\-–]?\s*/i;
+const REFERENCE_PRICE = /(?<![\p{L}])(?:verdi|markeds?(?:pris|verdi)|market|tcg\s*player|cardmarket|pricecharting|solgt\s+for)/iu;
+
+// A card's condition as sellers write it (#352). Graded slabs ("PSA 10", "CGC 9.5", "BGS 9,5"),
+// raw-card codes ("NM", "LP+", "HP", "DMG"), pairs ("M/NM", "NM/M", "NM/LP") and words ("Near
+// mint", "Lightly played", "Mint", "Damaged"). "MP" is the group's minimum price (Minstepris)
+// unless the context says otherwise: see `lotTextInfo`. "EX" and "GD" count only after a
+// condition label ("Tilstand: EX"), or alone on a line: "Charizard ex"/"Blastoise EX" is a card.
+const GRADED = String.raw`(?:psa|cgc|bgs|tag|beckett|sgc|ace)[ \t]*(?:10|[1-9])(?:[.,]5)?`;
+const CONDITION_WORDS = String.raw`gem[ \t]*mint|near[ \t]*mint|lightly[ \t]*played|moderately[ \t]*played|heavily[ \t]*played|damaged|mint`;
+const CONDITION_PAIR = String.raw`(?:nm|lp|mp|hp|ex|m)[ \t]*\/[ \t]*(?:nm|lp|mp|hp|ex|m)\+?`;
+const EDGE_L = String.raw`(?<![\p{L}\d])`;
+const EDGE_R = String.raw`(?![\p{L}\d])`;
+const GRADED_RE = new RegExp(EDGE_L + GRADED + EDGE_R, "giu");
+/** "Tilstand: MP", "Condition: EX", "Tilstand: Near mint": the label decides, whatever the code. */
+const LABELLED_CONDITION = new RegExp(
+  String.raw`${EDGE_L}(?:tilstand|condition|cond\.?)[ \t]*[:.=\-–]?[ \t]*(${GRADED}|${CONDITION_WORDS}|${CONDITION_PAIR}|(?:nm|lp|mp|hp|dmg|ex|gd|good|excellent|m)\+?)${EDGE_R}`,
+  "giu",
+);
+/** Conditions read anywhere in a lot's text, without a label. Not "MP", "EX", "GD" or "M" alone. */
+const CONDITION = new RegExp(String.raw`${EDGE_L}(?:${CONDITION_WORDS}|${CONDITION_PAIR}|(?:nm|lp|hp)\+?|dmg)(?![\p{L}\d+])`, "giu");
+/** "MP" (or "M.P", "Mp.") left in a line once the prices are out: no amount after it. */
+const BARE_MP = new RegExp(String.raw`${EDGE_L}m\.?p\.?(?![\p{L}\d])`, "giu");
+
+const BRANDS: Record<string, string> = { psa: "PSA", cgc: "CGC", bgs: "BGS", tag: "TAG", beckett: "Beckett", sgc: "SGC", ace: "ACE" };
+const CONDITION_NAMES: Record<string, string> = {
+  "gem mint": "Gem Mint", "near mint": "NM", "lightly played": "LP", "moderately played": "MP", "heavily played": "HP",
+  damaged: "DMG", mint: "Mint", good: "GD", excellent: "EX",
+};
+
+/** A condition as the overview shows it: "near mint" → "NM", "m/nm" → "M/NM", "psa9,5" → "PSA 9.5". */
+export function normalizeCondition(raw: string): string {
+  const s = raw.replace(/\s+/g, " ").trim().toLowerCase();
+  const graded = s.match(/^(psa|cgc|bgs|tag|beckett|sgc|ace) ?(\d+)(?:[.,](5))?$/);
+  if (graded) return `${BRANDS[graded[1]]} ${graded[2]}${graded[3] ? ".5" : ""}`;
+  return CONDITION_NAMES[s] ?? s.replace(/ ?\/ ?/g, "/").toUpperCase();
+}
+
+/**
+ * "MP: 1400", "Mp 10kr", "Mp. 200", "MP - 200", "Holo, mp 30kr", "Minstepris 500", "Startpris:
+ * 200kr", "Pris 150,-", else an amount in kr anywhere ("Charizard 4/102 - 200kr", "700kr" on its
+ * own line) that isn't the bid step ("MB 10kr") or a reference price. A bare number with no label
+ * and no "kr" is not read: it may be a card number. A grade ("PSA 10") and "MP" after a condition
+ * label ("Tilstand: MP 100") are conditions, so their numbers are never the price.
+ */
+export function lotStartBid(text: string): number | null {
+  const lines = text.split("\n").map((l) => l.replace(LOT_NUMBER, "").replace(LABELLED_CONDITION, " ").replace(GRADED_RE, " "));
+  const labelled = new RegExp(String.raw`(?<![\p{L}\d])(?:${START_LABEL})${LABEL_GAP}${NOT_CARD_NUMBER}(\d[^\n]*)`, "iu");
+  for (const line of lines) {
+    const m = line.match(labelled);
+    const kr = m ? parseAmount(m[1]) : null;
+    if (kr !== null) return kr;
+  }
+  const step = new RegExp(String.raw`(?<![\p{L}\d])(?:${STEP_LABEL})${LABEL_GAP}\d[\d .,]*(?:[ \t]*(?:kr\.?|,-|nok))?`, "giu");
+  for (const line of lines) {
+    if (REFERENCE_PRICE.test(line)) continue; // "Markedspris 900kr", "TCGplayer $40": what it's worth, not the start bid.
+    const m = line.replace(step, " ").match(/(?<![\p{L}\d/.,])(\d{1,3}(?:[ .]\d{3})+|\d+)\s*(?:kr\.?|,-|nok)(?![\p{L}])/iu);
+    const kr = m ? parseAmount(m[1]) : null;
+    if (kr !== null) return kr;
+  }
+  return null;
 }
 
 /** The lot's title: the name in its own text, else Claude's name (from the text and photo), else "Lot N"; then the condition. */
 function lotTitleFor(c: CapturedComment, position: number, options: LotOptions, photoCards?: PhotoCards): { title: string; untitled: boolean; namedByClaude: boolean } {
-  const { name, condition } = lotTextInfo(c.text);
+  const { name, condition } = lotTextInfo(c.text, { claims: options.claims });
   const photo = c.images[0]?.src;
   // A claim lot's photo read lists its cards: they name it ("Marowak, Kingler", "8 cards").
   const fromCards = photoCards?.length ? (photoCards.length <= 3 ? photoCards.map((x) => x.card).join(", ") : `${photoCards.length} cards`) : undefined;
@@ -195,28 +262,49 @@ export function untitledLotPhotos(capture: PostCapture): { imageUrl: string; tex
     .map((c) => ({ imageUrl: fullSizePhoto(c.images[0].src), text: c.text }));
 }
 
-// What a lot's text says besides its name (2026-10-06): prices and bid steps ("MP: 20", "mp 30kr",
-// "MB 10", "Startbud 100", "200kr", "5kr per stk"), the condition ("NM", "M/NM", "LP", "PSA 10"),
-// and words that describe but don't name it ("Holo", "Rev holo", "Promo"). "MP" is the group's
-// minimum price, not Moderately Played, unless it follows "Tilstand:".
+// What a lot's text says besides its name (2026-10-06, #352): prices and bid steps ("MP: 20",
+// "mp 30kr", "MB 10", "Startbud 100", "200kr", "5kr per stk"), the condition ("NM", "M/NM", "LP",
+// "Near mint", "PSA 10"), and words that describe but don't name it ("Holo", "Rev holo", "Promo"),
+// in any order, on one line or several.
 const AMOUNT_TEXT = String.raw`\d[\d .,]*(?:\s*k\b)?\s*(?:kr\.?|,-|nok)?`;
 const PRICE_PARTS = new RegExp(
-  String.raw`(?<![\p{L}\d])(?:mp|mb|minstepris|startbud|start|min\.?\s*bud(?:økning)?|budøkning|fastpris|pris)\s*[:.]?\s*${AMOUNT_TEXT}` +
+  String.raw`(?<![\p{L}\d])(?:${START_LABEL}|${STEP_LABEL})${LABEL_GAP}${NOT_CARD_NUMBER}${AMOUNT_TEXT}` +
     String.raw`|(?<![\p{L}\d/])\d[\d .,]*\s*(?:kr\.?|,-|nok)(?:\s*(?:per|pr\.?|/)\s*(?:stk|stykk|kort|card)\.?)?(?![\p{L}])`,
   "giu",
 );
-const CONDITION = /(?<![\p{L}\d])(?:(?:psa|cgc|bgs|tag|beckett)\s*\d{1,2}(?:[.,]5)?|m\/nm|nm\/m|mint|nm|lp|hp|dmg|damaged|tilstand\s*:?\s*(?:mp|m|ex|gd))(?![\p{L}\d])/giu;
 const GENERIC = /^(?:(?:rev(?:erse)?|reverse|rev\.?)?\s*\.?\s*holo|holo|promo|lot|kort|card|cards|stk|bulk|div(?:erse)?|og|and|[&+/,.()\-–|:\s])*$/iu;
+/** A line that is only a set code and card number ("199/165", "SV3 125/197", "TG05/TG30"): it belongs to the name above it. */
+const NUMBER_LINE = /^(?:[\p{L}]{1,4}\d{0,3}[a-z]?\s+)?[\p{L}]{0,3}\d{1,4}\s*\/\s*[\p{L}]{0,3}\d{1,4}$/u;
 
-/** A lot's text, read by rules: the name it gives (null if none: only a price, generic words, or nothing) and the condition. */
-export function lotTextInfo(text: string): { name: string | null; condition: string | null } {
+/**
+ * A lot's text, read by rules: the name it gives (null if none: only a price, generic words, or
+ * nothing) and the condition, normalized ("NM", "LP+", "M/NM", "Mint", "PSA 9.5").
+ *
+ * "MP" (the group's Minstepris, also Moderately Played; docs/spec.md "Lot text"), in this order:
+ * 1. after a condition label ("Tilstand: MP", "Condition: MP"), or written out ("moderately
+ *    played"): the condition;
+ * 2. in a claim or fixed-price lot (`claims`; those sales have no minimum price): the condition;
+ * 3. followed by an amount ("MP 200", "Mp: 200kr", "Mp. 200", "MP - 200"): the start bid;
+ * 4. with no amount after it ("Pikachu MP"): the condition, unless the text gives another one.
+ */
+export function lotTextInfo(text: string, opts: { claims?: boolean } = {}): { name: string | null; condition: string | null } {
   let name: string | null = null;
   let condition: string | null = null;
+  let bareMp = false;
+  const found = (m: string) => {
+    condition ??= normalizeCondition(m);
+    return " ";
+  };
   for (const raw of text.split("\n")) {
-    let line = raw.replace(/^\s*(?:lot|nr\.?|#)\s*\d+\s*[:.)\-–]?\s*/i, ""); // "Lot 1: Charizard" → "Charizard".
+    let line = raw.replace(LOT_NUMBER, ""); // "Lot 1: Charizard" → "Charizard".
+    line = line.replace(LABELLED_CONDITION, (_m, cond: string) => found(cond));
+    line = line.replace(GRADED_RE, found); // Before prices: "PSA 10 300kr" isn't 10 300 kr.
+    // A claim lot has no minimum price: "MP" is Moderately Played, read in order with the other conditions.
+    if (opts.claims) line = line.replace(BARE_MP, " moderately played ");
     line = line.replace(PRICE_PARTS, " ");
-    line = line.replace(CONDITION, (m) => {
-      condition ??= m.replace(/^tilstand\s*:?\s*/i, "").replace(/\s+/g, " ").toUpperCase().replace(/^(PSA|CGC|BGS|TAG|BECKETT)\s*/, "$1 ");
+    line = line.replace(CONDITION, found);
+    line = line.replace(BARE_MP, () => {
+      bareMp = true;
       return " ";
     });
     line = line
@@ -225,13 +313,18 @@ export function lotTextInfo(text: string): { name: string | null; condition: str
       .replace(/\s+/g, " ")
       .replace(/^[\s|,\-–:.]+|[\s|,\-–:]+$/g, "")
       .trim();
-    // A condition left on its own once the price is out ("MP - 250kr", "LP+"): not a name.
-    if (/^(?:mp|lp|nm|ex|gd|hp)\+?$/i.test(line)) {
-      condition ??= line.toUpperCase();
+    // "EX" or "GD" on its own line once the price is out: a condition, not a card.
+    if (/^(?:ex|gd)\+?$/i.test(line)) {
+      found(line);
+      continue;
+    }
+    if (name && NUMBER_LINE.test(line) && !/\d\s*\/\s*\d/.test(name)) {
+      name = `${name} ${line.replace(/\s*\/\s*/, "/")}`; // "Charizard ex" then "199/165" on the next line.
       continue;
     }
     if (!name && /\p{L}/u.test(line) && !GENERIC.test(line)) name = line;
   }
+  if (bareMp) condition ??= "MP";
   return { name, condition };
 }
 

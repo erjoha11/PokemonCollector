@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capturePostId, claimItems, lotTextInfo, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, namesCard, readBid, summarizeLots, tagAsSeller, untitledLotPhotos, unsureReplies, type PhotoCards } from "../src/domain/bids";
+import { capturePostId, claimItems, lotStartBid, normalizeCondition, lotTextInfo, lotTextPrice, claimLotsToRead, fullSizePhoto, interpretLots, namesCard, readBid, summarizeLots, tagAsSeller, untitledLotPhotos, unsureReplies, type PhotoCards } from "../src/domain/bids";
 import { claimMatchRequest, claimPhotoAnswerKey, claimPhotoRequest, lotNameAnswerKey, lotNameRequest } from "../src/llm/prompts";
 import type { CapturedComment, CapturedReply, PostCapture } from "../src/shared/capture";
 
@@ -320,6 +320,13 @@ describe("a lot's name from its own text (rules first)", () => {
     ["Mp 15kr", null, null],
     ["Lot\nMp 100kr", null, null],
     ["", null, null],
+    // #352: price labels the start bid reads are never the name.
+    ["Startpris: 200kr", null, null],
+    ["Min pris 150", null, null],
+    ["Pris: 200", null, null],
+    ["Mp. 100", null, null],
+    ["Lot 2 - 300,-", null, null],
+    ["Startpris 150kr\nVenusaur 15/102", "Venusaur 15/102", null],
   ])("%j", (text, name, condition) => expect(lotTextInfo(text)).toEqual({ name, condition }));
 });
 
@@ -377,5 +384,199 @@ describe("claim lots priced in the lot's own text (\"Fastpris: Blir oppgitt over
     });
     expect(l.claimCards!.map((x) => [x.card, x.price])).toEqual([["Pikachu", 5], ["Eevee", 5], ["Ditto", 20]]);
     expect(l.textPrice).toEqual({ kr: 5, perCard: true });
+  });
+});
+
+// #352: a multi-lot auction where each lot comment is "Lot N" plus a price in a form the start-bid
+// rule didn't know. Shape assumed from the report (no sample was available); names invented.
+describe("a lot's start bid from its own text (#352)", () => {
+  it.each([
+    ["MP: 1400", 1400],
+    ["Mp 10kr", 10],
+    ["Holo, mp 30kr, mb 20", 30],
+    ["Minstepris 500", 500],
+    ["700kr", 700],
+    ["Mp. 200", 200],
+    ["M.p 200", 200],
+    ["MP=200", 200],
+    ["Pris: 200", 200],
+    ["Pris kr 250", 250],
+    ["Startpris: 150kr", 150],
+    ["Start bud 120", 120],
+    ["Start: 90", 90],
+    ["Min. pris 75,-", 75],
+    ["Minstebud 60", 60],
+    ["Lot 1 - 200kr", 200],
+    ["Lot 3: 1 200,-", 1200],
+    ["Blastoise 2/102 - 300,-", 300],
+    ["Blastoise 2/102 NM 300kr", 300],
+    ["MB 10kr\nCharizard 4/102 400kr", 400], // The bid step isn't the start bid.
+    ["Mewtwo\nTilstand: MP\nMp 100", 100],
+    ["Markedspris 900kr\nMp 300", 300],
+    ["Markedspris 900kr", null], // What it's worth, not the start bid.
+    ["Charizard 4/102", null], // A card number, not a price.
+    ["Lot 4", null],
+    ["MB: 10", null],
+    ["", null],
+  ])("%j", (text, want) => expect(lotStartBid(text)).toBe(want));
+});
+
+describe("multi-lot auction: each lot comment is its number and a price (#352)", () => {
+  const SELLER2 = "Hanna Auksjonsen";
+  const lot2 = (index: number, text: string, replies: CapturedReply[] = []) => lot(index, text, replies, SELLER2);
+  const bid = (author: string, text: string, id: number): CapturedReply => ({ ...reply(author, text, { id }), ariaLabel: `Svar fra ${author} på ${SELLER2} sin kommentar` });
+  const c: PostCapture = {
+    ...capture([
+      lot2(0, "Lot 1 - Pris: 200kr", [bid("Bidder A", `${SELLER2} 150`, 1), bid("Bidder B", `${SELLER2} 210`, 2)]),
+      lot2(1, "Lot 2\nStartpris 150kr"),
+      lot2(2, "Lot 3: Mp. 100"),
+      lot2(3, "Lot 4 - Blastoise 2/102 - 300,-"),
+      lot2(4, "Lot 5\nVenusaur 15/102 holo\nMinstepris: 250\nMB 20"),
+    ]),
+    post: { url: "", author: SELLER2, text: "AUKSJON/BUDRUNDE\nMinstepris: Står under hvert bilde\nMinimum budøkning: 10kr", timeText: null, images: [], truncated: false },
+  };
+
+  it("reads every lot's start bid from its text", () => {
+    expect(interpretLots(c, OPTS).map((l) => [l.title, l.startBid, l.increment, l.untitled])).toEqual([
+      ["Lot 1", 200, 10, true],
+      ["Lot 2", 150, 10, true],
+      ["Lot 3", 100, 10, true],
+      ["Blastoise 2/102", 300, 10, false],
+      ["Venusaur 15/102 holo", 250, 20, false],
+    ]);
+  });
+
+  it("judges bids against that start bid", () => {
+    const [first] = interpretLots(c, OPTS);
+    expect(first.bids.map((b) => [b.amount, b.valid, b.note])).toEqual([[150, false, "below the start bid (200)"], [210, true, null]]);
+    expect(first.highestBid).toBe(210);
+  });
+
+  it("sends the lots their text doesn't name to Claude, and uses its names", () => {
+    expect(untitledLotPhotos(c).map((x) => x.text)).toEqual(["Lot 1 - Pris: 200kr", "Lot 2\nStartpris 150kr", "Lot 3: Mp. 100"]);
+    const names: Record<string, string> = { "lot0.jpg": "Charizard 4/102", "lot1.jpg": "Pikachu 58/102", "lot2.jpg": "Mewtwo 10/102" };
+    expect(interpretLots(c, { ...OPTS, lotName: (url) => names[url] }).map((l) => [l.title, l.namedByClaude])).toEqual([
+      ["Charizard 4/102", true],
+      ["Pikachu 58/102", true],
+      ["Mewtwo 10/102", true],
+      ["Blastoise 2/102", false],
+      ["Venusaur 15/102 holo", false],
+    ]);
+  });
+});
+
+// #352 (2026-10-07): a lot comment is free text where the card's name, its condition and its price
+// come in any order and any mix. Shapes assumed (no saved sample of the group's lot comments was
+// available); names are Pokémon, never people.
+describe("free-text lot comments: name, condition and start bid in any order (#352)", () => {
+  it.each([
+    ["Charizard ex NM 300kr", "Charizard ex", "NM", 300],
+    ["NM - Pikachu 151 - Pris: 200", "Pikachu 151", "NM", 200],
+    ["PSA 9 Umbreon VMAX, mp 500", "Umbreon VMAX", "PSA 9", 500],
+    ["Mint Mew 150,-", "Mew", "Mint", 150],
+    ["200kr Gengar LP", "Gengar", "LP", 200],
+    ["Near mint Lugia\nMp: 400", "Lugia", "NM", 400],
+    ["Lot 3: Blastoise (LP) startbud 90", "Blastoise", "LP", 90],
+    ["Pikachu SV3 125/197 NM\nMp 100", "Pikachu SV3 125/197", "NM", 100],
+    ["Charizard ex\n199/165\nLP+\nMp 500", "Charizard ex 199/165", "LP+", 500], // The number on its own line joins the name.
+    ["Gardevoir ex\nSV3 245 / 197\nMp 80", "Gardevoir ex SV3 245/197", null, 80],
+    ["Lightly played Snorlax 30kr", "Snorlax", "LP", 30],
+    ["Damaged Machamp, mp 10", "Machamp", "DMG", 10],
+    ["Heavily played Dragonite\nStartpris 40kr", "Dragonite", "HP", 40],
+    ["Rayquaza VMAX 218/203 NM/M - Mp 900", "Rayquaza VMAX 218/203", "NM/M", 900],
+    ["Espeon m/nm\nMinstepris: 250", "Espeon", "M/NM", 250],
+    ["Charizard 4/102 PSA 10 Gem Mint\nMP 5000", "Charizard 4/102", "PSA 10", 5000],
+    ["CGC 9.5 Pikachu illustrator promo", "Pikachu illustrator promo", "CGC 9.5", null],
+    ["BGS 9,5 Lugia 9/111 mp 2000", "Lugia 9/111", "BGS 9.5", 2000],
+    ["PSA10 Mewtwo 300kr", "Mewtwo", "PSA 10", 300], // The grade's 10 isn't the price ("10 300kr").
+    ["Beckett 8 Gyarados\nMp 150", "Gyarados", "Beckett 8", 150],
+    ["Blastoise EX 2/102 mp 200", "Blastoise EX 2/102", null, 200], // "EX" in a name is the card, not Excellent.
+    ["Tilstand: EX\nMewtwo 10/102", "Mewtwo 10/102", "EX", null],
+    ["Condition: Near Mint\nPrice: 300kr\nAlakazam 1/102", "Alakazam 1/102", "NM", 300],
+  ])("%j", (text, name, condition, startBid) => {
+    expect(lotTextInfo(text)).toEqual({ name, condition });
+    expect(lotStartBid(text)).toBe(startBid);
+  });
+});
+
+// "MP" is Minstepris (the start bid) in this group's lot comments, and Moderately Played on the
+// TCGplayer scale (notes/fb_auction_watcher/group-domain.md §3.2, §5.2). The rule, in order.
+describe("\"MP\": start bid or condition (#352)", () => {
+  it.each([
+    // 1. After a condition label, or written out: the condition. Its number is then not a price.
+    ["Mewtwo\nTilstand: MP\nMp 100", "Mewtwo", "MP", 100],
+    ["Tilstand: MP\nGolem 36/62", "Golem 36/62", "MP", null],
+    ["Golem Tilstand: MP 100", "Golem 100", "MP", null], // Ambiguous: the label wins; "100" is a bare number, left in the name.
+    ["Condition: MP - Golem 300kr", "Golem", "MP", 300],
+    ["Moderately played Onix 20kr", "Onix", "MP", 20],
+    // 3. Followed by an amount, with ":", ".", "=", "-" or "kr" between or none: the start bid.
+    ["Onix MP 200", "Onix", null, 200],
+    ["Onix Mp: 200kr", "Onix", null, 200],
+    ["Onix M.P. 200", "Onix", null, 200],
+    ["Onix MP - 200", "Onix", null, 200],
+    ["Onix mp kr 200", "Onix", null, 200],
+    ["MP - 250kr", null, null, 250], // In an auction, a start bid (a claim lot reads it as the condition: below).
+    ["Onix NM mp 200", "Onix", "NM", 200],
+    // 4. No amount after it: the condition, unless the text gives another.
+    ["Onix MP\n200kr", "Onix", "MP", 200],
+    ["Onix mp", "Onix", "MP", null],
+    ["MP", null, "MP", null],
+    ["Onix LP MP\nStartbud 50", "Onix", "LP", 50], // LP is given: the bare MP is dropped, not a name.
+    ["Onix MP 4/102", "Onix 4/102", "MP", null], // Ambiguous: a card number after MP is not its amount, so this MP is bare.
+  ])("%j", (text, name, condition, startBid) => {
+    expect(lotTextInfo(text)).toEqual({ name, condition });
+    expect(lotStartBid(text)).toBe(startBid);
+  });
+
+  it.each([
+    // 2. A claim or fixed-price sale has no minimum price: "MP" is always the condition there.
+    ["MP - 250kr", null, "MP"],
+    ["Onix MP 200kr", "Onix", "MP"],
+    ["Onix Mp", "Onix", "MP"],
+    ["Onix NM, mp", "Onix", "NM"],
+  ])("claim lot %j", (text, name, condition) => expect(lotTextInfo(text, { claims: true })).toEqual({ name, condition }));
+});
+
+describe("conditions, normalized for display (#352)", () => {
+  it.each([
+    ["nm", "NM"], ["Lp+", "LP+"], ["m/nm", "M/NM"], ["NM / M", "NM/M"], ["near  mint", "NM"], ["Near Mint", "NM"],
+    ["lightly played", "LP"], ["moderately played", "MP"], ["heavily played", "HP"], ["damaged", "DMG"], ["dmg", "DMG"],
+    ["mint", "Mint"], ["gem mint", "Gem Mint"], ["psa10", "PSA 10"], ["cgc 9,5", "CGC 9.5"], ["BGS 9.5", "BGS 9.5"],
+    ["beckett 8", "Beckett 8"], ["tag 10", "TAG 10"], ["ex", "EX"], ["good", "GD"],
+  ])("%j → %j", (raw, want) => expect(normalizeCondition(raw)).toBe(want));
+
+  it("a bare number is never a price: it may be a card number or a set", () => {
+    expect(lotStartBid("Pikachu 151\n58")).toBeNull();
+    expect(lotTextInfo("Pikachu 151\n58")).toEqual({ name: "Pikachu 151", condition: null });
+    expect(lotStartBid("Gengar 94/165 NM")).toBeNull();
+  });
+});
+
+describe("free-text lots are named by the rules as soon as the post is read (#352)", () => {
+  const c = capture([
+    lot(0, "200kr Gengar LP", []),
+    lot(1, "NM - Pikachu 151 - Pris: 200", []),
+    lot(2, "Near mint Lugia\nMp: 400", [reply("Bidder A", `${SELLER} 400`, { id: 5 })]),
+    lot(3, "PSA 9\nMp 500", []), // No name: Claude names it from the photo; the grade stays.
+  ]);
+
+  it("titles, conditions and start bids come from the text, with no Claude answer", () => {
+    expect(interpretLots(c, OPTS).map((l) => [l.title, l.startBid, l.untitled, l.namedByClaude])).toEqual([
+      ["Gengar · LP", 200, false, false],
+      ["Pikachu 151 · NM", 200, false, false],
+      ["Lugia · NM", 400, false, false],
+      ["Lot 4 · PSA 9", 500, true, false],
+    ]);
+  });
+
+  it("only the lot with no name in its text goes to Claude's photo naming", () => {
+    expect(untitledLotPhotos(c).map((x) => x.text)).toEqual(["PSA 9\nMp 500"]);
+    expect(interpretLots(c, { ...OPTS, lotName: () => "Mew 151/165" }).map((l) => l.title)).toEqual([
+      "Gengar · LP", "Pikachu 151 · NM", "Lugia · NM", "Mew 151/165 · PSA 9",
+    ]);
+  });
+
+  it("keeps the seller's raw text next to the interpreted values", () => {
+    expect(interpretLots(c, OPTS).map((l) => l.rawText)).toEqual(["200kr Gengar LP", "NM - Pikachu 151 - Pris: 200", "Near mint Lugia\nMp: 400", "PSA 9\nMp 500"]);
   });
 });

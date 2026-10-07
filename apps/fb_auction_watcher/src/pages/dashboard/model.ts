@@ -57,6 +57,10 @@ export const lotRef = (l: Pick<Lot, "commentId" | "position">) => l.commentId ??
 /** The key of a lot's "Not won" mark: `<post ID>:<lot ref>`. */
 export const notWonKey = (postId: string, l: Pick<Lot, "commentId" | "position">) => `${postId}:${lotRef(l)}`;
 
+/** A lot's own text as the seller wrote it, every line, on one line ("Lot 1 · Pris: 200kr"). Never cut: it's shown next to the title and start bid read from it. */
+export const lotOrigText = (rawText: string) =>
+  rawText.split("\n").map((s) => s.trim()).filter(Boolean).join(" · ");
+
 export type TabId = "new" | "today" | "upcoming" | "noend" | "mine" | "ended";
 /** A tab's sales, in sections when it holds more than one kind ("Yours" / "Everyone else"). */
 export type Tab = { id: TabId; label: string; sections: { label: string | null; rows: Row[] }[]; count: number };

@@ -120,13 +120,24 @@ what they leave, and never other people's names.
 - **Lot names**: from the lot's own text first (`lotTextInfo`: every line, prices and the
   condition taken out, "Holo"/"Promo" alone isn't a name). An auction lot whose text names
   nothing goes to Claude with its text and photo (Sonnet, batched). A claim lot is named from
-  its photo read's cards, with no second look at the photo.
+  its photo read's cards, with no second look at the photo. The price labels taken out of the
+  name and the ones read as the start bid are one list (`START_LABEL`/`STEP_LABEL` in
+  `bids.ts`), so a price left out of the title is always read as the lot's start bid (#352).
+  The rules name the lot when the post is read (the overview, the pill and the watcher interpret
+  the stored read directly); Claude's photo naming is only the fallback for a lot whose text has
+  no name, and it keeps its limits below (open sales only, the hourly photo cap). See "Lot text" under
+  findings for the free-text rules and the "MP" rule.
 
 **Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
 - Only live sales: nothing from a sale that ended more than 6 h ago (late bids and claims are
   read after the end, and Won/Lost needs a read after it, so a few hours' grace), and for sales
   with no known end (fixed price, or an end nobody could read) nothing once the post hasn't been
   seen or read for 3 days. The end is the one the overview shows: rules, else Claude's answer.
+- Lot names from photos have no such grace (#352, the user: "stop claude when the sale ends"):
+  they're asked only while the sale is open, i.e. until its end time plus any antisnipe window
+  (`hasSaleClosed`, the moment the overview marks it ended). A sale with no known end (the "No
+  end" tab) hasn't ended, so its lots are still named, under the same 3-day age limit. End times,
+  odd bids, claim-lot photos and claim matches keep the 6 h grace.
 - Photos sent to Sonnet are capped at 20 per rolling hour, counted in `chrome.storage.local` so
   a worker restart doesn't reset it: one per claim lot call (at most 5 per run), and each photo of
   a lot-name batch (up to 12 per call, at most 24 per run; claim lots go first, lot names get what
@@ -492,6 +503,14 @@ DOM findings from the real run (2026-10-03):
   scroll**, with no "Vis flere kommentarer" button. The first build only clicked buttons and
   stopped at 10. `expand.ts` now scrolls the last loaded comment into view (never a click)
   when no expander is left, and stops after a few rounds with no new comments.
+  A real claim-sale read (2026-10-07, 121 comments) still stopped "done" at the first 10, all
+  "." from people following the sale, with every lot comment from the seller missing: below
+  the 10th comment Facebook still showed three "Laster inn …" placeholders (`role="status"`,
+  `data-visualcompletion="loading-state"`). Scrolling the last comment's bottom edge into view
+  didn't load the next batch. `expand.ts` now also scrolls the first placeholder below the last
+  comment into view (`pendingLoaders`), keeps waiting while one is there (up to 12 idle rounds
+  instead of 4), and if it never resolves stops as `still-loading`: the read gets a warning
+  and doesn't count as complete (`isCompleteRead`), so it can't settle "Won"/"Lost".
 - Post types seen: "AUKSJON/BUDRUNDE" (bids, `MP`/`MB` = minimum price/minimum increment
   per lot, "Antisnipe 5 min") and "Claim salg" (fixed price per lot, first to claim). Both
   use the group's template ("Sluttid:", "Betalingsalternativ:", …).
@@ -551,8 +570,43 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
 - **Lot text** (2026-10-06): a lot's text often names the card and gives its price and condition
   on one line ("Iron Jugulis 216/182 – Illustration Rare | MP: 20", "Umbreon VMAX 215/203 NM -
   1200kr"), sometimes the name on line 2 under the price. The title is the name with the price
-  parts out, then "· NM" when the text gives a condition. "MP" is the minimum price, except after
-  "Tilstand:" or on its own before a price in a claim lot ("MP - 250kr"): then it's the condition.
+  parts out, then "· NM" when the text gives a condition.
+- **Free-text lot comments** (2026-10-07, #352): name, condition and price come in any order and
+  any mix, on one line or several: "Charizard ex NM 300kr", "NM - Pikachu 151 - Pris: 200",
+  "PSA 9 Umbreon VMAX, mp 500", "Mint Mew 150,-", "200kr Gengar LP", "Near mint Lugia / Mp: 400" (two lines),
+  "Lot 3: Blastoise (LP) startbud 90". `lotTextInfo` takes out, per line and in this order: the
+  lot number, a labelled condition, a grade, the prices, the other conditions, then a bare "MP";
+  what's left (if it isn't only "Holo"/"Promo"/punctuation) is the name. A line holding only a
+  set code and card number ("199/165", "SV3 125/197") joins the name above it. The first
+  condition found is shown, normalized: "NM", "LP+", "MP", "HP", "DMG", "M/NM", "NM/M", "Mint",
+  "Gem Mint", graded "PSA 10", "CGC 9.5", "BGS 9.5", "TAG 10", "Beckett 9" (also "SGC", "ACE";
+  "9,5" reads as 9.5); "near mint", "lightly played", "moderately played", "heavily played" and
+  "damaged" become their codes. "EX" and "GD" count only after a condition label or alone on a
+  line: "Charizard ex" and "Blastoise EX" are cards. A grade is taken out before the prices, so
+  "PSA 10 300kr" is 300, not 10 300. A bare number with no label and no "kr"/",-" is never a
+  price (a card number, or "151" the set). The seller's text is always shown in full next to
+  the title.
+- **"MP": start bid or condition** (2026-10-07, #352). In this group "MP" in a lot comment is
+  normally Minstepris; on the TCGplayer scale it's Moderately Played (group-domain.md §3.2,
+  §5.2). The rule, first match wins:
+  1. After a condition label ("Tilstand: MP", "Condition: MP", "Cond. MP") or written out
+     ("moderately played"): the condition. A number after it is then not a price ("Tilstand: MP
+     100" has no start bid; the "100" stays in the name and the raw text).
+  2. In a claim or fixed-price lot (no minimum price in those sales): always the condition, read
+     in order with any other condition ("MP - 250kr" there is Moderately Played, 250 kr).
+  3. Followed by an amount, with ":", ".", "=", "-", "kr" or nothing between ("MP 200", "Mp:
+     200kr", "M.P. 200", "MP - 200"): the start bid.
+  4. No amount after it ("Pikachu MP", "MP" on its own line): the condition, but only if the
+     text gives no other one ("Onix LP MP" is LP). Either way it's not part of the name.
+  A card number straight after it ("Onix MP 4/102") is not its amount, so that MP is bare (rule 4).
+- **First real sample against these rules** (2026-10-07): a claim sale whose post says
+  "Fastpris: Blir oppgitt over hvert bilde i kommentarfeltet" and "Tilstand: sealed, gradert,
+  MP-NM (blir beskrevet over hvert bilde)", so each lot's price and condition are meant to be
+  written above its photo. "MP" there is Moderately Played, as rules 1 and 2 expect. The read
+  held no lot comments at all (it stopped at the first 10 comments, see "Loading comments"
+  above), so the free-text and MP rules are still not checked against real lot text, nor is
+  the "151 200kr" case: "Pikachu 151 200kr" still reads as 151200 kr, since the space-thousands
+  rule joins "151 200". Condition ranges ("MP-NM", "MP/NM") in a lot's text show only one end.
 - **Claim-sale template** (2026-10-06): "Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker
   å delta)" then "Startid:", "Sluttid (maks 24 timer):", "Objektbeskrivelse:", "Tilstand:". The
   bracketed instruction isn't a name, so "Objektbeskrivelse" names the sale. "Startid" is
@@ -566,6 +620,18 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
   minimum price, "den er grei"), and "<Seller> ." (following a single lot, not a bid).
 - **Minimum price per lot:** "Mp 10kr" (lower case, no colon) as well as "MP: 1400"; one lot
   had a bare "700kr".
+- **Lot texts that are only a number and a price** (2026-10-07, #352): a multi-lot auction
+  where every lot came out "Lot N" with no start bid. The rules took "Pris: 200", "Mp. 200",
+  "Startpris 150kr", "Start 90" and a mid-line "300,-" out of the name, but `lotStartBid` only
+  knew "MP"/"Minstepris"/"Startbud" (no dot) or a line holding nothing but an amount, so the
+  price was dropped from both. Now the start bid reads every label the name stripping knows
+  ("MP", "M.P", "Mp.", "Pris", "Startpris", "Start bud", "Start", "Min. pris", "Minstebud",
+  "Fastpris", with ":", "." or "="), else the first amount in kr ("kr", ",-", "nok") anywhere
+  in the text that isn't the bid step ("MB 10kr") or a reference price ("Markedspris",
+  "TCGplayer", "Verdi"). A bare number without a label or "kr" is still not a price (it may be
+  a card number). The overview also showed the lot text without its first line, so a one-line
+  text ("Lot 1 - Pris: 200kr") showed nothing; it now shows every line. No saved sample of the
+  reported post was available: the shape is assumed from the report.
 - **End time formats:** "Sluttid: 2026-10-02 22.00", "Sluttid (Lørdag 3. oktober 23.59):",
   "Sluttid: 03.10 Lørdag kl22:00", "Sluttid: Søndag 04.10 kl 21:00", and "Slutt: 05.10.26
   kl 21:00" (label "Slutt", not "Sluttid").
