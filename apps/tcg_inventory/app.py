@@ -3300,7 +3300,11 @@ def _dropbox_sync(snapshot_source: str):
             }
         payload = [(f.name, dropbox_client.download_file(dbx, f.path_lower)) for f in files]
         try:
-            result = import_dex_csv_files(db, payload, source=snapshot_source)
+            # Export dates (issue #351): the dex prices are dated at their
+            # export, not at this re-read, and the newest file wins a category.
+            result = import_dex_csv_files(
+                db, payload, source=snapshot_source, file_dates={f.name: f.export_date for f in files}
+            )
         except ImportAborted as exc:
             # Unattended: a non-2xx so the cron run shows as failed, plus a
             # row on /sync-status. No snapshot -- nothing ran. The rollback

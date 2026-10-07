@@ -13,6 +13,7 @@ and dropbox_setup.py for how to obtain the refresh token.
 """
 from __future__ import annotations
 
+import datetime as dt
 import os
 from dataclasses import dataclass
 
@@ -34,6 +35,14 @@ class DropboxFile:
     path_lower: str
     client_modified: str  # ISO 8601 string, already serializable for templates
     size: int
+
+    @property
+    def export_date(self) -> dt.date:
+        """The day the file was exported (Dropbox's `client_modified`, the
+        modification time the uploading client reported, in UTC). Used as
+        the Dex prices' fetch date (issue #351): a re-read of an old export
+        is not a new price."""
+        return dt.datetime.fromisoformat(self.client_modified).date()
 
 
 def build_client_from_env() -> dropbox.Dropbox:

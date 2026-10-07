@@ -187,6 +187,7 @@ def import_dex_csv_files(
     today: dt.date | None = None,
     source: str = "manual",
     allow_mass_missing: bool = False,
+    file_dates: dict[str, dt.date] | None = None,
 ) -> ImportResult:
     """Import one or more Dex CSV exports as a single sync.
 
@@ -194,6 +195,18 @@ def import_dex_csv_files(
     across all files is processed together, so passing the main export and
     the Vintage export in one call (as every sync should) merges correctly
     without either one clobbering the other's untouched data.
+
+    `file_dates` (filename -> export date; the Dropbox sync passes each
+    file's `client_modified`) does two things (issue #351):
+
+    - The `dex` prices are dated at the My Collection file's export date,
+      not at `today`. Re-reading the same export every day is not a new
+      price, so an unchanged export goes stale after pricing.FRESH_DAYS and
+      the chain falls through to the live sources. A file with no date (a
+      direct call, no Dropbox) keeps `today`; a date in the future is
+      capped at `today`.
+    - A category found in more than one file is read from the newest file
+      only, with a warning. Without dates the rows are merged as before.
 
     `source` ("manual" | "cron") is only used to label the
     ImportLog row this call writes -- see _log_import below.
@@ -207,7 +220,9 @@ def import_dex_csv_files(
     today = today or dt.date.today()
     result = ImportResult()
 
-    rows_by_category: dict[str, list[dict]] = {}
+    file_dates = file_dates or {}
+    # category -> filename -> rows, in file order.
+    rows_by_category_file: dict[str, dict[str, list[dict]]] = {}
     empty_files: list[str] = []
     for filename, content in files:
         try:
@@ -225,7 +240,12 @@ def import_dex_csv_files(
             if not category:
                 result.warnings.append(f"{filename}: rad uten Category-verdi hoppet over.")
                 continue
-            rows_by_category.setdefault(category, []).append(row)
+            rows_by_category_file.setdefault(category, {}).setdefault(filename, []).append(row)
+
+    rows_by_category, category_dates = _pick_category_files(rows_by_category_file, file_dates, result)
+    # The date the dex prices are stamped with (issue #351): My Collection's
+    # export date, never later than today.
+    dex_price_date = min(category_dates.get(MY_COLLECTION_CATEGORY) or today, today)
 
     # --- 1. My Collection defines the physical inventory ground truth. ---
     # Dex's "Id" alone is not a unique physical card: the same Id appears
@@ -386,7 +406,7 @@ def import_dex_csv_files(
 
         db.flush()
         pricing.bulk_record_prices(
-            db, pricing.SOURCE_DEX, {card.id: price for card, price in dex_prices.items()}, today
+            db, pricing.SOURCE_DEX, {card.id: price for card, price in dex_prices.items()}, dex_price_date
         )
         pricing.resolve_cards(db, [card.id for card in imported_cards], today=today)
 
@@ -465,6 +485,42 @@ def import_dex_csv_files(
 
     db.commit()
     return result
+
+
+def _pick_category_files(
+    rows_by_category_file: dict[str, dict[str, list[dict]]],
+    file_dates: dict[str, dt.date],
+    result: ImportResult,
+) -> tuple[dict[str, list[dict]], dict[str, dt.date | None]]:
+    """Each category's rows, and the export date they're from.
+
+    A category in one file: that file's rows and date (None if undated).
+    A category in several files that all have a date: only the newest file
+    (the first listed on a tie), with a warning naming the ones skipped --
+    reading them all let an older export's rows overwrite a newer one's
+    (notes/REVIEW.md). If any of them is undated, the rows are merged as
+    before and the category has no date.
+    """
+    rows_by_category: dict[str, list[dict]] = {}
+    category_dates: dict[str, dt.date | None] = {}
+    for category, by_file in rows_by_category_file.items():
+        names = list(by_file)
+        if len(names) == 1:
+            rows_by_category[category] = by_file[names[0]]
+            category_dates[category] = file_dates.get(names[0])
+        elif all(name in file_dates for name in names):
+            newest = max(names, key=lambda name: (file_dates[name], -names.index(name)))
+            rows_by_category[category] = by_file[newest]
+            category_dates[category] = file_dates[newest]
+            skipped = ", ".join(f"{name} ({file_dates[name].isoformat()})" for name in names if name != newest)
+            result.warnings.append(
+                f"{category}: found in more than one file; read only the newest, "
+                f"{newest} ({file_dates[newest].isoformat()}), skipped {skipped}."
+            )
+        else:
+            rows_by_category[category] = [row for name in names for row in by_file[name]]
+            category_dates[category] = None
+    return rows_by_category, category_dates
 
 
 def _check_circuit_breaker(

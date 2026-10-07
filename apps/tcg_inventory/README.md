@@ -1228,7 +1228,12 @@ To turn it on:
 
 Keep your Dropbox folder holding the *current* full set of exports (main
 collection + Vintage + whatever else you track) — each cron run syncs
-whatever's in there at the time.
+whatever's in there at the time. If the same Dex category turns up in more
+than one file, only the newest file (by Dropbox `client_modified`) is read
+for it and the run gets a warning naming the skipped files (issue #351; it
+used to let an older export overwrite a newer one). Re-reading an unchanged
+export doesn't make its prices fresh: they're dated at the export (see
+"Pricing").
 
 ### Facebook wins inbox (issue #309)
 
@@ -1386,6 +1391,23 @@ which print it priced (`variant_key`), `fetched_at`, any per-source flags,
 and `lookup_failed_at` (the failed-lookup backoff, see "Price refresh"). A
 Dex sync whose `Price` cell is empty keeps the card's last known Dex price
 (it used to wipe it).
+
+**A Dex price is as old as its export (issue #351).** Dex exports are made
+by hand, but the daily cron re-reads whatever CSV is in Dropbox. The `dex`
+rows' `fetched_at` is therefore the export's date (the My Collection file's
+Dropbox `client_modified`, as a UTC date, capped at today), not the day of
+the sync that re-read it. An unchanged export goes stale `FRESH_DAYS` after
+it was made, and the chain falls through to the live sources
+(`tcgdex_tcgplayer`, `pokemontcg`, then `tcgdex_cardmarket`) until the next
+export makes Dex fresh again. With no file date (`import_dex_csv_files`
+called without `file_dates`, e.g. in tests) the sync day is used. The age
+shown under the price ("TCGplayer via Dex · 9 d ago") is the export's age.
+`fetched_at` was chosen over `source_updated_at` because resolution, the
+`stale` flag and `market_price_as_of` all read `fetched_at`, and for a
+mirrored source the export *is* the fetch. Expect most cards to switch
+source at once when an export passes 14 days, and back on the next export
+(the charts mark both as a source switch); see the HANDOFF entry for the
+prod estimate.
 
 **Resolution** (`pricing.resolve`): the first *fresh* price in chain order
 wins -- fresh means fetched within **14 days** (`FRESH_DAYS`), deliberately
