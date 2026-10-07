@@ -123,6 +123,10 @@ what they leave, and never other people's names.
   its photo read's cards, with no second look at the photo. The price labels taken out of the
   name and the ones read as the start bid are one list (`START_LABEL`/`STEP_LABEL` in
   `bids.ts`), so a price left out of the title is always read as the lot's start bid (#352).
+  The rules name the lot when the post is read (the overview, the pill and the watcher interpret
+  the stored read directly); Claude's photo naming is only the fallback for a lot whose text has
+  no name, and it keeps its limits below (live sales, the hourly photo cap). See "Lot text" under
+  findings for the free-text rules and the "MP" rule.
 
 **Limits and failures** (2026-10-03, review M2; `src/background/claudeQueue.ts`):
 - Only live sales: nothing from a sale that ended more than 6 h ago (late bids and claims are
@@ -553,8 +557,35 @@ Findings from a busy live auction (36 lots, 264 replies) and a second claim sale
 - **Lot text** (2026-10-06): a lot's text often names the card and gives its price and condition
   on one line ("Iron Jugulis 216/182 – Illustration Rare | MP: 20", "Umbreon VMAX 215/203 NM -
   1200kr"), sometimes the name on line 2 under the price. The title is the name with the price
-  parts out, then "· NM" when the text gives a condition. "MP" is the minimum price, except after
-  "Tilstand:" or on its own before a price in a claim lot ("MP - 250kr"): then it's the condition.
+  parts out, then "· NM" when the text gives a condition.
+- **Free-text lot comments** (2026-10-07, #352): name, condition and price come in any order and
+  any mix, on one line or several: "Charizard ex NM 300kr", "NM - Pikachu 151 - Pris: 200",
+  "PSA 9 Umbreon VMAX, mp 500", "Mint Mew 150,-", "200kr Gengar LP", "Near mint Lugia / Mp: 400" (two lines),
+  "Lot 3: Blastoise (LP) startbud 90". `lotTextInfo` takes out, per line and in this order: the
+  lot number, a labelled condition, a grade, the prices, the other conditions, then a bare "MP";
+  what's left (if it isn't only "Holo"/"Promo"/punctuation) is the name. A line holding only a
+  set code and card number ("199/165", "SV3 125/197") joins the name above it. The first
+  condition found is shown, normalized: "NM", "LP+", "MP", "HP", "DMG", "M/NM", "NM/M", "Mint",
+  "Gem Mint", graded "PSA 10", "CGC 9.5", "BGS 9.5", "TAG 10", "Beckett 9" (also "SGC", "ACE";
+  "9,5" reads as 9.5); "near mint", "lightly played", "moderately played", "heavily played" and
+  "damaged" become their codes. "EX" and "GD" count only after a condition label or alone on a
+  line: "Charizard ex" and "Blastoise EX" are cards. A grade is taken out before the prices, so
+  "PSA 10 300kr" is 300, not 10 300. A bare number with no label and no "kr"/",-" is never a
+  price (a card number, or "151" the set). The seller's text is always shown in full next to
+  the title.
+- **"MP": start bid or condition** (2026-10-07, #352). In this group "MP" in a lot comment is
+  normally Minstepris; on the TCGplayer scale it's Moderately Played (group-domain.md §3.2,
+  §5.2). The rule, first match wins:
+  1. After a condition label ("Tilstand: MP", "Condition: MP", "Cond. MP") or written out
+     ("moderately played"): the condition. A number after it is then not a price ("Tilstand: MP
+     100" has no start bid; the "100" stays in the name and the raw text).
+  2. In a claim or fixed-price lot (no minimum price in those sales): always the condition, read
+     in order with any other condition ("MP - 250kr" there is Moderately Played, 250 kr).
+  3. Followed by an amount, with ":", ".", "=", "-", "kr" or nothing between ("MP 200", "Mp:
+     200kr", "M.P. 200", "MP - 200"): the start bid.
+  4. No amount after it ("Pikachu MP", "MP" on its own line): the condition, but only if the
+     text gives no other one ("Onix LP MP" is LP). Either way it's not part of the name.
+  A card number straight after it ("Onix MP 4/102") is not its amount, so that MP is bare (rule 4).
 - **Claim-sale template** (2026-10-06): "Claim-salg (Tagg deg selv i kommentarfeltet om du ønsker
   å delta)" then "Startid:", "Sluttid (maks 24 timer):", "Objektbeskrivelse:", "Tilstand:". The
   bracketed instruction isn't a name, so "Objektbeskrivelse" names the sale. "Startid" is
