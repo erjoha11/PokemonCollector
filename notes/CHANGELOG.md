@@ -241,6 +241,69 @@ yet.
 
 ### tcg_inventory
 
+**pokemontcg.io prices by stored ID in daily batches (#357, closes #349)**
+- The price cron fetches every international card's TCGplayer price from
+  pokemontcg.io by its stored `pokemontcg` ID, 50 IDs per request (about 10
+  requests a day in prod), instead of one name search per card. Japanese
+  and zh-hans cards are never asked for.
+- A hit must have the requested ID, Dex's printed number and a matching
+  name. A price TCGplayer last updated more than 30 days ago
+  (`tcgplayer.updatedAt`, now stored in `source_updated_at`) isn't used.
+- An outage writes nothing. A 5xx, 429 or timeout is retried once, then
+  the cards just stay due. 3 failures in a row, a persisting 429 or the
+  100 s time budget stop the pass, and the cron still resolves and
+  snapshots. Only a successful response that has nothing usable stamps
+  `lookup_failed_at`.
+- An ID missing from the response (Dex's `sv35-27` is pokemontcg.io's
+  `sv3pt5-27`) gets one name search. A confident hit is priced and its ID
+  stored as `heuristic`. A `derived` masterdata ID no longer overwrites a
+  non-`derived` one, so the Dex sync keeps the found ID.
+- The Dex sync no longer looks up pokemontcg.io prices (images only).
+  `price_refresh.py --reprice-all` uses the batch path. The cron JSON and
+  Sync status report requests, priced, unmatched and transient errors. No
+  schema change.
+
+**TCGplayer variants matched by masterdata code; ball-pattern and special
+prints never get a TCGplayer price (#355, closes #350)**
+- `card_images._match_variant_key` maps the masterdata variant code to
+  exact TCGplayer keys (`normal`, `holofoil`, `reverseHolofoil`,
+  `1stEdition`, `1stEditionHolofoil`) for both pokemontcg.io and TCGdex. A
+  plain "Holo" now gets `holofoil` whatever order the keys come in.
+- Prints TCGplayer has no key for (any ball pattern, cosmos, cracked ice,
+  expansion stamp, shadowless: `card_images.has_tcgplayer_print`) get no
+  TCGplayer-family price, even when the card has only one priced print. The
+  chain falls through to Dex or Cardmarket.
+- `pricing.drop_other_print_tcgplayer_rows` deletes such rows stored by
+  the old rule at the start of each price pass and re-resolves those cards.
+
+**A Dex price is dated at its export, not the sync (#354, closes #351)**
+- A `dex` price's `fetched_at` is the My Collection file's Dropbox export
+  date (capped at today), not the day the cron re-read it. An unchanged
+  export goes stale 14 days after it was made, and the chain falls through
+  to the live TCGplayer/Cardmarket sources until the next export.
+- A category found in more than one dated file is read from the newest
+  file only, with a warning.
+
+**Single-flight guard for the Dex sync; killed runs visible (#342, part 3
+of #340)**
+- New `job_locks` table (`CURRENT_SCHEMA_VERSION` 13 → 14) and
+  `job_locks.py`. `/cron/dropbox-sync` takes the lock before touching
+  Dropbox. A second run while one is live gets 409 `already_running` and
+  writes nothing.
+- A lock older than 15 min is taken over, and `/sync-status` reaps it, so
+  a run killed by Vercel's 300 s limit shows as `failed` ("Interrupted")
+  instead of leaving no trace.
+
+**Cold start writes nothing; unowned qty-0 Dex rows skipped (#341, parts 1
+and 2 of #340)**
+- `init_db()` on an up-to-date database issues no writes or DDL. The set
+  backfill only updates mislinked cards, and RLS/column defaults are only
+  applied when missing. Before, every cold start row-locked `cards` and
+  could deadlock a running sync.
+- A qty-0 My Collection row for a card that isn't in the database (Dex's
+  "all variants" export) is skipped: no card and no lookups. It is counted
+  in `unowned_rows_skipped`. An existing card at qty 0 is updated as before.
+
 **Helper text trimmed; longer explanations moved into (i) tooltips (#347)**
 - Templates only. Visible helper text that restated a heading, tab or button
   is gone (e.g. the Orders tab subtitles, the Sell on finn.no intro).
