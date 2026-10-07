@@ -83,7 +83,11 @@ def due_for_price_lookup_filter(today: dt.date):
 
 def price_lookup_due(card: Card, today: dt.date) -> bool:
     """Python-side twin of due_for_price_lookup_filter, for a single card
-    already in hand (importer.py walks CSV rows, not a query)."""
+    already in hand (importer.py walks CSV rows, not a query). Also never
+    due for a print TCGplayer has no key for (card_images.
+    has_tcgplayer_print, issue #350): there's nothing to look up."""
+    if not card_images.has_tcgplayer_print(card.variant):
+        return False
     stale_cutoff = today - dt.timedelta(days=PRICE_STALE_AFTER_DAYS)
     retry_cutoff = today - dt.timedelta(days=PRICE_RETRY_AFTER_DAYS)
     row = pricing.get_row(card, SOURCE)
@@ -156,6 +160,9 @@ class PriceRefreshResult:
     status: str = "ok"
     degraded_reason: str | None = None
     cards_skipped: int = 0
+    # Cards whose stored TCGplayer price was for another print and was
+    # dropped this run (pricing.drop_other_print_tcgplayer_rows, issue #350).
+    other_print_dropped: int = 0
 
 
 def refresh_stale_prices(
@@ -174,8 +181,13 @@ def refresh_stale_prices(
     """
     today = today or dt.date.today()
     result = PriceRefreshResult()
+    result.other_print_dropped = pricing.drop_other_print_tcgplayer_rows(db, today)
+    if result.other_print_dropped:
+        db.commit()
 
     candidates = db.query(Card).options(selectinload(Card.prices)).filter(due_for_price_lookup_filter(today)).all()
+    # A print TCGplayer has no key for is never looked up (issue #350).
+    candidates = [card for card in candidates if card_images.has_tcgplayer_print(card.variant)]
     # Tiered ordering in Python rather than a dialect-specific ORDER BY
     # (NULL ordering differs between SQLite and Postgres).
     candidates.sort(key=_refresh_priority)
@@ -253,6 +265,8 @@ def reprice_all(
         .order_by(Card.id)
         .all()
     )
+    # A print TCGplayer has no key for is never looked up (issue #350).
+    cards = [card for card in cards if card_images.has_tcgplayer_print(card.variant)]
     # Oldest-priced first, so a --limit'ed run makes progress the same way
     # the cron does.
     cards.sort(key=lambda c: pricing.get_row(c, SOURCE).fetched_at or dt.date.min)
@@ -313,6 +327,7 @@ def main() -> None:
             f"price_refresh: status={result.status} checked={result.cards_checked} updated={result.cards_updated} "
             f"low_confidence={len(result.cards_low_confidence)} "
             f"variant_uncertain={len(result.cards_variant_uncertain)} "
+            f"other_print_dropped={result.other_print_dropped} "
             f"usd_to_nok={result.usd_to_nok} ({result.fx_source}, as of {result.fx_as_of})"
         )
     finally:

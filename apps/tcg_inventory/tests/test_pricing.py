@@ -183,6 +183,49 @@ def test_card_missing_from_export_keeps_its_price_rows(db_session):
     assert {r.card.card_id for r in db_session.query(CardPrice)} == {"a", "b"}
 
 
+# --- prints TCGplayer has no key for (issue #350) ------------------------------
+
+
+def _card_with_prices(db, card_id, variant, sources):
+    card = Card(card_id=card_id, name="Eevee", variant=variant, qty=1)
+    db.add(card)
+    for source, price in sources.items():
+        pricing.record_price(
+            card, source, price_nok=price, fetched_at=TODAY, flags=[pricing.FLAG_VARIANT_UNCERTAIN]
+        )
+    card.tcgplayer_price, card.tcgplayer_price_updated_at = sources.get("pokemontcg"), TODAY
+    db.flush()
+    pricing.resolve_cards(db, [card.id], today=TODAY)
+    db.commit()
+    return card.id
+
+
+def test_drop_other_print_tcgplayer_rows_lets_a_ball_pattern_fall_through(db_session):
+    ball = _card_with_prices(
+        db_session, "sv8pt5-1", "Poké Ball Holo", {"tcgdex_tcgplayer": 2.0, "pokemontcg": 2.1, "tcgdex_cardmarket": 9.0}
+    )
+    master = _card_with_prices(db_session, "sv8pt5-2", "Master Ball Holo", {"pokemontcg": 2.1})
+    normal = _card_with_prices(db_session, "sv8pt5-3", "Normal", {"tcgdex_tcgplayer": 2.0, "pokemontcg": 2.1})
+    assert db_session.get(Card, ball).market_price_source == "tcgdex_tcgplayer"
+
+    assert pricing.drop_other_print_tcgplayer_rows(db_session, today=TODAY) == 2
+    db_session.commit()
+    db_session.expire_all()
+
+    ball_card = db_session.get(Card, ball)
+    assert {p.source for p in ball_card.prices} == {"tcgdex_cardmarket"}
+    assert (ball_card.market_price, ball_card.market_price_source) == (9.0, "tcgdex_cardmarket")
+    assert ball_card.tcgplayer_price is None and ball_card.tcgplayer_price_updated_at is None
+    master_card = db_session.get(Card, master)
+    assert master_card.prices == []
+    assert (master_card.market_price, master_card.market_price_source, master_card.price_flags) == (None, None, "no_price")
+    normal_card = db_session.get(Card, normal)
+    assert {p.source for p in normal_card.prices} == {"tcgdex_tcgplayer", "pokemontcg"}
+    assert normal_card.tcgplayer_price == 2.1
+
+    assert pricing.drop_other_print_tcgplayer_rows(db_session, today=TODAY) == 0  # idempotent
+
+
 # --- snapshots -----------------------------------------------------------------
 
 

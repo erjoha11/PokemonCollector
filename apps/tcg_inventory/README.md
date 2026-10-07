@@ -1493,7 +1493,8 @@ because TCGdex had the Poké Ball and Master Ball products swapped on 3 of
 9 Pokémon Card 151 cards sampled (a Poké Ball Slowbro at 59 EUR). Stamped
 and oversized promo prints are ignored. For TCGplayer via TCGdex, the keys
 (`normal`, `reverse-holofoil`, `holofoil`, ...) go through the same
-`_match_variant_key` rules as pokemontcg.io's.
+`_match_variant_key` rules as pokemontcg.io's (see "Price refresh"): a ball
+pattern or other print TCGplayer has no key for gets no TCGplayer price.
 
 **Conversion.** EUR and USD are converted at Norges Bank's daily rate
 (`fx_rates`, same as pokemontcg's USD); each row keeps the native price,
@@ -1628,12 +1629,41 @@ via a Dex sync instead) — worth a manual look, not auto-corrected.
 A confidently-matched card can still have more than one print (normal,
 holofoil, reverse holofoil, 1st edition, ...), each with its own
 `tcgplayer.prices` entry and potentially a very different market price.
-`fetch_card_data` tries to match Dex's own `Variant` field to the right
-print, but only for the unambiguous cases ("Normal", "Reverse Holo", "1st
-Edition ...") — a bare "Holo" is intentionally left unmapped, since it
-could mean any of several prints. When a card has multiple priced prints
-and the variant can't be confidently matched, the first one present is
-still used (better than no price) but flagged — listed in the response's
+`card_images._match_variant_key` picks the print by Dex's Variant as a
+masterdata code (`masterdata.normalize_variant`), never by substring, and
+only takes a key that is exactly that print (issue #350). Keys are compared
+lowercased with hyphens removed, so TCGdex's `reverse-holofoil` is
+pokemontcg.io's `reverseHolofoil`. The same rule serves both TCGplayer
+sources (`pokemontcg` and `tcgdex_tcgplayer`):
+
+| Variant code | TCGplayer key |
+|---|---|
+| `normal` | `normal`; on WotC sets `unlimited` |
+| `holo` | `holofoil` only. WotC's `unlimitedHolofoil` / `1stEditionHolofoil` stay unmatched |
+| `reverse_holo` | `reverseHolofoil` |
+| `first_edition` | `1stEdition`; on a holo-only WotC card its one 1st Edition key |
+| `first_edition_holo` | `1stEditionHolofoil` |
+| `unspecified` (blank) | nothing to match |
+| anything else: `poke_ball_holo`, `master_ball_holo`, any `*_ball_holo`, `cosmos_holo`, `cracked_ice_holo`, `expansion_stamp`, `shadowless`, any new code | **no TCGplayer price at all** |
+
+The last row matters most. TCGplayer (as pokemontcg.io and TCGdex expose
+it) has no key for those prints, so any price there belongs to another
+print of the card (e.g. Prismatic Evolutions' Poké Ball / Master Ball
+cards only have `normal` / `holofoil` / `reverseHolofoil`). Such a card
+gets nothing from either TCGplayer source, not even when the card has just
+one priced print, so the chain falls through to Dex or Cardmarket (which
+prices ball patterns as their own product). The pokemontcg refresh doesn't
+look those cards up at all (`price_lookup_due`, `refresh_stale_prices`).
+Rows stored before #350 by the old rule are deleted at the start of each
+price cron (`pricing.drop_other_print_tcgplayer_rows`, run by both
+`refresh_stale_prices` and `refresh_tcgdex_prices`, which also clears the
+`tcgplayer_price` mirror and re-resolves the cards), so already-stored
+rows are corrected with no manual database write.
+
+For a TCGplayer-keyed variant (or a blank one) on a card with one priced
+print, that print is used. With several priced prints and no exact key
+(a blank variant, or a WotC "Holo"), the first one present is still used
+(better than no price) but flagged — listed in the response's
 `cards_variant_uncertain` (or as an import warning via a Dex sync) — worth
 a manual look, unlike a low-confidence match this still updates the price
 rather than withholding it, since it's still the right card, just possibly

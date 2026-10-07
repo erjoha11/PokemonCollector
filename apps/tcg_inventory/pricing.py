@@ -34,9 +34,10 @@ import datetime as dt
 from dataclasses import dataclass
 from typing import Iterable
 
-from sqlalchemy import Date, Float, String, and_, case, exists, func, insert, literal, or_, select, update
+from sqlalchemy import Date, Float, String, and_, case, delete, exists, func, insert, literal, or_, select, update
 from sqlalchemy.orm import Session
 
+import card_images
 from models import Card, CardPrice, ImportLog
 
 # Display priority, TCGplayer-first (owner's choice, epic #213). A module
@@ -49,6 +50,9 @@ SOURCE_TCGDEX_TCGPLAYER = "tcgdex_tcgplayer"
 SOURCE_POKEMONTCG = "pokemontcg"
 SOURCE_TCGDEX_CARDMARKET = "tcgdex_cardmarket"
 CHAIN: tuple[str, ...] = (SOURCE_DEX, SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG, SOURCE_TCGDEX_CARDMARKET)
+# The sources that price a card from TCGplayer's per-print keys, chosen by
+# card_images._match_variant_key (issue #350).
+TCGPLAYER_SOURCES: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG)
 
 # Human labels, for the UI (market: which price it is; via: where we got it).
 SOURCE_LABELS: dict[str, str] = {
@@ -280,6 +284,57 @@ def bulk_record_prices(
     ]
     if new_rows:
         db.execute(insert(CardPrice), new_rows)
+
+
+def drop_other_print_tcgplayer_rows(db: Session, today: dt.date | None = None) -> int:
+    """Delete every TCGplayer-family card_prices row (TCGPLAYER_SOURCES) on a
+    card whose print TCGplayer has no key for (card_images.
+    has_tcgplayer_print: Poké Ball / Master Ball patterns, ...), clear the
+    `tcgplayer_price` mirror, and re-resolve those cards. Returns how many
+    cards lost a row.
+
+    Before issue #350 such a card got another print's price (usually the
+    base print's `normal`), flagged variant_price_uncertain but still
+    winning ahead of Cardmarket. The lookups no longer write those rows;
+    this removes the ones already stored, so the cards fall through to the
+    next source in CHAIN. Idempotent and cheap (one SELECT when there's
+    nothing to drop), so both price crons run it first on every run
+    (price_refresh.refresh_stale_prices, tcgdex_prices.
+    refresh_tcgdex_prices). Doesn't commit. Uses Core statements, so call
+    it before loading the cards' ORM objects."""
+    db.flush()
+    rows = db.execute(
+        select(CardPrice.id, CardPrice.card_id, CardPrice.source, Card.variant)
+        .join(Card, Card.id == CardPrice.card_id)
+        .where(CardPrice.source.in_(TCGPLAYER_SOURCES))
+    ).all()
+    priceable: dict[str | None, bool] = {}
+    doomed = []
+    for row in rows:
+        if row.variant not in priceable:
+            priceable[row.variant] = card_images.has_tcgplayer_print(row.variant)
+        if not priceable[row.variant]:
+            doomed.append(row)
+    if not doomed:
+        return 0
+    row_ids = [row.id for row in doomed]
+    for start in range(0, len(row_ids), _CHUNK):
+        db.execute(
+            delete(CardPrice)
+            .where(CardPrice.id.in_(row_ids[start : start + _CHUNK]))
+            .execution_options(synchronize_session=False)
+        )
+    mirror_ids = sorted({row.card_id for row in doomed if row.source == SOURCE_POKEMONTCG})
+    for start in range(0, len(mirror_ids), _CHUNK):
+        db.execute(
+            update(Card)
+            .where(Card.id.in_(mirror_ids[start : start + _CHUNK]))
+            .values(tcgplayer_price=None, tcgplayer_price_updated_at=None)
+            .execution_options(synchronize_session=False)
+        )
+    card_ids = sorted({row.card_id for row in doomed})
+    resolve_cards(db, card_ids, today=today)
+    return len(card_ids)
 
 
 # --------------------------------------------------------------------------
