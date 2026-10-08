@@ -26,7 +26,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, text
+from sqlalchemy import case, func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 from starlette.concurrency import run_in_threadpool
@@ -285,6 +285,22 @@ INVENTORY_VALUE_SORTS = {"net_invested", "gain_loss"}
 # yet (no research done for that set), sort after every known set, not
 # before -- see Set's docstring.
 UNKNOWN_RELEASE_RANK = 999999
+
+# Within one set, a number with a letter prefix (TG05, GG35, RC5, SV12, H1)
+# is a subset printed after the main run: Dex's "Number" keeps the prefix but
+# number_int strips it (importer._parse_number_int), so without this bucket
+# TG05 sorted between main-set #5 and #6 (issue #376). 0 = plain number,
+# 1 = prefixed or missing. Plain SUBSTR + BETWEEN so SQLite and Postgres agree.
+_SUBSET_NUMBER_BUCKET = case(
+    (func.substr(Card.number, 1, 1).between("0", "9"), 0),
+    else_=1,
+)
+
+# Appended to every Inventory SQL sort: a unique final key (Card.id) so tied
+# rows (variants of one number, number-less cards, same-named sets) come back
+# in the same order on every request -- Postgres guarantees no order among
+# ties, so page 8 and page 9 could otherwise overlap or skip rows (#376).
+_INVENTORY_TIE_BREAKERS = (Card.number.asc(), Card.name.asc(), Card.variant.asc(), Card.language.asc(), Card.id.asc())
 
 # The price sort key was `reference_price` before issue #210; old links and
 # bookmarks with ?sort=reference_price (and gsort=) still work.
@@ -875,7 +891,16 @@ def inventory(
             query = query.outerjoin(Set, Set.id == Card.set_id)
             release_rank = func.coalesce(Set.release_rank, UNKNOWN_RELEASE_RANK)
             rank_col = release_rank.desc() if direction == "desc" else release_rank.asc()
-            order_cols = [rank_col, Card.set.asc(), number_sort.asc()]
+            # Card.series after Card.set: two unranked sets that share a name
+            # in different series (both at UNKNOWN_RELEASE_RANK) would
+            # otherwise interleave number by number (#376).
+            order_cols = [
+                rank_col,
+                Card.set.asc(),
+                Card.series.asc(),
+                _SUBSET_NUMBER_BUCKET.asc(),
+                number_sort.asc(),
+            ]
         else:
             if sort in INVENTORY_VALUE_SORTS:
                 order_cols = [number_sort.asc()]
@@ -891,7 +916,7 @@ def inventory(
                 if sort == "rarity":  # unrecognized names tie on rank -- break by name
                     order_cols.insert(1, Card.rarity.desc() if direction == "desc" else Card.rarity.asc())
 
-        cards = query.order_by(*order_cols).all()
+        cards = query.order_by(*order_cols, *_INVENTORY_TIE_BREAKERS).all()
         # Net paid/Gain (see partials/inventory_table.html) are always shown
         # per row regardless of the active sort, so the Transaction table
         # load itself can't be skipped -- but it was previously re-run a
