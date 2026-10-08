@@ -2342,3 +2342,48 @@ tables on prod early. Harmless — additive, empty — but worth knowing).
 - Copy-as-text uses the checklist display name ("Pokémon Card 151
   (Korean)"), not a short "151 (KR)" form.
 - Verified through route/template tests only, not in a browser.
+
+
+# Handoff notes — 2026-10-08 session (#375: stale "Venter" collection removed)
+
+## Code (in git)
+
+None. "Venter" never appeared in code; it was a prod `collections` row left
+by an earlier sync from when the Dex folder was still called "Venter"
+(collection names never follow a Dex folder rename).
+
+## Direct database changes
+
+- **2026-10-08, prod (`nverpumoregkjfeddrwa`), via Supabase MCP, user-confirmed:**
+  deleted collection `id 9` "Venter" (`priority_rank` 99) and its 8
+  `card_collections` rows (cards 910-917). Every one of those 8 cards also
+  carries the "Incoming" tag (collection 10); no binder or other table
+  referenced collection 9 (only `import_log.collections_touched` text).
+  Cards, qty, transactions and other tags untouched.
+- **Backup:** no full backup could be taken. `prod-backup.yml` run
+  https://github.com/erjoha11/PokemonCollector/actions/runs/37788613693 went
+  green but skipped (repository secrets `BACKUP_*` unset); locally `pg_dump`
+  isn't installed and `apps/tcg_inventory/.env`'s `DATABASE_URL` is stale.
+  The user accepted this row-level restore as the backup instead:
+
+  ```sql
+  BEGIN;
+  INSERT INTO collections (id, name, priority_rank) VALUES (9, 'Venter', 99);
+  INSERT INTO card_collections (card_id, collection_id) VALUES
+    (910,9),(911,9),(912,9),(913,9),(914,9),(915,9),(916,9),(917,9);
+  COMMIT;
+  ```
+
+## Open items
+
+- **Prod backups are not working**: set the `prod-backup.yml` secrets (see
+  `apps/tcg_inventory/README.md` "Backups and restore") before the next
+  direct prod write (e.g. the pending `sets.release_rank` fill from #376).
+- **"Incoming" is in active use (user, 2026-10-08):** the Dex folder marks
+  won cards in transit; removing a card from it is the "in hand" signal.
+  The user is now setting qty at win time rather than on arrival. The app
+  still ignores the folder (#311), so the "Incoming" collection (id 10, 8
+  cards) is a frozen snapshot and in-transit cards look like cards in hand.
+  An "In transit" status (un-ignore Incoming, badge/filter, exclude from
+  sale/ad pickers, handle an emptied folder dropping out of the export) was
+  proposed but not yet sent to `architect`. Do not delete collection 10.
