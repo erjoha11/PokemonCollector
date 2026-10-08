@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ card_list.name }} – TCG Inventory{% endblock %}
+{% block content %}
+{#- One want or sale list (issue #370, epic #366), from
+    card_lists.list_detail. Items are prints (master cards); status is
+    computed live from your cards. Rows edit in place (qty, target price,
+    note); every write fires "list-changed", on which #list-summary
+    re-fetches itself. #}
+<p class="muted breadcrumb"><a href="/collecting">Sets &amp; lists</a></p>
+{% set editing = false %}
+{% include "partials/card_list_title.html" %}
+{% include "partials/card_list_summary.html" %}
+
+<div class="card card-list-card">
+  <p class="warnings" role="alert" hidden data-form-error></p>
+  {% if rows %}
+  <div class="table-scroll">
+    <table class="card-list-table">
+      <thead>
+        <tr>
+          <th><span class="visually-hidden">Picture</span></th>
+          <th>Card</th>
+          <th class="num">Qty</th>
+          <th>Status</th>
+          <th class="num">Market price</th>
+          <th class="num">Target price</th>
+          <th>Note</th>
+          <th><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for view in rows %}{% include "partials/card_list_row.html" %}{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif detail.items %}
+  <p class="muted">Every item is “Got it” and hidden. <a href="/lists/{{ card_list.id }}">Show them</a></p>
+  {% else %}
+  <p class="muted">Nothing on this list yet. Add prints from a set page: “Add N {{ 'missing' if card_list.kind == 'want' else 'spares' }} to” under the filters, e.g. via <a href="/collecting">Sets &amp; lists</a> → a tracked set.</p>
+  {% endif %}
+</div>
+
+<form class="list-delete-form" method="post" action="/lists/{{ card_list.id }}/delete" hx-post="/lists/{{ card_list.id }}/delete"
+      hx-confirm="Delete the list “{{ card_list.name }}” and its {{ detail.items | length }} item{{ 's' if detail.items | length != 1 }}? Your cards aren't touched. This can't be undone.">
+  <button type="submit" class="secondary">Delete list</button>
+</form>
+{% endblock %}

@@ -696,6 +696,56 @@ class SetChecklistCard(Base):
     master_card: Mapped[MasterCard] = relationship()
 
 
+class CardList(Base):
+    """A user-curated list of prints (issue #370, epic #366): a want list
+    (cards to buy) or a sale list (spares to sell). `kind` is fixed when
+    the list is created. See card_lists.py and README "Want and sale lists".
+
+    A list is a curated snapshot: nothing is ever added or removed
+    automatically, and an item's status (Missing / Got it / Listed / ...)
+    is computed live from the cards linked to its master card, never
+    stored. Like `listings`, a list never touches qty, collections,
+    binders or transactions.
+    """
+
+    __tablename__ = "card_lists"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    # "want" | "sale" -- see card_lists.LIST_KINDS. Never changed after creation.
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+
+    items: Mapped[list["CardListItem"]] = relationship(
+        back_populates="card_list", cascade="all, delete-orphan"
+    )
+
+
+class CardListItem(Base):
+    """One print on a list. Points at the masterdata identity, not a
+    `Card`: that's how a want list holds prints the user doesn't own (a
+    checklist master card with no Card). The owned cards, if any, are found
+    through `MasterCard.cards`."""
+
+    __tablename__ = "card_list_items"
+    __table_args__ = (UniqueConstraint("list_id", "master_card_id", name="uq_card_list_items_list_master"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    list_id: Mapped[int] = mapped_column(ForeignKey("card_lists.id", ondelete="CASCADE"), nullable=False, index=True)
+    master_card_id: Mapped[int] = mapped_column(ForeignKey("master_cards.id"), nullable=False, index=True)
+    qty: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # What the user wants to pay (want) or ask (sale), in kr.
+    target_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    note: Mapped[str | None] = mapped_column(String, nullable=True)
+    # "manual" | "missing" | "spares": how the item got onto the list.
+    source: Mapped[str] = mapped_column(String, nullable=False, default="manual")
+    added_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
+
+    card_list: Mapped[CardList] = relationship(back_populates="items")
+    master_card: Mapped[MasterCard] = relationship()
+
+
 class SetReleaseOrder(Base):
     """Lookup table for chronological (release-date) sorting of sets.
 

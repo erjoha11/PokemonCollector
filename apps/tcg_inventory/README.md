@@ -153,7 +153,18 @@ run).
   `/collections` index removed in #252 stays removed. The landing page's
   **Tracked sets** lists every set with a checklist (see "Master sets /
   checklists"): master set X / Y and spares. With no checklist it says how
-  to seed one. The want / sale lists (#370) go below it.
+  to seed one. Below it, **Lists** (#370): want lists and sale lists side
+  by side (name, item count, status summary like "3 missing · 1 got it"),
+  and a "New list" form (name + kind; the kind is fixed once created). See
+  "Want and sale lists" below.
+- **List page** (`/lists/{id}`, #370) — one want or sale list: a table
+  sorted by set, then number (thumbnail, card name / print / set, qty,
+  status badge, market price, target price, note, Edit / Remove). Qty,
+  target price and note edit in place (htmx row swap); rename (name + note)
+  in place; delete asks first. Want lists: "Est. cost to complete", a
+  "Hide got-it" toggle (`?hide_got=1`) and "Remove got-it items (N)". Sale
+  lists: "Est. value of spares" and "Make finn.no ad from this list"
+  (`/lists/{id}/ad` → `/sales?card_ids=…`). "Copy as text" for both.
 - **Set page** (`/sets/{language}/{set_code}`, e.g. `/sets/ja/sv2a`) — one
   set's master set, from `queries.master_set_detail` (all computed, nothing
   stored). Generic per masterdata `(language, set_code)`; a set without a
@@ -194,6 +205,8 @@ run).
     Dashboard (#241 removed completion there). The collection gallery's
     per-set figure now reads "X/Y numbers" (distinct card numbers, any
     variant), so it isn't mistaken for the master-set figure.
+  - **Add to a list** (#370), under the filters: "Add N missing to [want
+    list ▾]" and "Add N spares to [sale list ▾]". See "Want and sale lists".
 - **Orders** (`/orders/purchased`, `/orders/sold`, `/orders/listings`;
   issue #255) — one nav item ("Orders") for what used to be three
   (Transactions, Sell on finn.no, Listings). One h1 and a tab strip
@@ -699,7 +712,9 @@ and stored exchange rates, see "Pricing" below), `won_items` (Facebook
 wins waiting to be registered, see "Facebook wins inbox" below), and
 `job_locks` (one row per background job currently running, see "Sync
 status" → "Single-flight guard"), and `set_checklists`/`set_checklist_cards`
-(a set's reference list of prints, see "Master sets / checklists" below).
+(a set's reference list of prints, see "Master sets / checklists" below),
+and `card_lists`/`card_list_items` (want and sale lists, see "Want and sale
+lists" below).
 
 ### Masterdata (card identity across catalogs)
 
@@ -838,6 +853,62 @@ replaces — the fix is to never store it at all. All three are gated on
 latest export) contributes nothing to any "Value" KPI, breakdown bucket, or
 `queries.top_valuable_cards` — `Card.unique_value` wasn't originally gated
 this way (issue #132) even though `duplicates`/`total_value` always were.
+
+### Want and sale lists (issue #370)
+
+`card_lists.py`; tables `card_lists` (name, `kind` = `want` | `sale`,
+fixed at creation, note) and `card_list_items` (one per master card per
+list, unique on `(list_id, master_card_id)`: qty, target price in kr,
+note, `source` = `manual` | `missing` | `spares`). Deleting a list deletes
+its items.
+
+- **Items are master cards, not Cards**, so a want list can hold prints you
+  don't own (a checklist print with no Card). The owned cards are found
+  through `master_cards` → `cards`.
+- **Curated snapshots.** Nothing is added or removed by itself. The only
+  bulk removal is the explicit "Remove got-it items (N)".
+- **Status is computed live, never stored**, from the cards linked to the
+  item's master card (sum of qty over cards with qty > 0), so it follows
+  the next Dex sync with no list edits:
+  - want: **Got it** (own ≥ qty), **Got k of n**, **Possibly owned
+    (unmatched)** (you own nothing linked to this print, but an owned card
+    of the same set and number is on the set page's Unmatched list, so it
+    may well be this print; links there), else **Missing**;
+  - sale: **Sold out** (own none), **Listed** (an owned card of the print is
+    in an `active` listing via `listing_cards`; delisted/sold don't count),
+    **Not enough spares** (qty > spares), else **Available**.
+  Spares are the set page's per-print figure (`queries.print_spares`, via
+  the same `MasterSetSlot`): `max(sum(qty) − 1, 0)` per master card.
+- **Totals.** Want: "Est. cost to complete" = market price × copies still
+  missing (`max(qty − owned, 0)`). Sale: "Est. value of spares" = market
+  price × `min(qty, spares)`. Market price is the print's owned card's
+  resolved price, else any linked card's (e.g. a sold copy at qty 0); a
+  print with no price data shows "—" and is left out of the total, which
+  says how many were.
+- **Adding** (v1): only from the set page, server-side and filter-aware.
+  The prints are exactly what the grid shows under the current Track /
+  Show filter, so Master Ball prints only when their track is picked.
+  Missing go in with qty 1, spares with qty = spare count. The select has
+  every list of the right kind plus "New list…". Idempotent: a print
+  already on the list is left exactly as it is and counted ("Added 31, 3
+  already on list"). The answer re-renders the always-present panel and
+  its status line, so an add can't silently do nothing.
+- **Copy as text**: one line per item still wanted (not "Got it") or still
+  owned (not "Sold out"), e.g. `Pokémon Card 151 (Korean) #023 Ekans ·
+  Poké Ball ×1 — 45 kr` (want: copies still missing; target price if set,
+  else market price). The set label is the checklist's display name, else
+  the set name plus the card's (#367-corrected) language code.
+- **Sale list → ad**: "Make finn.no ad from this list" redirects to
+  `/sales?card_ids=…` with one owned card per print (the card with most
+  copies). The list never generates an ad: it's the intent stage, `/sales`
+  drafts the ad and `/listings` records what was posted.
+- Like `listings`, lists never touch qty, collections, binders or
+  transactions.
+
+Not built yet (#370 fast-follows): a per-tile "+" on the set grid, "Save
+selection as sale list" on `/sales`, adding any owned card from Inventory or
+the card page, target-price alerts, CSV export, importing Dex's "Wishlist"
+category (a business-rule change: it's excluded on import today).
 
 ## Business rules (from the Excel system this replaces)
 
@@ -2302,6 +2373,8 @@ file locally following the steps above and add a dated line here.
   "Masterdata" above).
 - `set_checklists.py` — set checklists' tracks and `get_checklist` (see
   "Master sets / checklists" above).
+- `card_lists.py` — want and sale lists: live item status, totals, copy
+  text, idempotent adds (see "Want and sale lists" above).
 - `set_checklist_seed.py` — CLI that seeds a set checklist from TCGdex.
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `won_inbox.py` — the Facebook wins inbox: checks fb_auction_watcher's

@@ -2293,3 +2293,52 @@ None.
   Korean cards priced from the Japanese print, `pricing.is_jp_price_proxy`),
   not hardcoded to sv2a.
 - Verified through route/template tests only, not in a browser.
+
+
+# Handoff notes — 2026-10-08 session (#370: want and sale lists)
+
+## Code (in git, PR for #370, stacked on #373 / #369; not merged at time of writing)
+
+- Schema v16: new tables `card_lists` (name, kind `want`|`sale` fixed at
+  creation, note, created_at) and `card_list_items` (list_id FK cascade,
+  master_card_id FK, qty, target_price, note, source
+  `manual`|`missing`|`spares`, added_at; unique `(list_id,
+  master_card_id)`). Created by `init_db()`'s `create_all()`; RLS on via
+  the #239 pass, no grants. Additive only.
+- `card_lists.py`: live status (want: Missing / Got it / Got k of n /
+  Possibly owned (unmatched); sale: Available / Listed / Not enough spares
+  / Sold out), totals, copy text, idempotent `add_items`, `remove_got_it`.
+  Spares reuse the set page's `MasterSetSlot` / `queries.print_spares`
+  (extracted from #373's slot property, same formula).
+- Set page: "Add N missing / N spares to [list ▾]" panel inside
+  `#set-grid` (filter-aware via the extracted
+  `queries.filter_master_set_slots`, shared with the grid).
+- `/collecting` Lists section + New list form; `/lists/{id}` page with
+  in-place row edit, rename, delete, Hide got-it, Remove got-it items,
+  Make finn.no ad (`/lists/{id}/ad` → `/sales?card_ids=…`).
+
+## Direct database changes
+
+None. Prod is still v15 until this merges (or until a v16 deploy runs
+`init_db()` against it: if Vercel previews share prod's `DATABASE_URL`,
+which is unverified, opening this PR's preview would create the two empty
+tables on prod early. Harmless — additive, empty — but worth knowing).
+
+## Notes / open items
+
+- Market price for a print you don't own comes from any linked card,
+  e.g. a sold copy at qty 0; with none, it shows "—" and the total says
+  how many were left out. Checklist prints never seen in Dex have no
+  price source at all (no `card_prices` without a Card) — a fast-follow
+  would be pricing master cards directly from TCGdex.
+- "Possibly owned (unmatched)" is a heuristic: an owned card of the same
+  set and number that's on the set page's Unmatched list. With 0
+  unmatched on prod (expected after the #368 seed) it never shows.
+- Sale "Listed" wins over "Not enough spares" when both apply (one badge
+  per row).
+- The status summary refresh after an in-place edit uses an `HX-Trigger:
+  list-changed` event (summary region re-fetches itself), not an OOB swap:
+  a `<tr>` response can't carry a `<div>`.
+- Copy-as-text uses the checklist display name ("Pokémon Card 151
+  (Korean)"), not a short "151 (KR)" form.
+- Verified through route/template tests only, not in a browser.

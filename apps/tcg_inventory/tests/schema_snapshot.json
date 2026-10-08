@@ -1,6 +1,6 @@
 {
-  "schema_version": 15,
-  "fingerprint": "075e9c383d78914c11a07dfcba9d403e9748e34416613c0580b7b4feede3c93e",
+  "schema_version": 16,
+  "fingerprint": "7c38a125203b9ca241febb51ca907ae11eb7f5e88221ade9723600a3e4238da3",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -9,6 +9,23 @@
     "card_collections": [
       ["card_id", "INTEGER", false],
       ["collection_id", "INTEGER", false]
+    ],
+    "card_list_items": [
+      ["added_at", "DATETIME", false],
+      ["id", "INTEGER", false],
+      ["list_id", "INTEGER", false],
+      ["master_card_id", "INTEGER", false],
+      ["note", "VARCHAR", true],
+      ["qty", "INTEGER", false],
+      ["source", "VARCHAR", false],
+      ["target_price", "FLOAT", true]
+    ],
+    "card_lists": [
+      ["created_at", "DATETIME", false],
+      ["id", "INTEGER", false],
+      ["kind", "VARCHAR", false],
+      ["name", "VARCHAR", false],
+      ["note", "VARCHAR", true]
     ],
     "card_prices": [
       ["card_id", "INTEGER", false],
