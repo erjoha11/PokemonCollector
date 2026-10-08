@@ -217,7 +217,9 @@ def import_dex_csv_files(
     - The `dex` prices are dated at the My Collection file's export date,
       not at `today`. Re-reading the same export every day is not a new
       price, so an unchanged export goes stale after pricing.FRESH_DAYS and
-      the chain falls through to the live sources. A file with no date (a
+      the chain falls through past it (to Cardmarket, for Japanese cards;
+      international cards normally show a live TCGplayer price anyway,
+      which ranks ahead of Dex since #386). A file with no date (a
       direct call, no Dropbox) keeps `today`; a date in the future is
       capped at `today`.
     - A category found in more than one file is read from the newest file

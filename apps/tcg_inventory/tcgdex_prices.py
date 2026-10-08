@@ -6,8 +6,8 @@ sources (see pricing.CHAIN for where they sit in the display chain):
 
 - `tcgdex_tcgplayer` -- `pricing.tcgplayer`, USD `marketPrice` per print
   ("normal", "reverse-holofoil", "holofoil", ...). International cards only
-  in practice (TCGdex has no TCGplayer data for Japanese prints). A backup
-  for, and cross-check of, Dex's own TCGplayer price.
+  in practice (TCGdex has no TCGplayer data for Japanese prints). First in
+  the display chain (#386): live TCGplayer, ahead of Dex's copy of it.
 - `tcgdex_cardmarket` -- Cardmarket, EUR. The only free source we have for
   Japanese cards besides Dex itself. Which field is "the price" and how the
   `-holo` fields and per-print products map onto Dex's Variant is decided in

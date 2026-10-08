@@ -46,12 +46,21 @@ def test_same_export_synced_a_month_apart_goes_stale_and_a_newer_one_refreshes_i
     assert not pricing.is_fresh(EXPORTED, month_later)
     assert (card.market_price, card.market_price_source) == (99.0, pricing.SOURCE_POKEMONTCG)
 
-    # A new export from Dex makes the dex price fresh again, and it wins.
+    # A new export from Dex makes the dex price fresh again. The live
+    # TCGplayer price still ranks ahead of it while fresh (#386) ...
     exported_again = month_later - dt.timedelta(days=1)
     newer = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "price": "160"}])
     import_dex_csv_files(db_session, [("main.csv", newer)], today=month_later, file_dates={"main.csv": exported_again})
     card = _card(db_session)
     assert _dex_row(db_session).fetched_at == exported_again
+    assert (card.market_price, card.market_price_source) == (99.0, pricing.SOURCE_POKEMONTCG)
+
+    # ... and once that one goes stale, the fresh export wins.
+    later = exported_again + dt.timedelta(days=pricing.FRESH_DAYS)
+    assert not pricing.is_fresh(month_later - dt.timedelta(days=2), later)
+    pricing.resolve_cards(db_session, today=later)
+    db_session.commit()
+    card = _card(db_session)
     assert (card.market_price, card.market_price_source, card.market_price_as_of) == (
         160.0,
         pricing.SOURCE_DEX,

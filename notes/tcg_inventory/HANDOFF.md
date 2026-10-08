@@ -2416,3 +2416,58 @@ by an earlier sync from when the Dex folder was still called "Venter"
   An "In transit" status (un-ignore Incoming, badge/filter, exclude from
   sale/ad pickers, handle an emptied folder dropping out of the export) was
   proposed but not yet sent to `architect`. Do not delete collection 10.
+
+---
+
+# Handoff notes — 2026-10-09 session (#386: live TCGplayer first in the price chain)
+
+## Decision reversal (user, 2026-10-09)
+
+`pricing.CHAIN` changed from `(dex, tcgdex_tcgplayer, pokemontcg,
+tcgdex_cardmarket)` to `(tcgdex_tcgplayer, pokemontcg, dex,
+tcgdex_cardmarket)`: live TCGplayer first, Dex as fallback. This
+**reverses** the Dex-first order from #210 / epic #213 ("Dex is now first in
+the chain" above). Goal: displayed prices match Collectr, which Norwegian
+card-show vendors use.
+
+Evidence (verified 2026-10-09, from the issue):
+
+- Collectr's price = TCGplayer Near Mint market x ~9.56 NOK/USD, no eBay
+  blend (Dark Celebi ex5-4 RH 4,786.89 kr = $499.99; Ditto hgss4-17 241 kr =
+  $25.21; Celebi swsh4-9 36.48 kr = $3.82).
+- Prod `card_prices` (read-only): `tcgdex_tcgplayer` already matches
+  Collectr (Dark Celebi 4,824.60 / Ditto 243.16 / Celebi 36.63); the
+  displayed `dex` lags (4,148.12 / 237.14 / 40.22). `pokemontcg` close for
+  Ditto (241.03), off for Celebi (49.32, fetched 2026-09-30), none for Dark
+  Celebi.
+- Coverage (international): dex 499, pokemontcg 472, tcgdex_tcgplayer 461.
+  Japanese/Korean cards have no TCGplayer source but Dex, so they keep Dex
+  by fallthrough (Dex still beats Cardmarket).
+
+## Expected one-time effect in prod
+
+- No direct database change. Stored `cards.market_price*` keep the old
+  order until the next full re-resolve, which is the end-of-job
+  `jobs.resolve_all_prices` (`pricing.resolve_cards(db)` over every card):
+  the daily `/cron/dropbox-sync` (05:00 UTC) and `/cron/price-refresh`
+  (06:00 UTC), or a manual sync/refresh from the app. Nothing at deploy
+  re-resolves: `init_db()`'s `_backfill_card_prices` only touches
+  never-resolved cards. So the switch lands with the first sync/cron after
+  deploy, and that day's snapshot records the new sources.
+- Displayed prices jump once across roughly 460 international cards (those
+  with a fresh `tcgdex_tcgplayer` or `pokemontcg` row), Dex -> TCGplayer via
+  TCGdex/pokemontcg.io. The value-history and per-card price charts will
+  show source-switch notes for that day (`pricing.source_switch_note`), and
+  Price movers leaves those cards out ("N source changes left out") until
+  the period's start snapshot is past the switch day.
+- Japanese/Korean cards are unaffected (still Dex, or Cardmarket when the
+  Dex export is stale).
+
+## Open items (not built)
+
+- `tcgdex_prices.STALE_AFTER_DAYS` (7, ~125 lookups/day under
+  `MAX_LOOKUPS_PER_RUN`) could shrink for more "live" prices now that
+  `tcgdex_tcgplayer` is the displayed source; that costs proportionally more
+  TCGdex requests per cron and more of the cron's time box. Not changed.
+- Out of scope per #386: eBay sold data via PokeTrace; Eevee swsh7-125
+  Normal (Dex) vs Reverse Holo (Collectr) is a data question for the user.

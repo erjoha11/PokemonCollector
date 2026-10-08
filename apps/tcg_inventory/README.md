@@ -1797,20 +1797,31 @@ source, latest value only -- no per-source history, see #169), and one
 resolver picks the displayed price (issue #210, `pricing.py`).
 
 **Sources**, in display priority (`pricing.CHAIN`, a module constant --
-TCGplayer-first by the owner's choice, epic #213):
+live TCGplayer first, Dex as fallback, by the owner's choice in #386):
 
 | # | `source` | What | Currency | Written by |
 |---|---|---|---|---|
-| 1 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
-| 2 | `tcgdex_tcgplayer` | TCGdex's TCGplayer `marketPrice` | USD | `tcgdex_prices.py` (#211) |
-| 3 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py` (daily, by ID, #349) |
+| 1 | `tcgdex_tcgplayer` | TCGdex's TCGplayer `marketPrice` | USD | `tcgdex_prices.py` (#211) |
+| 2 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py` (daily, by ID, #349) |
+| 3 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
 | 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket `trend` (else `avg30`) | EUR | `tcgdex_prices.py` (#211) |
 
-Dex is TCGplayer-sourced for Japanese cards too, but it's the only
+**Why live TCGplayer first (#386, 2026-10-09).** This reverses #210's
+Dex-first order (epic #213). The goal is for displayed prices to match
+Collectr, which Norwegian card-show vendors use: Collectr shows TCGplayer's
+Near Mint market price converted to NOK, and `tcgdex_tcgplayer` already
+matched it on the sampled cards, while Dex's copy lagged (Dark Celebi ex5-4:
+Collectr 4,786.89 kr, `tcgdex_tcgplayer` 4,824.60, `dex` 4,148.12). See
+the issue and `notes/tcg_inventory/HANDOFF.md` for the evidence.
+
+Dex is TCGplayer-sourced for Japanese cards too, and it's the only
 TCGplayer source they have (pokemontcg.io has no Japanese cards, and
-TCGdex carries no TCGplayer data for them). Cardmarket via TCGdex, last in
-the chain, is their one independent fallback: it's what a Japanese card
-shows when its Dex price is missing or stale.
+TCGdex carries no TCGplayer data for them), so Japanese and Korean cards
+keep Dex by fallthrough. Cardmarket via TCGdex, last in the chain, is their
+one independent fallback: it's what a Japanese card shows when its Dex
+price is missing or stale. An international card shows Dex only when
+neither live TCGplayer source has a fresh price for it (no match, a ball
+pattern TCGplayer has no key for, or a failed refresh).
 
 A row keeps the native price, currency, the FX rate used, `price_nok`,
 which print it priced (`variant_key`), `fetched_at`, any per-source flags,
@@ -1823,17 +1834,17 @@ by hand, but the daily cron re-reads whatever CSV is in Dropbox. The `dex`
 rows' `fetched_at` is therefore the export's date (the My Collection file's
 Dropbox `client_modified`, as a UTC date, capped at today), not the day of
 the sync that re-read it. An unchanged export goes stale `FRESH_DAYS` after
-it was made, and the chain falls through to the live sources
-(`tcgdex_tcgplayer`, `pokemontcg`, then `tcgdex_cardmarket`) until the next
-export makes Dex fresh again. With no file date (`import_dex_csv_files`
+it was made, and the chain falls through past it (to `tcgdex_cardmarket`)
+until the next export makes Dex fresh again. With no file date (`import_dex_csv_files`
 called without `file_dates`, e.g. in tests) the sync day is used. The age
 shown under the price ("TCGplayer via Dex · 9 d ago") is the export's age.
 `fetched_at` was chosen over `source_updated_at` because resolution, the
 `stale` flag and `market_price_as_of` all read `fetched_at`, and for a
-mirrored source the export *is* the fetch. Expect most cards to switch
-source at once when an export passes 14 days, and back on the next export
-(the charts mark both as a source switch); see the HANDOFF entry for the
-prod estimate.
+mirrored source the export *is* the fetch. Since #386 this mostly affects
+Japanese/Korean cards (international ones normally show a live TCGplayer
+price ahead of Dex): expect them to switch to Cardmarket at once when an
+export passes 14 days, and back on the next export (the charts mark both as
+a source switch); see the HANDOFF entry for the prod estimate.
 
 **Resolution** (`pricing.resolve`): the first *fresh* price in chain order
 wins -- fresh means fetched within **14 days** (`FRESH_DAYS`), deliberately
@@ -1860,6 +1871,11 @@ re-running the resolver. It is resolved (`pricing.resolve_cards`, bulk):
 - in a full DB-only pass at the end of each sync/cron (`/cron/dropbox-sync`,
   `/cron/price-refresh`, manual Dropbox sync), right before its snapshot --
   this is how a source going stale is applied to cards nobody re-priced.
+  It's also how a change to `CHAIN` reaches already-resolved cards (#386):
+  nothing at deploy or in `init_db()` re-resolves them (its backfill only
+  touches never-resolved cards), so stored prices keep the old order until
+  the next sync/cron (the card page's "Price sources" table is in the new
+  order at once, with "Used" still on the old winner until then).
 
 **Legacy columns.** `cards.reference_price` and `cards.tcgplayer_price`
 (+ `tcgplayer_price_updated_at`) are kept as mirrors of the `dex` and
