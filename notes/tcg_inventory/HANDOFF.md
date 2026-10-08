@@ -2380,8 +2380,9 @@ by an earlier sync from when the Dex folder was still called "Venter"
   `apps/tcg_inventory/README.md` "Backups and restore") before the next
   direct prod write (e.g. the pending `sets.release_rank` fill from #376).
 - **"Incoming" is in active use (user, 2026-10-08):** the Dex folder marks
-  won cards in transit; removing a card from it is the "in hand" signal.
-  The user is now setting qty at win time rather than on arrival. The app
+  won cards in transit. **User's workflow from 2026-10-08:** set the Dex
+  qty as soon as the card is paid for, and remove the Incoming tag when the
+  card is in hand (removal, not qty, is the "in hand" signal). The app
   still ignores the folder (#311), so the "Incoming" collection (id 10, 8
   cards) is a frozen snapshot and in-transit cards look like cards in hand.
   An "In transit" status (un-ignore Incoming, badge/filter, exclude from
