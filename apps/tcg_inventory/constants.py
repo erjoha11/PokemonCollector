@@ -156,28 +156,14 @@ KOREAN = "Korean"
 KOREAN_NOTE_TOKEN = "KR"
 KOREAN_NOTE_RE = re.compile(rf"\b{KOREAN_NOTE_TOKEN}\b", re.IGNORECASE)
 
-# TEMPORARY set-level fallback, keyed on the Dex card_id prefix before "-"
-# ("jpn_sv2a-12" -> "jpn_sv2a"): every card of the set gets this language,
-# note or not, until the user has tagged all of them with "KR" in Dex.
-# Remove it by deleting the entry. While it's here a genuine Japanese sv2a
-# card would also show as Korean (the user owns none).
-PHYSICAL_LOCALE_OVERRIDES: dict[str, str] = {
-    "jpn_sv2a": KOREAN,
-}
-
-
 def has_korean_note(notes: str | None) -> bool:
     """True when the notes contain the KR token as a whole word."""
     return bool(notes) and KOREAN_NOTE_RE.search(notes) is not None
 
 
-def physical_language(card_id: str | None, locale: str | None, notes: str | None) -> str | None:
+def physical_language(locale: str | None, notes: str | None) -> str | None:
     """The language stored on Card.language at import: Korean for a "KR"
-    note or a PHYSICAL_LOCALE_OVERRIDES set, else Dex's Locale (None when
-    blank)."""
+    note (the only Korean marker), else Dex's Locale (None when blank)."""
     if has_korean_note(notes):
         return KOREAN
-    prefix = (card_id or "").split("-", 1)[0]
-    if prefix in PHYSICAL_LOCALE_OVERRIDES:
-        return PHYSICAL_LOCALE_OVERRIDES[prefix]
     return (locale or "").strip() or None
