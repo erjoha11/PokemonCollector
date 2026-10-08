@@ -1159,7 +1159,10 @@ without updating both the code and this doc.
    Dex as the Japanese print. Mark such a card with the token `KR` in any of
    its Dex notes (`Note 1`–`Note 5`) and the importer stores
    `language = "Korean"` instead of Dex's `Locale`
-   (`constants.physical_language`). Any set. Case-insensitive, whole word
+   (`constants.physical_language`). The note is the only Korean marker:
+   there is no set-level fallback (the temporary sv2a one was removed once
+   every Korean card had its note), so a Japanese-logged card without it
+   stays Japanese. Any set. Case-insensitive, whole word
    (`constants.KOREAN_NOTE_RE`): `KR`, `kr`, `KR; mint`, `bought KR lot`
    match; `KRAKEN`, `okr`, `KRW` don't. The card then shows "KR" in
    Inventory (and its language filter), on the card page, in badges, the
@@ -1172,13 +1175,6 @@ without updating both the code and this doc.
      "TCGplayer via Dex (JP price)", "Cardmarket via TCGdex (JP price)" on
      the card page and in price tooltips (`pricing.card_source_label`,
      display only; `pricing.CHAIN` is unchanged).
-   - **Temporary fallback:** `constants.PHYSICAL_LOCALE_OVERRIDES =
-     {"jpn_sv2a": "Korean"}` (keyed on the Dex `card_id` prefix before the
-     `-`) makes every 151 card Korean, note or not, until the user has
-     tagged all of them with "KR" in Dex. **To remove it, delete that one
-     entry** (the next sync then uses the notes alone). While it's there a
-     genuine Japanese sv2a card would also show as Korean (the user owns
-     none).
    - **Notes follow Dex.** `notes` is rewritten from the export on every
      sync, so a note removed in Dex is cleared here too (it used to be kept
      forever) and the language reverts to Dex's `Locale`. Nothing in the

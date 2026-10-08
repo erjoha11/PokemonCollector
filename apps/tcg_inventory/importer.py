@@ -342,9 +342,9 @@ def import_dex_csv_files(
             # Notes follow Dex: a note removed there is cleared here too (it
             # used to be kept forever). Nothing in the app edits Card.notes.
             card.notes = _notes_from_row(row)
-            # A "KR" note (or the temporary sv2a fallback) makes the card
-            # Korean; otherwise Dex's Locale (issue #367, constants.py).
-            card.language = constants.physical_language(card_id, row.get("Locale"), card.notes)
+            # A "KR" note makes the card Korean; otherwise Dex's Locale
+            # (issue #367, constants.py).
+            card.language = constants.physical_language(row.get("Locale"), card.notes)
             card.rarity = (row.get("Rarity") or "").strip() or None
             card.illustrator = (row.get("Illustrator") or "").strip() or None
             # The `dex` source price (issue #210). An empty/unparseable Price
