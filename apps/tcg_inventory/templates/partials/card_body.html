@@ -31,7 +31,7 @@
     {% set flags = card.price_flags | price_flags %}
     <p class="card-price-source">
       {% if card.market_price_source %}
-      <span class="card-price-source-label">{{ card.market_price_source | source_label }}</span>
+      <span class="card-price-source-label">{{ card.market_price_source | card_source_label(card) }}</span>
       {% if card.market_price_as_of %}· <span title="Fetched {{ card.market_price_as_of.strftime('%d.%m.%Y') }}">{{ card.market_price_as_of | days_ago }}</span>{% endif %}
       {% else %}
       <span class="muted">No price from any source</span>
@@ -68,7 +68,7 @@
         <tbody>
           {% for p in price_rows %}
           <tr{{ ' class="price-source-used"' | safe if p.source == card.market_price_source }}>
-            <td>{{ p.source | source_label }}</td>
+            <td>{{ p.source | card_source_label(card) }}</td>
             <td class="num">{% if p.price is not none and p.currency and p.currency != 'NOK' %}{{ '%.2f' | format(p.price) }} {{ p.currency }}{% else %}–{% endif %}</td>
             <td class="num">{{ p.price_nok | kr if p.price_nok is not none else '–' }}</td>
             <td>{% if p.fetched_at %}{{ p.fetched_at.strftime('%d.%m.%Y') }} <span class="muted">({{ p.fetched_at | days_ago }})</span>{% else %}–{% endif %}</td>
@@ -125,7 +125,7 @@
       <thead><tr><th>Date</th><th class="num">Market price</th><th>Source</th><th class="num">Owned</th></tr></thead>
       <tbody>
         {% for row in price_history | reverse %}
-        <tr><td>{{ row.date.strftime('%d.%m.%Y') }}</td><td class="num">{{ row.price | kr }}</td><td>{{ row.source | source_label }}{% if row.source_note %} <span class="price-flag" title="{{ row.source_note }}">switched</span>{% endif %}</td><td class="num">{{ row.qty }}</td></tr>
+        <tr><td>{{ row.date.strftime('%d.%m.%Y') }}</td><td class="num">{{ row.price | kr }}</td><td>{{ row.source | card_source_label(card) }}{% if row.source_note %} <span class="price-flag" title="{{ row.source_note }}">switched</span>{% endif %}</td><td class="num">{{ row.qty }}</td></tr>
         {% endfor %}
       </tbody>
     </table>
