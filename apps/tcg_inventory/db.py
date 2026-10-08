@@ -87,7 +87,8 @@ class Base(DeclarativeBase):
 #     card_snapshots.price_source (#210); 11: RLS enabled on every table (Postgres, #239)
 # 12: import_log.job/status/message/warnings_text (#264); 13: won_items (Facebook wins inbox, #309)
 # 14: job_locks (single-flight guard for dex-sync, #340)
-CURRENT_SCHEMA_VERSION = 14
+# 15: set_checklists, set_checklist_cards, master_cards.rarity/image_url (#368)
+CURRENT_SCHEMA_VERSION = 15
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,

@@ -1,0 +1,160 @@
+{
+ "_note": "Trimmed from live TCGdex /v2/ja/sets/SV2a + /v2/ja/cards/{id} (2026-10-08), pricing removed. Issue #368.",
+ "set": {
+  "cardCount": {
+   "firstEd": 0,
+   "holo": 82,
+   "normal": 128,
+   "official": 165,
+   "reverse": 306,
+   "total": 210
+  },
+  "cards": [
+   {
+    "id": "SV2a-001",
+    "image": "https://assets.tcgdex.net/ja/SV/SV2a/001",
+    "localId": "001",
+    "name": "フシギダネ"
+   },
+   {
+    "id": "SV2a-003",
+    "image": "https://assets.tcgdex.net/ja/SV/SV2a/003",
+    "localId": "003",
+    "name": "フシギバナex"
+   },
+   {
+    "id": "SV2a-015",
+    "image": "https://assets.tcgdex.net/ja/SV/SV2a/015",
+    "localId": "015",
+    "name": "スピアー"
+   },
+   {
+    "id": "SV2a-201",
+    "image": "https://assets.tcgdex.net/ja/SV/SV2a/201",
+    "localId": "201",
+    "name": "リザードンex"
+   }
+  ],
+  "id": "SV2a",
+  "legal": {
+   "expanded": false,
+   "standard": false
+  },
+  "name": "ポケモンカード151",
+  "releaseDate": "2023-06-16",
+  "serie": {
+   "id": "SV",
+   "name": "ポケモンカードゲーム スカーレット&バイオレット"
+  }
+ },
+ "cards": [
+  {
+   "id": "SV2a-001",
+   "localId": "001",
+   "name": "フシギダネ",
+   "image": "https://assets.tcgdex.net/ja/SV/SV2a/001",
+   "rarity": "Common",
+   "set": {
+    "cardCount": {
+     "official": 165,
+     "total": 210
+    },
+    "id": "SV2a",
+    "name": "ポケモンカード151"
+   },
+   "category": "Pokemon",
+   "variants_detailed": [
+    {
+     "type": "normal",
+     "size": "standard"
+    },
+    {
+     "type": "reverse",
+     "size": "standard",
+     "foil": "pokeball"
+    },
+    {
+     "type": "reverse",
+     "size": "standard",
+     "foil": "masterball"
+    }
+   ]
+  },
+  {
+   "id": "SV2a-003",
+   "localId": "003",
+   "name": "フシギバナex",
+   "image": "https://assets.tcgdex.net/ja/SV/SV2a/003",
+   "rarity": "Double rare",
+   "set": {
+    "cardCount": {
+     "official": 165,
+     "total": 210
+    },
+    "id": "SV2a",
+    "name": "ポケモンカード151"
+   },
+   "category": "Pokemon",
+   "variants_detailed": [
+    {
+     "type": "holo",
+     "size": "standard"
+    }
+   ]
+  },
+  {
+   "id": "SV2a-015",
+   "localId": "015",
+   "name": "スピアー",
+   "image": "https://assets.tcgdex.net/ja/SV/SV2a/015",
+   "rarity": "Rare",
+   "set": {
+    "cardCount": {
+     "official": 165,
+     "total": 210
+    },
+    "id": "SV2a",
+    "name": "ポケモンカード151"
+   },
+   "category": "Pokemon",
+   "variants_detailed": [
+    {
+     "type": "holo",
+     "size": "standard"
+    },
+    {
+     "type": "reverse",
+     "size": "standard",
+     "foil": "pokeball"
+    },
+    {
+     "type": "reverse",
+     "size": "standard",
+     "foil": "masterball"
+    }
+   ]
+  },
+  {
+   "id": "SV2a-201",
+   "localId": "201",
+   "name": "リザードンex",
+   "image": "https://assets.tcgdex.net/ja/SV/SV2a/201",
+   "rarity": "Special illustration rare",
+   "set": {
+    "cardCount": {
+     "official": 165,
+     "total": 210
+    },
+    "id": "SV2a",
+    "name": "ポケモンカード151"
+   },
+   "category": "Pokemon",
+   "variants_detailed": [
+    {
+     "type": "holo",
+     "size": "standard"
+    }
+   ]
+  }
+ ]
+}
