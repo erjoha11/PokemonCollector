@@ -660,6 +660,7 @@ def dashboard(
                 # full economic breakdown this is a compact preview of.
                 **_market_value_context(request, db, headline, economic, txs, metric, period),
                 "headline": headline,
+                "in_transit": queries.in_transit_summary(cards),
                 "net_invested": economic["net_invested"],
                 "gain": queries.gain_summary(cards, invested_by_card, economic["net_invested"]),
                 "collection_breakdown": collection_breakdown,
@@ -815,8 +816,10 @@ def _inventory_page_links(request: Request, page: int, page_count: int) -> list[
     return links
 
 
-def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language, unowned):
+def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language, unowned, transit=""):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
+    if transit:  # "On the way only" (issue #382); in_transit is clamped to qty
+        query = query.filter(Card.in_transit_qty > 0, Card.qty > 0)
     if q:
         like = _like_pattern(q)
         query = query.filter(
@@ -871,6 +874,8 @@ def inventory(
     # Same query-string presence/truthiness idiom as `dup` above -- "Show
     # cards I no longer own" (qty == 0), default OFF/hidden. See issue #132.
     unowned: str = "",
+    # "On the way only" (issue #382), same presence/truthiness idiom as `dup`.
+    transit: str = "",
     sort: str = "release",
     direction: str = "asc",
     page: int = 1,
@@ -879,7 +884,9 @@ def inventory(
     sort = _sort_key(sort)
     db = get_db_session()
     try:
-        query = _apply_inventory_filters(db, q, series, set, collection, binder, dup, rarity, language, unowned)
+        query = _apply_inventory_filters(
+            db, q, series, set, collection, binder, dup, rarity, language, unowned, transit
+        )
         number_sort = func.coalesce(Card.number_int, 999999)
 
         if sort == "release":
@@ -975,6 +982,7 @@ def inventory(
             "binder": binder,
             "dup": dup,
             "unowned": unowned,
+            "transit": transit,
             "rarity": rarity,
             "language": language,
             "sort": sort,
@@ -1797,12 +1805,14 @@ def _sale_items_from_form(
     items = []
     for card_id, qty, condition, price in zip(card_ids, qtys, conditions, parsed_prices):
         card = cards_by_id.get(card_id)
-        if card is None:
+        if card is None or card.fully_in_transit:
+            # An "On the way" card can't be sold before it arrives (#382).
             continue
-        # Never let a stray form value exceed how many of this card exist --
-        # the qty being sold, unlike the card's own qty, is a per-listing
-        # decision that must not silently imply "sell everything owned".
-        qty = max(1, min(qty, card.qty)) if card.qty else max(1, qty)
+        # Never let a stray form value exceed how many of this card are in
+        # hand -- the qty being sold, unlike the card's own qty, is a
+        # per-listing decision that must not silently imply "sell everything
+        # owned", and copies still on the way (#382) can't be sold yet.
+        qty = max(1, min(qty, card.in_hand_qty)) if card.qty else max(1, qty)
         items.append(
             ads.SaleItem(
                 card_id=card.id,
@@ -1851,7 +1861,12 @@ def sales_generate(
         return templates.TemplateResponse(
             request,
             "partials/ad_draft.html",
-            {"draft": draft, "card_ids": card_id, "already_listed_count": len(listed_by_card)},
+            # The cards actually in the ad (an "On the way" one is dropped, #382).
+            {
+                "draft": draft,
+                "card_ids": [item.card_id for item in items],
+                "already_listed_count": len(listed_by_card),
+            },
         )
     finally:
         db.close()
@@ -1867,7 +1882,10 @@ def sales_mark_listed(
 ):
     db = get_db_session()
     try:
-        cards = db.query(Card).filter(Card.id.in_(card_id)).all()
+        # "On the way" cards can't be listed before they arrive (#382).
+        cards = [c for c in db.query(Card).filter(Card.id.in_(card_id)).all() if not c.fully_in_transit]
+        if not cards:
+            raise HTTPException(status_code=400, detail="No cards in hand to list")
         price = parse_optional_amount(suggested_price, "Suggested price")
         listing = Listing(
             created_at=dt.datetime.utcnow(),

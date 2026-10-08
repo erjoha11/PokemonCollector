@@ -36,8 +36,9 @@
   }
 
   function rehydrateCheckboxes(set) {
+    // A disabled box is an "On the way" card (#382): never shown as picked.
     document.querySelectorAll("input.sale-select").forEach((cb) => {
-      cb.checked = set.has(cb.dataset.cardId);
+      cb.checked = !cb.disabled && set.has(cb.dataset.cardId);
     });
   }
 

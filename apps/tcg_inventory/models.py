@@ -32,6 +32,25 @@ class Binder(Base):
     cards: Mapped[list["Card"]] = relationship(back_populates="binder")
 
 
+# "On the way" badge turns into a warning after this many days (issue #382).
+IN_TRANSIT_WARN_DAYS = 21
+
+
+def in_hand_spares(in_hand_qty: int) -> int:
+    """Spares available to sell: every copy *in hand* beyond the first,
+    `max(in_hand - 1, 0)` (issue #382). The one definition every sale-facing
+    figure uses -- business rule #2's `duplicates = max(qty - 1, 0)` stays
+    the ownership figure."""
+    return max((in_hand_qty or 0) - 1, 0)
+
+
+def print_in_hand_spares(cards) -> int:
+    """`in_hand_spares` for one print from every Card linked to its master
+    card (summed in-hand qty), the in-hand counterpart of
+    queries.print_spares for the master set and sale lists."""
+    return in_hand_spares(sum(c.in_hand_qty for c in cards))
+
+
 class Collection(Base):
     __tablename__ = "collections"
 
@@ -145,6 +164,15 @@ class Card(Base):
     location: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
     flagged_missing_since: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # "On the way" (issue #382): copies paid for but not yet received, from
+    # the Dex "Incoming" folder (constants.STATUS_CATEGORIES). Written only by
+    # importer._apply_in_transit: `in_transit_qty` = min(Incoming row qty,
+    # qty); `in_transit_since` = the first sync that saw the tag, kept while
+    # the tag stays (also across qty changes). Both null when not in transit.
+    # Real per-card data from Dex, not derived from other columns -- read it
+    # through the computed `in_transit` / `in_hand_qty` below, never raw.
+    in_transit_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    in_transit_since: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     # Physical grade, e.g. "Near Mint" -- see constants.CARD_CONDITIONS. Real
     # per-card data with no other source (nobody's grading these on import),
     # unlike duplicates/total_value above -- not derived, so it's a real
@@ -182,6 +210,45 @@ class Card(Base):
     @property
     def duplicates(self) -> int:
         return max(self.qty - 1, 0)
+
+    # --- "On the way" (issue #382) -----------------------------------------
+    # An in-transit copy counts as owned (value, dashboard, snapshots,
+    # completion, `duplicates` above) but is never available to sell: every
+    # sale-facing figure goes through `in_hand_qty` / `in_hand_spares`.
+    @property
+    def in_transit(self) -> int:
+        """Copies on the way, clamped to 0..qty (a stored value can't make
+        `in_hand_qty` negative)."""
+        return min(max(self.in_transit_qty or 0, 0), max(self.qty or 0, 0))
+
+    @property
+    def in_hand_qty(self) -> int:
+        """Copies actually in hand: qty minus the ones on the way."""
+        return max((self.qty or 0) - self.in_transit, 0)
+
+    @property
+    def fully_in_transit(self) -> bool:
+        """Owned, but no copy in hand yet: can't be picked for a sale or ad."""
+        return (self.qty or 0) > 0 and self.in_hand_qty == 0
+
+    @property
+    def in_hand_spares(self) -> int:
+        return in_hand_spares(self.in_hand_qty)
+
+    @property
+    def in_transit_days(self) -> int | None:
+        """Days since the first sync that saw the Incoming tag; None when
+        not in transit."""
+        if not self.in_transit or self.in_transit_since is None:
+            return None
+        return max((dt.date.today() - self.in_transit_since).days, 0)
+
+    @property
+    def in_transit_overdue(self) -> bool:
+        """On the way for IN_TRANSIT_WARN_DAYS or more: the badge shows its
+        age in warning style (a forgotten tag, or a lost parcel)."""
+        days = self.in_transit_days
+        return days is not None and days >= IN_TRANSIT_WARN_DAYS
 
     # Why market_price is STORED, not computed (issue #210). The "computed,
     # never stored" rule at the top of this module is about values derivable

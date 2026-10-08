@@ -288,7 +288,7 @@ def test_migration_from_v15_creates_list_tables(monkeypatch, tmp_path):
     assert {"list_id", "master_card_id", "qty", "target_price", "note", "source", "added_at"} <= {
         c["name"] for c in inspector.get_columns("card_list_items")
     }
-    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION == 16
+    assert db_module._get_schema_version() == db_module.CURRENT_SCHEMA_VERSION >= 16
 
 
 def test_rls_covers_the_list_tables(monkeypatch):

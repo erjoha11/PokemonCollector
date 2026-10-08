@@ -56,6 +56,12 @@ data-card-modal data-href="/cards/{{ card.id }}" data-name="{{ card.name }}"
    when the card is in several. Renders nothing for an empty/None value. #}
 {% macro listed_badge(listing_ids) %}{% if listing_ids %}<a href="/orders/listings#listing-{{ listing_ids[0] }}" class="tx-badge tx-badge-buy listed-badge" title="In {{ listing_ids | length }} active listing{{ '' if listing_ids | length == 1 else 's' }} -- open the newest">Listed{% if listing_ids | length > 1 %} &times;{{ listing_ids | length }}{% endif %}</a>{% endif %}{% endmacro %}
 
+{# "On the way" pill (issue #382) for a card tagged Incoming in Dex: paid
+   for, not received. Always just "On the way" -- Dex's Incoming qty mirrors
+   the card's total, so it can't say "1 of 2". After IN_TRANSIT_WARN_DAYS
+   (21) it shows its age in warning style. Renders nothing otherwise. #}
+{% macro transit_badge(card) %}{% if card.in_transit %}{% set days = card.in_transit_days %}<span class="tx-platform-badge transit-badge{{ ' transit-badge-overdue' if card.in_transit_overdue }}" title="Tagged Incoming in Dex{% if card.in_transit_since %} · seen since {{ card.in_transit_since.strftime('%d.%m.%Y') }} ({{ days }} day{{ '' if days == 1 else 's' }}){% endif %}">On the way{% if card.in_transit_overdue %} · {{ days }} d{% endif %}</span>{% endif %}{% endmacro %}
+
 {% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does

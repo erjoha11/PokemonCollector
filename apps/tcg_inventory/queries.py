@@ -192,6 +192,17 @@ def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
     }
 
 
+def in_transit_summary(cards: list[Card]) -> dict:
+    """The Dashboard's "N cards on the way · X kr" line (issue #382): copies
+    paid for but not received yet, and their market value. Computed, never
+    stored; the copies still count as owned everywhere else."""
+    on_the_way = [c for c in cards if c.in_transit]
+    return {
+        "count": sum(c.in_transit for c in on_the_way),
+        "value": sum(c.in_transit * (c.display_price or 0.0) for c in on_the_way),
+    }
+
+
 def collection_membership_breakdown(db: Session, cards: list[Card] | None = None) -> dict:
     """Dashboard Inventory table: one row per collection with *every* card
     carrying that collection's tag (real membership, the same set Inventory's

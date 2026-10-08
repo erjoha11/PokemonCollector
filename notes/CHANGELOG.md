@@ -276,6 +276,35 @@ yet.
   collection. Deleting a list lands on `/collections`.
 - No schema change and no stored figures.
 
+**"On the way" status for paid-but-not-received cards, pass 1 (#382)**
+- Dex's "Incoming" folder is now a status category
+  (`constants.STATUS_CATEGORIES`), no longer ignored. This reverses #311:
+  the user now raises a card's qty in Dex at payment and tags it Incoming,
+  so in-transit cards are in My Collection too. A qty > 0 Incoming row sets
+  the new nullable `cards.in_transit_qty` (min of row qty and card qty) and
+  `cards.in_transit_since` (first sync that saw the tag, kept while it
+  stays). Qty-0 rows are ignored and never create cards. Schema version 17.
+- Emptied-folder rule: Incoming counts only in a sync with My Collection,
+  dated the same day or later. Absent or older, it counts as empty and
+  clears every status, with a sync warning when that cleared a card. A sync
+  without My Collection leaves the status alone.
+- A real Dex export showed Incoming's `Quantity` mirrors the card's total,
+  so the status is all-or-nothing and the badge just says "On the way".
+- An in-transit copy counts as owned, but not as sellable. `Card.in_hand_qty`
+  (computed) and one spares helper (`models.in_hand_spares` /
+  `print_in_hand_spares`) back that. Fully in-transit cards can't be picked
+  for a finn.no ad: the Inventory checkbox is disabled, `/sales` mutes the
+  row, and `_sale_items_from_form` and "Mark as listed" clamp to in-hand
+  copies and skip them server-side.
+- UI: an "On the way" badge on Inventory and the card page (amber with its
+  age after 21 days), an "On the way only" Inventory filter, and a Dashboard
+  line "N cards on the way · X kr". In the Facebook wins cart, in-transit
+  candidates are badged and ranked with "new since the sale", and the
+  empty-state copy is new.
+- Deferred to pass 2 (after #378): the collection gallery badge, want-list
+  and sale-list "On the way" statuses, and master-set Duplicates using
+  in-hand spares. Prod collection 10 ("Incoming") is untouched.
+
 **pokemontcg.io prices by stored ID in daily batches (#357, closes #349)**
 - The price cron fetches every international card's TCGplayer price from
   pokemontcg.io by its stored `pokemontcg` ID, 50 IDs per request (about 10
