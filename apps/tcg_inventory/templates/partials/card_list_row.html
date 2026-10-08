@@ -22,7 +22,7 @@
   {% if editing %}
   <td class="num"><input type="number" name="qty" min="1" step="1" value="{{ item.qty }}" class="tx-input-xs" aria-label="Qty"></td>
   {% else %}
-  <td class="num">{{ item.qty }}{% if card_list.kind == 'sale' %}<div class="muted card-list-meta" title="Copies beyond the first of this print">{{ view.spares }} spare{{ 's' if view.spares != 1 }}</div>{% elif view.owned_qty %}<div class="muted card-list-meta">own {{ view.owned_qty }}</div>{% endif %}</td>
+  <td class="num">{{ item.qty }}{% if card_list.kind == 'sale' %}<div class="muted card-list-meta" title="Copies in hand beyond the first of this print">{{ view.spares }} spare{{ 's' if view.spares != 1 }}{% if view.spares_on_the_way %} +{{ view.spares_on_the_way }} on the way{% endif %}</div>{% elif view.owned_qty %}<div class="muted card-list-meta">own {{ view.owned_qty }}{% if view.in_transit %} ({{ view.in_transit }} on the way){% endif %}</div>{% endif %}</td>
   {% endif %}
   <td>
     <span class="list-status list-status-{{ view.status }}">{{ view.status_label }}</span>

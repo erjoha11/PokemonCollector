@@ -1264,7 +1264,7 @@ def _master_set_block(
         "show_pills": [(key, label, pill_url(track=track, show=key)) for key, label in MASTER_SET_SHOW_FILTERS.items()],
         "master_ball_track": next((t for t in detail.tracks if t.key == "master_ball"), None),
         "missing_text": _missing_list_text(detail),
-        "spares_sales_url": "/sales?" + urlencode({"card_ids": [s.card.id for s in detail.spare_slots]}, doseq=True),
+        "spares_sales_url": "/sales?" + urlencode({"card_ids": [s.in_hand_card.id for s in detail.spare_slots]}, doseq=True),
         "elsewhere": elsewhere,
         **_list_add_context(db, slots, lists=lists),
     }

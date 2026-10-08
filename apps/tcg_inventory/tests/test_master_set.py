@@ -412,7 +412,7 @@ def test_home_collection_shows_the_master_set_block(client):
     assert "Korean, logged in Dex as Japanese <code>sv2a</code>" in html
     assert "7 / 11" in html and "4 / 5" in html and "1 / 2" in html and "2 / 4" in html
     # Duplicates = #369's spares, per print, with its tooltip.
-    assert re.search(r"Duplicates <span class=\"info-icon[^>]*aria-label=\"Every copy beyond the first of each print", html)
+    assert re.search(r"Duplicates <span class=\"info-icon[^>]*aria-label=\"Every copy in hand beyond the first of each print", html)
     assert re.search(r">5 <span class=\"muted\">· 270 kr", html)
     # Master Ball: not in the KPIs, not in the default grid.
     assert "never part of the master set" not in html

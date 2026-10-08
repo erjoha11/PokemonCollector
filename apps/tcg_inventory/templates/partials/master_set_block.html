@@ -7,7 +7,7 @@
     button would otherwise silently act on the first. Owned tiles open the
     shared card modal; missing tiles have no Card, so they're ghosted and
     never links. #}
-{% from "partials/macros.html" import info, card_view_attrs, card_link %}
+{% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge %}
 {% set detail = ms.detail %}
 {% set k = ms.dom_key %}
 {% if detail.korean_proxy %}
@@ -22,7 +22,9 @@
   <div><span class="tx-kpi-label">{{ t.label }}</span>
     <span class="tx-kpi-value">{{ t.owned }} / {{ t.total }} <span class="muted">· {{ t.pct | round(1) }}%</span></span></div>
   {% endfor %}
-  <div><span class="tx-kpi-label">Duplicates {{ info('Every copy beyond the first of each print. Value at market price.', below=true, align_right=true) }}</span>
+  {%- set on_way = detail.spares_on_the_way %}
+  {%- set on_way_note = (' +' ~ on_way ~ ' on the way (tagged Incoming in Dex), not counted until they arrive.') if on_way else '' %}
+  <div><span class="tx-kpi-label">Duplicates {{ info('Every copy in hand beyond the first of each print. Value at market price.' ~ on_way_note, below=true, align_right=true) }}</span>
     <span class="tx-kpi-value">{{ detail.spares }} <span class="muted">· {{ detail.spare_value | kr }}</span></span></div>
   {% if detail.unmatched %}
   <div><span class="tx-kpi-label">Unmatched</span><span class="tx-kpi-value"><a href="#unmatched-{{ k }}">{{ detail.unmatched | length }}</a></span></div>
@@ -70,7 +72,8 @@
       <div class="gallery-card-meta muted">{{ slot.number_label }} · {{ slot.track_label }}</div>
       <div class="gallery-card-figures">
         <span>{{ slot.price | kr }}</span>
-        {% if slot.owned_qty > 1 %}<span class="tx-platform-badge" title="{{ slot.spares }} duplicate{{ 's' if slot.spares != 1 }}">×{{ slot.owned_qty }}</span>{% endif %}
+        {% if slot.owned_qty > 1 %}<span class="tx-platform-badge" title="{{ slot.spares }} duplicate{{ 's' if slot.spares != 1 }}{% if slot.spares_on_the_way %} +{{ slot.spares_on_the_way }} on the way{% endif %}">×{{ slot.owned_qty }}</span>{% endif %}
+        {% if slot.transit_card %}{{ transit_badge(slot.transit_card) }}{% endif %}
         {% if ms.elsewhere.get(slot.master.id) %}<span class="tx-platform-badge shared-badge elsewhere-badge" title="Owned, but not tagged with this collection in Dex">in: {{ ms.elsewhere[slot.master.id] }}</span>{% endif %}
       </div>
     </div>
@@ -101,9 +104,9 @@
 </div>
 
 <div class="card master-set-section" id="spares-{{ k }}">
-  <h3>Duplicates {{ info('Every copy beyond the first of each print (sum of copies − 1, per print), at market price. Computed, never stored.', below=true) }}</h3>
+  <h3>Duplicates {{ info('Every copy in hand beyond the first of each print (sum of copies in hand − 1, per print), at market price. Computed, never stored.' ~ on_way_note, below=true) }}</h3>
   {% if detail.spare_slots %}
-  <p><strong>{{ detail.spares }}</strong> duplicate{{ 's' if detail.spares != 1 }} · {{ detail.spare_value | kr }} · <a href="{{ ms.spares_sales_url }}">Make a finn.no ad from these cards</a></p>
+  <p><strong>{{ detail.spares }}</strong> duplicate{{ 's' if detail.spares != 1 }} · {{ detail.spare_value | kr }}{% if on_way %} <span class="muted spares-on-the-way">+{{ on_way }} on the way</span>{% endif %} · <a href="{{ ms.spares_sales_url }}">Make a finn.no ad from these cards</a></p>
   <table class="master-set-spares">
     <thead><tr><th>Card</th><th>Print</th><th class="num">Owned</th><th class="num">Duplicates</th><th class="num">Price</th><th class="num">Value</th></tr></thead>
     <tbody>
@@ -112,7 +115,7 @@
         <td>{{ card_link(slot.card) }}</td>
         <td>{{ slot.number_label }} · {{ slot.track_label }}</td>
         <td class="num">{{ slot.owned_qty }}</td>
-        <td class="num">{{ slot.spares }}</td>
+        <td class="num">{{ slot.spares }}{% if slot.spares_on_the_way %} <span class="muted spares-on-the-way">+{{ slot.spares_on_the_way }} on the way</span>{% endif %}</td>
         <td class="num">{{ slot.price | kr }}</td>
         <td class="num">{{ slot.spare_value | kr }}</td>
       </tr>
@@ -120,7 +123,7 @@
     </tbody>
   </table>
   {% else %}
-  <p class="muted">No duplicates: you have at most one copy of each print.</p>
+  <p class="muted">{% if on_way %}No duplicates in hand yet: +{{ on_way }} on the way.{% else %}No duplicates: you have at most one copy of each print.{% endif %}</p>
   {% endif %}
 </div>
 

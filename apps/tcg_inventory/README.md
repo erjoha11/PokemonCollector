@@ -223,7 +223,8 @@ run).
     are hidden unless their track is picked.
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
-    most copies). Missing tiles have no `Card`, so they're ghosted
+    most copies). A print with copies on the way (#382) still looks owned
+    and counts toward completion, with a small **On the way** pill. Missing tiles have no `Card`, so they're ghosted
     (dashed frame, faded photo from `master_cards.image_url`, else a
     "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
     "0 owned" style. A print whose only card is at qty 0 is missing.
@@ -245,10 +246,17 @@ run).
   - **Copy missing list**: every missing master-set print as text, headed
     with the display name.
   - **Duplicates** (the user's word; #366's spares): per print (per master
-    card, not per Dex row), `max(sum(qty) − 1, 0)` (`queries.print_spares`),
-    any track, with value at market price, and a link to
-    `/sales?card_ids=…` (one card per print with duplicates). Sale lists
-    still say "spares" for now.
+    card, not per Dex row), copies **in hand** only (#382):
+    `max(sum(in-hand qty) − 1, 0)` (`MasterSetSlot.spares`, via
+    `models.print_in_hand_spares`), any track, with value at market price,
+    and a link to `/sales?card_ids=…` (one card per print with duplicates,
+    the one with most copies in hand). The KPI, the Show = Duplicates
+    filter, "Add N spares" and the table all use it; duplicates still on
+    the way show as a muted "+N on the way" in the table and the Duplicates
+    tooltips (`spares_on_the_way` = `queries.print_spares(owned)` minus the
+    in-hand figure). The `/collections` overview's Duplicates uses the same
+    in-hand figure for a set's home. Sale lists still say "spares" for
+    now.
   - **Unmatched**: owned cards of the set on no checklist print (linked to
     another master card of the set, or unlinked and matched on the Dex
     `card_id`), with card ID and Dex variant. They count nowhere above.
@@ -936,18 +944,26 @@ its items.
 - **Status is computed live, never stored**, from the cards linked to the
   item's master card (sum of qty over cards with qty > 0), so it follows
   the next Dex sync with no list edits:
-  - want: **Got it** (own ≥ qty), **Got k of n**, **Possibly owned
+  - want: **Got it** (own ≥ qty, with ≥ qty in hand), **On the way** (own
+    ≥ qty, but some of those copies are on the way, #382: they count as
+    owned so it isn't bought twice; "Copy as text" leaves it out and
+    "Remove got-it items" skips it), **Got k of n**, **Possibly owned
     (unmatched)** (you own nothing linked to this print, but an owned card
     of the same set and number is on the master set's Unmatched list, so it
     may well be this print; links there), else **Missing**;
   - sale: **Sold out** (own none), **Listed** (an owned card of the print is
     in an `active` listing via `listing_cards`; delisted/sold don't count),
-    **Not enough spares** (qty > spares), else **Available**.
-  Spares are the master set's per-print Duplicates (`queries.print_spares`, via
-  the same `MasterSetSlot`): `max(sum(qty) − 1, 0)` per master card.
+    **On the way** (qty > spares in hand, but the duplicates on the way
+    would cover it once they arrive, #382), **Not enough spares** (qty >
+    spares even then), else **Available**.
+  Spares are the master set's per-print Duplicates (`MasterSetSlot.spares`):
+  `max(sum(in-hand qty) − 1, 0)` per master card. "Make finn.no ad from
+  this list" (`sale_card_ids`) sends one card per print with copies in
+  hand (the one with most), so a print whose every copy is on the way
+  isn't sent.
 - **Totals.** Want: "Est. cost to complete" = market price × copies still
-  missing (`max(qty − owned, 0)`). Sale: "Est. value of spares" = market
-  price × `min(qty, spares)`. Market price is the print's owned card's
+  missing (`max(qty − owned, 0)`; copies on the way count as owned). Sale:
+  "Est. value of spares" = market price × `min(qty, spares in hand)`. Market price is the print's owned card's
   resolved price, else any linked card's (e.g. a sold copy at qty 0); a
   print with no price data shows "—" and is left out of the total, which
   says how many were.
@@ -1003,13 +1019,14 @@ without updating both the code and this doc.
    not paid yet) are ignored and never create cards. **An in-transit copy
    counts as owned but is never available**: it counts in value, the
    dashboard, `card_snapshots`, master-set completion and want-list
-   matching, but can't be picked for `/sales` or finn.no ads (sale lists,
-   want-list "On the way" status and master-set spares follow in #382's
-   second pass). `Card.in_hand_qty = qty - in_transit` is
+   matching (a want-list item says "On the way"), but can't be picked for
+   `/sales` or finn.no ads, and isn't a spare on sale lists or in the
+   master set's Duplicates. `Card.in_hand_qty = qty - in_transit` is
    computed, never stored, and every sale-facing spares figure goes through
    one helper, `models.in_hand_spares` (`max(in_hand - 1, 0)`; per print:
    `models.print_in_hand_spares`). Shown as an **On the way** badge
-   (Inventory, the card page, the Facebook wins cart), an "On the way only"
+   (Inventory, the card page, the collection gallery, master-set tiles, the
+   Facebook wins cart), an "On the way only"
    Inventory filter, and a Dashboard line "N cards on the way · X kr". After
    21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows its
    age in warning style ("On the way · 24 d").

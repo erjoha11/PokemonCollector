@@ -276,7 +276,7 @@ yet.
   collection. Deleting a list lands on `/collections`.
 - No schema change and no stored figures.
 
-**"On the way" status for paid-but-not-received cards, pass 1 (#382)**
+**"On the way" status for paid-but-not-received cards (#382)**
 - Dex's "Incoming" folder is now a status category
   (`constants.STATUS_CATEGORIES`), no longer ignored. This reverses #311:
   the user now raises a card's qty in Dex at payment and tags it Incoming,
@@ -296,14 +296,23 @@ yet.
   for a finn.no ad: the Inventory checkbox is disabled, `/sales` mutes the
   row, and `_sale_items_from_form` and "Mark as listed" clamp to in-hand
   copies and skip them server-side.
-- UI: an "On the way" badge on Inventory and the card page (amber with its
-  age after 21 days), an "On the way only" Inventory filter, and a Dashboard
-  line "N cards on the way · X kr". In the Facebook wins cart, in-transit
-  candidates are badged and ranked with "new since the sale", and the
-  empty-state copy is new.
-- Deferred to pass 2 (after #378): the collection gallery badge, want-list
-  and sale-list "On the way" statuses, and master-set Duplicates using
-  in-hand spares. Prod collection 10 ("Incoming") is untouched.
+- UI: an "On the way" badge on Inventory, the card page and the collection
+  gallery (amber with its age after 21 days), an "On the way only"
+  Inventory filter, and a Dashboard line "N cards on the way · X kr". In
+  the Facebook wins cart, in-transit candidates are badged and ranked with
+  "new since the sale", and the empty-state copy is new.
+- Want lists: a new **On the way** status (owned >= wanted, but not all in
+  hand). "Copy as text" leaves it out and "Remove got-it items" skips it.
+- Sale lists: spares are in-hand copies, a new **On the way** status (the
+  duplicates on the way would cover the qty) ranks before "Not enough
+  spares", and "Make finn.no ad from this list" only sends cards in hand.
+- Master-set block (#378): in-transit tiles look owned with a small "On
+  the way" pill, and completion still counts them. Duplicates (KPI, Show =
+  Duplicates filter, "Add N spares", the table and its finn.no link, and
+  the /collections overview figure) count in-hand copies only, with a muted
+  "+N on the way" in the table and the tooltips.
+- Prod collection 10 ("Incoming") is untouched (dead data now; removing it
+  is a separate, confirmed prod write).
 
 **pokemontcg.io prices by stored ID in daily batches (#357, closes #349)**
 - The price cron fetches every international card's TCGplayer price from

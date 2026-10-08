@@ -2053,6 +2053,7 @@ html.card-modal-open { overflow: hidden; }
 .list-status-missing { border: 1px dashed var(--border-strong); color: var(--muted); font-weight: 500; }
 .list-status-got, .list-status-available { background: rgba(20, 150, 110, 0.14); color: #0d7a57; }
 .list-status-partial, .list-status-short { background: rgba(214, 150, 20, 0.16); color: #8a5a00; }
+.list-status-on_the_way { background: rgba(110, 120, 140, 0.14); color: var(--muted); }
 .list-status-unmatched { background: rgba(120, 90, 200, 0.14); color: #6a3fb0; }
 .list-status-listed { background: rgba(42, 120, 214, 0.12); color: #1d5bb0; }
 .list-status-sold_out { background: rgba(200, 50, 50, 0.12); color: #a12a2a; }

@@ -12,10 +12,15 @@ the list is created.
   through `remove_got_it`.
 - Every status is computed live from the Cards linked to the item's master
   card, never stored, so it follows the next Dex sync with no list edits:
-  - want: Got it / Got k of n / Possibly owned (unmatched) / Missing;
-  - sale: Sold out / Listed / Not enough spares / Available.
-  Spares are the set page's per-print figure (`queries.print_spares`,
-  through the same `MasterSetSlot`), so the two never disagree.
+  - want: Got it / On the way / Got k of n / Possibly owned (unmatched) /
+    Missing;
+  - sale: Sold out / Listed / On the way / Not enough spares / Available.
+  Spares are the set page's per-print, in-hand figure (`MasterSetSlot.spares`,
+  models.print_in_hand_spares), so the two never disagree.
+- Copies on the way (Dex's Incoming tag, issue #382) count as owned (a want
+  item says "On the way", so it isn't bought twice) but are never
+  available: sale spares, the /sales link and "Copy as text" count only
+  copies in hand.
 - Lists never touch qty, collections, binders or transactions (same
   invariant as `listings`).
 """
@@ -36,13 +41,14 @@ LIST_KINDS = {"want": "Want list", "sale": "Sale list"}
 ITEM_SOURCES = ("manual", "missing", "spares")
 
 # Status keys per kind, in summary order.
-WANT_STATUSES = ("missing", "unmatched", "partial", "got")
-SALE_STATUSES = ("available", "listed", "short", "sold_out")
+WANT_STATUSES = ("missing", "unmatched", "partial", "on_the_way", "got")
+SALE_STATUSES = ("available", "listed", "on_the_way", "short", "sold_out")
 STATUS_LABELS = {
     "missing": "Missing",
     "unmatched": "Possibly owned (unmatched)",
     "partial": "Got some",  # the row shows "Got k of n"
     "got": "Got it",
+    "on_the_way": "On the way",
     "available": "Available",
     "listed": "Listed",
     "short": "Not enough spares",
@@ -54,6 +60,7 @@ SUMMARY_LABELS = {
     "unmatched": "possibly owned",
     "partial": "partly got",
     "got": "got it",
+    "on_the_way": "on the way",
     "available": "available",
     "listed": "listed",
     "short": "not enough spares",
@@ -125,8 +132,21 @@ class ListItemView:
         return self.slot.owned_qty
 
     @property
+    def in_hand_qty(self) -> int:
+        return self.slot.in_hand_qty
+
+    @property
+    def in_transit(self) -> int:
+        return self.slot.in_transit
+
+    @property
     def spares(self) -> int:
+        """Spares in hand (the sellable ones, #382)."""
         return self.slot.spares
+
+    @property
+    def spares_on_the_way(self) -> int:
+        return self.slot.spares_on_the_way
 
     @property
     def name(self) -> str:
@@ -154,8 +174,9 @@ class ListItemView:
 
     @property
     def counted_qty(self) -> int:
-        """The copies the list's total counts: still missing (want) or
-        sellable, capped at spares (sale)."""
+        """The copies the list's total counts: still missing (want; copies
+        on the way count as owned) or sellable, capped at spares in hand
+        (sale)."""
         if self.kind == "want":
             return max(self.item.qty - self.owned_qty, 0)
         return min(self.item.qty, self.spares)
@@ -227,16 +248,18 @@ class CardListDetail:
 
     @property
     def sale_card_ids(self) -> list[int]:
-        """One owned Card per item for `/sales?card_ids=...` (the card with
-        most copies of the print); sold-out items have none."""
-        return [v.card.id for v in self.items if v.card is not None]
+        """One Card in hand per item for `/sales?card_ids=...` (the card
+        with most copies in hand of the print, #382); sold-out items and
+        items whose every copy is on the way have none."""
+        cards = (v.slot.in_hand_card for v in self.items)
+        return [c.id for c in cards if c is not None]
 
     @property
     def text_items(self) -> list[ListItemView]:
-        """What "Copy as text" lists: want items still wanted (not got it),
-        sale items still owned (not sold out)."""
-        skip = "got" if self.kind == "want" else "sold_out"
-        return [v for v in self.items if v.status != skip]
+        """What "Copy as text" lists: want items still wanted (not got it,
+        not on the way), sale items still owned (not sold out)."""
+        skip = ("got", "on_the_way") if self.kind == "want" else ("sold_out",)
+        return [v for v in self.items if v.status not in skip]
 
     @property
     def text(self) -> str:
@@ -258,9 +281,11 @@ def _set_label(master, info: _SetInfo) -> str:
     return f"{name} ({code})" if code and code != "EN" else name
 
 
-def _want_status(view_qty: int, owned: int, number: str | None, info: _SetInfo) -> str:
+def _want_status(view_qty: int, owned: int, in_hand: int, number: str | None, info: _SetInfo) -> str:
     if owned >= view_qty:
-        return "got"
+        # Owned copies on the way count (so it isn't bought twice), but it's
+        # only "Got it" (and removable) once enough are in hand (#382).
+        return "got" if in_hand >= view_qty else "on_the_way"
     if owned > 0:
         return "partial"
     if _number_key(number) in info.unmatched_numbers:
@@ -270,13 +295,16 @@ def _want_status(view_qty: int, owned: int, number: str | None, info: _SetInfo) 
     return "missing"
 
 
-def _sale_status(qty: int, owned: int, spares: int, listed: bool) -> str:
+def _sale_status(qty: int, owned: int, spares: int, spares_on_the_way: int, listed: bool) -> str:
+    """`spares` are in hand; `spares_on_the_way` would be spares once they
+    arrive (#382): "On the way" when those make up the shortfall, else
+    "Not enough spares"."""
     if owned == 0:
         return "sold_out"
     if listed:
         return "listed"
     if qty > spares:
-        return "short"
+        return "on_the_way" if qty <= spares + spares_on_the_way else "short"
     return "available"
 
 
@@ -309,9 +337,9 @@ def list_detail(db: Session, card_list: CardList, set_cache: dict | None = None)
     for item, master, info, slot in rows:
         listing_ids = sorted({lid for c in slot.cards for lid in listed.get(c.id, [])}, reverse=True)
         if card_list.kind == "want":
-            status = _want_status(item.qty, slot.owned_qty, master.number, info)
+            status = _want_status(item.qty, slot.owned_qty, slot.in_hand_qty, master.number, info)
         else:
-            status = _sale_status(item.qty, slot.owned_qty, slot.spares, bool(listing_ids))
+            status = _sale_status(item.qty, slot.owned_qty, slot.spares, slot.spares_on_the_way, bool(listing_ids))
         price = slot.price
         if price is None:
             # An unowned print: any linked card's resolved price (e.g. a
@@ -401,7 +429,8 @@ def add_items(db: Session, card_list: CardList, entries, source: str = "manual")
 
 def remove_got_it(db: Session, card_list: CardList) -> int:
     """Delete a want list's "Got it" items (the explicit "Remove got-it
-    items (N)" action). Returns how many went. Flushes, doesn't commit."""
+    items (N)" action); "On the way" items stay until they arrive (#382).
+    Returns how many went. Flushes, doesn't commit."""
     detail = list_detail(db, card_list)
     got = [v.item for v in detail.got_items]
     for item in got:
