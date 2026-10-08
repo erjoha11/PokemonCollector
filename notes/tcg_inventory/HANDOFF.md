@@ -2175,10 +2175,12 @@ None.
   cards and the s12a VSTAR Universe ones, and any others). Until the next
   sync after that, only sv2a shows as Korean (via the fallback); s12a
   stays Japanese.
-- **The sv2a fallback is temporary.** Once every Korean 151 card has its
+- ~~**The sv2a fallback is temporary.** Once every Korean 151 card has its
   "KR" note in Dex, delete the `"jpn_sv2a"` entry in
   `constants.PHYSICAL_LOCALE_OVERRIDES` (and the README's fallback bullet).
-  While it's there a genuine Japanese sv2a card would also show as Korean.
+  While it's there a genuine Japanese sv2a card would also show as Korean.~~
+  **Done 2026-10-08:** the whole fallback mechanism was removed (see the
+  "sv2a Korean fallback removed" entry below).
 - Side effect to expect on the first sync after deploy: any card whose Dex
   notes were deleted at some point loses its stale `notes` in the app.
 - The price charts' "source switched" tooltips (`pricing.source_switch_note`)
@@ -2342,6 +2344,32 @@ tables on prod early. Harmless — additive, empty — but worth knowing).
 - Copy-as-text uses the checklist display name ("Pokémon Card 151
   (Korean)"), not a short "151 (KR)" form.
 - Verified through route/template tests only, not in a browser.
+
+
+# Handoff notes — 2026-10-08 session (#367 follow-up: sv2a Korean fallback removed)
+
+## Code (in git, PR referencing #367)
+
+- Removed the temporary set-level fallback per the user:
+  `constants.PHYSICAL_LOCALE_OVERRIDES` is gone, and
+  `constants.physical_language(locale, notes)` (no more `card_id` param) is
+  now just: "KR" note → Korean, else Dex's Locale. The importer's call and
+  README business rule 8 updated; the "KR" note is the only Korean marker.
+  An sv2a card without the note now stays Japanese.
+- Verified in prod beforehand (read-only, by the coordinating session): all
+  278 Korean cards (275 sv2a + 3 s12a) already have "KR" in their Dex
+  notes. 0 cards had `language = 'Korean'` in prod at that point, because
+  the last sync predated #367's deploy; the next Dex sync after this deploys
+  makes those 278 Korean through the note rule alone.
+
+## Direct database changes
+
+None.
+
+## Open items
+
+- After the next sync, a quick check that prod has 278 `language = 'Korean'`
+  cards (275 sv2a + 3 s12a) confirms the note rule took over.
 
 
 # Handoff notes — 2026-10-08 session (#375: stale "Venter" collection removed)

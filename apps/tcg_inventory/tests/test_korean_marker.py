@@ -1,6 +1,6 @@
 """Korean marker (issue #367): a "KR" token in Dex's card notes makes
-Card.language Korean at import; jpn_sv2a is Korean via a temporary set-level
-fallback; notes follow Dex (cleared when removed there); identity and prices
+Card.language Korean at import (the only marker: no set-level fallback, so
+an sv2a card without the note stays Japanese); notes follow Dex (cleared when removed there); identity and prices
 never change; a Korean card priced from its Japanese print is labelled
 "(JP price)"."""
 import datetime as dt
@@ -36,21 +36,21 @@ def test_kr_token_false_positives(notes):
 
 def test_physical_language_rule():
     pl = constants.physical_language
-    # A KR note wins in any set, Japanese or not.
-    assert pl("jpn_s12a-1", "Japanese", "KR") == "Korean"
-    assert pl("swsh3-1", "International", "kr") == "Korean"
-    # The temporary sv2a fallback, note or not.
-    assert pl("jpn_sv2a-12", "Japanese", None) == "Korean"
-    assert pl("jpn_sv2a-12", "Japanese", "mint") == "Korean"
+    # A KR note wins, whatever Dex's Locale says.
+    assert pl("Japanese", "KR") == "Korean"
+    assert pl("International", "kr") == "Korean"
     # Everything else: Dex's Locale.
-    assert pl("jpn_s12a-1", "Japanese", None) == "Japanese"
-    assert pl("jpn_s12a-1", "Japanese", "KRAKEN") == "Japanese"
-    assert pl("jpn_sv2", " Japanese ", None) == "Japanese"  # prefix match is exact, not startswith
-    assert pl("jpn_s12a-1", "", None) is None
+    assert pl("Japanese", None) == "Japanese"
+    assert pl("Japanese", "mint") == "Japanese"
+    assert pl("Japanese", "KRAKEN") == "Japanese"
+    assert pl(" Japanese ", None) == "Japanese"
+    assert pl("", None) is None
+    assert pl(None, None) is None
 
 
-def test_fallback_is_one_documented_entry():
-    assert constants.PHYSICAL_LOCALE_OVERRIDES == {"jpn_sv2a": "Korean"}
+def test_no_set_level_fallback_remains():
+    """The temporary sv2a fallback (#367) was removed: the note is the only marker."""
+    assert not hasattr(constants, "PHYSICAL_LOCALE_OVERRIDES")
 
 
 # --------------------------------------------------------------------------
@@ -101,7 +101,7 @@ def test_new_card_without_notes_has_none(db_session):
     assert _card(db_session, "swsh3-2").notes is None
 
 
-def test_sv2a_fallback_without_note_and_other_jpn_set_unaffected(db_session):
+def test_sv2a_is_korean_only_with_the_kr_note(db_session):
     _import(
         db_session,
         [
@@ -111,7 +111,7 @@ def test_sv2a_fallback_without_note_and_other_jpn_set_unaffected(db_session):
             {"id": "jpn_s12a-26", "locale": "Japanese", "number": "26/172", "notes": "KRAKEN"},
         ],
     )
-    assert _card(db_session, "jpn_sv2a-25").language == "Korean"
+    assert _card(db_session, "jpn_sv2a-25").language == "Japanese"  # no note: no fallback
     assert _card(db_session, "jpn_sv2a-26").language == "Korean"
     assert _card(db_session, "jpn_s12a-25").language == "Japanese"
     assert _card(db_session, "jpn_s12a-26").language == "Japanese"
@@ -149,8 +149,10 @@ def test_identity_and_prices_unchanged_by_kr_note(db_session):
         return out
 
     before = snapshot()
+    assert _card(db_session, "jpn_sv2a-31").language == "Japanese"
     _import(db_session, [{**r, "notes": "KR"} for r in rows])
     assert _card(db_session, "jpn_s12a-30").language == "Korean"
+    assert _card(db_session, "jpn_sv2a-31").language == "Korean"
     assert snapshot() == before
     # Re-resolving from card_prices also picks the same price.
     pricing.resolve_cards(db_session, today=dt.date.today())

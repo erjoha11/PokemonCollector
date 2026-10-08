@@ -135,7 +135,14 @@ run).
   of it is cards with no purchase price.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table, paginated 100 per page (`page`, `page_size=0` = all; sliced after
-  sorting, so value sorts stay correct; sort links drop `page`). Collection
+  sorting, so value sorts stay correct; sort links drop `page`). The
+  default `release` sort orders by `Set.release_rank`, then set name, series
+  (so same-named unranked sets in different series don't interleave), then a
+  set's plain numbers before its letter-prefixed subset (TG05, GG35, RC5,
+  SV12 after the main run), then number. Every SQL sort ends with the same
+  full tie-breaker (number string, name, variant, language, id), so tied rows
+  keep one order and a page boundary never repeats or skips a card (#376).
+  Collection
   filter has "Bulk / no collection" (`collection=__none__`), and a
   "Duplicates only" checkbox (`dup=1`). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
@@ -1057,8 +1064,8 @@ without updating both the code and this doc.
    Set.release_rank`; a card with no linked `Set` row, or a linked one with
    a null `release_rank`, sorts after every ranked set/series
    (`UNKNOWN_RELEASE_RANK` in app.py, mirrored as `queries._UNKNOWN_RELEASE_RANK`)
-   rather than before, falling back to name/series/set order among
-   themselves. `queries.unlinked_set_cards()` lists `(series, set)` pairs
+   rather than before, falling back to set name/series order among
+   themselves (Inventory: see its entry under Pages for the full key). `queries.unlinked_set_cards()` lists `(series, set)` pairs
    with cards that have no `set_id` linked yet, so drift (e.g. a card with
    a null `series`/`set` to begin with) is visible instead of only
    silently falling back.
@@ -1159,7 +1166,10 @@ without updating both the code and this doc.
    Dex as the Japanese print. Mark such a card with the token `KR` in any of
    its Dex notes (`Note 1`–`Note 5`) and the importer stores
    `language = "Korean"` instead of Dex's `Locale`
-   (`constants.physical_language`). Any set. Case-insensitive, whole word
+   (`constants.physical_language`). The note is the only Korean marker:
+   there is no set-level fallback (the temporary sv2a one was removed once
+   every Korean card had its note), so a Japanese-logged card without it
+   stays Japanese. Any set. Case-insensitive, whole word
    (`constants.KOREAN_NOTE_RE`): `KR`, `kr`, `KR; mint`, `bought KR lot`
    match; `KRAKEN`, `okr`, `KRW` don't. The card then shows "KR" in
    Inventory (and its language filter), on the card page, in badges, the
@@ -1172,13 +1182,6 @@ without updating both the code and this doc.
      "TCGplayer via Dex (JP price)", "Cardmarket via TCGdex (JP price)" on
      the card page and in price tooltips (`pricing.card_source_label`,
      display only; `pricing.CHAIN` is unchanged).
-   - **Temporary fallback:** `constants.PHYSICAL_LOCALE_OVERRIDES =
-     {"jpn_sv2a": "Korean"}` (keyed on the Dex `card_id` prefix before the
-     `-`) makes every 151 card Korean, note or not, until the user has
-     tagged all of them with "KR" in Dex. **To remove it, delete that one
-     entry** (the next sync then uses the notes alone). While it's there a
-     genuine Japanese sv2a card would also show as Korean (the user owns
-     none).
    - **Notes follow Dex.** `notes` is rewritten from the export on every
      sync, so a note removed in Dex is cleared here too (it used to be kept
      forever) and the language reverts to Dex's `Locale`. Nothing in the
