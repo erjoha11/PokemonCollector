@@ -622,3 +622,20 @@ and #277), against the existing htmx 1.9.12 setup on `/sync-status`.
   were approved.
 
 **Status:** Open (design guidance for #275/#277, not yet built).
+
+## 2026-10-08 — #366 master set / Sets & lists module (ux, via architect)
+
+Pass 1 (set page):
+- New page `/sets/{language}/{set_code}`, not a tab on the collection page: a collection is a tag, not a checklist, and one set can span several collections. Entry points: a "Master set" link on `collection.html` set headers and a set-name link on `card_body.html`'s Series/set line, shown only when a checklist exists. Nothing on the Dashboard (#241 removed completion there by the user's choice).
+- Progress as separate tracks, each a strict X/Y over checklist slots (Main 1-165, Secret 166-210, Poké Ball, overall Master set), so it can't go above 100%. Show "X / Y" before the %, with units explained in `info()`. Relabel `collection.html`'s per-set "N% complete" (e.g. "X/210 numbers") so two different 151 completion figures don't sit side by side.
+- Must-have: an "Unmatched" list of owned cards that don't map to a checklist slot, or the page silently disagrees with the collection.
+- Missing tiles are ghosted, not links (no Card id, so `card_link` would give `/cards/None`), and must look different from the existing "0 owned" (sold) style.
+- `ads.py` prints `card.language`, so Korean cards logged as Japanese were advertised as "JP" (addressed by #367).
+
+Pass 2 (lists module):
+- Spares must be counted per master_card (sum(qty) − 1), not per Dex row; otherwise the set page and a sale list's "Not enough spares" can disagree.
+- Don't name the new nav item "Collection" (clashes with Dex collections). Use "Sets & lists" (`/collecting`, active on `/sets/` and `/lists/`); don't bring back the `/collections` index removed in #252.
+- Bulk add from the set page: filter-aware, server-side "Add N missing/spares to [list ▾]" buttons with a real count and a result line ("Added 31, 3 already on list"). No third sessionStorage multi-select; the htmx target must always exist so it can't fail silently like "+ Add to order".
+- The sale list is the intent stage feeding the existing `/sales` → `/listings` flow ("Make finn.no ad from this list"; "Listed" badge read from `listing_cards`). It must not become a second ad generator.
+- List totals: want = "Est. cost to complete", sale = "Est. value of spares" (capped at spares). Copy-as-text uses the checklist display name.
+- A want item for a print that's owned but Unmatched would wrongly show "Missing". Surface it as "Possibly owned (unmatched)" or link to the set page's Unmatched list.

@@ -1934,6 +1934,44 @@ html.card-modal-open { overflow: hidden; }
 .gallery-card-meta { font-size: 0.78rem; }
 .gallery-card-figures { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 
+/* ---- Sets & lists (/collecting, /sets/{language}/{set_code}; #369) ---- */
+.collecting-section h2, .master-set-section h2 { font-size: 1.05rem; }
+.collecting-sets { width: auto; min-width: min(100%, 520px); }
+.master-set-note { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; }
+.master-set-filters { display: flex; flex-wrap: wrap; gap: 0 1.25rem; }
+.master-set-filters .viz-filter { flex-wrap: wrap; }
+.master-set-count { margin: 0 0 0.75rem; font-size: 0.85rem; }
+.master-set-grid { margin-bottom: 1.5rem; }
+.master-set-section { margin-bottom: 1rem; }
+.master-set-section textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 0.82rem; margin-bottom: 0.4rem; }
+/* A missing print: no Card behind it, so not a link. Ghosted (dashed
+   frame, faded grayscale photo, italic name) -- deliberately unlike the
+   "0 owned" style (.card-row-unowned: a dimmed real card with a pill). */
+.gallery-card-missing .gallery-card-name { font-style: italic; font-weight: 400; color: var(--muted); }
+.gallery-card-ghost {
+  cursor: default;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--page);
+}
+.gallery-card-ghost img { filter: grayscale(1); opacity: 0.3; }
+.gallery-card-placeholder {
+  aspect-ratio: 63 / 88;
+  display: grid;
+  place-items: center;
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.missing-badge {
+  padding: 0.05rem 0.45rem;
+  border: 1px dashed var(--border-strong);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
 /* ---- Inventory pagination + column chooser ---- */
 .inventory-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 0.5rem; }
 .inventory-toolbar p { margin: 0; }

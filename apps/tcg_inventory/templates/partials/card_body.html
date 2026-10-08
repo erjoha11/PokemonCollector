@@ -43,7 +43,7 @@
       <dt>Collections</dt>
       <dd>{% for c in card.collections | sort(attribute='name') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% else %}<span class="muted">None (Bulk)</span>{% endfor %}</dd>
       <dt>Binder</dt><dd>{{ card.binder.name if card.binder else '–' }}</dd>
-      <dt>Series / set</dt><dd>{{ card.series or '–' }} · {{ card.set or '–' }}{% if card.linked_set and card.linked_set.total_cards %} <span class="muted">({{ card.linked_set.total_cards }} cards)</span>{% endif %}</dd>
+      <dt>Series / set</dt><dd>{{ card.series or '–' }} · {% if master_set_url %}<a href="{{ master_set_url }}" title="Master set: what's owned and missing">{{ card.set or 'Master set' }}</a>{% else %}{{ card.set or '–' }}{% endif %}{% if card.linked_set and card.linked_set.total_cards %} <span class="muted">({{ card.linked_set.total_cards }} cards)</span>{% endif %}</dd>
       <dt>Variant</dt><dd>{{ card.variant or '–' }}</dd>
       <dt>Language</dt><dd>{{ card.language | lang if card.language else '–' }}</dd>
       <dt>Rarity</dt><dd>{{ card.rarity or '–' }}</dd>

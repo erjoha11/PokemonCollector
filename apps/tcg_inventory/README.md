@@ -146,6 +146,54 @@ run).
   checked (`?unowned=1`) — the search used to add a card to a sales listing
   (`/pokemon/search`) is a separate query and is unaffected, since re-buying
   a previously-traded-away card there is the intended path.
+- **Sets & lists** (`/collecting`, issue #369, epic #366) — the collecting
+  module, a nav item between Inventory and Orders (active on `/collecting`,
+  `/sets/…` and, from #370, `/lists/…`). Not called "Collection": that
+  already means Dex categories (`/collections/{id}`), and the
+  `/collections` index removed in #252 stays removed. The landing page's
+  **Tracked sets** lists every set with a checklist (see "Master sets /
+  checklists"): master set X / Y and spares. With no checklist it says how
+  to seed one. The want / sale lists (#370) go below it.
+- **Set page** (`/sets/{language}/{set_code}`, e.g. `/sets/ja/sv2a`) — one
+  set's master set, from `queries.master_set_detail` (all computed, nothing
+  stored). Generic per masterdata `(language, set_code)`; a set without a
+  checklist gets a 200 with a "no checklist yet" note.
+  - Title from the checklist's display name. When the owned cards are
+    Korean cards priced from the Japanese print (`pricing.is_jp_price_proxy`,
+    #367), a note says they're logged in Dex as Japanese and that prices are
+    JP-market proxies.
+  - KPI band: **Master set** X / Y (every print with
+    `counts_toward_completion`: base prints + Poké Ball), then one X / Y per
+    counting track (Main, Secret, Poké Ball), each a strict count of
+    checklist prints owned, so never above 100%; then Spares and (if any)
+    Unmatched. A print is owned when the cards linked to its master card add
+    up to qty ≥ 1. Master Ball prints never count and are hidden unless
+    their track is picked.
+  - Grid in printed order (number, then base before ball prints), reusing
+    `.card-gallery`. Owned tiles open the card modal (the linked card with
+    most copies). Missing tiles have no `Card`, so they're ghosted
+    (dashed frame, faded photo from `master_cards.image_url`, else a
+    "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
+    "0 owned" style. A print whose only card is at qty 0 is missing.
+  - Filters as GET params, `track` (`all` = the master-set tracks, default;
+    `main`/`secret`/`poke_ball`/`master_ball`) and `show`
+    (`all`/`missing`/`owned`); the pills `hx-get` the page, swap
+    `#set-grid` and push the URL, so a reload keeps them. Unknown values
+    fall back to the defaults.
+  - **Copy missing list**: every missing master-set print as text, headed
+    with the display name.
+  - **Spares**: per print (per master card, not per Dex row),
+    `max(sum(qty) − 1, 0)`, any track, with value at market price, and a
+    link to `/sales?card_ids=…` (one card per print with spares).
+  - **Unmatched**: owned cards of the set on no checklist print (linked to
+    another master card of the set, or unlinked and matched on the Dex
+    `card_id`), with card ID and Dex variant. They count nowhere above.
+  - Ways in: a set-name link on the card page's Series / set line and a
+    "Master set" link on `/collections/{id}` set headers, both only when the
+    card's set has a checklist; and the landing page. Nothing on the
+    Dashboard (#241 removed completion there). The collection gallery's
+    per-set figure now reads "X/Y numbers" (distinct card numbers, any
+    variant), so it isn't mistaken for the master-set figure.
 - **Orders** (`/orders/purchased`, `/orders/sold`, `/orders/listings`;
   issue #255) — one nav item ("Orders") for what used to be three
   (Transactions, Sell on finn.no, Listings). One h1 and a tab strip
@@ -721,7 +769,8 @@ Membership is explicit: only the seed adds prints, so an odd Dex variant
 never silently becomes part of a set. Owned / missing / completion are
 computed from whether a `Card` links to a member's master card, never
 stored. `set_checklists.get_checklist(db, language, set_code)` loads one
-with its members. sv2a is tracked as `ja/sv2a` although the user's cards
+with its members; `queries.master_set_detail` adds owned / missing /
+spares / unmatched for the set page (see Pages → "Set page", #369). sv2a is tracked as `ja/sv2a` although the user's cards
 are Korean (Dex has no Korean 151; TCGdex's Korean SV2a is an empty stub).
 
 **The base-slot rule.** TCGdex lists exactly one base print per number:
@@ -2245,7 +2294,8 @@ file locally following the steps above and add a dated line here.
 - `models.py` — SQLAlchemy models + computed properties.
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
-- `queries.py` — dashboard aggregation queries.
+- `queries.py` — dashboard aggregation queries, plus the master-set page's
+  `master_set_detail` / `tracked_sets` (see "Set page" under Pages).
 - `form_validation.py` — boundary validation of type/price/date/row-list
   form inputs and the 422 messages (see "Form validation" above).
 - `masterdata.py` — canonical card identity + external ID mapping (see

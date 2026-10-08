@@ -31,7 +31,11 @@
 <section class="collection-set">
   <h2>{{ set_b.name }}
     <span class="muted collection-set-meta">{{ set_b.unique_count }} unique · {{ set_b.total_value | kr }}
-    {%- if set_b.completion_pct is not none %} · <span title="{{ set_b.owned_numbers }}/{{ set_b.total_cards }} cards">{{ set_b.completion_pct | round | int }}% complete</span>{% endif %}</span></h2>
+    {#- Card numbers of the set in this collection, any variant. Not the
+        master set's figure (prints incl. Poké Ball, on the set page), so it
+        says "numbers" rather than "% complete" (#369). #}
+    {%- if set_b.completion_pct is not none %} · <span title="{{ set_b.completion_pct | round | int }}% of the set's card numbers, any variant, in this collection">{{ set_b.owned_numbers }}/{{ set_b.total_cards }} numbers</span>{% endif %}
+    {%- if master_set_urls.get(set_b.name) %} · <a href="{{ master_set_urls[set_b.name] }}">Master set</a>{% endif %}</span></h2>
   <div class="card-gallery">
     {% for card in shown %}
     <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">
