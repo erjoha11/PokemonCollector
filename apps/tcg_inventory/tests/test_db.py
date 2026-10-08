@@ -317,7 +317,7 @@ def test_migration_from_v9_adds_pricing_schema_and_backfills_every_card(monkeypa
     cards = {c.card_id: c for c in session.query(models.Card)}
     resolved = {cid: (c.market_price, c.market_price_source, c.price_flags) for cid, c in cards.items()}
     assert resolved == {
-        "both": (100.0, "dex", None),  # Dex first in the chain
+        "both": (110.0, "pokemontcg", None),  # live TCGplayer ahead of Dex (#386)
         "dex-only": (50.0, "dex", None),
         "failed": (None, None, "no_price"),
         "nothing": (None, None, "no_price"),

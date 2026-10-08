@@ -133,14 +133,15 @@ def test_card_page_per_source_table(client):
     table = html.split('<table class="price-sources-table">', 1)[1].split("</table>", 1)[0]
     rows = table.split("<tbody>", 1)[1].split("<tr")[1:]
     assert len(rows) == 2
-    # Chain order: dex first, then pokemontcg.
-    assert "TCGplayer via Dex" in rows[0] and "price-source-used" in rows[0] and ">Used<" in rows[0]
-    assert "TCGplayer via pokemontcg.io" in rows[1]
-    assert "10.50 USD" in rows[1] and "105 kr" in rows[1]
-    assert "01.09.2026" in rows[1]
-    assert "Lookup failed 20.09.2026" in rows[1]
-    assert "Variant uncertain" in rows[1]
-    assert ">Used<" not in rows[1]
+    # Chain order (#386): pokemontcg (live TCGplayer) first, then dex. The
+    # pokemontcg row is stale here, so dex is the one used.
+    assert "TCGplayer via pokemontcg.io" in rows[0]
+    assert "10.50 USD" in rows[0] and "105 kr" in rows[0]
+    assert "01.09.2026" in rows[0]
+    assert "Lookup failed 20.09.2026" in rows[0]
+    assert "Variant uncertain" in rows[0]
+    assert ">Used<" not in rows[0]
+    assert "TCGplayer via Dex" in rows[1] and "price-source-used" in rows[1] and ">Used<" in rows[1]
     # Not flagged: collapsed by default.
     assert '<details class="price-sources">' in html
 

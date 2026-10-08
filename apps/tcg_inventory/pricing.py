@@ -42,16 +42,19 @@ import card_images
 import constants
 from models import Card, CardPrice, ImportLog
 
-# Display priority, TCGplayer-first (owner's choice, epic #213). A module
-# constant, not a user setting (yet). The tcgdex_* sources are written by
-# tcgdex_prices.py (#211): TCGplayer via TCGdex backs up Dex for
-# international cards; Cardmarket via TCGdex comes last, but is the only
-# independent source for Japanese cards.
+# Display priority: live TCGplayer first, Dex as fallback (owner's choice,
+# issue #386, 2026-10-09 -- reversing #210's Dex-first order, so displayed
+# prices match Collectr, i.e. TCGplayer's current market price; Dex's copy
+# of it lags). A module constant, not a user setting (yet). The tcgdex_*
+# sources are written by tcgdex_prices.py (#211). TCGplayer via TCGdex and
+# via pokemontcg.io only cover international cards, so Japanese/Korean
+# cards keep Dex by fallthrough; Cardmarket via TCGdex comes last, but is
+# their only independent source when Dex is missing or stale.
 SOURCE_DEX = "dex"
 SOURCE_TCGDEX_TCGPLAYER = "tcgdex_tcgplayer"
 SOURCE_POKEMONTCG = "pokemontcg"
 SOURCE_TCGDEX_CARDMARKET = "tcgdex_cardmarket"
-CHAIN: tuple[str, ...] = (SOURCE_DEX, SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG, SOURCE_TCGDEX_CARDMARKET)
+CHAIN: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG, SOURCE_DEX, SOURCE_TCGDEX_CARDMARKET)
 # The sources that price a card from TCGplayer's per-print keys, chosen by
 # card_images._match_variant_key (issue #350).
 TCGPLAYER_SOURCES: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG)

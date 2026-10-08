@@ -22,14 +22,42 @@ def _row(source, price, fetched_days_ago, flags=None):
 
 
 def test_first_fresh_source_in_chain_order_wins():
-    res = pricing.resolve([_row("pokemontcg", 110.0, 1), _row("dex", 100.0, 3)], TODAY)
-    assert (res.price, res.source, res.flags) == (100.0, "dex", None)
+    res = pricing.resolve([_row("dex", 100.0, 1), _row("pokemontcg", 110.0, 3)], TODAY)
+    assert (res.price, res.source, res.flags) == (110.0, "pokemontcg", None)
     assert res.as_of == TODAY - dt.timedelta(days=3)
 
 
+def test_chain_is_live_tcgplayer_first_then_dex_then_cardmarket():
+    # Issue #386 (reverses #210's Dex-first order): match Collectr, which
+    # shows TCGplayer's live market price.
+    assert pricing.CHAIN == ("tcgdex_tcgplayer", "pokemontcg", "dex", "tcgdex_cardmarket")
+
+
+def test_international_card_prefers_fresh_tcgdex_tcgplayer_over_dex():
+    rows = [_row("dex", 4148.12, 1), _row("tcgdex_tcgplayer", 4824.60, 2), _row("pokemontcg", 4700.0, 1)]
+    res = pricing.resolve(rows, TODAY)
+    assert (res.price, res.source, res.flags) == (4824.60, "tcgdex_tcgplayer", None)
+
+
+def test_japanese_card_with_only_dex_and_cardmarket_resolves_to_dex():
+    # No TCGplayer source has Japanese cards, so they keep Dex by fallthrough,
+    # and Dex still beats Cardmarket.
+    res = pricing.resolve([_row("tcgdex_cardmarket", 60.0, 1), _row("dex", 90.0, 3)], TODAY)
+    assert (res.price, res.source, res.flags) == (90.0, "dex", None)
+
+
+def test_stale_tcgdex_tcgplayer_falls_through_to_pokemontcg_then_dex():
+    stale = pricing.FRESH_DAYS + 1
+    rows = [_row("tcgdex_tcgplayer", 120.0, stale), _row("pokemontcg", 110.0, 2), _row("dex", 100.0, 1)]
+    assert pricing.resolve(rows, TODAY).source == "pokemontcg"
+    rows = [_row("tcgdex_tcgplayer", 120.0, stale), _row("pokemontcg", 110.0, stale), _row("dex", 100.0, 1)]
+    res = pricing.resolve(rows, TODAY)
+    assert (res.price, res.source, res.flags) == (100.0, "dex", None)
+
+
 def test_a_stale_source_falls_through_to_the_next_fresh_one():
-    res = pricing.resolve([_row("dex", 100.0, pricing.FRESH_DAYS + 1), _row("pokemontcg", 110.0, 2)], TODAY)
-    assert (res.price, res.source, res.flags) == (110.0, "pokemontcg", None)
+    res = pricing.resolve([_row("pokemontcg", 110.0, pricing.FRESH_DAYS + 1), _row("dex", 100.0, 2)], TODAY)
+    assert (res.price, res.source, res.flags) == (100.0, "dex", None)
 
 
 def test_freshness_window_is_inclusive_and_longer_than_the_refresh_cadence():
@@ -61,8 +89,8 @@ def test_the_winning_rows_flags_are_carried_onto_the_card():
 
 
 def test_a_disqualified_fresh_row_is_skipped():
-    res = pricing.resolve([_row("dex", 100.0, 1, flags="low_confidence"), _row("pokemontcg", 110.0, 1)], TODAY)
-    assert res.source == "pokemontcg"
+    res = pricing.resolve([_row("pokemontcg", 110.0, 1, flags="low_confidence"), _row("dex", 100.0, 1)], TODAY)
+    assert res.source == "dex"
 
 
 # --- writing + resolve_cards --------------------------------------------------
@@ -163,13 +191,14 @@ def test_pokemontcg_records_native_price_rate_and_variant_flag(db_session):
     assert card.tcgplayer_price == 10.0  # mirror
 
 
-def test_dex_outranks_pokemontcg_when_both_are_fresh(db_session):
+def test_pokemontcg_outranks_dex_when_both_are_fresh(db_session):
+    # Issue #386: live TCGplayer ahead of Dex's copy of it.
     csv = make_csv("My Collection", [{"id": "sv2-109", "number": "0/193", "price": "80"}])
     import_dex_csv_files(db_session, [("main.csv", csv)])
     _price_by_id(db_session, {"normal": 9.5})
 
     card = db_session.query(Card).one()
-    assert (card.market_price, card.market_price_source) == (80.0, "dex")
+    assert (card.market_price, card.market_price_source) == (95.0, "pokemontcg")
     assert db_session.query(CardPrice).filter_by(source="pokemontcg").one().price_nok == 95.0
 
 
