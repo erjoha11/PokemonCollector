@@ -2086,6 +2086,88 @@ def test_inventory_release_sort_falls_back_for_unlinked_or_unranked_sets(client)
     assert text.index("RankedCard") < text.index("NoLinkCard")
 
 
+def _inventory_order(client, prefix, **params):
+    """Card names starting with `prefix`, in the order /inventory renders
+    them (first occurrence of each -- a name can appear more than once per row).
+    """
+    import re
+
+    html = client.get("/inventory", params=params).text.split('id="inventory-results"', 1)[1]
+    seen = []
+    for name in re.findall(rf"{prefix}\w+", html):
+        if name not in seen:
+            seen.append(name)
+    return seen
+
+
+def test_inventory_release_sort_puts_subset_numbers_after_the_main_set(client):
+    # Issue #376: number_int strips the letter prefix, so TG05 used to sort
+    # between main-set #5 and #6 instead of after the whole main run.
+    import db as db_module
+    from models import Set
+
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "s-tg10", "name": "SrtTG10", "series": "Sword & Shield", "set": "Lost Origin", "number": "TG10/TG30"},
+            {"id": "s-6", "name": "SrtMain6", "series": "Sword & Shield", "set": "Lost Origin", "number": "6/196"},
+            {"id": "s-tg05", "name": "SrtTG05", "series": "Sword & Shield", "set": "Lost Origin", "number": "TG05/TG30"},
+            {"id": "s-5", "name": "SrtMain5", "series": "Sword & Shield", "set": "Lost Origin", "number": "5/196"},
+            {"id": "s-12", "name": "SrtMain12", "series": "Sword & Shield", "set": "Lost Origin", "number": "12/196"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+    db = db_module.SessionLocal()
+    db.query(Set).filter_by(series="Sword & Shield", name="Lost Origin").update({Set.release_rank: 5})
+    db.commit()
+    db.close()
+
+    assert _inventory_order(client, "Srt") == ["SrtMain5", "SrtMain6", "SrtMain12", "SrtTG05", "SrtTG10"]
+
+
+def test_inventory_release_sort_keeps_same_named_unranked_sets_apart(client):
+    # Issue #376: two unranked sets sharing a name in different series both
+    # land on UNKNOWN_RELEASE_RANK; ordering only by set name interleaved
+    # their cards number by number. Each set's cards stay together now.
+    main = make_csv(
+        "My Collection",
+        [
+            {"id": "jp-1", "name": "SrtJpOne", "series": "Scarlet & Violet JP", "set": "151", "number": "1/165"},
+            {"id": "en-1", "name": "SrtEnOne", "series": "Scarlet & Violet", "set": "151", "number": "1/165"},
+            {"id": "jp-2", "name": "SrtJpTwo", "series": "Scarlet & Violet JP", "set": "151", "number": "2/165"},
+            {"id": "en-2", "name": "SrtEnTwo", "series": "Scarlet & Violet", "set": "151", "number": "2/165"},
+        ],
+    )
+    seed_import(client, [("files", ("main.csv", main, "text/csv"))])
+
+    assert _inventory_order(client, "Srt") == ["SrtEnOne", "SrtEnTwo", "SrtJpOne", "SrtJpTwo"]
+
+
+def test_inventory_sorts_break_ties_deterministically_across_pages(client):
+    # Issue #376: rows tied on every sort key (here: same set and number,
+    # different names -- e.g. variants) had no defined order, so Postgres
+    # could return them differently per request and a page boundary could
+    # repeat or skip cards. A full tie-breaker (number, name, variant,
+    # language, id) fixes the order; pages are consecutive slices of it.
+    import db as db_module
+    from models import Card
+
+    db = db_module.SessionLocal()
+    # Inserted in reverse name order, so insertion/rowid order != name order.
+    for name in ["SrtD", "SrtC", "SrtB", "SrtA"]:
+        db.add(Card(card_id=f"tie-{name}", name=name, series="S", set="Tied Set", number="7/100", number_int=7, qty=1))
+    db.commit()
+    db.close()
+
+    expected = ["SrtA", "SrtB", "SrtC", "SrtD"]
+    for sort in ["release", "number", "set", "series", "qty", "net_invested"]:
+        assert _inventory_order(client, "Srt", sort=sort) == expected, sort
+        paged = []
+        for page in (1, 2):
+            paged += _inventory_order(client, "Srt", sort=sort, page=page, page_size=2)
+        assert paged == expected, sort
+
+
 def _seed_two_series_and_link_sets(client, old_rank, new_rank):
     """Shared setup for the Dashboard/Inventory-KPI/Transactions-KPI
     release-order tests below: two series, each linked to a `Set` row via
