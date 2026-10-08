@@ -241,6 +241,25 @@ yet.
 
 ### tcg_inventory
 
+**Live TCGplayer first in the price chain, Dex as fallback (#386)**
+- `pricing.CHAIN` is now `(tcgdex_tcgplayer, pokemontcg, dex,
+  tcgdex_cardmarket)`. This reverses the Dex-first order from #210 / #213.
+- Why: displayed prices now match Collectr, which Norwegian card-show
+  vendors use. Collectr shows TCGplayer's Near Mint market price converted
+  to NOK, and prod's `tcgdex_tcgplayer` rows already matched it while the
+  displayed Dex price lagged.
+- Japanese and Korean cards have no TCGplayer source, so they still get the
+  Dex price because the chain falls through to it. Dex still comes before
+  Cardmarket.
+- One-time effect in prod: displayed prices change once on about 460
+  international cards (Dex to TCGplayer). On that day the value-history and
+  per-card price charts show source-switch notes, and Price movers leaves
+  those cards out until its start snapshot is after the switch.
+- No database change. Prod switches at the next full re-resolve: the daily
+  `/cron/dropbox-sync` or `/cron/price-refresh`, or a manual sync or
+  refresh. Nothing re-resolves at deploy. Details:
+  `notes/tcg_inventory/HANDOFF.md` (2026-10-09).
+
 **Collections as the entry point; "Sets & lists" folded into it (#378)**
 - The nav item "Sets & lists" is now **Collections** (`/collections`),
   active on `/collections`, `/collections/…`, `/lists/…` and the `/sets/…`
