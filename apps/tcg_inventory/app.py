@@ -146,6 +146,10 @@ def _days_ago(d: dt.date | None) -> str:
 templates.env.filters["days_ago"] = _days_ago
 # Price source / flag labels (pricing.py, issue #210).
 templates.env.filters["source_label"] = pricing.source_label
+# `source | card_source_label(card)`: adds "(JP price)" for a Korean card
+# priced as its Japanese print (issue #367). Use it wherever a label is
+# shown for a specific card.
+templates.env.filters["card_source_label"] = pricing.card_source_label
 templates.env.filters["price_flags"] = pricing.flag_list
 templates.env.filters["flag_label"] = pricing.flag_label
 templates.env.filters["flag_title"] = pricing.flag_title

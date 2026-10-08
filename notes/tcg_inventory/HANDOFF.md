@@ -2139,3 +2139,47 @@ None.
   Run-now buttons aren't built and it's the only browser-based manual
   trigger. Dropping it is `cron_auth.ACCEPT_QUERY_SECRET = False`; do that
   with #199. User's call.
+
+
+# Handoff notes — 2026-10-08 session (#367: Korean marker from a "KR" note)
+
+## Code (in git, PR for #367, part of epic #366)
+
+- `constants.py`: `KOREAN_NOTE_RE` (`\bKR\b`, case-insensitive),
+  `PHYSICAL_LOCALE_OVERRIDES = {"jpn_sv2a": "Korean"}`, and
+  `physical_language(card_id, locale, notes)`. The importer stores its result
+  on `Card.language`: a "KR" note in any set makes the card Korean, else the
+  sv2a fallback, else Dex's Locale.
+- `importer.py`: notes now follow Dex. `card.notes` is rewritten from the
+  export every sync, so an emptied note becomes `None` (it was only ever
+  written when non-empty, so removed notes stuck forever).
+- `pricing.card_source_label` / `is_jp_price_proxy` + Jinja filter
+  `card_source_label`: a Korean card priced from its Japanese print shows
+  "(JP price)" after the source label on the card page (source line, price
+  sources table, price-history table) and in the Price movers / Recently
+  added price tooltips. Display only; `pricing.CHAIN`, card_id, master
+  cards, `master_card_ids`, prices and images are untouched.
+- README "Business rules" rule 8 documents the note rule, the fallback and
+  how to remove it, and notes-follow-Dex.
+- No schema change, no `CURRENT_SCHEMA_VERSION` bump, no `init_db()`
+  backfill: the next sync (daily cron or manual) recomputes `notes` and
+  `language` for every exported row.
+
+## Direct database changes
+
+None.
+
+## Open items
+
+- **User action:** add "KR" to a note in Dex on every Korean card (the 151
+  cards and the s12a VSTAR Universe ones, and any others). Until the next
+  sync after that, only sv2a shows as Korean (via the fallback); s12a
+  stays Japanese.
+- **The sv2a fallback is temporary.** Once every Korean 151 card has its
+  "KR" note in Dex, delete the `"jpn_sv2a"` entry in
+  `constants.PHYSICAL_LOCALE_OVERRIDES` (and the README's fallback bullet).
+  While it's there a genuine Japanese sv2a card would also show as Korean.
+- Side effect to expect on the first sync after deploy: any card whose Dex
+  notes were deleted at some point loses its stale `notes` in the app.
+- The price charts' "source switched" tooltips (`pricing.source_switch_note`)
+  don't carry "(JP price)"; only the per-card labels do.

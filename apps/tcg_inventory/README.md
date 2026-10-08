@@ -948,6 +948,36 @@ without updating both the code and this doc.
    listing — a warning only, listing a card twice is still allowed. The
    lookup is `queries.active_listings_by_card`, one query per request; it's
    read-only and never touches `qty`, `card_collections`, or `binder_id`.
+8. **Korean cards: a "KR" note (issue #367).** Dex has no Korean catalog
+   for some sets (151, VSTAR Universe, ...), so Korean cards are logged in
+   Dex as the Japanese print. Mark such a card with the token `KR` in any of
+   its Dex notes (`Note 1`–`Note 5`) and the importer stores
+   `language = "Korean"` instead of Dex's `Locale`
+   (`constants.physical_language`). Any set. Case-insensitive, whole word
+   (`constants.KOREAN_NOTE_RE`): `KR`, `kr`, `KR; mint`, `bought KR lot`
+   match; `KRAKEN`, `okr`, `KRW` don't. The card then shows "KR" in
+   Inventory (and its language filter), on the card page, in badges, the
+   collection gallery and generated finn.no ad text.
+   - **Only the language changes.** `card_id`, the master card
+     (`(ja, sv2a, n, variant)`), `master_card_ids`, prices and images all
+     key off `card_id`, so a Korean card keeps its Japanese print's
+     identity and prices. There is no Korean price source (#345/#346), so
+     the Japanese price is shown as a proxy and labelled honestly:
+     "TCGplayer via Dex (JP price)", "Cardmarket via TCGdex (JP price)" on
+     the card page and in price tooltips (`pricing.card_source_label`,
+     display only; `pricing.CHAIN` is unchanged).
+   - **Temporary fallback:** `constants.PHYSICAL_LOCALE_OVERRIDES =
+     {"jpn_sv2a": "Korean"}` (keyed on the Dex `card_id` prefix before the
+     `-`) makes every 151 card Korean, note or not, until the user has
+     tagged all of them with "KR" in Dex. **To remove it, delete that one
+     entry** (the next sync then uses the notes alone). While it's there a
+     genuine Japanese sv2a card would also show as Korean (the user owns
+     none).
+   - **Notes follow Dex.** `notes` is rewritten from the export on every
+     sync, so a note removed in Dex is cleared here too (it used to be kept
+     forever) and the language reverts to Dex's `Locale`. Nothing in the
+     app edits `notes`. No backfill or schema change: the next sync
+     recomputes `notes` and `language` for every exported row.
 
 ## CSV import format
 
@@ -959,8 +989,9 @@ Type;Category;Locale;Series;Set;Id;Number;Name;Variant;Rarity;Illustrator;Quanti
 
 Each file is one Dex folder/category export (the `Category` column is
 constant per file). Upload as many category files as you have for one sync
-— `Note 1`–`Note 5` are concatenated into `notes` when present, and `Locale`
-(which language/region print, e.g. `ENG`/`JPN`) is stored as `language` and
+— `Note 1`–`Note 5` are concatenated into `notes` (cleared when all are
+empty), and `Locale` (which language/region print, e.g. `ENG`/`JPN`) is
+stored as `language` (unless a "KR" note makes it Korean, rule 8) and
 shown/filterable/sortable as "Language" in Inventory. Routing (My Collection /
 binder / collection / excluded) is applied per the rules above based on
 each row's `Category` value. `Type` is read but unused — every real Dex
@@ -1506,7 +1537,8 @@ have no native USD value or rate (not recorded before #210).
 everywhere it stands alone ("Price" is kept for transaction prices). Source
 labels come from `pricing.SOURCE_LABELS`: `dex` is "TCGplayer via Dex" for
 every language, Japanese included (Dex uses TCGplayer prices for Japanese
-cards too). The card page shows the source and age under the price
+cards too). A Korean card priced from its Japanese print gets "(JP price)"
+after the label (business rule 8). The card page shows the source and age under the price
 ("TCGplayer via Dex · 2 d ago") with a chip per flag (`pricing.FLAG_LABELS`),
 and a "Price sources" table with every `card_prices` row in chain order,
 open by default only when the card is flagged. Charts keep source-switch

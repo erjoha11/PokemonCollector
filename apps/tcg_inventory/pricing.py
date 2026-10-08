@@ -39,6 +39,7 @@ from sqlalchemy import Date, Float, String, and_, case, delete, exists, func, in
 from sqlalchemy.orm import Session
 
 import card_images
+import constants
 from models import Card, CardPrice, ImportLog
 
 # Display priority, TCGplayer-first (owner's choice, epic #213). A module
@@ -94,6 +95,34 @@ def source_label(source: str | None) -> str:
     if not source:
         return "–"
     return SOURCE_LABELS.get(source, source)
+
+
+JP_PRICE_SUFFIX = " (JP price)"
+
+
+def is_jp_price_proxy(card) -> bool:
+    """True for a Korean card priced as its Japanese print (issue #367).
+
+    A "KR" note in Dex (constants.physical_language) makes a card Korean,
+    but its card_id, master card and every price source stay the Japanese
+    print's -- there is no Korean price source. Japanese = its master card is
+    `ja`, or (not linked yet) its Dex card_id starts with `jpn_`."""
+    if constants.language_code(getattr(card, "language", None)) != "KR":
+        return False
+    master = getattr(card, "master_card", None)
+    if master is not None:
+        return master.language == "ja"
+    return (getattr(card, "card_id", None) or "").startswith("jpn_")
+
+
+def card_source_label(source: str | None, card) -> str:
+    """source_label, plus " (JP price)" when `card` is a Korean card priced
+    from its Japanese print. Display only: the resolver and CHAIN don't
+    look at it."""
+    label = source_label(source)
+    if source and is_jp_price_proxy(card):
+        label += JP_PRICE_SUFFIX
+    return label
 
 
 def flag_list(value: str | None) -> list[str]:

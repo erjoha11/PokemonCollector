@@ -7,7 +7,7 @@
   <span class="mover-arrow {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" aria-hidden="true">{{ '▲' if direction == 'up' else '▼' }}</span>
   <span class="mover-name">{{ card_link(m.card, css_class='card-view-name', with_title=true) }}{% if m.card.language %}<span class="tx-platform-badge top-card-lang-badge">{{ m.card.language | lang }}</span>{% endif %}</span>
   <span class="mover-price" title="Price today, per copy">{{ m.new_price | kr }}</span>
-  <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}{% if m.card.market_price_source %} · Source: {{ m.card.market_price_source | source_label }}{% endif %}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
+  <span class="mover-change {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}" title="{{ m.old_price | kr }} → {{ m.new_price | kr }}{% if m.card.market_price_source %} · Source: {{ m.card.market_price_source | card_source_label(m.card) }}{% endif %}">{{ '+' if m.change > 0 }}{{ m.change | kr }}</span>
   {#- % only when the move is big enough in kr to mean something (queries.PRICE_MOVE_PCT_MIN_KR) #}
   {% if m.show_pct %}<span class="mover-pct {{ 'viz-delta-gain' if direction == 'up' else 'viz-delta-loss' }}">{{ '+' if m.pct > 0 }}{{ m.pct | round | int }} %</span>{% else %}<span class="mover-pct muted" title="Change under 10 kr -- % left out">·</span>{% endif %}
 </li>
@@ -27,7 +27,7 @@
     {%- if card.variant %}{% set _ = meta.append(card.variant) %}{% endif %}
     <span class="recent-meta muted">{% if meta %}{{ meta | join(' · ') }} · {% endif %}<span title="Added">{{ card.created_at.strftime('%d.%m.%Y') }}</span></span>
   </span>
-  <span class="recent-price" title="Market price per copy{% if card.market_price_source %} · Source: {{ card.market_price_source | source_label }}{% endif %}">{{ card.display_price | kr }}</span>
+  <span class="recent-price" title="Market price per copy{% if card.market_price_source %} · Source: {{ card.market_price_source | card_source_label(card) }}{% endif %}">{{ card.display_price | kr }}</span>
 </li>
 {% endmacro %}
 
