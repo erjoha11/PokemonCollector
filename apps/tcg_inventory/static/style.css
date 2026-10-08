@@ -1934,9 +1934,15 @@ html.card-modal-open { overflow: hidden; }
 .gallery-card-meta { font-size: 0.78rem; }
 .gallery-card-figures { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 
-/* ---- Sets & lists (/collecting, /sets/{language}/{set_code}; #369) ---- */
-.collecting-section h2, .master-set-section h2 { font-size: 1.05rem; }
-.collecting-sets { width: auto; min-width: min(100%, 520px); }
+/* ---- Collections overview and master-set blocks (/collections,
+   /collections/{id}, the /sets/... fallback page; #369, #378) ---- */
+.collecting-section h2, .master-set-section h2, .master-set-section h3 { font-size: 1.05rem; }
+.collections-overview { width: auto; min-width: min(100%, 640px); }
+.master-set-home > h2 { margin-bottom: 0.5rem; }
+.master-set-link { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; }
+.master-set-other h3 { font-size: 0.95rem; margin: 0.5rem 0 0.4rem; }
+/* "in: <collection>" on a master-set tile owned but filed elsewhere in Dex. */
+.elsewhere-badge { margin-left: 0; overflow-wrap: anywhere; }
 .master-set-note { margin: -0.25rem 0 0.75rem; font-size: 0.85rem; }
 .master-set-filters { display: flex; flex-wrap: wrap; gap: 0 1.25rem; }
 .master-set-filters .viz-filter { flex-wrap: wrap; }
@@ -1972,8 +1978,8 @@ html.card-modal-open { overflow: hidden; }
   color: var(--muted);
 }
 
-/* ---- Want and sale lists (/collecting Lists, /lists/{id}, the set
-   page's "Add to list" panel; #370) ---- */
+/* ---- Want and sale lists (/collections Lists, /lists/{id}, a master-set
+   block's "Add to list" panel; #370) ---- */
 .visually-hidden {
   position: absolute;
   width: 1px;

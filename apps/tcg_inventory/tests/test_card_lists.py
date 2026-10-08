@@ -1,5 +1,6 @@
-"""Want and sale lists (issue #370, epic #366): card_lists.py, /collecting's
-Lists section, /lists/{id}, and the set page's bulk "Add to list". Offline.
+"""Want and sale lists (issue #370, epic #366): card_lists.py, the Lists
+section (on /collections since #378), /lists/{id}, and a master-set block's
+bulk "Add to list". Offline.
 
 Reuses test_master_set's sv2a fixture. Its checklist state, as it bears on
 lists:
@@ -337,9 +338,9 @@ def _new_list(client, name, kind):
     return int(resp.headers["HX-Redirect"].rsplit("/", 1)[1])
 
 
-def test_collecting_lists_section_and_new_list(client):
+def test_collections_lists_section_and_new_list(client):
     _seed()
-    html = client.get("/collecting").text
+    html = client.get("/collections").text
     assert 'id="lists"' in html and "No want lists yet." in html and "No sale lists yet." in html
     assert 'hx-post="/lists"' in html
 
@@ -348,7 +349,7 @@ def test_collecting_lists_section_and_new_list(client):
     assert resp.status_code == 303 and resp.headers["location"].startswith("/lists/")
     client.post("/sets/ja/sv2a/add-to-list", data={"what": "missing", "list_id": str(list_id)}, headers=HX)
 
-    html = client.get("/collecting").text
+    html = client.get("/collections").text
     want_part = html.split('id="lists-want"', 1)[1].split('id="lists-sale"', 1)[0]
     assert f'<a href="/lists/{list_id}">Wants</a>' in want_part
     assert "3 missing · 1 possibly owned" in want_part
@@ -368,9 +369,9 @@ def test_new_list_rejected(client, data, message):
 
 
 def test_set_page_add_panel_is_filter_aware(client):
-    _seed()
+    _seed()  # no collection holds the set: /sets/... renders the block itself
     html = client.get("/sets/ja/sv2a").text
-    assert 'id="set-list-add"' in html and 'id="set-list-add-status"' in html
+    assert 'id="set-list-add-ja-sv2a"' in html and 'id="set-list-add-status-ja-sv2a"' in html
     assert "Add 4 missing" in html  # no Master Ball by default
     assert "Add 3 spares" in html and "(5 copies)" in html
     assert '<option value="new" selected>New list…</option>' in html  # no lists yet
@@ -387,7 +388,7 @@ def test_bulk_add_missing_idempotent_with_counts(client):
     _seed()
     resp = client.post("/sets/ja/sv2a/add-to-list", data={"what": "missing", "list_id": "new", "new_list_name": "151 wants"}, headers=HX)
     assert resp.status_code == 200
-    assert 'id="set-list-add-status"' in resp.text
+    assert 'id="set-list-add-status-ja-sv2a"' in resp.text
     assert "Added 4: <a href=" in resp.text
     with _session() as db:
         wl = db.query(CardList).one()
@@ -455,6 +456,13 @@ def test_bulk_add_without_htmx_redirects_back_with_the_filter(client):
     assert resp.headers["location"] == "/sets/ja/sv2a?track=poke_ball&show=missing"
     with _session() as db:
         assert db.query(CardListItem).count() == 2
+    # From a collection page (#378): back to that collection's section.
+    resp = client.post(
+        "/sets/ja/sv2a/add-to-list",
+        data={"what": "missing", "list_id": str(list_id), "track": "poke_ball", "show": "missing", "collection_id": "6"},
+        follow_redirects=False,
+    )
+    assert resp.headers["location"] == "/collections/6?set=ja:sv2a&track=poke_ball&show=missing#set-ja-sv2a"
 
 
 def _want_list(client):
@@ -478,12 +486,14 @@ def test_want_list_page(client):
     resp = client.get(f"/lists/{list_id}")
     assert resp.status_code == 200
     html = resp.text
-    assert '<a href="/collecting" class="active">Sets &amp; lists</a>' in html
+    assert '<a href="/collections" class="active">Collections</a>' in html
+    assert '<p class="muted breadcrumb"><a href="/collections">Collections</a></p>' in html
     assert "<h1>Wants" in html and "Want list" in html
     assert "/cards/None" not in html
     assert html.count('class="card-list-row"') == 5
     assert 'list-status list-status-missing">Missing' in html
-    assert 'list-status-unmatched">Possibly owned (unmatched)</span> <a href="/sets/ja/sv2a#unmatched"' in html
+    # Via /sets/..., which redirects to the home collection's #unmatched-<set>.
+    assert 'list-status-unmatched">Possibly owned (unmatched)</span> <a href="/sets/ja/sv2a?at=unmatched"' in html
     assert 'list-status-got">Got it' in html
     assert "Est. cost to complete" in html and "400 kr" in html
     assert "3 items with no price data" in html
@@ -592,7 +602,7 @@ def test_delete_list(client):
     html = client.get(f"/lists/{list_id}").text
     assert 'hx-confirm="Delete the list “Wants” and its 5 items?' in html
     resp = client.post(f"/lists/{list_id}/delete", headers=HX)
-    assert resp.headers["HX-Redirect"] == "/collecting"
+    assert resp.headers["HX-Redirect"] == "/collections"
     with _session() as db:
         assert db.query(CardList).count() == 0 and db.query(CardListItem).count() == 0
         assert _card_state(db) == before

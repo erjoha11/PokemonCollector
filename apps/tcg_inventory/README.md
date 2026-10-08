@@ -124,15 +124,51 @@ run).
     dialog on desktop; a full-screen sheet at 560px and below with the photo
     capped so the KPIs show; tables scroll horizontally; `info()` tooltips
     open downward inside the modal.
-- **Collection gallery** (`/collections/{id}`) — reached from the collection
-  links in Inventory and on the Card page (the `/collections` index page and
-  its nav item were removed in #252; the Dashboard's Inventory table shows
-  the same membership rows). A per-collection gallery grouped by set with value,
-  duplicates, "shared" badges and completion (`queries.collection_detail`:
-  per set, distinct numbers / `total_cards`; the collection total covers only
-  known-size sets). `assign_bucket_investment` also fills
-  `no_cost_count`/`no_cost_value` so every bucket-level Gain can say how much
-  of it is cards with no purchase price.
+- **Collections** (`/collections`, issue #378) — the entry point for
+  collecting, a nav item between Inventory and Orders, active on
+  `/collections`, `/collections/…`, `/lists/…` and the `/sets/…` fallback
+  page (Inventory is active only on `/inventory`). It replaces #369's "Sets
+  & lists" (`/collecting` now 302s here) and brings back the `/collections`
+  index #252 removed, both by the user's decision. One table, every
+  collection (empty ones too, nothing auto-hidden;
+  `queries.collections_overview`): **Collection**, **Cards owned** (copies
+  tagged with it), **Total value**, **Master set** X/Y · % for each set this
+  collection is the home of (see below; "–" otherwise, linking to the
+  section), and **Duplicates** (a home set's per-print figure, qty − 1 per
+  card for everything else). Below it, **Lists** (#370): want and sale lists
+  side by side (name, item count, status summary like "3 missing · 1 got
+  it") and a "New list" form (name + kind, fixed once created). See "Want
+  and sale lists" below.
+- **Collection page** (`/collections/{id}`) — also reached from the
+  collection links in Inventory and on the Card page. A section per Dex set
+  name (`queries.collection_detail`), in release order.
+  - **The home rule.** A section is *checklisted* when its cards'
+    masterdata `(language, set_code)` has a checklist (see "Master sets /
+    checklists"; `queries.section_set_key`). Each checklisted set has one
+    **home collection**: the collection tagged on the most of the set's
+    owned cards (Card rows with qty > 0), ties to the lowest collection id
+    (`queries.set_homes`). Computed per request: no stored
+    collection-to-set mapping, no schema change.
+  - In the home collection the section shows the **master-set block**
+    (below), headed with the checklist's display name and "Master set · all
+    your <set> cards". Cards filed under the same Dex set name that belong to
+    another set show under it as "Other cards filed under …".
+  - In any other collection the section shows its plain gallery plus one
+    line, "Master set 275/363 → <home collection>", linking to the home's
+    section (`#set-<language>-<set_code>`), so e.g. an Illustrator collection
+    holding 3 sv2a cards never grows a 363-tile grid.
+  - Sections with no checklisted set (Illustrator, Vintage, …): the plain
+    gallery as before, with value, ×N duplicates, "shared" badges and an "X/Y
+    numbers" figure (distinct card numbers, any variant / `total_cards`).
+  - **KPIs at the top**: Value, Total value and Gain / loss always
+    (`assign_bucket_investment` also fills `no_cost_count`/`no_cost_value`,
+    so the Gain says how much of it is cards with no purchase price). Unique
+    cards, Duplicates and Completion are per Dex row, so they show only when
+    the collection has a section that isn't a checklisted home, and then
+    count only those sections ("outside master sets" when there's a block
+    too). The "Also show cards no longer owned" toggle (`?owned=0`) only
+    affects the plain galleries, so it shows only with one.
+- **Inventory** (`/inventory`) — full searchable/filterable/sortable card
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table, paginated 100 per page (`page`, `page_size=0` = all; sliced after
   sorting, so value sorts stay correct; sort links drop `page`). The
@@ -153,17 +189,6 @@ run).
   checked (`?unowned=1`) — the search used to add a card to a sales listing
   (`/pokemon/search`) is a separate query and is unaffected, since re-buying
   a previously-traded-away card there is the intended path.
-- **Sets & lists** (`/collecting`, issue #369, epic #366) — the collecting
-  module, a nav item between Inventory and Orders (active on `/collecting`,
-  `/sets/…` and, from #370, `/lists/…`). Not called "Collection": that
-  already means Dex categories (`/collections/{id}`), and the
-  `/collections` index removed in #252 stays removed. The landing page's
-  **Tracked sets** lists every set with a checklist (see "Master sets /
-  checklists"): master set X / Y and spares. With no checklist it says how
-  to seed one. Below it, **Lists** (#370): want lists and sale lists side
-  by side (name, item count, status summary like "3 missing · 1 got it"),
-  and a "New list" form (name + kind; the kind is fixed once created). See
-  "Want and sale lists" below.
 - **List page** (`/lists/{id}`, #370) — one want or sale list: a table
   sorted by set, then number (thumbnail, card name / print / set, qty,
   status badge, market price, target price, note, Edit / Remove). Qty,
@@ -172,48 +197,76 @@ run).
   "Hide got-it" toggle (`?hide_got=1`) and "Remove got-it items (N)". Sale
   lists: "Est. value of spares" and "Make finn.no ad from this list"
   (`/lists/{id}/ad` → `/sales?card_ids=…`). "Copy as text" for both.
-- **Set page** (`/sets/{language}/{set_code}`, e.g. `/sets/ja/sv2a`) — one
-  set's master set, from `queries.master_set_detail` (all computed, nothing
-  stored). Generic per masterdata `(language, set_code)`; a set without a
-  checklist gets a 200 with a "no checklist yet" note.
-  - Title from the checklist's display name. When the owned cards are
-    Korean cards priced from the Japanese print (`pricing.is_jp_price_proxy`,
-    #367), a note says they're logged in Dex as Japanese and that prices are
-    JP-market proxies.
+- **Master-set block** (#369's set page, moved into the home collection's
+  section by #378; `partials/master_set_block.html`, built by
+  `app._master_set_block`) — one set's master set, from
+  `queries.master_set_detail` (all computed, nothing stored). Generic per
+  masterdata `(language, set_code)`.
+  - **Counts are set-wide**: every card of the set you own, in any
+    collection or none, not only the cards tagged with the collection the
+    block is on. Otherwise a print Dex filed in another folder would show
+    as Missing, go on a want list, and could be bought twice. Owned tiles
+    not tagged with this collection get an "in: <other collection>" badge
+    ("in: no collection" when untagged): the inverse of the gallery's
+    "shared" badge.
+  - When the owned cards are Korean cards priced from the Japanese print
+    (`pricing.is_jp_price_proxy`, #367), a note says they're logged in Dex as
+    Japanese and that prices are JP-market proxies.
   - KPI band: **Master set** X / Y (every print with
     `counts_toward_completion`: base prints + Poké Ball), then one X / Y per
     counting track (Main, Secret, Poké Ball), each a strict count of
-    checklist prints owned, so never above 100%; then Spares and (if any)
-    Unmatched. A print is owned when the cards linked to its master card add
-    up to qty ≥ 1. Master Ball prints never count and are hidden unless
-    their track is picked.
+    checklist prints owned, so never above 100%; then **Duplicates** (N ·
+    kr) and (if any) Unmatched. A print is owned when the cards linked to
+    its master card add up to qty ≥ 1. Master Ball prints never count and
+    are hidden unless their track is picked.
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
     most copies). Missing tiles have no `Card`, so they're ghosted
     (dashed frame, faded photo from `master_cards.image_url`, else a
     "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
     "0 owned" style. A print whose only card is at qty 0 is missing.
-  - Filters as GET params, `track` (`all` = the master-set tracks, default;
-    `main`/`secret`/`poke_ball`/`master_ball`) and `show`
-    (`all`/`missing`/`owned`); the pills `hx-get` the page, swap
-    `#set-grid` and push the URL, so a reload keeps them. Unknown values
-    fall back to the defaults.
+  - **Filters**: one active filter per page, as GET params on the collection
+    page: `?set=<language>:<set_code>&track=…&show=…` (not namespaced per
+    section; every other block on the page renders at the defaults).
+    `track`: `all` (the master-set tracks, default) /
+    `main`/`secret`/`poke_ball`/`master_ball`; `show`: `all` / `missing` /
+    `owned` / `duplicates` (prints with duplicates > 0). The pills link to
+    `/collections/{id}?…`, `hx-get` it, swap the block's
+    `#set-grid-<language>-<set_code>` and push the URL, so a reload keeps
+    them. Unknown values fall back to the defaults.
+  - **Unique ids per block**: every id in a block is suffixed with
+    `<language>-<set_code>` (`app._set_dom_key`): `#set-<key>` (the
+    section anchor), `#set-grid-`, `#set-list-add-`, `#set-list-add-status-`,
+    `#missing-list-text-`, `#spares-`, `#unmatched-`. A page with two
+    checklisted sets would otherwise make `hx-select`/`hx-target` and the
+    Copy button act on the first.
   - **Copy missing list**: every missing master-set print as text, headed
     with the display name.
-  - **Spares**: per print (per master card, not per Dex row),
-    `max(sum(qty) − 1, 0)`, any track, with value at market price, and a
-    link to `/sales?card_ids=…` (one card per print with spares).
+  - **Duplicates** (the user's word; #366's spares): per print (per master
+    card, not per Dex row), `max(sum(qty) − 1, 0)` (`queries.print_spares`),
+    any track, with value at market price, and a link to
+    `/sales?card_ids=…` (one card per print with duplicates). Sale lists
+    still say "spares" for now.
   - **Unmatched**: owned cards of the set on no checklist print (linked to
     another master card of the set, or unlinked and matched on the Dex
     `card_id`), with card ID and Dex variant. They count nowhere above.
-  - Ways in: a set-name link on the card page's Series / set line and a
-    "Master set" link on `/collections/{id}` set headers, both only when the
-    card's set has a checklist; and the landing page. Nothing on the
-    Dashboard (#241 removed completion there). The collection gallery's
-    per-set figure now reads "X/Y numbers" (distinct card numbers, any
-    variant), so it isn't mistaken for the master-set figure.
   - **Add to a list** (#370), under the filters: "Add N missing to [want
-    list ▾]" and "Add N spares to [sale list ▾]". See "Want and sale lists".
+    list ▾]" and "Add N spares to [sale list ▾]". The POST stays at
+    `/sets/{language}/{set_code}/add-to-list` (it answers with the panel
+    only); without htmx it redirects back to the collection
+    (`collection_id`) with the filter and the section anchor. See "Want and
+    sale lists".
+  - Nothing on the Dashboard (#241 removed completion there).
+- **`/sets/{language}/{set_code}`** (e.g. `/sets/ja/sv2a`) — kept as a
+  stable link (the card page's Series / set line and list rows point here).
+  A checklisted set with a home 302s to it, keeping the query string as the
+  page's filter: `/sets/ja/sv2a?show=missing` →
+  `/collections/6?set=ja:sv2a&show=missing#set-ja-sv2a` (`?at=unmatched`
+  lands on `#unmatched-ja-sv2a` instead; the list page's "See Unmatched"
+  uses it, since the redirect's fragment overrides one on the link). With
+  no home (nothing owned, or nothing tagged) it renders the block on its own
+  (`master_set.html`, pills on this URL); a set without a checklist gets a
+  200 with a "no checklist yet" note.
 - **Orders** (`/orders/purchased`, `/orders/sold`, `/orders/listings`;
   issue #255) — one nav item ("Orders") for what used to be three
   (Transactions, Sell on finn.no, Listings). One h1 and a tab strip
@@ -792,7 +845,7 @@ never silently becomes part of a set. Owned / missing / completion are
 computed from whether a `Card` links to a member's master card, never
 stored. `set_checklists.get_checklist(db, language, set_code)` loads one
 with its members; `queries.master_set_detail` adds owned / missing /
-spares / unmatched for the set page (see Pages → "Set page", #369). sv2a is tracked as `ja/sv2a` although the user's cards
+spares / unmatched for the master-set block (see Pages → "Master-set block", #369, #378). sv2a is tracked as `ja/sv2a` although the user's cards
 are Korean (Dex has no Korean 151; TCGdex's Korean SV2a is an empty stub).
 
 **The base-slot rule.** TCGdex lists exactly one base print per number:
@@ -879,12 +932,12 @@ its items.
   the next Dex sync with no list edits:
   - want: **Got it** (own ≥ qty), **Got k of n**, **Possibly owned
     (unmatched)** (you own nothing linked to this print, but an owned card
-    of the same set and number is on the set page's Unmatched list, so it
+    of the same set and number is on the master set's Unmatched list, so it
     may well be this print; links there), else **Missing**;
   - sale: **Sold out** (own none), **Listed** (an owned card of the print is
     in an `active` listing via `listing_cards`; delisted/sold don't count),
     **Not enough spares** (qty > spares), else **Available**.
-  Spares are the set page's per-print figure (`queries.print_spares`, via
+  Spares are the master set's per-print Duplicates (`queries.print_spares`, via
   the same `MasterSetSlot`): `max(sum(qty) − 1, 0)` per master card.
 - **Totals.** Want: "Est. cost to complete" = market price × copies still
   missing (`max(qty − owned, 0)`). Sale: "Est. value of spares" = market
@@ -892,7 +945,8 @@ its items.
   resolved price, else any linked card's (e.g. a sold copy at qty 0); a
   print with no price data shows "—" and is left out of the total, which
   says how many were.
-- **Adding** (v1): only from the set page, server-side and filter-aware.
+- **Adding** (v1): only from a master-set block (on its home collection's
+  page, or the `/sets/…` fallback), server-side and filter-aware.
   The prints are exactly what the grid shows under the current Track /
   Show filter, so Master Ball prints only when their track is picked.
   Missing go in with qty 1, spares with qty = spare count. The select has
@@ -2368,8 +2422,10 @@ file locally following the steps above and add a dated line here.
 - `models.py` — SQLAlchemy models + computed properties.
 - `constants.py` — the Dex category → binder/collection/priority mapping.
 - `importer.py` — CSV parsing and sync logic.
-- `queries.py` — dashboard aggregation queries, plus the master-set page's
-  `master_set_detail` / `tracked_sets` (see "Set page" under Pages).
+- `queries.py` — dashboard aggregation queries, plus the master sets'
+  `master_set_detail`, the home rule `set_homes` and the `/collections`
+  overview's `collections_overview` (see "Collections", "Collection page"
+  and "Master-set block" under Pages).
 - `form_validation.py` — boundary validation of type/price/date/row-list
   form inputs and the 422 messages (see "Form validation" above).
 - `masterdata.py` — canonical card identity + external ID mapping (see

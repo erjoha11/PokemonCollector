@@ -1,6 +1,8 @@
-"""Sets & lists module and the master-set page (issue #369, epic #366):
-queries.master_set_detail, /collecting, /sets/{language}/{set_code} and the
-"Master set" entry links. Offline.
+"""Master sets (issue #369, epic #366) and Collections as the entry point
+(#378): queries.master_set_detail, the home rule (queries.set_homes), the
+/collections overview, the master-set block on /collections/{id}, the
+/sets/{language}/{set_code} redirect and fallback page, the nav, and the
+other entry links. Offline.
 
 The fixture is prod's sv2a shape at small scale (#366 "Verified facts"):
 main 1-5 (#3 an ex, no ball prints), secret 6-7, Poké Ball and Master Ball
@@ -190,6 +192,9 @@ def test_no_checklist_is_none(db_session):
 # --------------------------------------------------------------------------
 # Routes
 # --------------------------------------------------------------------------
+HX = {"HX-Request": "true"}
+
+
 def _session():
     import db as db_module
 
@@ -201,69 +206,238 @@ def _seed(with_checklist=True, collection=None):
         build(db, with_checklist=with_checklist, collection=collection)
 
 
-def _nav_active(html):
-    return '<a href="/collecting" class="active">Sets &amp; lists</a>' in html
+def _coll_id(name):
+    with _session() as db:
+        return db.query(Collection).filter_by(name=name).one().id
 
 
-def test_nav_item_sits_between_inventory_and_orders(client):
+def _active_nav(html):
+    nav = html.split("<nav>", 1)[1].split("</nav>", 1)[0]
+    return re.findall(r'<a href="([^"]+)" class="active">([^<]+)</a>', nav)
+
+
+def _grid(html, key="ja-sv2a"):
+    return html.split(f'id="set-grid-{key}"', 1)[1].split(f'id="missing-list-{key}"', 1)[0]
+
+
+def _tag(db, name, cards, rank=1):
+    coll = Collection(name=name, priority_rank=rank)
+    db.add(coll)
+    for card in cards:
+        card.collections.append(coll)
+    db.commit()
+    return coll
+
+
+def _add_second_set(db, collection_name):
+    """A second checklisted set (ja/s12a, two main prints, #1 owned twice)
+    filed in the same collection under its own Dex set name."""
+    coll = db.query(Collection).filter_by(name=collection_name).one()
+    masters = [
+        MasterCard(language="ja", set_code="s12a", number=str(n), variant="normal", variant_label="Normal", name=f"Uni {n}")
+        for n in (1, 2)
+    ]
+    cl = SetChecklist(language="ja", set_code="s12a", display_name="VSTAR Universe", source="tcgdex", source_set_id="S12a")
+    for m in masters:
+        cl.cards.append(SetChecklistCard(master_card=m, track="main", counts_toward_completion=True))
+    card = Card(
+        card_id="jpn_s12a-1", name="Uni 1", number="001/172", variant="Normal", language="Japanese",
+        series="Sword & Shield", set="VSTAR Universe", qty=2, market_price=5.0, price_flags="", master_card=masters[0],
+    )
+    card.collections = [coll]
+    db.add_all([*masters, cl, card])
+    db.commit()
+
+
+# --------------------------------------------------------------------------
+# Nav and the old Sets & lists URL
+# --------------------------------------------------------------------------
+def test_nav_shows_collections_between_inventory_and_orders(client):
     html = client.get("/").text
-    assert html.index('href="/inventory"') < html.index('href="/collecting"') < html.index('href="/orders/purchased"')
-    assert not _nav_active(html)
+    nav = html.split("<nav>", 1)[1].split("</nav>", 1)[0]
+    assert nav.index('href="/inventory"') < nav.index('href="/collections"') < nav.index('href="/orders/purchased"')
+    assert ">Collections</a>" in nav
+    assert "Sets &amp; lists" not in html and "/collecting" not in html
+    assert _active_nav(html) == [("/", "Dashboard")]
 
 
-def test_collecting_empty_state(client):
-    resp = client.get("/collecting")
+def test_exactly_one_nav_item_active_on_collections_pages(client):
+    _seed(collection="151 Collection")
+    coll_id = _coll_id("151 Collection")
+    resp = client.post("/lists", data={"name": "Wants", "kind": "want"}, headers=HX)
+    list_id = int(resp.headers["HX-Redirect"].rsplit("/", 1)[1])
+    for path in ("/collections", f"/collections/{coll_id}", f"/lists/{list_id}"):
+        assert _active_nav(client.get(path).text) == [("/collections", "Collections")], path
+    assert _active_nav(client.get("/inventory").text) == [("/inventory", "Inventory")]
+
+
+def test_collecting_redirects_to_collections(client):
+    resp = client.get("/collecting", follow_redirects=False)
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/collections"
+
+
+# --------------------------------------------------------------------------
+# The home rule (queries.set_homes)
+# --------------------------------------------------------------------------
+def test_home_is_the_collection_with_most_owned_cards(db_session):
+    cards = build(db_session)
+    _tag(db_session, "A", cards[0:2])
+    b = _tag(db_session, "B", cards[2:5])
+    assert queries.set_homes(db_session) == {("ja", "sv2a"): b.id}
+
+
+def test_home_tie_goes_to_the_lowest_collection_id(db_session):
+    cards = build(db_session)
+    first = _tag(db_session, "Zeta", cards[3:5])  # created first: lowest id, sorts last by name
+    _tag(db_session, "Alpha", cards[0:2])
+    assert queries.set_homes(db_session) == {("ja", "sv2a"): first.id}
+
+
+def test_home_counts_only_owned_cards_of_the_set(db_session):
+    cards = build(db_session)
+    # Three tags, but on a sold card (qty 0) and two cards of other sets.
+    _tag(db_session, "Sold and others", [cards[6], cards[12], cards[13]])
+    real = _tag(db_session, "Real", [cards[0]])
+    assert queries.set_homes(db_session) == {("ja", "sv2a"): real.id}
+
+
+def test_no_home_without_tags_or_checklist(db_session):
+    cards = build(db_session)
+    assert queries.set_homes(db_session) == {}  # nothing tagged
+    _tag(db_session, "A", cards[:1])
+    assert queries.set_homes(db_session, set()) == {}
+    assert queries.set_homes(db_session, {("ja", "s12a")}) == {}
+
+
+# --------------------------------------------------------------------------
+# /collections overview
+# --------------------------------------------------------------------------
+def test_collections_overview(client):
+    _seed(collection="151 Collection")
+    with _session() as db:
+        cards = db.query(Card).order_by(Card.id).all()
+        _tag(db, "Illustrator", [cards[0]], rank=2)  # #1 Normal, qty 3
+        _tag(db, "Venter", [], rank=3)  # empty: still listed
+    home, illu, venter = _coll_id("151 Collection"), _coll_id("Illustrator"), _coll_id("Venter")
+    html = client.get("/collections").text
+    assert "<h1>Collections</h1>" in html
+    rows = {
+        cid: html.split(f'<td><a href="/collections/{cid}">', 1)[1].split("</tr>", 1)[0]
+        for cid in (home, illu, venter)
+    }
+    cells = {cid: re.findall(r'<td class="num">(.*?)</td>', row) for cid, row in rows.items()}
+    # 151 Collection: every card (17 copies), home to sv2a, 5 per-print duplicates.
+    assert cells[home][0] == "17"
+    assert f'<a href="/collections/{home}#set-ja-sv2a" title="{DISPLAY}">7/11</a>' in cells[home][2]
+    assert cells[home][3] == "5"
+    # Illustrator holds sv2a cards but isn't its home: "–", per-card duplicates (3 - 1).
+    assert cells[illu][0] == "3" and "–" in cells[illu][2] and cells[illu][3] == "2"
+    assert cells[venter][0] == "0" and "–" in cells[venter][2] and cells[venter][3] == "0"
+    # The lists section moved here.
+    assert 'id="lists"' in html and 'hx-post="/lists"' in html
+
+
+def test_collections_overview_empty(client):
+    html = client.get("/collections").text
+    assert "No collections yet" in html
+    assert "No want lists yet." in html
+
+
+# --------------------------------------------------------------------------
+# /sets/... redirects and the fallback page
+# --------------------------------------------------------------------------
+def test_set_page_redirects_to_the_home_collection(client):
+    _seed(collection="151 Collection")
+    coll_id = _coll_id("151 Collection")
+    cases = {
+        "/sets/ja/sv2a?show=missing": f"/collections/{coll_id}?set=ja:sv2a&show=missing#set-ja-sv2a",
+        "/sets/ja/sv2a": f"/collections/{coll_id}?set=ja:sv2a#set-ja-sv2a",
+        "/sets/ja/sv2a?track=poke_ball&show=owned": f"/collections/{coll_id}?set=ja:sv2a&track=poke_ball&show=owned#set-ja-sv2a",
+        "/sets/ja/sv2a?at=unmatched": f"/collections/{coll_id}?set=ja:sv2a#unmatched-ja-sv2a",
+    }
+    for path, location in cases.items():
+        resp = client.get(path, follow_redirects=False)
+        assert resp.status_code == 302, path
+        assert resp.headers["location"] == location, path
+    followed = client.get("/sets/ja/sv2a?show=missing")
+    assert followed.status_code == 200
+    assert _grid(followed.text).count('class="gallery-card"') == 0
+
+
+@pytest.mark.parametrize("case", ["untagged", "zero owned"])
+def test_set_page_fallback_when_no_collection_holds_the_set(client, case):
+    _seed(collection=None if case == "untagged" else "151 Collection")
+    if case == "zero owned":
+        with _session() as db:
+            for card in db.query(Card):
+                card.qty = 0
+            db.commit()
+    resp = client.get("/sets/ja/sv2a", follow_redirects=False)
     assert resp.status_code == 200
-    assert _nav_active(resp.text)
-    assert "No set is tracked yet" in resp.text
-    assert "set_checklist_seed.py" in resp.text
-
-
-def test_collecting_lists_tracked_sets(client):
-    _seed()
-    html = client.get("/collecting").text
-    assert DISPLAY in html
-    assert 'href="/sets/ja/sv2a"' in html
-    assert "7 / 11" in html
-    assert re.search(r">5 <span class=\"muted\">· 270 kr", html)
+    html = resp.text
+    assert _active_nav(html) == [("/collections", "Collections")]
+    assert '<p class="muted breadcrumb"><a href="/collections">Collections</a></p>' in html
+    assert f"<h1>{DISPLAY}</h1>" in html
+    assert 'id="set-grid-ja-sv2a"' in html
+    assert 'hx-get="/sets/ja/sv2a?show=missing"' in html  # pills stay on this URL
+    assert ("7 / 11" if case == "untagged" else "0 / 11") in html
+    assert 'name="collection_id"' not in html
+    assert "/cards/None" not in html
 
 
 def test_set_page_without_checklist(client):
-    _seed(with_checklist=False)
-    resp = client.get("/sets/ja/sv2a")
+    _seed(with_checklist=False, collection="151 Collection")
+    resp = client.get("/sets/ja/sv2a", follow_redirects=False)
     assert resp.status_code == 200
-    assert _nav_active(resp.text)
+    assert _active_nav(resp.text) == [("/collections", "Collections")]
     assert "has no checklist yet" in resp.text
     assert "set_checklist_seed.py --set ja:sv2a" in resp.text
 
 
-def test_set_page_default_view(client):
-    _seed()
-    resp = client.get("/sets/ja/sv2a")
-    assert resp.status_code == 200
-    html = resp.text
-    assert _nav_active(html)
-    assert f"<h1>{DISPLAY}</h1>" in html
+# --------------------------------------------------------------------------
+# /collections/{id}: the home section's master-set block
+# --------------------------------------------------------------------------
+def _home_page(client, query=""):
+    _seed(collection="151 Collection")
+    coll_id = _coll_id("151 Collection")
+    return coll_id, client.get(f"/collections/{coll_id}{query}").text
+
+
+def test_home_collection_shows_the_master_set_block(client):
+    coll_id, html = _home_page(client)
+    assert '<p class="muted breadcrumb"><a href="/collections">Collections</a></p>' in html
+    assert 'id="set-ja-sv2a"' in html
+    assert "Master set · all your sv2a cards" in html
     assert "Korean, logged in Dex as Japanese <code>sv2a</code>" in html
     assert "7 / 11" in html and "4 / 5" in html and "1 / 2" in html and "2 / 4" in html
+    # Duplicates = #369's spares, per print, with its tooltip.
+    assert re.search(r"Duplicates <span class=\"info-icon[^>]*aria-label=\"Every copy beyond the first of each print", html)
+    assert re.search(r">5 <span class=\"muted\">· 270 kr", html)
     # Master Ball: not in the KPIs, not in the default grid.
     assert "never part of the master set" not in html
-    assert "#1 · Master Ball" not in html
     assert "Master Ball prints hidden" in html
-    # 11 master-set prints in the grid: 7 owned, 4 ghosted.
-    assert html.count('class="gallery-card gallery-card-missing"') == 4
+    grid = _grid(html)
+    assert grid.count('class="gallery-card gallery-card-missing"') == 4
+    assert grid.count('class="gallery-card"') == 7
     assert "/cards/None" not in html
-    # A ghost has no image here, so it shows the placeholder.
     assert "#2 · Poké Ball</div>" in html
-    # Unmatched and spares sections.
-    assert "jpn_sv2a-1" in html and "Reverse Holo" in html and "Unlinked Mon 2" in html
-    assert "Other set" not in html and "International" not in html
-    assert "/sales?card_ids=" in html
+    # Unmatched and duplicates sections, finn.no ad link kept.
+    assert 'id="unmatched-ja-sv2a"' in html and "Unlinked Mon 2" in html
+    assert 'id="spares-ja-sv2a"' in html and "/sales?card_ids=" in html
+    # Cards filed under the same Dex set name but of other sets.
+    other = html.split('class="master-set-other"', 1)[1]
+    assert "Other set" in other and "International" in other
+    # Per-Dex-row figures and the self-referencing link are gone: the only
+    # section is a master set.
+    assert "Unique cards" not in html and "Completion" not in html and "numbers</span>" not in html
+    assert "owned=0" not in html
+    assert ">Master set</a>" not in html
+    assert "Total value" in html and "Gain / loss" in html
 
 
-def test_set_page_spares_link_and_missing_text(client):
-    _seed()
-    html = client.get("/sets/ja/sv2a").text
+def test_home_block_spares_link_and_missing_text(client):
+    _, html = _home_page(client)
     with _session() as db:
         ids = {
             db.query(Card).filter_by(card_id="jpn_sv2a-1", variant="Normal").one().id,
@@ -271,8 +445,8 @@ def test_set_page_spares_link_and_missing_text(client):
         }
     url = re.search(r'href="(/sales\?[^"]+)"', html).group(1)
     got = {int(x) for x in re.findall(r"card_ids=(\d+)", url)}
-    assert ids <= got and len(got) == 3  # one Card per spare print
-    text = re.search(r'<textarea id="missing-list-text"[^>]*>(.*?)</textarea>', html, re.S).group(1)
+    assert ids <= got and len(got) == 3  # one Card per print with duplicates
+    text = re.search(r'<textarea id="missing-list-text-ja-sv2a"[^>]*>(.*?)</textarea>', html, re.S).group(1)
     assert text.splitlines() == [
         f"{DISPLAY}: missing 4 of 11",
         "#2 Mon 2 · Poké Ball",
@@ -280,66 +454,182 @@ def test_set_page_spares_link_and_missing_text(client):
         "#5 Mon 5 · Poké Ball",
         "#7 Mon 7",
     ]
+    assert "document.getElementById('missing-list-text-ja-sv2a')" in html
 
 
 @pytest.mark.parametrize(
     "query, ghosts, owned",
     [
-        ("?show=missing", 4, 0),
-        ("?show=owned", 0, 7),
-        ("?track=main", 1, 4),
-        ("?track=poke_ball&show=missing", 2, 0),
-        ("?track=master_ball", 3, 1),
-        ("?track=bogus&show=bogus", 4, 7),  # unknown values fall back to the defaults
+        ("?set=ja:sv2a&show=missing", 4, 0),
+        ("?set=ja:sv2a&show=owned", 0, 7),
+        ("?set=ja:sv2a&show=duplicates", 0, 3),  # main #1, main #3, Poké Ball #4
+        ("?set=ja:sv2a&track=main", 1, 4),
+        ("?set=ja:sv2a&track=poke_ball&show=missing", 2, 0),
+        ("?set=ja:sv2a&track=master_ball", 3, 1),
+        ("?set=ja:sv2a&track=bogus&show=bogus", 4, 7),  # unknown values fall back to the defaults
+        ("?set=ja:other&show=missing", 4, 7),  # the filter names another set: this block at defaults
+        ("?show=missing", 4, 7),  # no set named: defaults
     ],
 )
-def test_set_page_filters(client, query, ghosts, owned):
-    _seed()
-    html = client.get("/sets/ja/sv2a" + query).text
-    grid = html.split('id="set-grid"', 1)[1].split('id="missing-list"', 1)[0]
+def test_home_block_filters(client, query, ghosts, owned):
+    _, html = _home_page(client, query)
+    grid = _grid(html)
     assert grid.count('class="gallery-card gallery-card-missing"') == ghosts
     assert grid.count('class="gallery-card"') == owned
     assert "/cards/None" not in html
 
 
-def test_set_page_filter_pills_push_the_url(client):
-    _seed()
-    html = client.get("/sets/ja/sv2a?track=poke_ball").text
+def test_home_block_pills_push_collection_urls(client):
+    coll_id, html = _home_page(client, "?set=ja:sv2a&track=poke_ball")
+    base = f"/collections/{coll_id}"
     # Picking Show keeps the track, and vice versa; defaults drop out of the URL.
-    assert 'hx-get="/sets/ja/sv2a?track=poke_ball&amp;show=missing"' in html
-    assert 'hx-get="/sets/ja/sv2a?show=missing"' not in html
-    assert 'href="/sets/ja/sv2a"' in html  # "All" track, default show
-    assert html.count('hx-push-url="true"') >= 8
-    assert 'hx-select="#set-grid"' in html
+    assert f'hx-get="{base}?set=ja:sv2a&amp;track=poke_ball&amp;show=missing"' in html
+    assert f'hx-get="{base}?set=ja:sv2a&amp;track=poke_ball&amp;show=duplicates"' in html
+    assert f'href="{base}"' in html  # "All" track, default show
+    assert "/sets/ja/sv2a?" not in html
+    assert html.count('hx-push-url="true"') >= 9
+    assert 'hx-select="#set-grid-ja-sv2a" hx-target="#set-grid-ja-sv2a"' in html
     assert re.search(r'class="viz-filter-pill active" aria-current="true">Poké Ball<', html)
-    # Master Ball's own figure only when its track is picked, inside the
-    # swapped region so the pill updates it.
-    mb = client.get("/sets/ja/sv2a?track=master_ball").text
-    grid = mb.split('id="set-grid"', 1)[1]
-    assert "(not collected, never part of the master set)</span>: 1 / 4 owned" in grid
+    mb = client.get(f"{base}?set=ja:sv2a&track=master_ball").text
+    assert "(not collected, never part of the master set)</span>: 1 / 4 owned" in _grid(mb)
 
 
-def test_set_page_htmx_request_still_has_the_grid(client):
-    """hx-select picks #set-grid out of the full page, so an htmx request
-    must get the same page back."""
-    _seed()
-    html = client.get("/sets/ja/sv2a?show=owned", headers={"HX-Request": "true"}).text
-    assert 'id="set-grid"' in html
+def test_home_block_htmx_request_still_has_the_grid(client):
+    _seed(collection="151 Collection")
+    coll_id = _coll_id("151 Collection")
+    html = client.get(f"/collections/{coll_id}?set=ja:sv2a&show=owned", headers=HX).text
+    assert 'id="set-grid-ja-sv2a"' in html
 
 
-# --------------------------------------------------------------------------
-# Entry points
-# --------------------------------------------------------------------------
-@pytest.mark.parametrize("with_checklist", [True, False])
-def test_collection_page_master_set_link_only_with_a_checklist(client, with_checklist):
-    _seed(with_checklist=with_checklist, collection="151 Collection")
+def test_home_block_badges_owned_tiles_filed_elsewhere(client):
+    _seed(collection="151 Collection")
     with _session() as db:
-        coll_id = db.query(Collection).one().id
+        home = db.query(Collection).one()
+        six = db.query(Card).filter_by(card_id="jpn_sv2a-6").one()
+        five = db.query(Card).filter_by(card_id="jpn_sv2a-5").one()
+        six.collections = []
+        five.collections = []
+        db.commit()
+        _tag(db, "Binder B", [six], rank=2)
+        home_id = home.id
+    html = client.get(f"/collections/{home_id}").text
+    grid = _grid(html)
+    # Still owned (counted set-wide), so never Missing.
+    assert "7 / 11" in html
+    assert grid.count('class="gallery-card gallery-card-missing"') == 4
+    assert re.search(r"elsewhere-badge\" [^>]*>in: Binder B</span>", grid)
+    assert re.search(r"elsewhere-badge\" [^>]*>in: no collection</span>", grid)
+    assert grid.count("elsewhere-badge") == 2
+
+
+def test_non_home_collection_shows_its_gallery_and_a_link(client):
+    _seed(collection="151 Collection")
+    with _session() as db:
+        card = db.query(Card).filter_by(card_id="jpn_sv2a-1", variant="Normal").one()
+        _tag(db, "Illustrator", [card], rank=2)
+    home, illu = _coll_id("151 Collection"), _coll_id("Illustrator")
+    html = client.get(f"/collections/{illu}").text
+    assert 'id="set-grid-' not in html and "master-set-kpis" not in html
+    assert f'Master set 7/11 → <a href="/collections/{home}#set-ja-sv2a">151 Collection</a>' in html
+    assert "Unique cards" in html and "Mon 1" in html
+    assert "outside master sets" not in html
+
+
+def test_home_with_a_plain_section_scopes_the_per_row_kpis_to_it(client):
+    _seed(collection="151 Collection")
+    with _session() as db:
+        coll = db.query(Collection).one()
+        extra = Card(card_id="swsh1-5", name="Plain Mon", number="5/202", variant="Normal", language="English",
+                     series="Sword & Shield", set="Sword & Shield", qty=3, market_price=2.0, price_flags="")
+        extra.collections = [coll]
+        db.add(extra)
+        db.commit()
+        coll_id = coll.id
     html = client.get(f"/collections/{coll_id}").text
-    assert ('<a href="/sets/ja/sv2a">Master set</a>' in html) is with_checklist
+    kpis = html.split('class="card collection-kpis"', 1)[1].split("</div>\n\n", 1)[0]
+    # Only the plain section's row: 1 unique card, 2 duplicates (3 - 1).
+    assert re.search(r'Unique cards</span><span class="tx-kpi-value">1 <span class="muted">outside master sets</span>', kpis)
+    assert re.search(r'<span class="tx-kpi-value">2 <span class="muted">outside master sets</span>', kpis)
+    assert 'id="set-grid-ja-sv2a"' in html and "Plain Mon" in html
+    assert f'href="/collections/{coll_id}?owned=0"' in html
+
+
+def test_collection_without_a_checklist_renders_as_before(client):
+    _seed(with_checklist=False, collection="151 Collection")
+    coll_id = _coll_id("151 Collection")
+    html = client.get(f"/collections/{coll_id}").text
+    assert "Unique cards" in html and "Completion" in html and "Duplicates" in html
+    assert 'id="set-grid-' not in html and "Master set" not in html
+    assert f'href="/collections/{coll_id}?owned=0"' in html
     assert "/cards/None" not in html
 
 
+# --------------------------------------------------------------------------
+# Two checklisted sets on one page
+# --------------------------------------------------------------------------
+def _two_sets(client, query=""):
+    _seed(collection="151 Collection")
+    with _session() as db:
+        _add_second_set(db, "151 Collection")
+    coll_id = _coll_id("151 Collection")
+    return coll_id, client.get(f"/collections/{coll_id}{query}").text
+
+
+def test_two_checklisted_sections_have_unique_ids(client):
+    _, html = _two_sets(client)
+    ids = re.findall(r'\sid="([^"]+)"', html)
+    dupes = sorted({i for i in ids if ids.count(i) > 1})
+    assert dupes == []
+    for key in ("ja-sv2a", "ja-s12a"):
+        for prefix in ("set", "set-grid", "set-list-add", "set-list-add-status", "missing-list-text", "spares", "unmatched"):
+            assert f'id="{prefix}-{key}"' in html, (prefix, key)
+        assert f'hx-target="#set-list-add-{key}"' in html
+        assert f'hx-select="#set-grid-{key}" hx-target="#set-grid-{key}"' in html
+        assert f"document.getElementById('missing-list-text-{key}')" in html
+    assert 'action="/sets/ja/s12a/add-to-list"' in html and 'action="/sets/ja/sv2a/add-to-list"' in html
+
+
+def test_one_active_filter_per_page(client):
+    coll_id, html = _two_sets(client, "?set=ja:s12a&show=missing")
+    s12a = _grid(html, "ja-s12a")
+    assert s12a.count('class="gallery-card gallery-card-missing"') == 1
+    assert s12a.count('class="gallery-card"') == 0
+    sv2a = _grid(html)  # the other block renders at its defaults
+    assert sv2a.count('class="gallery-card gallery-card-missing"') == 4
+    assert sv2a.count('class="gallery-card"') == 7
+    # sv2a's pills name sv2a and drop the s12a filter.
+    assert f'hx-get="/collections/{coll_id}?set=ja:sv2a&amp;show=missing"' in html
+    assert f'hx-get="/collections/{coll_id}?set=ja:s12a&amp;show=owned"' in html
+
+
+def test_add_to_list_acts_on_its_own_section(client):
+    from models import CardListItem
+
+    coll_id, _ = _two_sets(client)
+    resp = client.post(
+        "/sets/ja/s12a/add-to-list",
+        data={"what": "missing", "list_id": "new", "new_list_name": "Universe wants", "collection_id": str(coll_id)},
+        headers=HX,
+    )
+    assert resp.status_code == 200
+    assert 'id="set-list-add-ja-s12a"' in resp.text and 'id="set-list-add-status-ja-s12a"' in resp.text
+    assert f'name="collection_id" value="{coll_id}"' in resp.text
+    assert "Added 1: " in resp.text
+    with _session() as db:
+        assert [(i.master_card.set_code, i.master_card.number) for i in db.query(CardListItem)] == [("s12a", "2")]
+    # Without htmx: back to the collection, with the filter and the anchor.
+    plain = client.post(
+        "/sets/ja/s12a/add-to-list",
+        data={"what": "missing", "list_id": "1", "show": "missing", "collection_id": str(coll_id)},
+        follow_redirects=False,
+    )
+    assert plain.status_code == 303
+    assert plain.headers["location"] == f"/collections/{coll_id}?set=ja:s12a&show=missing#set-ja-s12a"
+
+
+# --------------------------------------------------------------------------
+# Other entry points
+# --------------------------------------------------------------------------
 @pytest.mark.parametrize("with_checklist", [True, False])
 def test_card_page_set_link_only_with_a_checklist(client, with_checklist):
     _seed(with_checklist=with_checklist)

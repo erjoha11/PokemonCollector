@@ -1983,19 +1983,21 @@ def master_set_detail(db: Session, language: str, set_code: str) -> MasterSetDet
 def filter_master_set_slots(detail: MasterSetDetail, track: str = "all", show: str = "all") -> list[MasterSetSlot]:
     """The set page's Track / Show filter. `track="all"` is every print that
     counts toward the master set (so Master Ball only when picked); `show`
-    is "all" / "missing" / "owned". Shared by the grid and its bulk "Add to
-    list" buttons (#370), so a button's count is what the grid shows."""
+    is "all" / "missing" / "owned" / "duplicates" (prints with spares > 0,
+    #378). Shared by the grid and its bulk "Add to list" buttons (#370), so
+    a button's count is what the grid shows."""
     slots = [s for s in detail.slots if (s.counts if track == "all" else s.track == track)]
     if show == "missing":
         slots = [s for s in slots if not s.owned]
     elif show == "owned":
         slots = [s for s in slots if s.owned]
+    elif show == "duplicates":
+        slots = [s for s in slots if s.spares]
     return slots
 
 
 def tracked_sets(db: Session) -> list[MasterSetDetail]:
-    """Every set with a checklist, by display name (the Sets & lists
-    landing page)."""
+    """Every set with a checklist, by display name."""
     from models import SetChecklist
 
     keys = db.query(SetChecklist.language, SetChecklist.set_code).order_by(SetChecklist.display_name).all()
@@ -2018,3 +2020,117 @@ def card_set_key(card: Card) -> tuple[str, str] | None:
 
     parsed = masterdata.parse_dex_card_id(card.card_id)
     return parsed[:2] if parsed else None
+
+
+# --------------------------------------------------------------------------
+# Collections as the entry point (issue #378): each checklisted set has a
+# "home" collection, where its master-set block shows. Computed on every
+# request from the cards' collection tags; no collection-to-set mapping is
+# stored.
+# --------------------------------------------------------------------------
+def set_homes(db: Session, keys: set[tuple[str, str]] | None = None) -> dict[tuple[str, str], int]:
+    """(language, set_code) -> id of the set's home collection, for every
+    checklisted set (or just `keys`) that some collection holds.
+
+    The home is the collection tagged on the most of the set's owned cards
+    (Card rows with qty > 0, keyed like `card_set_key`), ties going to the
+    lowest collection id. A set none of whose owned cards carries a
+    collection tag (e.g. nothing owned) has no home and isn't returned."""
+    import masterdata
+    from models import card_collections
+
+    keys = checklist_keys(db) if keys is None else set(keys)
+    if not keys:
+        return {}
+    counts: dict[tuple[str, str], dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    rows = (
+        db.query(Card.card_id, card_collections.c.collection_id)
+        .join(card_collections, card_collections.c.card_id == Card.id)
+        .filter(Card.qty > 0)
+    )
+    for card_id, collection_id in rows:
+        parsed = masterdata.parse_dex_card_id(card_id)
+        key = parsed[:2] if parsed else None
+        if key in keys:
+            counts[key][collection_id] += 1
+    return {key: min(per, key=lambda cid: (-per[cid], cid)) for key, per in counts.items()}
+
+
+def section_set_key(cards, tracked: set[tuple[str, str]]) -> tuple[str, str] | None:
+    """The checklisted (language, set_code) of one collection set section
+    (its cards, grouped by Dex set name), or None. A section mixing several
+    checklisted sets takes the lowest key, so the pick is stable."""
+    keys = {card_set_key(c) for c in cards} & tracked
+    return min(keys) if keys else None
+
+
+def collections_by_card(db: Session, card_ids) -> dict[int, list[tuple[int, str]]]:
+    """card id -> [(collection id, name), ...] in one query, for the
+    master-set block's "in: <other collection>" badges (#378)."""
+    from models import Collection, card_collections
+
+    ids = list(set(card_ids))
+    out: dict[int, list[tuple[int, str]]] = defaultdict(list)
+    if not ids:
+        return out
+    rows = (
+        db.query(card_collections.c.card_id, Collection.id, Collection.name)
+        .join(Collection, Collection.id == card_collections.c.collection_id)
+        .filter(card_collections.c.card_id.in_(ids))
+    )
+    for card_id, coll_id, name in rows:
+        out[card_id].append((coll_id, name))
+    return out
+
+
+@dataclass
+class CollectionOverviewRow:
+    collection: object  # models.Collection
+    bucket: Bucket  # every card tagged with the collection
+    master_sets: list[MasterSetDetail]  # the checklisted sets this collection is home to
+    duplicates: int
+
+
+def collections_overview(db: Session) -> list[CollectionOverviewRow]:
+    """The /collections overview (#378): every collection, empty ones too
+    (no auto-hiding), in the Dashboard's display order.
+
+    Figures follow `/collections/{id}`: cards owned (copies) and total value
+    over every card tagged with the collection. Duplicates is the master
+    set's per-print, set-wide figure (`MasterSetDetail.spares`) for each set
+    whose home this is, plus qty - 1 per card in every other set section.
+    All computed, nothing stored."""
+    from models import Collection
+
+    collections = db.query(Collection).all()
+    by_name = {b.name: b for b in collection_membership_breakdown(db)["children"]}
+    buckets = {c.id: by_name.get(c.name) or Bucket(name=c.name) for c in collections}
+    order = {id(b): i for i, b in enumerate(_ordered_children(list(buckets.values())))}
+    tracked = checklist_keys(db)
+    homes = set_homes(db, tracked)
+    details: dict[tuple[str, str], MasterSetDetail | None] = {}
+
+    rows = []
+    for collection in collections:
+        bucket = buckets[collection.id]
+        sections: dict[str, list] = {}
+        for card in bucket.cards:
+            sections.setdefault(card.set or "(no set)", []).append(card)
+        master_sets: list[MasterSetDetail] = []
+        duplicates = 0
+        for name in sorted(sections):
+            cards = sections[name]
+            key = section_set_key(cards, tracked)
+            if key is not None and homes.get(key) == collection.id:
+                if key not in details:
+                    details[key] = master_set_detail(db, *key)
+                detail = details[key]
+                if detail is not None and not any(d is detail for d in master_sets):
+                    master_sets.append(detail)
+                    duplicates += detail.spares
+                    continue
+            duplicates += sum(c.duplicates for c in cards)
+        master_sets.sort(key=lambda d: d.checklist.display_name)
+        rows.append(CollectionOverviewRow(collection, bucket, master_sets, duplicates))
+    rows.sort(key=lambda r: order[id(r.bucket)])
+    return rows

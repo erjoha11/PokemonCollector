@@ -1152,24 +1152,206 @@ def delete_missing_card(
         db.close()
 
 
+# --------------------------------------------------------------------------
+# Collections (issue #378, replacing #369's "Sets & lists"): /collections
+# is the overview, /collections/{id} one collection's page. A set with a
+# checklist (set_checklists.py) shows its master-set block (#369's set page:
+# progress, missing, duplicates, unmatched, add to list) in its *home*
+# collection's section (queries.set_homes: the collection holding the most
+# of the set's owned cards, ties to the lowest id; computed per request,
+# nothing stored). Block counts are set-wide (queries.master_set_detail),
+# never only the cards tagged with that collection. /sets/{language}/
+# {set_code} redirects to the home, and still renders the block on its own
+# for a set no collection holds.
+# --------------------------------------------------------------------------
+# Master-set filters: Track ("all" = every print that counts toward the
+# master set, so Master Ball stays hidden unless picked) and Show.
+MASTER_SET_TRACK_FILTERS = ("all", *queries.MASTER_SET_TRACK_LABELS)
+MASTER_SET_SHOW_FILTERS = {"all": "All", "missing": "Missing", "owned": "Owned", "duplicates": "Duplicates"}
+
+
+def _master_set_url(language: str, set_code: str, **params) -> str:
+    url = f"/sets/{quote(language, safe='')}/{quote(set_code, safe='')}"
+    params = {k: v for k, v in params.items() if v and v != "all"}
+    return f"{url}?{urlencode(params)}" if params else url
+
+
+def _set_dom_key(language: str, set_code: str) -> str:
+    """The suffix on every id inside a set's master-set block (and its
+    section anchor, #set-<key>), so two blocks on one collection page never
+    share an id: hx-select / hx-target / the Copy button's getElementById
+    would otherwise silently act on the first block."""
+    return "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in f"{language}-{set_code}")
+
+
+def _collection_url(
+    collection_id: int,
+    key: tuple[str, str] | None = None,
+    track: str = "all",
+    show: str = "all",
+    owned: str = "",
+    anchor: str = "",
+) -> str:
+    """/collections/{id}, with the page's one active master-set filter
+    (`?set=lang:code&track=&show=`, dropped when both are defaults), the
+    `owned=0` toggle when set, and `#<anchor>-<set key>` when asked."""
+    params = []
+    if key is not None and (track != "all" or show != "all"):
+        params.append(("set", f"{key[0]}:{key[1]}"))
+        if track != "all":
+            params.append(("track", track))
+        if show != "all":
+            params.append(("show", show))
+    if owned == "0":
+        params.append(("owned", "0"))
+    url = f"/collections/{collection_id}"
+    if params:
+        url += "?" + urlencode(params, safe=":")
+    if key is not None and anchor:
+        url += f"#{anchor}-{_set_dom_key(*key)}"
+    return url
+
+
+def _parse_set_param(value: str) -> tuple[str, str] | None:
+    language, sep, set_code = (value or "").partition(":")
+    return (language, set_code) if sep and language and set_code else None
+
+
+def _master_set_block(
+    db: Session,
+    detail: "queries.MasterSetDetail",
+    track: str,
+    show: str,
+    pill_url,
+    collection: Collection | None = None,
+    lists: list | None = None,
+) -> dict:
+    """Everything one master-set block renders (partials/master_set_block.html).
+    `pill_url(track=, show=)` builds a filter pill's URL (the collection page,
+    or /sets/... on the fallback page). With `collection`, owned tiles not
+    tagged with it get an "in: <other collection>" badge."""
+    language, set_code = detail.checklist.language, detail.checklist.set_code
+    track = track if track in MASTER_SET_TRACK_FILTERS else "all"
+    show = show if show in MASTER_SET_SHOW_FILTERS else "all"
+    slots = queries.filter_master_set_slots(detail, track, show)
+    track_pills = [("all", "All")] + [(t.key, t.label) for t in detail.tracks]
+    elsewhere = {}
+    if collection is not None:
+        owned_slots = [s for s in detail.slots if s.owned]
+        tags = queries.collections_by_card(db, [c.id for s in owned_slots for c in s.cards])
+        for slot in owned_slots:
+            in_cards = [t for c in slot.cards for t in tags.get(c.id, [])]
+            if not any(coll_id == collection.id for coll_id, _ in in_cards):
+                elsewhere[slot.master.id] = ", ".join(sorted({name for _, name in in_cards})) or "no collection"
+    return {
+        "detail": detail,
+        "language": language,
+        "set_code": set_code,
+        "dom_key": _set_dom_key(language, set_code),
+        "collection_id": collection.id if collection is not None else "",
+        "track": track,
+        "show": show,
+        "slots": slots,
+        "track_pills": [(key, label, pill_url(track=key, show=show)) for key, label in track_pills],
+        "show_pills": [(key, label, pill_url(track=track, show=key)) for key, label in MASTER_SET_SHOW_FILTERS.items()],
+        "master_ball_track": next((t for t in detail.tracks if t.key == "master_ball"), None),
+        "missing_text": _missing_list_text(detail),
+        "spares_sales_url": "/sales?" + urlencode({"card_ids": [s.card.id for s in detail.spare_slots]}, doseq=True),
+        "elsewhere": elsewhere,
+        **_list_add_context(db, slots, lists=lists),
+    }
+
+
+@app.get("/collections")
+def collections_overview(request: Request):
+    """Every collection (empty ones too) with cards owned, total value, the
+    master set X/Y of each set it's home to and duplicates; then the want /
+    sale lists (#370) and "New list"."""
+    db = get_db_session()
+    try:
+        lists = card_lists.all_lists(db)
+        return templates.TemplateResponse(
+            request,
+            "collections.html",
+            {
+                "rows": queries.collections_overview(db),
+                "want_lists": [d for d in lists if d.kind == "want"],
+                "sale_lists": [d for d in lists if d.kind == "sale"],
+                "list_kinds": card_lists.LIST_KINDS,
+            },
+        )
+    finally:
+        db.close()
+
+
 @app.get("/collections/{collection_id}")
-def collection_page(request: Request, collection_id: int, owned: str = "1"):
-    """Gallery of one collection's cards with value, completion per set and
-    duplicates. `owned=0` also shows tagged cards no longer owned (qty 0)."""
+def collection_page(
+    request: Request,
+    collection_id: int,
+    owned: str = "1",
+    set_param: str = Query("", alias="set"),
+    track: str = "all",
+    show: str = "all",
+):
+    """One collection, a section per Dex set. A set with a checklist whose
+    home is this collection shows its master-set block; elsewhere that set
+    shows its plain gallery plus a one-line link to the home. One active
+    filter per page (`?set=lang:code&track=&show=`): the named block uses
+    it, every other block renders at the defaults. `owned=0` also shows
+    tagged cards no longer owned (qty 0), in the plain galleries."""
     db = get_db_session()
     try:
         detail = queries.collection_detail(db, collection_id)
         if detail is None:
             raise HTTPException(status_code=404, detail="Collection not found")
+        collection = detail["collection"]
+        bucket = detail["bucket"]
         invested_by_card = queries.net_invested_by_card(db)
-        queries.assign_bucket_investment([detail["bucket"]], invested_by_card)
-        # A "Master set" link on each set header that has a checklist (#369).
+        queries.assign_bucket_investment([bucket], invested_by_card)
+
+        active = _parse_set_param(set_param)
         tracked = queries.checklist_keys(db)
-        master_set_urls = {}
-        for set_b in detail["bucket"].child_sets:
-            keys = {queries.card_set_key(c) for c in set_b.cards} & tracked
-            if keys:
-                master_set_urls[set_b.name] = _master_set_url(*sorted(keys)[0])
+        homes = queries.set_homes(db, tracked)
+        details: dict = {}
+        lists = None
+        claimed = set()
+        sections = []
+        plain = queries.Bucket(name=bucket.name)
+        for set_b in bucket.child_sets:
+            key = queries.section_set_key(set_b.cards, tracked)
+            section = {"bucket": set_b, "block": None, "link": None, "other_cards": []}
+            if key is not None and key not in details:
+                details[key] = queries.master_set_detail(db, *key)
+            ms_detail = details.get(key)
+            if ms_detail is not None and homes.get(key) == collection.id and key not in claimed:
+                claimed.add(key)
+                if lists is None:
+                    lists = db.query(CardList).order_by(CardList.name, CardList.id).all()
+                track_, show_ = (track, show) if key == active else ("all", "all")
+                section["block"] = _master_set_block(
+                    db,
+                    ms_detail,
+                    track_,
+                    show_,
+                    lambda _key=key, **p: _collection_url(collection.id, _key, owned=owned, **p),
+                    collection=collection,
+                    lists=lists,
+                )
+                # Cards filed under this Dex set name that belong to another set.
+                section["other_cards"] = [c for c in set_b.cards if queries.card_set_key(c) != key]
+            else:
+                plain.child_sets.append(set_b)
+                for card in set_b.cards:
+                    plain.add(card)
+                if ms_detail is not None:
+                    home_id = homes.get(key)
+                    home = db.get(Collection, home_id) if home_id is not None else None
+                    section["link"] = {
+                        "detail": ms_detail,
+                        "url": _collection_url(home.id, key, anchor="set") if home else _master_set_url(*key),
+                        "label": home.name if home else ms_detail.checklist.display_name,
+                    }
+            sections.append(section)
         return templates.TemplateResponse(
             request,
             "collection.html",
@@ -1177,29 +1359,24 @@ def collection_page(request: Request, collection_id: int, owned: str = "1"):
                 **detail,
                 "invested_by_card": invested_by_card,
                 "owned_only": owned != "0",
-                "master_set_urls": master_set_urls,
+                "owned_toggle_url": _collection_url(
+                    collection.id,
+                    active if active in claimed else None,
+                    track=track if track in MASTER_SET_TRACK_FILTERS else "all",
+                    show=show if show in MASTER_SET_SHOW_FILTERS else "all",
+                    owned="1" if owned == "0" else "0",
+                ),
+                "sections": sections,
+                "has_blocks": bool(claimed),
+                # Per-Dex-row figures (Unique cards, Duplicates, Completion)
+                # only over the sections without a master-set block, which
+                # has its own per-print Duplicates.
+                "plain_bucket": plain if plain.child_sets else None,
+                "plain_completion": plain.series_completion,
             },
         )
     finally:
         db.close()
-
-
-# --------------------------------------------------------------------------
-# Sets & lists (issue #369, epic #366): the collecting module. /collecting
-# lists every set with a checklist (set_checklists.py); /sets/{language}/
-# {set_code} is one set's master-set page. Read-only: owned / missing /
-# spares are computed (queries.master_set_detail), never stored.
-# --------------------------------------------------------------------------
-# Set page filters: Track ("all" = every print that counts toward the master
-# set, so Master Ball stays hidden unless picked) and Show.
-MASTER_SET_TRACK_FILTERS = ("all", *queries.MASTER_SET_TRACK_LABELS)
-MASTER_SET_SHOW_FILTERS = {"all": "All", "missing": "Missing", "owned": "Owned"}
-
-
-def _master_set_url(language: str, set_code: str, **params) -> str:
-    url = f"/sets/{quote(language, safe='')}/{quote(set_code, safe='')}"
-    params = {k: v for k, v in params.items() if v and v != "all"}
-    return f"{url}?{urlencode(params)}" if params else url
 
 
 def _missing_list_text(detail: "queries.MasterSetDetail") -> str:
@@ -1215,60 +1392,49 @@ def _missing_list_text(detail: "queries.MasterSetDetail") -> str:
 
 
 templates.env.globals["master_set_url"] = _master_set_url
+templates.env.globals["set_dom_key"] = _set_dom_key
 templates.env.globals["list_kinds"] = card_lists.LIST_KINDS
 
 
 @app.get("/collecting")
-def collecting(request: Request):
-    db = get_db_session()
-    try:
-        sets = queries.tracked_sets(db)
-        lists = card_lists.all_lists(db)
-        return templates.TemplateResponse(
-            request,
-            "collecting.html",
-            {
-                "sets": [(d, _master_set_url(d.checklist.language, d.checklist.set_code)) for d in sets],
-                "want_lists": [d for d in lists if d.kind == "want"],
-                "sale_lists": [d for d in lists if d.kind == "sale"],
-                "list_kinds": card_lists.LIST_KINDS,
-            },
-        )
-    finally:
-        db.close()
+def collecting_redirect():
+    """#369's "Sets & lists" landing page, replaced by /collections (#378)."""
+    return RedirectResponse("/collections", status_code=302)
+
+
+# Where /sets/{language}/{set_code}?at=... lands in the home collection's
+# block (default: the section itself). The list page's "See Unmatched" link
+# uses it, since the redirect's own #fragment would override one on the link.
+_SET_ANCHORS = {"unmatched": "unmatched"}
 
 
 @app.get("/sets/{language}/{set_code}")
-def master_set_page(request: Request, language: str, set_code: str, track: str = "all", show: str = "all"):
-    """One set's master-set page. Filters are plain GET params (the pills
-    hx-get the same URL, swap #set-grid and push the URL), so a reload or a
-    bookmark keeps them. A set with no checklist renders an empty state."""
-    track = track if track in MASTER_SET_TRACK_FILTERS else "all"
-    show = show if show in MASTER_SET_SHOW_FILTERS else "all"
+def master_set_page(request: Request, language: str, set_code: str, track: str = "all", show: str = "all", at: str = ""):
+    """A set with a checklist redirects to its home collection's section,
+    keeping the query string as that page's active filter
+    (`/sets/ja/sv2a?show=missing` → `/collections/6?set=ja:sv2a&show=missing#set-ja-sv2a`).
+    The card page and list rows link here, so those links keep working.
+
+    Rendered here instead (master_set.html) when no collection holds the
+    set (zero owned cards, or none tagged), with the same block and pills
+    on this URL, and for a set with no checklist (an empty state)."""
     db = get_db_session()
     try:
+        key = (language, set_code)
+        if key in queries.checklist_keys(db):
+            home = queries.set_homes(db, {key}).get(key)
+            if home is not None:
+                params = [("set", f"{language}:{set_code}")] + [
+                    (k, v) for k, v in request.query_params.multi_items() if k not in ("set", "at")
+                ]
+                anchor = _SET_ANCHORS.get(at, "set")
+                url = f"/collections/{home}?{urlencode(params, safe=':')}#{anchor}-{_set_dom_key(language, set_code)}"
+                return RedirectResponse(url, status_code=302)
         detail = queries.master_set_detail(db, language, set_code)
-        context = {"language": language, "set_code": set_code, "detail": detail, "track": track, "show": show}
+        context = {"language": language, "set_code": set_code, "detail": detail}
         if detail is not None:
-            slots = queries.filter_master_set_slots(detail, track, show)
-            track_pills = [("all", "All")] + [(t.key, t.label) for t in detail.tracks]
-            context.update(
-                {
-                    "slots": slots,
-                    "track_pills": [
-                        (key, label, _master_set_url(language, set_code, track=key, show=show))
-                        for key, label in track_pills
-                    ],
-                    "show_pills": [
-                        (key, label, _master_set_url(language, set_code, track=track, show=key))
-                        for key, label in MASTER_SET_SHOW_FILTERS.items()
-                    ],
-                    "master_ball_track": next((t for t in detail.tracks if t.key == "master_ball"), None),
-                    "missing_text": _missing_list_text(detail),
-                    "spares_sales_url": "/sales?"
-                    + urlencode({"card_ids": [s.card.id for s in detail.spare_slots]}, doseq=True),
-                    **_list_add_context(db, slots),
-                }
+            context["ms"] = _master_set_block(
+                db, detail, track, show, lambda **p: _master_set_url(language, set_code, **p)
             )
         return templates.TemplateResponse(request, "master_set.html", context)
     finally:
@@ -1280,10 +1446,14 @@ def master_set_page(request: Request, language: str, set_code: str, track: str =
 # master cards; every status is computed live. Lists never touch qty,
 # collections, binders or transactions.
 # --------------------------------------------------------------------------
-def _list_add_context(db: Session, slots: list, message: dict | None = None, selected: dict | None = None) -> dict:
-    """The set page's bulk "Add to list" panel. Its counts follow the
-    current Track / Show filter: `slots` are the prints the grid shows."""
-    lists = db.query(CardList).order_by(CardList.name, CardList.id).all()
+def _list_add_context(
+    db: Session, slots: list, message: dict | None = None, selected: dict | None = None, lists: list | None = None
+) -> dict:
+    """A master-set block's bulk "Add to list" panel. Its counts follow the
+    current Track / Show filter: `slots` are the prints the grid shows.
+    `lists` lets a page with several blocks query the lists once."""
+    if lists is None:
+        lists = db.query(CardList).order_by(CardList.name, CardList.id).all()
     spare_slots = [s for s in slots if s.spares]
     return {
         "add_missing": [s for s in slots if not s.owned],
@@ -1306,13 +1476,16 @@ def master_set_add_to_list(
     new_list_name: str = Form(""),
     track: str = Form("all"),
     show: str = Form("all"),
+    collection_id: str = Form(""),
 ):
-    """"Add N missing to [want list]" / "Add N spares to [sale list]" on the
-    set page. Server-side and filter-aware: the prints are the ones the
-    grid shows under `track` / `show` (so Master Ball only when its track is
-    shown); spares go in with qty = spare count. Idempotent: prints already
-    on the list are left alone and counted. Answers with the re-rendered
-    panel, whose always-present status line says what happened."""
+    """"Add N missing to [want list]" / "Add N spares to [sale list]" in a
+    master-set block. Server-side and filter-aware: the prints are the ones
+    the grid shows under `track` / `show` (so Master Ball only when its
+    track is shown); spares go in with qty = spare count. Idempotent: prints
+    already on the list are left alone and counted. Answers with the
+    re-rendered panel, whose always-present status line says what happened;
+    without htmx, redirects back to the page the form was on: the
+    collection (`collection_id`, #378), else the /sets/... page."""
     track = track if track in MASTER_SET_TRACK_FILTERS else "all"
     show = show if show in MASTER_SET_SHOW_FILTERS else "all"
     if what not in ("missing", "spares"):
@@ -1341,12 +1514,19 @@ def master_set_add_to_list(
                 )
         added, already = card_lists.add_items(db, card_list, entries, source=what)
         db.commit()
+        coll_id = int(collection_id) if collection_id.strip().isdigit() else None
         if not request.headers.get("HX-Request"):
-            return RedirectResponse(_master_set_url(language, set_code, track=track, show=show), status_code=303)
+            if coll_id is not None:
+                back = _collection_url(coll_id, (language, set_code), track=track, show=show, anchor="set")
+            else:
+                back = _master_set_url(language, set_code, track=track, show=show)
+            return RedirectResponse(back, status_code=303)
         message = {"list": card_list, "added": added, "already": already}
         context = {
             "language": language,
             "set_code": set_code,
+            "dom_key": _set_dom_key(language, set_code),
+            "collection_id": coll_id or "",
             "track": track,
             "show": show,
             **_list_add_context(db, slots, message=message, selected={kind: card_list.id}),
@@ -1376,7 +1556,7 @@ def _list_url(list_id: int, hide_got: bool = False) -> str:
 
 @app.post("/lists")
 def list_create(request: Request, name: str = Form(""), kind: str = Form(""), note: str = Form("")):
-    """The "New list" form on /collecting. The kind is fixed from here on."""
+    """The "New list" form on /collections. The kind is fixed from here on."""
     db = get_db_session()
     try:
         card_list = card_lists.create_list(db, name, kind, note)
@@ -1453,7 +1633,7 @@ def list_delete(request: Request, list_id: int):
     try:
         db.delete(_get_list(db, list_id))
         db.commit()
-        return _navigate(request, "/collecting")
+        return _navigate(request, "/collections")
     finally:
         db.close()
 
