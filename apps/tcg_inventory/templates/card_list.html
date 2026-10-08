@@ -6,7 +6,7 @@
     computed live from your cards. Rows edit in place (qty, target price,
     note); every write fires "list-changed", on which #list-summary
     re-fetches itself. #}
-<p class="muted breadcrumb"><a href="/collecting">Sets &amp; lists</a></p>
+<p class="muted breadcrumb"><a href="/collections">Collections</a></p>
 {% set editing = false %}
 {% include "partials/card_list_title.html" %}
 {% include "partials/card_list_summary.html" %}
@@ -36,7 +36,7 @@
   {% elif detail.items %}
   <p class="muted">Every item is “Got it” and hidden. <a href="/lists/{{ card_list.id }}">Show them</a></p>
   {% else %}
-  <p class="muted">Nothing on this list yet. Add prints from a set page: “Add N {{ 'missing' if card_list.kind == 'want' else 'spares' }} to” under the filters, e.g. via <a href="/collecting">Sets &amp; lists</a> → a tracked set.</p>
+  <p class="muted">Nothing on this list yet. Add prints from a master set: “Add N {{ 'missing' if card_list.kind == 'want' else 'spares' }} to” under its filters, on the collection page it lives on, e.g. via <a href="/collections">Collections</a> → a collection with a Master set figure.</p>
   {% endif %}
 </div>
 

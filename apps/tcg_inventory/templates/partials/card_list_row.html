@@ -26,7 +26,7 @@
   {% endif %}
   <td>
     <span class="list-status list-status-{{ view.status }}">{{ view.status_label }}</span>
-    {%- if view.status == 'unmatched' and set_url %} <a href="{{ set_url }}#unmatched" class="card-list-meta">See Unmatched</a>{% endif %}
+    {%- if view.status == 'unmatched' and set_url %} <a href="{{ master_set_url(view.master.language, view.master.set_code, at='unmatched') }}" class="card-list-meta">See Unmatched</a>{% endif %}
     {%- if view.status == 'listed' and view.listing_ids %} <a href="/orders/listings#listing-{{ view.listing_ids[0] }}" class="card-list-meta">Open listing</a>{% endif %}
   </td>
   <td class="num">{% if view.price is not none %}{{ view.price | kr }}{% else %}<span class="muted" title="No price data for this print">—</span>{% endif %}</td>

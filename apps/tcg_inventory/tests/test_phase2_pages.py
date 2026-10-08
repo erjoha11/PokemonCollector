@@ -149,25 +149,28 @@ def test_collection_detail_completion_counts_numbers_per_set(db_session):
     assert queries.collection_detail(db_session, 999) is None
 
 
-def test_collections_index_page_is_removed(client):
-    """Issue #252: the /collections index page is gone; galleries stay."""
+def test_collections_index_page_is_back(client):
+    """#252 removed the /collections index; #378 brought it back as the
+    Collections overview and nav item, by the user's decision."""
     _seed(client)
-    assert client.get("/collections").status_code == 404
-    html = client.get("/").text
-    assert 'href="/collections"' not in html
-    assert ">Collections</a>" not in html
+    resp = client.get("/collections")
+    assert resp.status_code == 200
+    with _session() as db:
+        for coll in db.query(Collection):
+            assert f'<a href="/collections/{coll.id}">{coll.name}</a>' in resp.text
+    assert '<a href="/collections" class="">Collections</a>' in client.get("/").text
 
 
-def test_collection_gallery_breadcrumb_and_nav_point_to_inventory(client):
+def test_collection_gallery_breadcrumb_and_nav_point_to_collections(client):
     _seed(client)
     with _session() as db:
         coll_id = db.query(Collection).first().id
     resp = client.get(f"/collections/{coll_id}")
     assert resp.status_code == 200
     html = resp.text
-    assert 'href="/collections"' not in html
-    assert '<p class="muted breadcrumb"><a href="/inventory">Inventory</a></p>' in html
-    assert '<a href="/inventory" class="active">Inventory</a>' in html
+    assert '<p class="muted breadcrumb"><a href="/collections">Collections</a></p>' in html
+    assert '<a href="/collections" class="active">Collections</a>' in html
+    assert '<a href="/inventory" class="">Inventory</a>' in html
 
 
 def test_collection_page_404s(client):

@@ -241,6 +241,41 @@ yet.
 
 ### tcg_inventory
 
+**Collections as the entry point; "Sets & lists" folded into it (#378)**
+- The nav item "Sets & lists" is now **Collections** (`/collections`),
+  active on `/collections`, `/collections/…`, `/lists/…` and the `/sets/…`
+  fallback page. Inventory no longer lights up on a collection page, so
+  exactly one nav item is active. This brings back the `/collections` index
+  #252 removed, by the user's decision.
+- `/collections` lists every collection, empty ones too: cards owned, total
+  value, the master set X/Y · % of each set it's the home of ("–"
+  otherwise) and duplicates. The want/sale lists and "New list" moved here.
+- Each set with a checklist has a **home collection**: the one tagged on
+  most of the set's owned cards, ties to the lowest id
+  (`queries.set_homes`). Computed per request; nothing stored. The home's
+  section on `/collections/{id}` shows the master-set block (#369's set
+  page: KPIs, Track/Show pills, grid, Add to list, Copy missing list,
+  duplicates table with the finn.no ad link, Unmatched, Korean-proxy note),
+  counted set-wide. Owned tiles filed elsewhere get an "in: <collection>"
+  badge. Other collections holding that set show their gallery plus one
+  line, "Master set X/Y → <home>".
+- "Spares" is called **Duplicates** in the block (per print, every copy
+  beyond the first), with a new Show = Duplicates filter. Sale lists still
+  say spares. The per-row Unique cards / Duplicates / Completion KPIs and
+  "X/Y numbers" now cover only the sections that aren't a master set, and
+  are hidden when there are none.
+- One active filter per page (`?set=ja:sv2a&track=…&show=…`). The pills push
+  `/collections/{id}?…` URLs. Every id in a block is suffixed with the set
+  key (`#set-grid-ja-sv2a`, `#missing-list-text-ja-sv2a`, …), so two
+  checklisted sets on one page don't collide.
+- `/collecting` 302s to `/collections`. `/sets/{language}/{set_code}` 302s
+  to the home collection's section, keeping the query string
+  (`/sets/ja/sv2a?show=missing` → `/collections/6?set=ja:sv2a&show=missing#set-ja-sv2a`);
+  with no home it still renders the block on its own. Add to list posts to
+  the same URL as before, and without htmx it now redirects back to the
+  collection. Deleting a list lands on `/collections`.
+- No schema change and no stored figures.
+
 **pokemontcg.io prices by stored ID in daily batches (#357, closes #349)**
 - The price cron fetches every international card's TCGplayer price from
   pokemontcg.io by its stored `pokemontcg` ID, 50 IDs per request (about 10

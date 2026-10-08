@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import info %}
+{% block title %}Collections – TCG Inventory{% endblock %}
+{% block content %}
+{#- The Collections overview (issue #378): every collection, empty ones
+    included, then the want / sale lists (#370). Replaces #369's "Sets &
+    lists" landing page and brings back the index #252 removed, by the
+    user's decision. From queries.collections_overview; nothing stored. #}
+<h1>Collections</h1>
+
+<section class="card collecting-section" id="collections" aria-label="Collections">
+  {% if rows %}
+  <div class="table-scroll">
+  <table class="collections-overview">
+    <thead><tr>
+      <th>Collection</th>
+      <th class="num">Cards owned {{ info('Every copy you own tagged with this collection in Dex. A card in two collections counts in both.', below=true) }}</th>
+      <th class="num">Total value</th>
+      <th class="num">Master set {{ info("For a set's home collection: the collection holding the most of your cards of a set that has a checklist. Prints owned / prints in the master set, counted over all your cards of the set.", below=true) }}</th>
+      <th class="num">Duplicates {{ info("Every copy beyond the first. For a master set: every copy beyond the first of each print, across all your cards of the set. Elsewhere: qty − 1 per card.", below=true, align_right=true) }}</th>
+    </tr></thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a href="/collections/{{ row.collection.id }}">{{ row.collection.name }}</a></td>
+        <td class="num">{{ row.bucket.qty }}</td>
+        <td class="num">{{ row.bucket.total_value | kr }}</td>
+        <td class="num">{% for d in row.master_sets %}<a href="/collections/{{ row.collection.id }}#set-{{ set_dom_key(d.checklist.language, d.checklist.set_code) }}" title="{{ d.checklist.display_name }}">{{ d.master_set.owned }}/{{ d.master_set.total }}</a> <span class="muted">· {{ d.master_set.pct | round(1) }}%</span>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">–</span>{% endfor %}</td>
+        <td class="num">{{ row.duplicates }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted">No collections yet: they come from your Dex export's categories on the next sync.</p>
+  {% endif %}
+</section>
+
+<section class="card collecting-section" id="lists" aria-labelledby="lists-heading">
+  <h2 id="lists-heading">Lists {{ info("Your own lists of prints: a want list for cards to buy, a sale list for duplicates to sell. Fill them from a collection's master set (Add N missing / Add N spares). Status (Missing, Got it, Listed, ...) follows your cards after every Dex sync; nothing is added or removed by itself.", below=true) }}</h2>
+  <div class="collecting-lists">
+    {% for kind, lists in [('want', want_lists), ('sale', sale_lists)] %}
+    <div class="collecting-lists-kind" id="lists-{{ kind }}">
+      <h3>{{ 'Want' if kind == 'want' else 'Sale' }}</h3>
+      {% if lists %}
+      <table class="collecting-lists-table">
+        <thead><tr><th>List</th><th class="num">Items</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for d in lists %}
+          <tr>
+            <td><a href="/lists/{{ d.card_list.id }}">{{ d.card_list.name }}</a></td>
+            <td class="num">{{ d.items | length }}</td>
+            <td class="muted">{{ d.summary or 'Empty' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No {{ list_kinds[kind] | lower }}s yet.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <form class="list-new-form" method="post" action="/lists" hx-post="/lists">
+    <h3>New list</h3>
+    <label>Name <input type="text" name="name" class="tx-input-lg" required></label>
+    <fieldset class="list-new-kind">
+      <legend class="tx-kpi-label">Kind (fixed once created)</legend>
+      {% for key, label in list_kinds.items() %}
+      <label><input type="radio" name="kind" value="{{ key }}"{% if loop.first %} checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">Create list</button>
+    <p class="warnings" role="alert" hidden data-form-error></p>
+  </form>
+</section>
+{% endblock %}

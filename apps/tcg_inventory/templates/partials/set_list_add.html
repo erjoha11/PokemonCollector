@@ -1,17 +1,21 @@
-{#- The set page's bulk "Add to list" panel (issue #370). Inside #set-grid,
-    so a filter pill swap re-renders it with counts for the new filter (the
-    same prints the grid shows). Server-side, idempotent; the forms hx-post
-    and swap this whole panel, whose status line is always rendered, so an
-    add can never silently do nothing. Context: add_missing, add_spares,
-    add_spare_copies, want_lists, sale_lists, add_message, add_selected,
-    language, set_code, track, show. #}
+{#- A master-set block's bulk "Add to list" panel (issue #370). Inside the
+    block's #set-grid-<dom_key>, so a filter pill swap re-renders it with
+    counts for the new filter (the same prints the grid shows). Its ids
+    carry dom_key (#378), so two blocks on one collection page never
+    collide. Server-side, idempotent; the forms hx-post and swap this whole
+    panel, whose status line is always rendered, so an add can never
+    silently do nothing. Context: add_missing, add_spares, add_spare_copies,
+    want_lists, sale_lists, add_message, add_selected, language, set_code,
+    dom_key, collection_id (the collection page it's on, for the no-htmx
+    redirect back; '' on the /sets/... page), track, show. #}
 {%- set action = master_set_url(language, set_code) ~ '/add-to-list' %}
-<div id="set-list-add" class="set-list-add">
+<div id="set-list-add-{{ dom_key }}" class="set-list-add">
   {% for what, kind, count, lists in [('missing', 'want', add_missing | length, want_lists), ('spares', 'sale', add_spares | length, sale_lists)] %}
-  <form class="set-list-add-form" method="post" action="{{ action }}" hx-post="{{ action }}" hx-target="#set-list-add" hx-swap="outerHTML">
+  <form class="set-list-add-form" method="post" action="{{ action }}" hx-post="{{ action }}" hx-target="#set-list-add-{{ dom_key }}" hx-swap="outerHTML">
     <input type="hidden" name="what" value="{{ what }}">
     <input type="hidden" name="track" value="{{ track }}">
     <input type="hidden" name="show" value="{{ show }}">
+    {% if collection_id %}<input type="hidden" name="collection_id" value="{{ collection_id }}">{% endif %}
     <button type="submit" class="secondary"{% if not count %} disabled{% endif %}>Add {{ count }} {{ what }}{% if what == 'spares' and count %} <span class="muted">({{ add_spare_copies }} cop{{ 'ies' if add_spare_copies != 1 else 'y' }})</span>{% endif %} to</button>
     <select name="list_id" aria-label="{{ list_kinds[kind] }}" onchange="this.form.elements.new_list_name.hidden = this.value !== 'new'">
       {% for cl in lists %}<option value="{{ cl.id }}"{% if add_selected.get(kind) == cl.id %} selected{% endif %}>{{ cl.name }}</option>{% endfor %}
@@ -21,7 +25,7 @@
     <p class="warnings" role="alert" hidden data-form-error></p>
   </form>
   {% endfor %}
-  <p id="set-list-add-status" class="set-list-add-status" role="status" aria-live="polite">
+  <p id="set-list-add-status-{{ dom_key }}" class="set-list-add-status" role="status" aria-live="polite">
     {%- if add_message -%}
     {%- if add_message.added or add_message.already -%}
     Added {{ add_message.added }}{% if add_message.already %}, {{ add_message.already }} already on list{% endif %}: <a href="/lists/{{ add_message.list.id }}">{{ add_message.list.name }}</a>

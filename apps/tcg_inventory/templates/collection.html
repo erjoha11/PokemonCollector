@@ -1,43 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ collection.name }} – TCG Inventory{% endblock %}
 {% from "partials/macros.html" import info, card_view_attrs, card_link %}
-{% block content %}
-<p class="muted breadcrumb"><a href="/inventory">Inventory</a></p>
-<h1>{{ collection.name }}</h1>
-
-{% set b = bucket %}
-<div class="card collection-kpis">
-  <div><span class="tx-kpi-label">Unique cards</span><span class="tx-kpi-value">{{ b.unique_count }}</span></div>
-  <div><span class="tx-kpi-label">Duplicates</span><span class="tx-kpi-value">{{ b.duplicates }}</span></div>
-  <div><span class="tx-kpi-label">Value</span><span class="tx-kpi-value">{{ b.unique_value | kr }}</span></div>
-  <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ b.total_value | kr }}</span></div>
-  <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. Cards with no registered purchase count their full value as gain; the line below says how much.') }}</span>
-    {% if b.has_investment %}<span class="tx-kpi-value {{ 'viz-delta-gain' if b.gain_loss > 0 else ('viz-delta-loss' if b.gain_loss < 0 else '') }}">{{ '+' if b.gain_loss > 0 }}{{ b.gain_loss | kr }}</span>
-    {% if b.no_cost_count %}<span class="muted stat-note">incl. {{ b.no_cost_value | kr }} from {{ b.no_cost_count }} card{{ 's' if b.no_cost_count != 1 }} with no purchase price</span>{% endif %}
-    {% else %}<span class="tx-kpi-value muted">–</span>{% endif %}</div>
-  <div><span class="tx-kpi-label">Completion {{ info('A collection has no size of its own, so completion is per set: distinct card numbers from the set in this collection / cards in the set. The total covers only sets with a known size (Japanese/Korean sets are unknown).') }}</span>
-    <span class="tx-kpi-value">{% if completion %}{{ completion.pct | round | int }}%{% if completion.sets_known < completion.sets %} <span class="muted">· {{ completion.sets_known }}/{{ completion.sets }} sets</span>{% endif %}{% else %}<span class="muted">unknown</span>{% endif %}</span></div>
-  {% if shared_count %}<div><span class="tx-kpi-label">Shared</span><span class="tx-kpi-value">{{ shared_count }} <span class="muted">card{{ 's' if shared_count != 1 }} also in other collections</span></span></div>{% endif %}
-</div>
-
-<p class="collection-toolbar">
-  <a href="/inventory?collection={{ collection.name | urlencode }}">Open as table in Inventory</a> ·
-  {% if owned_only %}<a href="?owned=0">Also show cards no longer owned</a>{% else %}<a href="?owned=1">Only cards I own</a>{% endif %}
-</p>
-
-{% for set_b in b.child_sets %}
-{% set shown = set_b.cards | selectattr('qty', 'gt', 0) | list if owned_only else set_b.cards %}
-{% if shown %}
-<section class="collection-set">
-  <h2>{{ set_b.name }}
-    <span class="muted collection-set-meta">{{ set_b.unique_count }} unique · {{ set_b.total_value | kr }}
-    {#- Card numbers of the set in this collection, any variant. Not the
-        master set's figure (prints incl. Poké Ball, on the set page), so it
-        says "numbers" rather than "% complete" (#369). #}
-    {%- if set_b.completion_pct is not none %} · <span title="{{ set_b.completion_pct | round | int }}% of the set's card numbers, any variant, in this collection">{{ set_b.owned_numbers }}/{{ set_b.total_cards }} numbers</span>{% endif %}
-    {%- if master_set_urls.get(set_b.name) %} · <a href="{{ master_set_urls[set_b.name] }}">Master set</a>{% endif %}</span></h2>
-  <div class="card-gallery">
-    {% for card in shown %}
+{% macro gallery_card(card) %}
     <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">
       {% if card.image_url %}<button type="button" class="card-view-trigger gallery-card-image" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }}"><img src="{{ card.image_url }}" alt="" loading="lazy"></button>{% else %}<div class="gallery-card-image gallery-card-noimage muted">No picture</div>{% endif %}
       {{ card_link(card, css_class='gallery-card-name') }}
@@ -49,9 +13,82 @@
         {% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | sort | join(', ') }}">shared</span>{% endif %}
       </div>
     </div>
-    {% endfor %}
+{% endmacro %}
+{% block content %}
+{#- One collection (issue #203; the Collections entry point since #378), a
+    section per Dex set name. A section whose set has a checklist and whose
+    home is this collection (queries.set_homes) shows the master-set block,
+    counted set-wide; in any other collection that set shows its plain
+    gallery plus a one-line link to the home. #}
+<p class="muted breadcrumb"><a href="/collections">Collections</a></p>
+<h1>{{ collection.name }}</h1>
+
+{% set b = bucket %}
+{% set pb = plain_bucket %}
+<div class="card collection-kpis">
+  {#- Unique cards / Duplicates / Completion are per Dex row, so they cover
+      only the sections without a master-set block (which has its own
+      per-print Duplicates), and are left out when there are none. #}
+  {% if pb %}
+  {% set outside = ' <span class="muted">outside master sets</span>' | safe if has_blocks else '' %}
+  <div><span class="tx-kpi-label">Unique cards</span><span class="tx-kpi-value">{{ pb.unique_count }}{{ outside }}</span></div>
+  <div><span class="tx-kpi-label">Duplicates {{ info('Every copy beyond the first of each card (qty − 1 per Dex row)' ~ (', in the sections without a master set. A master set counts its own duplicates, per print.' if has_blocks else '.')) }}</span><span class="tx-kpi-value">{{ pb.duplicates }}{{ outside }}</span></div>
+  {% endif %}
+  <div><span class="tx-kpi-label">Value</span><span class="tx-kpi-value">{{ b.unique_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ b.total_value | kr }}</span></div>
+  <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. Cards with no registered purchase count their full value as gain; the line below says how much.') }}</span>
+    {% if b.has_investment %}<span class="tx-kpi-value {{ 'viz-delta-gain' if b.gain_loss > 0 else ('viz-delta-loss' if b.gain_loss < 0 else '') }}">{{ '+' if b.gain_loss > 0 }}{{ b.gain_loss | kr }}</span>
+    {% if b.no_cost_count %}<span class="muted stat-note">incl. {{ b.no_cost_value | kr }} from {{ b.no_cost_count }} card{{ 's' if b.no_cost_count != 1 }} with no purchase price</span>{% endif %}
+    {% else %}<span class="tx-kpi-value muted">–</span>{% endif %}</div>
+  {% if pb %}
+  <div><span class="tx-kpi-label">Completion {{ info('A collection has no size of its own, so completion is per set: distinct card numbers from the set in this collection / cards in the set. The total covers only sets with a known size (Japanese/Korean sets are unknown).' ~ (' Sets with a master set are left out.' if has_blocks else '')) }}</span>
+    <span class="tx-kpi-value">{% if plain_completion %}{{ plain_completion.pct | round | int }}%{% if plain_completion.sets_known < plain_completion.sets %} <span class="muted">· {{ plain_completion.sets_known }}/{{ plain_completion.sets }} sets</span>{% endif %}{% else %}<span class="muted">unknown</span>{% endif %}</span></div>
+  {% endif %}
+  {% if shared_count %}<div><span class="tx-kpi-label">Shared</span><span class="tx-kpi-value">{{ shared_count }} <span class="muted">card{{ 's' if shared_count != 1 }} also in other collections</span></span></div>{% endif %}
+</div>
+
+<p class="collection-toolbar">
+  <a href="/inventory?collection={{ collection.name | urlencode }}">Open as table in Inventory</a>
+  {%- if pb %} · <a href="{{ owned_toggle_url }}">{{ 'Also show cards no longer owned' if owned_only else 'Only cards I own' }}</a>{% endif %}
+</p>
+
+{% for section in sections %}
+{% set set_b = section.bucket %}
+{% if section.block %}
+{% set ms = section.block %}
+<section class="collection-set master-set-home" id="set-{{ ms.dom_key }}" aria-labelledby="set-heading-{{ ms.dom_key }}">
+  <h2 id="set-heading-{{ ms.dom_key }}">{{ ms.detail.checklist.display_name }}
+    <span class="muted collection-set-meta">Master set · all your {{ ms.set_code }} cards {{ info("Counted over every card of this set you own, in any collection or none, not only the ones tagged " ~ collection.name ~ ": a print filed in another collection is still owned, so it never shows as Missing. Those tiles say where they are (“in: …”). This is the set's home collection: the one holding the most of its cards.", below=true) }}</span></h2>
+  {% include "partials/master_set_block.html" %}
+  {% set other = section.other_cards | selectattr('qty', 'gt', 0) | list if owned_only else section.other_cards %}
+  {% if other %}
+  <div class="master-set-other">
+    <h3>Other cards filed under {{ set_b.name }} <span class="muted">· not part of this master set</span></h3>
+    <div class="card-gallery">
+      {% for card in other %}{{ gallery_card(card) }}{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% else %}
+{% set shown = set_b.cards | selectattr('qty', 'gt', 0) | list if owned_only else set_b.cards %}
+{% if shown %}
+<section class="collection-set">
+  <h2>{{ set_b.name }}
+    <span class="muted collection-set-meta">{{ set_b.unique_count }} unique · {{ set_b.total_value | kr }}
+    {#- Card numbers of the set in this collection, any variant. Not the
+        master set's figure (prints incl. Poké Ball), so it says "numbers"
+        rather than "% complete" (#369). #}
+    {%- if set_b.completion_pct is not none %} · <span title="{{ set_b.completion_pct | round | int }}% of the set's card numbers, any variant, in this collection">{{ set_b.owned_numbers }}/{{ set_b.total_cards }} numbers</span>{% endif %}</span></h2>
+  {% if section.link %}
+  {% set ln = section.link %}
+  <p class="muted master-set-link">Master set {{ ln.detail.master_set.owned }}/{{ ln.detail.master_set.total }} → <a href="{{ ln.url }}">{{ ln.label }}</a></p>
+  {% endif %}
+  <div class="card-gallery">
+    {% for card in shown %}{{ gallery_card(card) }}{% endfor %}
   </div>
 </section>
+{% endif %}
 {% endif %}
 {% endfor %}
 {% endblock %}

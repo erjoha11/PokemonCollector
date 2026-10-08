@@ -625,8 +625,10 @@ and #277), against the existing htmx 1.9.12 setup on `/sync-status`.
 
 ## 2026-10-08 — #366 master set / Sets & lists module (ux, via architect)
 
+Status: **partly superseded by #378** (see the 2026-10-08 #378 entry below). The user overruled the "separate set page" and "don't bring back `/collections`" advice: the master-set content now lives on `/collections/{id}`, and "Sets & lists" became "Collections". The other findings still apply.
+
 Pass 1 (set page):
-- New page `/sets/{language}/{set_code}`, not a tab on the collection page: a collection is a tag, not a checklist, and one set can span several collections. Entry points: a "Master set" link on `collection.html` set headers and a set-name link on `card_body.html`'s Series/set line, shown only when a checklist exists. Nothing on the Dashboard (#241 removed completion there by the user's choice).
+- *(Superseded by #378.)* New page `/sets/{language}/{set_code}`, not a tab on the collection page: a collection is a tag, not a checklist, and one set can span several collections. Entry points: a "Master set" link on `collection.html` set headers and a set-name link on `card_body.html`'s Series/set line, shown only when a checklist exists. Nothing on the Dashboard (#241 removed completion there by the user's choice).
 - Progress as separate tracks, each a strict X/Y over checklist slots (Main 1-165, Secret 166-210, Poké Ball, overall Master set), so it can't go above 100%. Show "X / Y" before the %, with units explained in `info()`. Relabel `collection.html`'s per-set "N% complete" (e.g. "X/210 numbers") so two different 151 completion figures don't sit side by side.
 - Must-have: an "Unmatched" list of owned cards that don't map to a checklist slot, or the page silently disagrees with the collection.
 - Missing tiles are ghosted, not links (no Card id, so `card_link` would give `/cards/None`), and must look different from the existing "0 owned" (sold) style.
@@ -634,8 +636,24 @@ Pass 1 (set page):
 
 Pass 2 (lists module):
 - Spares must be counted per master_card (sum(qty) − 1), not per Dex row; otherwise the set page and a sale list's "Not enough spares" can disagree.
-- Don't name the new nav item "Collection" (clashes with Dex collections). Use "Sets & lists" (`/collecting`, active on `/sets/` and `/lists/`); don't bring back the `/collections` index removed in #252.
+- *(Superseded by #378.)* Don't name the new nav item "Collection" (clashes with Dex collections). Use "Sets & lists" (`/collecting`, active on `/sets/` and `/lists/`); don't bring back the `/collections` index removed in #252.
 - Bulk add from the set page: filter-aware, server-side "Add N missing/spares to [list ▾]" buttons with a real count and a result line ("Added 31, 3 already on list"). No third sessionStorage multi-select; the htmx target must always exist so it can't fail silently like "+ Add to order".
 - The sale list is the intent stage feeding the existing `/sales` → `/listings` flow ("Make finn.no ad from this list"; "Listed" badge read from `listing_cards`). It must not become a second ad generator.
 - List totals: want = "Est. cost to complete", sale = "Est. value of spares" (capped at spares). Copy-as-text uses the checklist display name.
 - A want item for a print that's owned but Unmatched would wrongly show "Missing". Surface it as "Possibly owned (unmatched)" or link to the set page's Unmatched list.
+
+## 2026-10-08 — #378 Collections as the entry point (architect + ux design, built by developer)
+
+Context: after seeing "Sets & lists" the user said he wanted the old collections page ("i wanted /collections/6") and a page per collection to check progress, missing cards and duplicates. He thinks in Dex collections, not sets. This knowingly reverses #252 (removed the `/collections` index) and the "separate set page / no `/collections`" advice in the #366 entry above, which is marked superseded.
+
+Design as built:
+- Nav: "Sets & lists" → **Collections** (`/collections`), active on `/collections`, `/collections/…`, `/lists/…` and the `/sets/…` fallback. Inventory stops lighting up on `/collections/`, so only one item is ever active.
+- `/collections` overview: one table (Collection, Cards owned, Total value, Master set X/Y · % for a set's home collection else "–", Duplicates), then the want/sale lists and "New list". Empty collections aren't hidden; stale data (e.g. "Venter", #375) is fixed in the data, not by the UI.
+- **Home rule**: a checklisted set's home is the collection tagged on the most of its owned cards, ties to the lowest id. Computed per request, nothing stored. Only the home section shows the full master-set block. Other collections holding the set show their gallery plus one line ("Master set 275/363 → <home>"), so a small Illustrator collection never grows a 363-tile grid.
+- **Counts are set-wide**, labelled in the heading ("Master set · all your sv2a cards"). Counting only the tagged cards would show a print filed in another Dex folder as Missing, which would then go on a want list and could be bought twice. Owned tiles not tagged with the collection get an "in: <other collection>" badge.
+- **Duplicates** is the user's word, so it's the label, with the per-print definition (#366's spares) and the tooltip "every copy beyond the first of each print". A new Show = Duplicates pill. In checklisted home sections the per-row figures (qty − 1 per Dex row, Unique cards, "X/210 numbers", `?owned=0`) are dropped, so two conflicting duplicate figures never sit side by side. Sale lists keep "spares" for now.
+- Functional risks handled: every id in a block is suffixed with the set key (`#set-grid-ja-sv2a`, `#set-list-add-…`, `#missing-list-text-…`, `#spares-…`, `#unmatched-…`), so hx-select / hx-target / Copy act on the right section. One active filter per page (`?set=ja:sv2a&track=…&show=…`), and the other blocks render at the defaults. Pill hrefs point at `/collections/{id}`. The no-htmx Add-to-list redirect goes back to the collection. Breadcrumbs and the list delete redirect point at `/collections`.
+
+Status: built in #378, awaiting the user's review on the Vercel preview.
+
+Fast-follows (not built): a manual home override if "most cards" ever picks wrongly; "Spares" → "Duplicates" on sale lists; deleting `master_set.html` once the zero-owned fallback is judged unnecessary. Not in scope: an "In transit" status for Dex's Incoming folder (see the issue's comment; the app keeps ignoring Incoming, #311).

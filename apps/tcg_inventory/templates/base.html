@@ -18,14 +18,11 @@
   <nav>
     <strong>TCG Inventory</strong>
     <a href="/" class="{{ 'active' if request.url.path == '/' }}">Dashboard</a>
-    {# Collection galleries (/collections/{id}) are reached from Inventory's
-       collection links, so they light up Inventory. The /collections index
-       page was removed (issue #252). #}
-    <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' or request.url.path.startswith('/collections/') }}">Inventory</a>
-    {# The collecting module (#369, epic #366): its landing page, the set
-       pages and (#370) the lists. Not "Collection(s)": that already means
-       Dex categories (/collections/{id}). #}
-    <a href="/collecting" class="{{ 'active' if request.url.path == '/collecting' or request.url.path.startswith(('/sets/', '/lists/')) }}">Sets &amp; lists</a>
+    <a href="/inventory" class="{{ 'active' if request.url.path == '/inventory' }}">Inventory</a>
+    {# Collections (#378, replacing #369's "Sets & lists"): the overview,
+       each collection with its master sets, the /sets/... fallback page and
+       the want / sale lists (#370). #}
+    <a href="/collections" class="{{ 'active' if request.url.path == '/collections' or request.url.path.startswith(('/collections/', '/sets/', '/lists/')) }}">Collections</a>
     {# One item for the whole Orders area (issue #255): its three tabs, plus
        the pages reached from them -- the /sales ad builder, listing
        edit/mark-sold, Edit order -- which no longer have a nav item of

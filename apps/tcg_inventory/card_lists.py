@@ -283,7 +283,7 @@ def _sale_status(qty: int, owned: int, spares: int, listed: bool) -> str:
 def list_detail(db: Session, card_list: CardList, set_cache: dict | None = None) -> CardListDetail:
     """A list's items with live status, sorted by set, then number (base
     print before ball prints). `set_cache` shares the per-set lookups
-    across several lists (the /collecting summaries)."""
+    across several lists (the /collections Lists summaries)."""
     set_cache = {} if set_cache is None else set_cache
     rows = []
     for item in card_list.items:
