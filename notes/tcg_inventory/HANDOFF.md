@@ -2252,3 +2252,44 @@ backup location and the report here.
   second master; the next seed run then picks the owned one as the base
   slot and reports the other as a base conflict. Re-run the seed after
   buying missing secrets, or the new card shows as unmatched until then.
+
+
+# Handoff notes — 2026-10-08 session (#369: Sets & lists module + master-set page)
+
+## Code (in git, PR for #369, part of epic #366; not merged at time of writing)
+
+- New nav item "Sets & lists" (between Inventory and Orders) → `/collecting`
+  (Tracked sets: master set X/Y + spares per checklist; empty state with
+  the seed command). Set page `/sets/{language}/{set_code}`: KPI band
+  (Master set, Main, Secret, Poké Ball, Spares, Unmatched), printed-order
+  grid with ghosted missing tiles, Track/Show filters (GET params, hx-get +
+  hx-push-url on `#set-grid`), Copy missing list, Spares (link to
+  `/sales?card_ids=…`), Unmatched. Computed by
+  `queries.master_set_detail` / `tracked_sets`; nothing stored, no schema
+  change (still v15; #370 goes to v16).
+- Entry links: card page Series / set line and `/collections/{id}` set
+  headers, only when a checklist exists. Collection gallery's per-set
+  "N% complete" now reads "X/Y numbers".
+- Root `CLAUDE.md` now lists `set_checklists.py` / `set_checklist_seed.py`,
+  the two checklist tables and the Sets & lists pages (closes the #368
+  open item above).
+
+## Direct database changes
+
+None.
+
+## Notes / open items
+
+- The set page shows "no checklist yet" until the prod seed from #368 has
+  run (still pending the user's approval, see the #368 entry). Expected
+  after seeding: Main 164/165, Secret 11/45, Poké Ball 100/153, Master set
+  275/363, Spares 204, 0 unmatched.
+- Spares are counted on any track, Master Ball included (rule: every copy
+  beyond the first of each print). Unmatched cards' extra copies are not
+  counted as spares (they're on no print).
+- The `/sales` link from Spares passes one card per print with spares; the
+  qty there isn't pre-filled with the spare count (#366 fast-follow).
+- The Korean header note is data-driven (shown when the owned cards are
+  Korean cards priced from the Japanese print, `pricing.is_jp_price_proxy`),
+  not hardcoded to sv2a.
+- Verified through route/template tests only, not in a browser.

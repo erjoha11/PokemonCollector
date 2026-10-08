@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "partials/macros.html" import info %}
+{% block title %}Sets & lists – TCG Inventory{% endblock %}
+{% block content %}
+{#- The collecting module's landing page (issue #369, epic #366). Tracked
+    sets now; the Lists section (want / sale lists) comes with #370 and goes
+    below it. #}
+<h1>Sets &amp; lists</h1>
+
+<section class="card collecting-section" id="tracked-sets" aria-labelledby="tracked-sets-heading">
+  <h2 id="tracked-sets-heading">Tracked sets {{ info("Sets with a checklist: every print the set should contain, owned or not. Master set = prints owned / prints that count (Master Ball prints are listed but never count). Spares = every copy beyond the first of each print.", below=true) }}</h2>
+  {% if sets %}
+  <table class="collecting-sets">
+    <thead><tr><th>Set</th><th class="num">Master set</th><th class="num">Spares</th></tr></thead>
+    <tbody>
+      {% for d, url in sets %}
+      <tr>
+        <td><a href="{{ url }}">{{ d.checklist.display_name }}</a></td>
+        <td class="num">{{ d.master_set.owned }} / {{ d.master_set.total }} <span class="muted">({{ d.master_set.pct | round(1) }}%)</span></td>
+        <td class="num">{{ d.spares }}{% if d.spares %} <span class="muted">· {{ d.spare_value | kr }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted collecting-empty">No set is tracked yet. A set gets a checklist (the list of every print it should contain) from TCGdex with <code>set_checklist_seed.py</code>, e.g. <code>python set_checklist_seed.py --set ja:sv2a</code>; see the README's "Master sets / checklists".</p>
+  {% endif %}
+</section>
+{% endblock %}

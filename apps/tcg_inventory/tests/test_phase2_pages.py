@@ -120,7 +120,7 @@ def test_collection_page_gallery_value_duplicates_and_completion(client):
     assert "1 000 kr" in html or "1,000 kr" in html or "1000 kr" in html  # unique value 100 + 900
     assert "×2" in html  # Pikachu's duplicate
     # 2 of Base Set's 102 numbers
-    assert "2% complete" in html
+    assert "2/102 numbers" in html
     # Pikachu is also in Komiya.
     assert "shared" in html
 

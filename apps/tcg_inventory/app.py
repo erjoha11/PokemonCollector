@@ -16,7 +16,7 @@ import os
 import threading
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from pathlib import Path
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
@@ -1025,7 +1025,12 @@ def _card_detail_context(db: Session, card_pk: int) -> dict:
     invested = queries.net_invested_by_card(db, list(all_txs)).get(card.id)
     shipping = queries.shipping_shares(list(all_txs))
     history = queries.card_price_history(db, card.id)
+    # The set name links to the set's master-set page when it has a
+    # checklist (#369).
+    set_key = queries.card_set_key(card)
+    master_set_url = _master_set_url(*set_key) if set_key and set_key in queries.checklist_keys(db) else None
     return {
+        "master_set_url": master_set_url,
         "card": card,
         "transactions": txs,
         "shipping_by_tx": shipping,
@@ -1130,11 +1135,107 @@ def collection_page(request: Request, collection_id: int, owned: str = "1"):
             raise HTTPException(status_code=404, detail="Collection not found")
         invested_by_card = queries.net_invested_by_card(db)
         queries.assign_bucket_investment([detail["bucket"]], invested_by_card)
+        # A "Master set" link on each set header that has a checklist (#369).
+        tracked = queries.checklist_keys(db)
+        master_set_urls = {}
+        for set_b in detail["bucket"].child_sets:
+            keys = {queries.card_set_key(c) for c in set_b.cards} & tracked
+            if keys:
+                master_set_urls[set_b.name] = _master_set_url(*sorted(keys)[0])
         return templates.TemplateResponse(
             request,
             "collection.html",
-            {**detail, "invested_by_card": invested_by_card, "owned_only": owned != "0"},
+            {
+                **detail,
+                "invested_by_card": invested_by_card,
+                "owned_only": owned != "0",
+                "master_set_urls": master_set_urls,
+            },
         )
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Sets & lists (issue #369, epic #366): the collecting module. /collecting
+# lists every set with a checklist (set_checklists.py); /sets/{language}/
+# {set_code} is one set's master-set page. Read-only: owned / missing /
+# spares are computed (queries.master_set_detail), never stored.
+# --------------------------------------------------------------------------
+# Set page filters: Track ("all" = every print that counts toward the master
+# set, so Master Ball stays hidden unless picked) and Show.
+MASTER_SET_TRACK_FILTERS = ("all", *queries.MASTER_SET_TRACK_LABELS)
+MASTER_SET_SHOW_FILTERS = {"all": "All", "missing": "Missing", "owned": "Owned"}
+
+
+def _master_set_url(language: str, set_code: str, **params) -> str:
+    url = f"/sets/{quote(language, safe='')}/{quote(set_code, safe='')}"
+    params = {k: v for k, v in params.items() if v and v != "all"}
+    return f"{url}?{urlencode(params)}" if params else url
+
+
+def _missing_list_text(detail: "queries.MasterSetDetail") -> str:
+    """The "Copy missing list" block: one line per missing master-set print."""
+    missing = detail.missing
+    lines = [f"{detail.checklist.display_name}: missing {len(missing)} of {detail.master_set.total}"]
+    for slot in missing:
+        line = f"{slot.number_label} {slot.name}".rstrip()
+        if slot.track not in ("main", "secret"):
+            line += f" · {slot.track_label}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+@app.get("/collecting")
+def collecting(request: Request):
+    db = get_db_session()
+    try:
+        sets = queries.tracked_sets(db)
+        return templates.TemplateResponse(
+            request,
+            "collecting.html",
+            {"sets": [(d, _master_set_url(d.checklist.language, d.checklist.set_code)) for d in sets]},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/sets/{language}/{set_code}")
+def master_set_page(request: Request, language: str, set_code: str, track: str = "all", show: str = "all"):
+    """One set's master-set page. Filters are plain GET params (the pills
+    hx-get the same URL, swap #set-grid and push the URL), so a reload or a
+    bookmark keeps them. A set with no checklist renders an empty state."""
+    track = track if track in MASTER_SET_TRACK_FILTERS else "all"
+    show = show if show in MASTER_SET_SHOW_FILTERS else "all"
+    db = get_db_session()
+    try:
+        detail = queries.master_set_detail(db, language, set_code)
+        context = {"language": language, "set_code": set_code, "detail": detail, "track": track, "show": show}
+        if detail is not None:
+            slots = [s for s in detail.slots if (s.counts if track == "all" else s.track == track)]
+            if show == "missing":
+                slots = [s for s in slots if not s.owned]
+            elif show == "owned":
+                slots = [s for s in slots if s.owned]
+            track_pills = [("all", "All")] + [(t.key, t.label) for t in detail.tracks]
+            context.update(
+                {
+                    "slots": slots,
+                    "track_pills": [
+                        (key, label, _master_set_url(language, set_code, track=key, show=show))
+                        for key, label in track_pills
+                    ],
+                    "show_pills": [
+                        (key, label, _master_set_url(language, set_code, track=track, show=key))
+                        for key, label in MASTER_SET_SHOW_FILTERS.items()
+                    ],
+                    "master_ball_track": next((t for t in detail.tracks if t.key == "master_ball"), None),
+                    "missing_text": _missing_list_text(detail),
+                    "spares_sales_url": "/sales?"
+                    + urlencode({"card_ids": [s.card.id for s in detail.spare_slots]}, doseq=True),
+                }
+            )
+        return templates.TemplateResponse(request, "master_set.html", context)
     finally:
         db.close()
 

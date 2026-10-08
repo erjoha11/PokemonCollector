@@ -1756,3 +1756,239 @@ def sets_missing_release_rank(db: Session) -> list[SetMissingReleaseRank]:
         SetMissingReleaseRank(series=series, name=name, card_count=count)
         for series, name, count in rows
     ]
+
+
+# --------------------------------------------------------------------------
+# Master sets (issue #369): a set checklist (set_checklists.py, #368) against
+# the cards linked to its prints. Everything here is computed on every call;
+# owned / missing / spares are never stored.
+# --------------------------------------------------------------------------
+# Track display order and labels; set_checklists.TRACKS says which count.
+MASTER_SET_TRACK_LABELS = {
+    "main": "Main",
+    "secret": "Secret",
+    "poke_ball": "Poké Ball",
+    "master_ball": "Master Ball",
+}
+_TRACK_RANK = {t: i for i, t in enumerate(MASTER_SET_TRACK_LABELS)}
+
+
+@dataclass
+class MasterSetSlot:
+    """One checklist print and the owned cards linked to its master card."""
+
+    master: object  # models.MasterCard
+    track: str
+    counts: bool
+    cards: list  # owned (qty > 0) Card rows linked to the master, most copies first
+    number_label: str  # "#023", padded to the checklist's widest number
+
+    @property
+    def owned_qty(self) -> int:
+        return sum(c.qty for c in self.cards)
+
+    @property
+    def owned(self) -> bool:
+        return self.owned_qty > 0
+
+    @property
+    def card(self):
+        """The Card the slot's tile opens (the one with most copies), or None."""
+        return self.cards[0] if self.cards else None
+
+    @property
+    def spares(self) -> int:
+        """Every copy beyond the first of this print, counted per master
+        card (epic #366, decision 4): two Dex rows on one print still keep
+        only one copy for the master set."""
+        return max(self.owned_qty - 1, 0)
+
+    @property
+    def price(self) -> float | None:
+        return next((c.display_price for c in self.cards if c.display_price is not None), None)
+
+    @property
+    def spare_value(self) -> float:
+        return self.spares * (self.price or 0.0)
+
+    @property
+    def track_label(self) -> str:
+        return MASTER_SET_TRACK_LABELS.get(self.track, self.track)
+
+    @property
+    def name(self) -> str:
+        card = self.card
+        return (card.name if card is not None else None) or self.master.name or ""
+
+    @property
+    def image_url(self) -> str | None:
+        card = self.card
+        return (card.image_url if card is not None else None) or self.master.image_url
+
+
+@dataclass
+class MasterSetTrack:
+    key: str
+    label: str
+    owned: int
+    total: int
+    counts: bool
+
+    @property
+    def pct(self) -> float:
+        return self.owned / self.total * 100 if self.total else 0.0
+
+
+@dataclass
+class MasterSetDetail:
+    checklist: object  # models.SetChecklist
+    slots: list[MasterSetSlot]
+    tracks: list[MasterSetTrack]  # only tracks with at least one print
+    master_set: MasterSetTrack  # every print that counts toward completion
+    unmatched: list  # owned Card rows of the set on no checklist print
+    korean_proxy: bool  # owned cards are Korean, priced from the Japanese print
+
+    @property
+    def spare_slots(self) -> list[MasterSetSlot]:
+        return [s for s in self.slots if s.spares]
+
+    @property
+    def spares(self) -> int:
+        return sum(s.spares for s in self.slots)
+
+    @property
+    def spare_value(self) -> float:
+        return sum(s.spare_value for s in self.slots)
+
+    @property
+    def missing(self) -> list[MasterSetSlot]:
+        """Missing prints that count toward the master set, printed order."""
+        return [s for s in self.slots if s.counts and not s.owned]
+
+
+def _number_sort_key(number: str | None):
+    text = (number or "").strip()
+    return (0, int(text), "") if text.isdigit() else (1, 0, text)
+
+
+def master_set_detail(db: Session, language: str, set_code: str) -> MasterSetDetail | None:
+    """A set checklist with what's owned, missing and spare, or None when
+    the masterdata (language, set_code) has no checklist.
+
+    - A print is owned when the Cards linked to its master card add up to
+      qty >= 1. Each track's X/Y is over checklist prints, so it can't pass
+      100%; the master set is every print with `counts_toward_completion`
+      (Master Ball prints are listed but never count).
+    - Spares per print = max(sum(qty) - 1, 0), on any track.
+    - Unmatched = owned cards of this (language, set_code) linked to no
+      checklist print: linked to another master card of the set, or not
+      linked at all (then matched on their Dex card_id).
+    """
+    import masterdata
+    import set_checklists
+    from models import MasterCard
+
+    checklist = set_checklists.get_checklist(db, language, set_code)
+    if checklist is None:
+        return None
+
+    width = max(
+        (len(m.master_card.number) for m in checklist.cards if (m.master_card.number or "").isdigit()), default=0
+    )
+
+    def label(number: str | None) -> str:
+        text = (number or "").strip()
+        return "#" + (text.zfill(width) if text.isdigit() else text)
+
+    slots = []
+    member_ids = set()
+    for member in checklist.cards:
+        master = member.master_card
+        member_ids.add(master.id)
+        owned_cards = sorted((c for c in master.cards if c.qty > 0), key=lambda c: (-c.qty, c.id))
+        slots.append(
+            MasterSetSlot(
+                master=master,
+                track=member.track,
+                counts=member.counts_toward_completion,
+                cards=owned_cards,
+                number_label=label(master.number),
+            )
+        )
+    slots.sort(key=lambda s: (_number_sort_key(s.master.number), _TRACK_RANK.get(s.track, len(_TRACK_RANK))))
+
+    tracks = []
+    for key, track_label in MASTER_SET_TRACK_LABELS.items():
+        in_track = [s for s in slots if s.track == key]
+        if in_track:
+            tracks.append(
+                MasterSetTrack(
+                    key=key,
+                    label=track_label,
+                    owned=sum(1 for s in in_track if s.owned),
+                    total=len(in_track),
+                    counts=set_checklists.TRACKS.get(key, False),
+                )
+            )
+    counting = [s for s in slots if s.counts]
+    master_set = MasterSetTrack(
+        key="master_set",
+        label="Master set",
+        owned=sum(1 for s in counting if s.owned),
+        total=len(counting),
+        counts=True,
+    )
+
+    # Owned cards of this set that land on no checklist print.
+    off_list = (
+        db.query(Card)
+        .join(MasterCard, Card.master_card_id == MasterCard.id)
+        .filter(MasterCard.language == language, MasterCard.set_code == set_code, Card.qty > 0)
+    )
+    if member_ids:
+        off_list = off_list.filter(~MasterCard.id.in_(member_ids))
+    unmatched = off_list.all()
+    unlinked = db.query(Card).filter(
+        Card.master_card_id.is_(None), Card.qty > 0, Card.card_id.like(f"%{set_code}-%")
+    )
+    unmatched += [
+        c for c in unlinked if (masterdata.parse_dex_card_id(c.card_id) or (None, None))[:2] == (language, set_code)
+    ]
+    unmatched.sort(key=lambda c: (c.number_int if c.number_int is not None else 10**9, c.card_id, c.variant or ""))
+
+    owned_cards = [c for s in slots for c in s.cards]
+    return MasterSetDetail(
+        checklist=checklist,
+        slots=slots,
+        tracks=tracks,
+        master_set=master_set,
+        unmatched=unmatched,
+        korean_proxy=any(pricing.is_jp_price_proxy(c) for c in owned_cards),
+    )
+
+
+def tracked_sets(db: Session) -> list[MasterSetDetail]:
+    """Every set with a checklist, by display name (the Sets & lists
+    landing page)."""
+    from models import SetChecklist
+
+    keys = db.query(SetChecklist.language, SetChecklist.set_code).order_by(SetChecklist.display_name).all()
+    return [d for d in (master_set_detail(db, lang, code) for lang, code in keys) if d is not None]
+
+
+def checklist_keys(db: Session) -> set[tuple[str, str]]:
+    """(language, set_code) of every set with a checklist: decides where a
+    "Master set" link shows."""
+    from models import SetChecklist
+
+    return {(lang, code) for lang, code in db.query(SetChecklist.language, SetChecklist.set_code)}
+
+
+def card_set_key(card: Card) -> tuple[str, str] | None:
+    """A card's masterdata (language, set_code), parsed from its Dex
+    card_id the same way its master card's key is (masterdata.master_key_for),
+    so no query per card."""
+    import masterdata
+
+    parsed = masterdata.parse_dex_card_id(card.card_id)
+    return parsed[:2] if parsed else None
