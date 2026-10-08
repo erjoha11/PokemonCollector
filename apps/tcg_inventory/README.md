@@ -650,7 +650,8 @@ now), `import_log` (one row per background-job run, see "Sync status"), `master_
 and stored exchange rates, see "Pricing" below), `won_items` (Facebook
 wins waiting to be registered, see "Facebook wins inbox" below), and
 `job_locks` (one row per background job currently running, see "Sync
-status" → "Single-flight guard").
+status" → "Single-flight guard"), and `set_checklists`/`set_checklist_cards`
+(a set's reference list of prints, see "Master sets / checklists" below).
 
 ### Masterdata (card identity across catalogs)
 
@@ -690,8 +691,93 @@ never overwritten automatically, so that's how a wrong match gets fixed.
   pokemontcg.io has one ID per print with variants inside it, so Normal and
   Reverse Holo of the same print share it.
 - Identity only. Masterdata never touches `qty`, collections or binders. A
-  `master_cards` row with no `Card` pointing at it is valid, which is what a
-  future wishlist or set-completion view would build on.
+  `master_cards` row with no `Card` pointing at it is valid: set checklists
+  (below) create one for every print of a set, owned or not.
+- `rarity` and `image_url` on `master_cards` (issue #368) are filled from
+  TCGdex by the checklist seed, only where empty, so a print nobody owns
+  still has something to show. `name` is the first Dex card's (English)
+  name; a print with no Dex card gets TCGdex's (Japanese, for `ja` sets).
+
+### Master sets / checklists (issue #368)
+
+A **checklist** is the reference list of prints a set should contain, owned
+or not, so the app can show what's missing. One `set_checklists` row per
+masterdata `(language, set_code)` (display name, `source` = `tcgdex`,
+TCGdex's set ID, `fetched_at` = when the seed last changed it), and one
+`set_checklist_cards` row per print: a `master_cards` row on a **track**.
+
+| Track | What | Counts toward completion |
+|---|---|---|
+| `main` | the base print of numbers 1 up to the set's official count (sv2a: 1-165) | yes |
+| `secret` | the base print of the numbers above it (sv2a: 166-210) | yes |
+| `poke_ball` | the Poké Ball reverse print (variant `poke_ball_holo`) | yes |
+| `master_ball` | the Master Ball reverse print (variant `master_ball_holo`) | **no**: listed, never counts |
+
+**Master set** (user's definition, epic #366) = every base print (sv2a:
+210) plus every Poké Ball print (sv2a: 153: every main number except the
+12 ex, #3, 6, 9, 24, 38, 40, 65, 76, 115, 124, 145 and 151), so 363 for sv2a. Master
+Ball prints (153) are seeded as their own track but aren't collected.
+Membership is explicit: only the seed adds prints, so an odd Dex variant
+never silently becomes part of a set. Owned / missing / completion are
+computed from whether a `Card` links to a member's master card, never
+stored. `set_checklists.get_checklist(db, language, set_code)` loads one
+with its members. sv2a is tracked as `ja/sv2a` although the user's cards
+are Korean (Dex has no Korean 151; TCGdex's Korean SV2a is an empty stub).
+
+**The base-slot rule.** TCGdex lists exactly one base print per number:
+`normal` (commons/uncommons) or `holo` (rares, ex, secret rares). Dex
+doesn't always use the same word: the user's main-set rares and ex are
+logged as "Holo", and no separate non-holo print of those exists. So a
+number's base slot is **the master card its owned Dex Normal *or* Holo
+cards already link to**, never a parallel row keyed on TCGdex's variant
+next to it. Only when neither exists does the seed create one, with
+TCGdex's variant. If a number somehow has both a Normal and a Holo master,
+the one with owned cards wins (then the one matching TCGdex), and the seed
+reports the other as a base conflict. Ball prints match on their own
+variant code, which is what Dex's "Poké Ball Holo" / "Master Ball Holo"
+normalize to. Anything else (a Dex "Reverse Holo", a blank variant, a Poké
+Ball Holo of an ex) lands on no slot and is reported as unmatched. The seed
+never re-links or edits a `Card`.
+
+**Seeding** (`set_checklist_seed.py`, same `DATABASE_URL` convention as
+`set_sync.py`):
+
+```bash
+cd apps/tcg_inventory
+python set_checklist_seed.py --set ja:sv2a --dry-run   # report only, writes nothing
+python set_checklist_seed.py --set ja:sv2a             # write
+```
+
+It fetches TCGdex's set (`/v2/ja/sets/SV2a`, found through TCGdex's own set
+list like the price refresh) and every card in it (~212 requests, about 1.5
+minutes) through `tcgdex_prices.Client` (paced, one retry on 429/5xx).
+Everything is fetched before anything is written, and any failed request
+aborts with nothing changed. Then it finds or creates a master card per
+print, stores the TCGdex ID in `master_card_ids` (`tcgdex`,
+`verified_number`: set and printed number checked; a `manual` mapping is
+never overwritten), makes the checklist's membership exactly that list,
+and sets `sets.total_cards` to the number of base prints (210) on every
+`Set` row the set's cards link to. That fixes "Scarlet & Violet: 151
+JP/KR"'s "unknown" completion on the Dashboard; it has to be 210, not 165,
+since the user owns secret rares too. `set_sync.py` never matches that set
+on api.pokemontcg.io, so it doesn't overwrite it. Re-running changes nothing
+unless TCGdex changed. Prints TCGdex lists that aren't part of a master set
+(a plain reverse, another foil, stamped or oversized) are reported as
+skipped, not added.
+
+The report: slots per track, master cards created/reused, IDs written,
+`total_cards` changes, how many owned card rows (and copies) land on a
+slot per track, and every owned card that doesn't (`card_id` + Dex
+variant). That list is what catches a Dex/TCGdex variant mismatch.
+
+**Another set.** `--set <language>:<set_code>` works for any set TCGdex has
+in that language's catalog (`ja` or `int`→`en`), e.g. an English 151 would
+be `--set int:sv3pt5`. Add it to `set_checklist_seed.KNOWN_SETS` for a
+display name, or pass `--display-name`. Read the report's unmatched list
+before trusting the result: the base-slot rule above was verified on sv2a,
+and another set's Dex variants may need a look. A set whose cards have two
+base prints for one number (both `normal` and `holo`) is refused rather
+than guessed.
 
 `duplicates`, `total_value`, and `unique_value` are **never stored** —
 they're computed live (`Card.duplicates` / `Card.total_value` /
@@ -2164,6 +2250,9 @@ file locally following the steps above and add a dated line here.
   form inputs and the 422 messages (see "Form validation" above).
 - `masterdata.py` — canonical card identity + external ID mapping (see
   "Masterdata" above).
+- `set_checklists.py` — set checklists' tracks and `get_checklist` (see
+  "Master sets / checklists" above).
+- `set_checklist_seed.py` — CLI that seeds a set checklist from TCGdex.
 - `snapshots.py` — writes daily `card_snapshots` rows (see "Value history").
 - `won_inbox.py` — the Facebook wins inbox: checks fb_auction_watcher's
   payload and stages it in `won_items`, and the link flow's candidate

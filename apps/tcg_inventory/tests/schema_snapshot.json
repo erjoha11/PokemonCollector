@@ -1,6 +1,6 @@
 {
-  "schema_version": 14,
-  "fingerprint": "0aad460e8ce71c960633f9cf8f4bb3880bd0e2ace4bb994824bbfe9b96b58888",
+  "schema_version": 15,
+  "fingerprint": "075e9c383d78914c11a07dfcba9d403e9748e34416613c0580b7b4feede3c93e",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -128,10 +128,12 @@
     "master_cards": [
       ["created_at", "DATETIME", true],
       ["id", "INTEGER", false],
+      ["image_url", "VARCHAR", true],
       ["language", "VARCHAR", false],
       ["name", "VARCHAR", true],
       ["number", "VARCHAR", false],
       ["printed_number", "VARCHAR", true],
+      ["rarity", "VARCHAR", true],
       ["series", "VARCHAR", true],
       ["set_code", "VARCHAR", false],
       ["set_name", "VARCHAR", true],
@@ -152,6 +154,22 @@
     "schema_meta": [
       ["id", "INTEGER", false],
       ["version", "INTEGER", false]
+    ],
+    "set_checklist_cards": [
+      ["checklist_id", "INTEGER", false],
+      ["counts_toward_completion", "BOOLEAN", false],
+      ["id", "INTEGER", false],
+      ["master_card_id", "INTEGER", false],
+      ["track", "VARCHAR", false]
+    ],
+    "set_checklists": [
+      ["display_name", "VARCHAR", false],
+      ["fetched_at", "DATETIME", true],
+      ["id", "INTEGER", false],
+      ["language", "VARCHAR", false],
+      ["set_code", "VARCHAR", false],
+      ["source", "VARCHAR", false],
+      ["source_set_id", "VARCHAR", true]
     ],
     "set_release_order": [
       ["id", "INTEGER", false],

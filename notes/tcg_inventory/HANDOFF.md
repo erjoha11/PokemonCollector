@@ -2183,3 +2183,72 @@ None.
   notes were deleted at some point loses its stale `notes` in the app.
 - The price charts' "source switched" tooltips (`pricing.source_switch_note`)
   don't carry "(JP price)"; only the per-card labels do.
+
+
+# Handoff notes — 2026-10-08 session (#368: set checklists from TCGdex, sv2a first)
+
+## Code (in git, PR for #368, part of epic #366)
+
+- Schema version **15**: new tables `set_checklists` (language, set_code,
+  display_name, source, source_set_id, fetched_at; unique on
+  (language, set_code)) and `set_checklist_cards` (checklist_id →
+  master_card_id, `track` main/secret/poke_ball/master_ball,
+  `counts_toward_completion`; unique on (checklist_id, master_card_id)), plus
+  nullable `master_cards.rarity` / `image_url`. Created by init_db's
+  `create_all` + `_add_missing_columns`; RLS via the existing #239 pass, no
+  policies or grants. Schema-guard snapshot regenerated.
+- `set_checklists.py`: track constants + `get_checklist(db, language,
+  set_code)` (for #369/#370).
+- `set_checklist_seed.py --set ja:sv2a [--dry-run]`: fetches TCGdex's set +
+  every card through `tcgdex_prices.Client`, creates master cards (no Card)
+  for every print, stores `tcgdex` IDs (`verified_number`, manual kept),
+  syncs checklist membership, sets `sets.total_cards = 210` on the Set rows
+  sv2a cards link to, reports unmatched owned cards. Base-slot rule: a
+  number's existing Normal *or* Holo master is the base slot (Dex logs
+  main-set rares/ex as "Holo"). See README "Master sets / checklists".
+- Live TCGdex run into a throwaway SQLite DB (2026-10-08): 212 requests,
+  main 165 / secret 45 / poke_ball 153 / master_ball 153; a re-run changed
+  nothing. A simulated prod-shaped run (275 rows: Normal 127, Holo 48,
+  Poké Ball Holo 100, from the counts in #366) gave 0 unmatched,
+  `total_cards` None → 210.
+
+## Direct database changes
+
+None. The prod seed is pending the user's approval.
+
+## Pending: prod seed (after the PR is merged *and deployed*)
+
+Run it only once the v15 code is live on Vercel: the script's own
+`init_db()` migrates prod to v15, and the old v14 deploy would otherwise
+re-run its chain and stamp the version back to 14 on its next cold start.
+
+```bash
+# 1. Backup first (CLAUDE.md "Prod database access"): wait for success and a
+#    Dropbox path in the run summary; record it here.
+gh workflow run prod-backup.yml
+gh run watch "$(gh run list --workflow=prod-backup.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+
+# 2. Dry run against prod, then the real run.
+cd apps/tcg_inventory
+set -a; source .env; set +a          # DATABASE_URL = Supabase
+python set_checklist_seed.py --set ja:sv2a --dry-run
+python set_checklist_seed.py --set ja:sv2a
+```
+
+Expected: slots main 165 / secret 45 / poke_ball 153 / master_ball 153;
+owned 275 rows (479 copies), 0 unmatched (main 164, secret 11, poke_ball
+100); `total_cards` → 210 on "Scarlet & Violet: 151 JP/KR". Then log the
+backup location and the report here.
+
+## Open items
+
+- Root `CLAUDE.md`'s tcg_inventory key-modules/data-model lists don't
+  mention `set_checklists.py` / `set_checklist_seed.py` or the two tables
+  yet (not edited by this PR).
+- New-print names are TCGdex's Japanese ones (English names for missing
+  cards is a #366 fast-follow).
+- If Dex later imports a print the seed created under the other base word
+  (e.g. TCGdex `holo` secret, Dex logs it "Normal"), Dex's import makes a
+  second master; the next seed run then picks the owned one as the base
+  slot and reports the other as a base conflict. Re-run the seed after
+  buying missing secrets, or the new card shows as unmatched until then.

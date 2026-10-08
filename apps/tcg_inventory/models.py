@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import DateTime, Date, Float, ForeignKey, Integer, String, Table, Text, Column, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Date, Float, ForeignKey, Integer, String, Table, Text, Column, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
@@ -594,6 +594,11 @@ class MasterCard(Base):
     set_name: Mapped[str | None] = mapped_column(String, nullable=True)
     printed_number: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+    # Filled in by set_checklist_seed.py (issue #368) from TCGdex, only where
+    # still empty: a print nobody owns has no Card to show a rarity or photo
+    # from. Never overwrites a value that's already there.
+    rarity: Mapped[str | None] = mapped_column(String, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     cards: Mapped[list["Card"]] = relationship(back_populates="master_card")
     external_ids: Mapped[list["MasterCardId"]] = relationship(
@@ -628,6 +633,67 @@ class MasterCardId(Base):
     matched_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
 
     master_card: Mapped[MasterCard] = relationship(back_populates="external_ids")
+
+
+class SetChecklist(Base):
+    """A set's reference list of prints (issue #368): what the set *should*
+    contain, owned or not, so a set page can show what's missing. One per
+    masterdata (language, set_code). Filled by set_checklist_seed.py from
+    TCGdex; see README "Master sets / checklists".
+
+    Membership (`SetChecklistCard`) is explicit: a print is in the set only
+    if the seed put it there, so an odd Dex variant never silently becomes
+    part of it. How complete the set is gets computed from the members and
+    the cards linked to them, never stored.
+    """
+
+    __tablename__ = "set_checklists"
+    __table_args__ = (UniqueConstraint("language", "set_code", name="uq_set_checklists_language_set_code"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # masterdata's key parts, e.g. "ja" / "sv2a".
+    language: Mapped[str] = mapped_column(String, nullable=False)
+    set_code: Mapped[str] = mapped_column(String, nullable=False)
+    # What the user calls the set, e.g. "Pokémon Card 151 (Korean)".
+    display_name: Mapped[str] = mapped_column(String, nullable=False)
+    # Where the list came from ("tcgdex") and that source's own set ID ("SV2a").
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    source_set_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # When the seed last changed this checklist (a re-run that finds nothing
+    # new leaves it alone).
+    fetched_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+    cards: Mapped[list["SetChecklistCard"]] = relationship(
+        back_populates="checklist", cascade="all, delete-orphan"
+    )
+
+
+class SetChecklistCard(Base):
+    """One print (a MasterCard) in a set checklist, on one track:
+
+    - `main` / `secret`: the base print of each number (main = up to the
+      set's official count, e.g. 1-165; secret = above it, 166-210).
+    - `poke_ball`: the Poké Ball reverse print of a number.
+    - `master_ball`: the Master Ball reverse print. Listed, but
+      `counts_toward_completion` is false: the user doesn't collect it.
+    """
+
+    __tablename__ = "set_checklist_cards"
+    __table_args__ = (
+        UniqueConstraint("checklist_id", "master_card_id", name="uq_set_checklist_cards_checklist_master"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    checklist_id: Mapped[int] = mapped_column(
+        ForeignKey("set_checklists.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    master_card_id: Mapped[int] = mapped_column(ForeignKey("master_cards.id"), nullable=False, index=True)
+    # "main" | "secret" | "poke_ball" | "master_ball" -- see set_checklist_seed.TRACKS.
+    track: Mapped[str] = mapped_column(String, nullable=False)
+    counts_toward_completion: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    checklist: Mapped[SetChecklist] = relationship(back_populates="cards")
+    master_card: Mapped[MasterCard] = relationship()
 
 
 class SetReleaseOrder(Base):
