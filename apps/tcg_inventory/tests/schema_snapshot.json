@@ -1,6 +1,6 @@
 {
-  "schema_version": 16,
-  "fingerprint": "7c38a125203b9ca241febb51ca907ae11eb7f5e88221ade9723600a3e4238da3",
+  "schema_version": 17,
+  "fingerprint": "060add152e3aa7ad0231fe40acfd1bcd71a335a9e0ee93d87f666f0517bbc6c2",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -61,6 +61,8 @@
       ["illustrator", "VARCHAR", true],
       ["image_lookup_failed_at", "DATE", true],
       ["image_url", "VARCHAR", true],
+      ["in_transit_qty", "INTEGER", true],
+      ["in_transit_since", "DATE", true],
       ["language", "VARCHAR", true],
       ["location", "VARCHAR", true],
       ["market_price", "FLOAT", true],

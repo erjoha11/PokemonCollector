@@ -657,3 +657,20 @@ Design as built:
 Status: built in #378, awaiting the user's review on the Vercel preview.
 
 Fast-follows (not built): a manual home override if "most cards" ever picks wrongly; "Spares" → "Duplicates" on sale lists; deleting `master_set.html` once the zero-owned fallback is judged unnecessary. Not in scope: an "In transit" status for Dex's Incoming folder (see the issue's comment; the app keeps ignoring Incoming, #311).
+
+## 2026-10-08 — "On the way" status for paid-but-not-received cards (#382, ux via architect)
+
+**Reviewed:** (design, recorded in issue #382) where an in-transit card should show, and how it should behave on the sale-facing pages. Inventory (`partials/inventory_table.html`, `inventory.html`), the card page (`partials/card_body.html`), the collection gallery (`collection.html`), `/sales`, want and sale lists (`card_lists.py`), the master-set block (#378), the Dashboard, and the Facebook wins cart (`fb_win_candidates.html`).
+
+**Findings / decisions:**
+- Principle: an in-transit copy counts as **owned** (value, dashboard, snapshots, completion, want-list matching) but is **never available** (sales, ads, sale lists, spares).
+- Badge: a `transit-badge` built on `.tx-platform-badge` (the neutral metadata pill, a normal state, not an error), reading "On the way". Tooltip: "Tagged Incoming in Dex · seen since <date> (N days)". After ~21 days it shows its age ("On the way · 24 d") in warning style, as a guard against a forgotten tag. Places: Inventory rows, the collection gallery, and the card page (Owned "N (on the way)" plus an "On the way" dt with the date).
+- No "1 of 2 on the way": Dex's Incoming qty mirrors the card's total, so the status is all-or-nothing (verified on a real export).
+- Inventory: an "On the way only" checkbox next to "Duplicates only". It must also be in the hand-built rarity "Clear filter" URL, or clearing drops it.
+- Dashboard: one line, "N cards on the way · X kr", linking to that filter, shown only when N > 0.
+- Sales and ads: **block, not warn** (unlike #257's "Listed" badge). The Inventory `.sale-select` is disabled with a tooltip for fully in-transit cards, `/sales` mutes partly in-transit rows with qty capped at in-hand, and the server clamps too.
+- Want lists: a new "On the way" status (owned >= wanted but in-hand < wanted), excluded from "Copy as text" and skipped by "Remove got it". Sale lists: an "On the way" status before "short".
+- Master set: in-transit tiles look owned with a small "On the way" pill. Duplicates (KPI, pill filter, table) use in-hand spares, with a muted "+1 on the way" note.
+- Wins cart: badge in-transit candidates and rank those on the way since the sale ended with or before "new since the sale" (also catches a 2nd copy, which `created_at` misses). New empty-state copy: "No matching card yet — it appears after you raise its qty in Dex (tag it Incoming until it arrives) and the daily sync runs."
+
+**Status:** Addressed in PR #384 (both passes): the badge on Inventory, the card page and the collection gallery, the filter, the Dashboard line, the sales/ads block, the wins cart, want-list and sale-list "On the way" statuses, and master-set in-hand Duplicates with a "+N on the way" note. Built-time choice: a sale-list item is "On the way" only when the duplicates on the way would cover its qty, otherwise "Not enough spares"; the /collections overview's Duplicates uses the in-hand figure so it matches the block.

@@ -197,8 +197,8 @@ def test_empty_candidates_explain_the_lag(client):
     ids = _send(client, [_item(1, label="1. Umbreon VMAX alt art")])
     html = client.get(f"/orders/fb-wins/{ids['fbaw:1001:2001']}/cart").text
     assert (
-        "No matching card yet — it appears after it arrives, you raise its qty in Dex, and the daily sync runs."
-        in html
+        "No matching card yet — it appears after you raise its qty in Dex (tag it Incoming until it arrives) "
+        "and the daily sync runs." in html
     )
     # The item-scoped fallback search knows which item it's for.
     item_id = ids["fbaw:1001:2001"]

@@ -180,7 +180,9 @@ run).
   keep one order and a page boundary never repeats or skips a card (#376).
   Collection
   filter has "Bulk / no collection" (`collection=__none__`), and a
-  "Duplicates only" checkbox (`dup=1`). Column chooser
+  "Duplicates only" checkbox (`dup=1`), and an "On the way only" checkbox
+  (`transit=1`, cards tagged Incoming in Dex, #382; also kept by the
+  rarity "Clear filter" link). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
   Notes are omitted server-side when empty in the current result. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
@@ -221,7 +223,8 @@ run).
     are hidden unless their track is picked.
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
-    most copies). Missing tiles have no `Card`, so they're ghosted
+    most copies). A print with copies on the way (#382) still looks owned
+    and counts toward completion, with a small **On the way** pill. Missing tiles have no `Card`, so they're ghosted
     (dashed frame, faded photo from `master_cards.image_url`, else a
     "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
     "0 owned" style. A print whose only card is at qty 0 is missing.
@@ -243,10 +246,17 @@ run).
   - **Copy missing list**: every missing master-set print as text, headed
     with the display name.
   - **Duplicates** (the user's word; #366's spares): per print (per master
-    card, not per Dex row), `max(sum(qty) − 1, 0)` (`queries.print_spares`),
-    any track, with value at market price, and a link to
-    `/sales?card_ids=…` (one card per print with duplicates). Sale lists
-    still say "spares" for now.
+    card, not per Dex row), copies **in hand** only (#382):
+    `max(sum(in-hand qty) − 1, 0)` (`MasterSetSlot.spares`, via
+    `models.print_in_hand_spares`), any track, with value at market price,
+    and a link to `/sales?card_ids=…` (one card per print with duplicates,
+    the one with most copies in hand). The KPI, the Show = Duplicates
+    filter, "Add N spares" and the table all use it; duplicates still on
+    the way show as a muted "+N on the way" in the table and the Duplicates
+    tooltips (`spares_on_the_way` = `queries.print_spares(owned)` minus the
+    in-hand figure). The `/collections` overview's Duplicates uses the same
+    in-hand figure for a set's home. Sale lists still say "spares" for
+    now.
   - **Unmatched**: owned cards of the set on no checklist print (linked to
     another master card of the set, or unlinked and matched on the Dex
     `card_id`), with card ID and Dex variant. They count nowhere above.
@@ -590,7 +600,11 @@ run).
   writes `Transaction` rows. Reached from the Orders page's "Sell on
   finn.no" buttons, which carry no selection of their own: if Inventory's
   selection is still in sessionStorage (`tcg-sale-list`), `/sales` offers
-  a "Continue with the N cards selected on Inventory" link.
+  a "Continue with the N cards selected on Inventory" link. **On the way**
+  cards (#382) can't be sold: a fully in-transit card's checkbox is
+  disabled, `/sales` shows it muted with no fields and caps a partly
+  in-transit card's qty at the copies in hand, and the server
+  (`_sale_items_from_form`, "Mark as listed") enforces the same.
 - **Listings** (`/orders/listings`, was `/listings`) — overview of every recorded `Listing`: its
   card(s), status (active/delisted/sold), and prices side by side per card
   so a listing's margin is visible at a glance — cost
@@ -930,18 +944,26 @@ its items.
 - **Status is computed live, never stored**, from the cards linked to the
   item's master card (sum of qty over cards with qty > 0), so it follows
   the next Dex sync with no list edits:
-  - want: **Got it** (own ≥ qty), **Got k of n**, **Possibly owned
+  - want: **Got it** (own ≥ qty, with ≥ qty in hand), **On the way** (own
+    ≥ qty, but some of those copies are on the way, #382: they count as
+    owned so it isn't bought twice; "Copy as text" leaves it out and
+    "Remove got-it items" skips it), **Got k of n**, **Possibly owned
     (unmatched)** (you own nothing linked to this print, but an owned card
     of the same set and number is on the master set's Unmatched list, so it
     may well be this print; links there), else **Missing**;
   - sale: **Sold out** (own none), **Listed** (an owned card of the print is
     in an `active` listing via `listing_cards`; delisted/sold don't count),
-    **Not enough spares** (qty > spares), else **Available**.
-  Spares are the master set's per-print Duplicates (`queries.print_spares`, via
-  the same `MasterSetSlot`): `max(sum(qty) − 1, 0)` per master card.
+    **On the way** (qty > spares in hand, but the duplicates on the way
+    would cover it once they arrive, #382), **Not enough spares** (qty >
+    spares even then), else **Available**.
+  Spares are the master set's per-print Duplicates (`MasterSetSlot.spares`):
+  `max(sum(in-hand qty) − 1, 0)` per master card. "Make finn.no ad from
+  this list" (`sale_card_ids`) sends one card per print with copies in
+  hand (the one with most), so a print whose every copy is on the way
+  isn't sent.
 - **Totals.** Want: "Est. cost to complete" = market price × copies still
-  missing (`max(qty − owned, 0)`). Sale: "Est. value of spares" = market
-  price × `min(qty, spares)`. Market price is the print's owned card's
+  missing (`max(qty − owned, 0)`; copies on the way count as owned). Sale:
+  "Est. value of spares" = market price × `min(qty, spares in hand)`. Market price is the print's owned card's
   resolved price, else any linked card's (e.g. a sold copy at qty 0); a
   print with no price data shows "—" and is left out of the total, which
   says how many were.
@@ -978,16 +1000,52 @@ without updating both the code and this doc.
 
 1. **Dex's "My Collection" is the physical inventory.** Every other Dex
    category is a tag on a subset of the same physical cards, never a
-   separate set of cards. "Wishlist", "Incoming", and any category starting
-   with "151 Fullarts" are always fully ignored: never a collection, a
-   binder, or an importer warning. "Incoming" is the Dex folder of won cards
-   that haven't arrived yet (added at qty 0, removed on arrival). Its
-   qty-0 rows never become cards (see "Quantity-0 rows" under Sync
-   semantics), so what's on the way is tracked in Dex and the Facebook wins
-   inbox, not here (#311). Ignoring a category never touches an existing
-   collection of the same name: an "Incoming" collection created by an
-   earlier sync keeps its old tags until it is cleaned up by hand.
-2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored.
+   separate set of cards. "Wishlist" and any category starting with "151
+   Fullarts" are always fully ignored: never a collection, a binder, or an
+   importer warning. Ignoring a category never touches an existing
+   collection of the same name.
+
+   **"Incoming" is a status, not a collection (#382, reversing #311).** The
+   user raises a card's qty in Dex as soon as it's **paid for** and tags it
+   in Dex's "Incoming" folder; **removing the Incoming tag** is the "in
+   hand" signal (the qty change is not). So an in-transit card is in My
+   Collection *and* in Incoming. #311 excluded Incoming back when its cards
+   sat at qty 0 and were never exported; that premise no longer holds.
+   `constants.STATUS_CATEGORIES` is the third routing class next to
+   collections and binders: an Incoming row with qty > 0 sets
+   `Card.in_transit_qty = min(row qty, card qty)` and `in_transit_since`
+   (the first sync that saw the tag, kept while it stays, also across qty
+   changes); both are cleared when the tag goes. Qty-0 Incoming rows (won,
+   not paid yet) are ignored and never create cards. **An in-transit copy
+   counts as owned but is never available**: it counts in value, the
+   dashboard, `card_snapshots`, master-set completion and want-list
+   matching (a want-list item says "On the way"), but can't be picked for
+   `/sales` or finn.no ads, and isn't a spare on sale lists or in the
+   master set's Duplicates. `Card.in_hand_qty = qty - in_transit` is
+   computed, never stored, and every sale-facing spares figure goes through
+   one helper, `models.in_hand_spares` (`max(in_hand - 1, 0)`; per print:
+   `models.print_in_hand_spares`). Shown as an **On the way** badge
+   (Inventory, the card page, the collection gallery, master-set tiles, the
+   Facebook wins cart), an "On the way only"
+   Inventory filter, and a Dashboard line "N cards on the way · X kr". After
+   21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows its
+   age in warning style ("On the way · 24 d").
+
+   **Dex's Incoming `Quantity` can't say "1 of 2"** (checked against a real
+   combined export, 2026-10-08): Dex's `Quantity` is one number per card,
+   repeated on every folder row: 114 multi-copy cards in tag folders all had
+   the folder qty equal to the My Collection qty, as did all 8 qty > 0
+   Incoming rows. So the status is all-or-nothing in practice: when a 2nd
+   copy of a card you already hold is on the way, the copy in hand counts
+   as on the way too. That's the safe direction (it's only hidden from
+   selling until the tag is removed), and a known limitation. The badge
+   therefore always says just "On the way", never "1 of 2".
+
+   The old "Incoming" collection (prod id 10, 8 tags from before #311) is
+   no longer written by any sync and is dead data; removing it is a
+   separate, confirmed prod change (see #382).
+2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored. This
+   is the ownership figure; sale-facing spares use in-hand copies (rule 1).
 3. **Primary collection.** When a card belongs to more than one collection,
    `Card.primary_collection` picks one by priority, highest first:
    1. Illustrator collections (Tomokazu Komiya, Shinji Kanda, Yuka Morii,
@@ -1061,6 +1119,22 @@ without updating both the code and this doc.
      files. A category absent from the current batch is left completely
      untouched — this is what stops a sync without a fresh Vintage export
      from wiping existing Vintage Collection tags.
+   - **Exception: Incoming (#382).** When the last card leaves Dex's
+     Incoming folder, Dex exports no Incoming rows at all, and the cron
+     reads every CSV in the Dropbox folder, so an old Incoming export could
+     otherwise be re-applied every day. So Incoming is authoritative only in
+     a sync that includes My Collection rows, and only when its file is
+     dated (`client_modified`) the same day as the My Collection export or
+     later (an undated file, a direct upload, counts when present). If it's
+     absent or older, it counts as **empty**: every in-transit status is
+     cleared, with the sync warning "Incoming export missing or older than
+     My Collection; in-transit status cleared" (only when that actually
+     cleared a card, so a sync with nothing on the way stays quiet). A sync
+     without My Collection leaves the status untouched. Why this
+     direction: a forgotten export makes cards look in hand (exactly how
+     the app behaved before), while a stuck status would hide them from
+     selling indefinitely. Dex's combined export puts Incoming and My
+     Collection in one file, so they share a date.
 6. **Chronological sorting.** Sets should be sortable by actual release
    order, not alphabetically. `models.Set` (`series`, `name`, nullable
    `release_rank`, nullable `total_cards`) is a real entity, one row per
@@ -1621,11 +1695,14 @@ or cards — only you do, in the cart.
 
 **Registering a won sale (the link flow).** One won sale becomes one order
 (several sales from one seller paid together can be merged afterwards with
-Edit order). The workflow: you win (the card goes into Dex's Incoming at
-qty 0, which Dex doesn't export, so it isn't in tcg_inventory yet); you pay
-and it arrives; you raise its qty in Dex; after the next daily sync it
-exists here, and you open the sale with **Open in cart** and register it.
-So linking always happens after the cards exist.
+Edit order). The workflow (since #382): you win (the card can go into Dex's
+Incoming at qty 0, which the sync ignores); **you pay, raise its qty in Dex
+and tag it Incoming**; after the next daily sync it exists here as **On the
+way** (counted as owned, not sellable), so you can open the sale with
+**Open in cart** and register it right away, before it arrives. When it
+arrives you remove the Incoming tag in Dex and the next sync clears the
+status (business rule 1). Linking still needs the card to exist, which now
+happens at payment rather than arrival.
 
 - **Prefill.** "Open in cart" (`GET /orders/fb-wins/{item_id}/cart`)
   renders the normal New Order cart in one response: date = the sale's end
@@ -1644,11 +1721,14 @@ So linking always happens after the cards exist.
   and an item-scoped **Not listed? Search…**. Candidates are a fuzzy name
   match (`won_inbox.candidates`: a distinctive word of the card's name in
   the label, small typos allowed, its printed number adds to the score),
-  ranked cards with no purchase/ripped/trade row first, then cards first
-  synced on or after the sale ended ("new since the sale"); a card already
-  on an order says "already on order #N". With none: "No matching card yet
-  — it appears after it arrives, you raise its qty in Dex, and the daily
-  sync runs."
+  ranked cards with no purchase/ripped/trade row first, then cards on the
+  way since the sale ended (`in_transit_since` on or after it, which also
+  catches a 2nd copy of a card you already had) and cards first synced on
+  or after the sale ended ("new since the sale"), on-the-way ones first; a
+  card on the way gets an **On the way** badge, and one already on an order
+  says "already on order #N". With none: "No matching card yet — it
+  appears after you raise its qty in Dex (tag it Incoming until it
+  arrives) and the daily sync runs."
 - **Link selected** adds normal cart rows through
   `/transactions/purchase/add-row`, which takes the item's ref
   (`won_item_id`), adds its note ("<label> · <seller>") and a prefilled

@@ -525,6 +525,12 @@ class Candidate:
     unordered_acquired: bool
     # First seen on or after the sale ended: likely this very copy.
     recent: bool
+    # Tagged Incoming in Dex ("On the way", #382).
+    in_transit: bool = False
+    # ... and first seen on the way on or after the sale ended: very likely
+    # this copy, even a 2nd copy of a card already owned (which `recent`,
+    # keyed on created_at, misses). Ranked with or before `recent`.
+    transit_since_sale: bool = False
 
     @property
     def acquired(self) -> bool:
@@ -551,12 +557,24 @@ def _candidate(card: Card, score: float, ended_on: dt.date | None, acquired: dic
         orders=sorted(p for p in pids if p is not None),
         unordered_acquired=None in pids,
         recent=bool(ended_on and card.created_at and card.created_at.date() >= ended_on),
+        in_transit=bool(card.in_transit),
+        transit_since_sale=bool(
+            ended_on and card.in_transit and card.in_transit_since and card.in_transit_since >= ended_on
+        ),
     )
 
 
 def _rank(c: Candidate):
-    # 1. no acquired transaction yet, 2. first seen on/after the sale's end, then the match.
-    return (c.acquired, not c.recent, -c.score, c.card.name, c.card.id)
+    # 1. no acquired transaction yet, 2. on the way since the sale's end or
+    # first seen on/after it (on the way first within that group), then the match.
+    return (
+        c.acquired,
+        not (c.transit_since_sale or c.recent),
+        not c.transit_since_sale,
+        -c.score,
+        c.card.name,
+        c.card.id,
+    )
 
 
 def annotate_cards(db: Session, cards: list[Card], ended_on: dt.date | None, acquired_types: tuple[str, ...]) -> list[Candidate]:
@@ -568,8 +586,9 @@ def annotate_cards(db: Session, cards: list[Card], ended_on: dt.date | None, acq
 def candidates(db: Session, items: list[WonItem], acquired_types: tuple[str, ...]) -> dict[int, list[Candidate]]:
     """Up to MAX_CANDIDATES cards per item, best first. Suggestions only: the
     cart shows them as unticked checkboxes and never links one by itself.
-    A card reaches tcg_inventory only after it arrives and Dex syncs it, so
-    an empty list is normal for a while."""
+    A card reaches tcg_inventory once its qty is raised in Dex (tagged
+    Incoming until it arrives, #382) and the daily sync runs, so an empty
+    list is normal for a while."""
     cards = db.query(Card).all()
     acquired = _acquired_by_card(db, acquired_types)
     names = {c.id: _words(c.name) for c in cards}

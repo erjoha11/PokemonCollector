@@ -255,10 +255,10 @@ def test_wishlist_and_151_fullarts_are_fully_ignored(db_session):
     assert result.warnings == []  # excluded categories never even attempt to match cards
 
 
-def test_incoming_is_ignored_like_wishlist(db_session):
-    # Dex's "Incoming" folder holds won cards not yet arrived (#311). An
-    # Incoming row is skipped the way a Wishlist row is: no collection, no
-    # card, no warning -- even for a card that isn't in My Collection.
+def test_incoming_without_my_collection_creates_nothing(db_session):
+    # Since #382 Incoming is a status category (it reversed #311's exclusion),
+    # but it still never creates a card or a collection, and a sync without
+    # My Collection leaves the status alone -- see test_in_transit.py.
     incoming = make_csv("Incoming", [{"id": "i1", "name": "Incoming Card", "qty": 1}])
     wishlist = make_csv("Wishlist", [{"id": "w1", "name": "Wishlist Card"}])
 
@@ -271,6 +271,7 @@ def test_incoming_is_ignored_like_wishlist(db_session):
 
 
 def test_card_in_incoming_and_my_collection_imports_normally(db_session):
+    # Incoming sets the "On the way" status (#382), never a collection or binder.
     main = make_csv("My Collection", [{"id": "a", "name": "Charizard", "qty": 2, "price": "100"}])
     incoming = make_csv("Incoming", [{"id": "a", "name": "Charizard", "qty": 2}])
     vintage = make_csv("Vintage Collection", [{"id": "a"}])
@@ -287,6 +288,8 @@ def test_card_in_incoming_and_my_collection_imports_normally(db_session):
     assert card.binder is None
     assert db_session.query(Collection).filter(Collection.name == "Incoming").count() == 0
     assert result.warnings == []
+    assert card.in_transit == 2
+    assert card.in_hand_qty == 0
 
 
 def test_binder_category_routes_to_binder_not_collection(db_session):

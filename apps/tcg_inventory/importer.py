@@ -398,9 +398,18 @@ def import_dex_csv_files(
         found = db.query(Card).filter(Card.card_id.in_(ids)).all()
         return {(c.card_id, c.variant): c for c in found if (c.card_id, c.variant) in keys}
 
+    # Status categories (Incoming, issue #382) never become a collection or
+    # binder. Authoritative only in a sync with My Collection rows; without
+    # them the in-transit status is left untouched.
+    incoming_rows = rows_by_category.pop(constants.INCOMING_CATEGORY, None)
+    for category in [c for c in rows_by_category if constants.is_status_category(c)]:
+        rows_by_category.pop(category)  # no other status category yet
+    if my_collection_rows:
+        _apply_in_transit(db, incoming_rows, category_dates, today, result)
+
     for category, rows in rows_by_category.items():
         if constants.is_excluded_category(category):
-            continue  # Wishlist / Incoming / 151 Fullarts * -- never touched.
+            continue  # Wishlist / 151 Fullarts * -- never touched.
 
         row_keys = {
             ((r.get("Id") or "").strip(), (r.get("Variant") or "").strip() or None)
@@ -465,6 +474,85 @@ def import_dex_csv_files(
 
     db.commit()
     return result
+
+
+INCOMING_CLEARED_WARNING = (
+    "Incoming export missing or older than My Collection; in-transit status cleared"
+)
+
+
+def _apply_in_transit(
+    db: Session,
+    incoming_rows: list[dict] | None,
+    category_dates: dict[str, dt.date | None],
+    today: dt.date,
+    result: ImportResult,
+) -> None:
+    """Set every card's "On the way" status from the Incoming export (issue
+    #382). Called only in a sync with My Collection rows, after they're
+    imported, so `card.qty` is this export's.
+
+    The emptied-folder rule: Dex exports no Incoming rows once the folder is
+    empty, and the cron reads every CSV in the Dropbox folder, so an old
+    Incoming export could otherwise be re-applied forever. So Incoming counts
+    only when present and dated the same day as My Collection or later (an
+    undated file -- a manual upload -- counts when present). Otherwise it's
+    treated as empty: every in-transit field is cleared, with a warning when
+    that actually clears a card. A stale status would hide cards from
+    selling indefinitely; a cleared one only makes them look in hand, as
+    before #382.
+
+    A qty > 0 row sets `in_transit_qty = min(row qty, card.qty)` and keeps
+    `in_transit_since` (else today). Qty-0 rows (won, not paid) are ignored
+    and never create cards. Every other card is cleared.
+    """
+    mc_date = category_dates.get(MY_COLLECTION_CATEGORY)
+    in_date = category_dates.get(constants.INCOMING_CATEGORY)
+    stale = incoming_rows is not None and mc_date is not None and in_date is not None and in_date < mc_date
+    usable = incoming_rows is not None and not stale
+
+    in_transit: dict[tuple[str, str | None], int] = {}
+    for row in incoming_rows if usable else []:
+        card_id = (row.get("Id") or "").strip()
+        qty = _parse_qty(row.get("Quantity"))
+        if not card_id or qty <= 0:
+            continue
+        key = (card_id, (row.get("Variant") or "").strip() or None)
+        in_transit[key] = max(in_transit.get(key, 0), qty)
+
+    tagged: set[int] = set()
+    if in_transit:
+        ids = {k[0] for k in in_transit}
+        found = {(c.card_id, c.variant): c for c in db.query(Card).filter(Card.card_id.in_(ids))}
+        for key, row_qty in in_transit.items():
+            card = found.get(key)
+            if card is None:
+                variant_label = f" ({key[1]})" if key[1] else ""
+                result.warnings.append(
+                    f"{constants.INCOMING_CATEGORY}: kort med Id '{key[0]}'{variant_label} finnes ikke i "
+                    "databasen (mangler i My Collection-eksporten) -- hoppet over."
+                )
+                continue
+            qty = min(row_qty, card.qty or 0)
+            if qty <= 0:
+                continue
+            card.in_transit_qty = qty
+            if card.in_transit_since is None:
+                card.in_transit_since = today
+            tagged.add(card.id)
+
+    cleared = 0
+    for card in db.query(Card).filter(
+        (Card.in_transit_qty.is_not(None)) | (Card.in_transit_since.is_not(None))
+    ):
+        if card.id in tagged:
+            continue
+        if card.in_transit:
+            cleared += 1
+        card.in_transit_qty = None
+        card.in_transit_since = None
+    if not usable and cleared:
+        result.warnings.append(INCOMING_CLEARED_WARNING)
 
 
 def _pick_category_files(

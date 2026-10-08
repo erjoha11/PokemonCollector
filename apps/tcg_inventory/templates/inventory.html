@@ -43,6 +43,12 @@
     Duplicates only
   </label>
 
+  <label class="unowned-toggle" title="Cards tagged Incoming in Dex: paid for, not received yet">
+    <input type="checkbox" name="transit" value="1" {{ 'checked' if transit }}
+           hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
+    On the way only
+  </label>
+
   <label class="unowned-toggle">
     <input type="checkbox" name="unowned" value="1" {{ 'checked' if unowned }}
            hx-get="/inventory" hx-target="#inventory-results" hx-push-url="true" hx-include="closest form">
@@ -55,7 +61,7 @@
   {% if rarity %}
   <span class="muted">
     Filtered by rarity: {{ rarity }}
-    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&language={{ language | urlencode }}&unowned={{ '1' if unowned else '' }}">Clear filter</a>
+    <a href="/inventory?q={{ q | urlencode }}&series={{ series | urlencode }}&set={{ set | urlencode }}&collection={{ collection | urlencode }}&binder={{ binder | urlencode }}&dup={{ '1' if dup else '' }}&transit={{ '1' if transit else '' }}&language={{ language | urlencode }}&unowned={{ '1' if unowned else '' }}">Clear filter</a>
   </span>
   {% endif %}
 </form>

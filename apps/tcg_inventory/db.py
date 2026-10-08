@@ -89,7 +89,8 @@ class Base(DeclarativeBase):
 # 14: job_locks (single-flight guard for dex-sync, #340)
 # 15: set_checklists, set_checklist_cards, master_cards.rarity/image_url (#368)
 # 16: card_lists, card_list_items (want and sale lists, #370)
-CURRENT_SCHEMA_VERSION = 16
+# 17: cards.in_transit_qty/in_transit_since ("On the way" status from Dex Incoming, #382)
+CURRENT_SCHEMA_VERSION = 17
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,

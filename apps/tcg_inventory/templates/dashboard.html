@@ -66,6 +66,12 @@
 {% block content %}
 <h1>Dashboard</h1>
 
+{#- Copies paid for but not received yet (Dex "Incoming", issue #382). They
+    still count in every figure below; this just says how much is on its way. #}
+{% if in_transit and in_transit.count %}
+<p class="dashboard-transit"><a href="/inventory?transit=1" title="Tagged Incoming in Dex: paid for, not received yet. Counted as owned everywhere, but can't be sold until they arrive.">{{ in_transit.count }} card{{ '' if in_transit.count == 1 else 's' }} on the way · {{ in_transit.value | kr }}</a></p>
+{% endif %}
+
 {% include "partials/kpi_module.html" %}
 
 <div class="breakdown-grid">

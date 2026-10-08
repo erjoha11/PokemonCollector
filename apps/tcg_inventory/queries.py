@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session, selectinload
 import constants
 import pricing
 from models import Card, CardPrice, CardSnapshot, FavoritePokemon, Listing, PokemonAlias, Set, Transaction
+from models import print_in_hand_spares
 from models import listing_cards
 
 # Series with no research done in set_release_order yet sort after every
@@ -189,6 +190,17 @@ def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
         "duplicate_value": duplicate_value,
         "avg_unique_value": (unique_value / qty_unique) if qty_unique else 0.0,
         "avg_physical_value": (total_value / qty_physical) if qty_physical else 0.0,
+    }
+
+
+def in_transit_summary(cards: list[Card]) -> dict:
+    """The Dashboard's "N cards on the way · X kr" line (issue #382): copies
+    paid for but not received yet, and their market value. Computed, never
+    stored; the copies still count as owned everywhere else."""
+    on_the_way = [c for c in cards if c.in_transit]
+    return {
+        "count": sum(c.in_transit for c in on_the_way),
+        "value": sum(c.in_transit * (c.display_price or 0.0) for c in on_the_way),
     }
 
 
@@ -1776,7 +1788,9 @@ _TRACK_RANK = {t: i for i, t in enumerate(MASTER_SET_TRACK_LABELS)}
 def print_spares(owned_qty: int) -> int:
     """Spares of one print from the summed qty of every Card linked to its
     master card: every copy beyond the first, `max(sum(qty) - 1, 0)`. The
-    one definition the set page and sale lists (#370) share."""
+    ownership figure; what the set page and sale lists (#370) show and sell
+    is the in-hand one (`MasterSetSlot.spares`, models.print_in_hand_spares,
+    issue #382)."""
     return max(owned_qty - 1, 0)
 
 
@@ -1810,11 +1824,43 @@ class MasterSetSlot:
         return self.cards[0] if self.cards else None
 
     @property
+    def in_hand_qty(self) -> int:
+        """Copies of this print in hand (Card.in_hand_qty summed, #382)."""
+        return sum(c.in_hand_qty for c in self.cards)
+
+    @property
+    def in_transit(self) -> int:
+        """Copies of this print tagged Incoming in Dex (issue #382): owned
+        (they count for `owned` / completion) but not in hand."""
+        return sum(c.in_transit for c in self.cards)
+
+    @property
+    def transit_card(self):
+        """The first in-transit Card of the print (for its "On the way"
+        badge), or None."""
+        return next((c for c in self.cards if c.in_transit), None)
+
+    @property
     def spares(self) -> int:
-        """Every copy beyond the first of this print, counted per master
-        card (epic #366, decision 4): two Dex rows on one print still keep
-        only one copy for the master set. See print_spares."""
-        return print_spares(self.owned_qty)
+        """Duplicates you can sell: every copy *in hand* beyond the first of
+        this print, counted per master card (epic #366, decision 4: two Dex
+        rows on one print still keep only one copy for the master set).
+        Copies on the way aren't counted until they arrive (issue #382,
+        models.print_in_hand_spares); see `spares_on_the_way`."""
+        return print_in_hand_spares(self.cards)
+
+    @property
+    def spares_on_the_way(self) -> int:
+        """Duplicates that are still on the way: the ownership figure
+        (`print_spares`) minus the in-hand one."""
+        return print_spares(self.owned_qty) - self.spares
+
+    @property
+    def in_hand_card(self):
+        """The Card with most copies in hand (what a finn.no ad or /sales
+        link should open), or None when every copy is on the way."""
+        cards = [c for c in self.cards if c.in_hand_qty > 0]
+        return min(cards, key=lambda c: (-c.in_hand_qty, c.id)) if cards else None
 
     @property
     def price(self) -> float | None:
@@ -1874,6 +1920,11 @@ class MasterSetDetail:
         return sum(s.spare_value for s in self.slots)
 
     @property
+    def spares_on_the_way(self) -> int:
+        """Duplicates not counted in `spares` because they're on the way (#382)."""
+        return sum(s.spares_on_the_way for s in self.slots)
+
+    @property
     def missing(self) -> list[MasterSetSlot]:
         """Missing prints that count toward the master set, printed order."""
         return [s for s in self.slots if s.counts and not s.owned]
@@ -1892,7 +1943,8 @@ def master_set_detail(db: Session, language: str, set_code: str) -> MasterSetDet
       qty >= 1. Each track's X/Y is over checklist prints, so it can't pass
       100%; the master set is every print with `counts_toward_completion`
       (Master Ball prints are listed but never count).
-    - Spares per print = max(sum(qty) - 1, 0), on any track.
+    - Spares per print = max(sum(in-hand qty) - 1, 0), on any track: copies
+      on the way (#382) count as owned but not as spares.
     - Unmatched = owned cards of this (language, set_code) linked to no
       checklist print: linked to another master card of the set, or not
       linked at all (then matched on their Dex card_id).
@@ -2097,8 +2149,9 @@ def collections_overview(db: Session) -> list[CollectionOverviewRow]:
 
     Figures follow `/collections/{id}`: cards owned (copies) and total value
     over every card tagged with the collection. Duplicates is the master
-    set's per-print, set-wide figure (`MasterSetDetail.spares`) for each set
-    whose home this is, plus qty - 1 per card in every other set section.
+    set's per-print, set-wide figure (`MasterSetDetail.spares`, in hand
+    only since #382, matching the block) for each set whose home this is,
+    plus qty - 1 per card in every other set section.
     All computed, nothing stored."""
     from models import Collection
 

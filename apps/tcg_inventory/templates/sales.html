@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/macros.html" import listed_badge %}
+{% from "partials/macros.html" import listed_badge, transit_badge %}
 {% block title %}Sell on finn.no – TCG Inventory{% endblock %}
 {% block content %}
 <h1>Sell on finn.no</h1>
@@ -42,10 +42,28 @@
       </thead>
       <tbody>
         {% for card in cards %}
-        <tr>
+        {#- "On the way" (#382): a card with no copy in hand has no form
+            fields at all (the server skips it too); a partly in-transit one
+            is muted, its qty capped at the copies in hand. #}
+        {% if card.fully_in_transit %}
+        <tr class="sale-row-transit">
+          <td>
+            {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }}) {{ transit_badge(card) }}
+            <div class="listed-warning">On the way — can't be sold until it arrives. Left out of the ad.</div>
+          </td>
+          <td class="num">{{ card.qty }}</td>
+          <td class="num muted">–</td>
+          <td></td>
+          <td></td>
+        </tr>
+        {% else %}
+        <tr{{ ' class="sale-row-transit"' | safe if card.in_transit }}>
           <td>
             <input type="hidden" name="card_id" value="{{ card.id }}">
             {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }})
+            {%- if card.in_transit %} {{ transit_badge(card) }}
+            <div class="listed-warning">{{ card.in_hand_qty }} in hand; the rest is on the way</div>
+            {%- endif %}
             {%- if card.id in listed_by_card %}
             {{ listed_badge(listed_by_card[card.id]) }}
             <div class="listed-warning">Already in an active listing</div>
@@ -53,7 +71,7 @@
           </td>
           <td class="num">{{ card.qty }}</td>
           <td class="num">
-            <input type="number" name="qty" value="1" min="1" max="{{ card.qty }}" style="width: 4em;">
+            <input type="number" name="qty" value="1" min="1" max="{{ card.in_hand_qty or card.qty }}" style="width: 4em;">
           </td>
           <td>
             <select name="condition">
@@ -67,12 +85,17 @@
             <input type="number" name="price" value="{{ card.display_price | round(0) if card.display_price is not none else '' }}" step="1" style="width: 6em;">
           </td>
         </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
   </div>
   <p class="warnings" role="alert" hidden data-form-error></p>
+  {% if cards | rejectattr('fully_in_transit') | list %}
   <button type="submit">Generate ad</button>
+  {% else %}
+  <button type="submit" disabled title="Every selected card is on the way">Generate ad</button>
+  {% endif %}
 </form>
 
 <div id="ad-draft"></div>

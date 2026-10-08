@@ -10,12 +10,9 @@ import re
 MY_COLLECTION_CATEGORY = "My Collection"
 
 # Categories that must always be fully ignored on import -- never turned into
-# a collection, a binder, or anything else. "Incoming" is the user's Dex
-# folder of won-but-not-yet-arrived cards (added at qty 0, removed on
-# arrival); Dex doesn't export qty-0 rows, so its only exported rows are cards
-# already in My Collection, and "what's on the way" lives in Dex and the
-# Facebook wins inbox instead (#309, #311).
-EXCLUDED_CATEGORIES_EXACT = {"Wishlist", "Incoming"}
+# a collection, a binder, or anything else. ("Incoming" used to be here too,
+# #311; since #382 it's a status category, see STATUS_CATEGORIES below.)
+EXCLUDED_CATEGORIES_EXACT = {"Wishlist"}
 EXCLUDED_CATEGORIES_PREFIX = ("151 Fullarts",)
 
 # Dex folder names that route to `binder_id` instead of becoming a collection.
@@ -82,6 +79,25 @@ def is_excluded_category(category: str) -> bool:
 
 def is_binder_category(category: str) -> bool:
     return category in BINDER_CATEGORIES
+
+
+# Dex folders that set a per-card *status* instead of becoming a collection
+# or a binder (issue #382) -- the third routing class next to collections and
+# binders. "Incoming" is the user's Dex folder of cards that are paid for but
+# not yet received: he raises the card's qty in Dex as soon as it's paid and
+# tags it Incoming; removing the tag is the "in hand" signal (the qty change
+# is not). Its qty > 0 rows set Card.in_transit_qty / in_transit_since (see
+# importer._apply_in_transit); qty-0 rows (won, not yet paid) are ignored and
+# never create cards. This reverses #311, which excluded Incoming back when
+# its cards sat at qty 0 and so never reached My Collection. Unlike every
+# other category, an Incoming export missing from (or older than) a sync's
+# My Collection export counts as empty -- see the README's business rule 5.
+INCOMING_CATEGORY = "Incoming"
+STATUS_CATEGORIES = {INCOMING_CATEGORY}
+
+
+def is_status_category(category: str) -> bool:
+    return category in STATUS_CATEGORIES
 
 
 # Condition vocabulary for `Card.condition` (see models.py) and generated

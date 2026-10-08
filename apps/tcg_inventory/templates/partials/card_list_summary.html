@@ -10,10 +10,10 @@
   <div class="collection-kpis list-kpis">
     <div><span class="tx-kpi-label">Items</span><span class="tx-kpi-value">{{ detail.items | length }}</span></div>
     {% if want %}
-    <div><span class="tx-kpi-label">Est. cost to complete {{ info('Market price × copies still missing (qty on the list minus copies you own), summed over the list. Items with no price data are left out.', below=true) }}</span>
+    <div><span class="tx-kpi-label">Est. cost to complete {{ info('Market price × copies still missing (qty on the list minus copies you own; copies on the way count as owned), summed over the list. Items with no price data are left out.', below=true) }}</span>
       <span class="tx-kpi-value">{{ detail.est_total | kr }}</span></div>
     {% else %}
-    <div><span class="tx-kpi-label">Est. value of spares {{ info('Market price × copies you can sell: qty on the list, capped at your spares (every copy beyond the first of each print). Items with no price data are left out.', below=true) }}</span>
+    <div><span class="tx-kpi-label">Est. value of spares {{ info('Market price × copies you can sell: qty on the list, capped at your spares in hand (every copy beyond the first of each print; copies on the way count once they arrive). Items with no price data are left out.', below=true) }}</span>
       <span class="tx-kpi-value">{{ detail.est_total | kr }}</span></div>
     {% endif %}
     <div><span class="tx-kpi-label">Status</span><span class="tx-kpi-value list-status-summary">{{ detail.summary or 'Empty' }}</span></div>
@@ -46,7 +46,7 @@
 
   {% if detail.text_items %}
   <div class="list-copy">
-    <span class="tx-kpi-label">Copy as text {{ info(('Items still wanted (not “Got it”)' if want else 'Items you still own (not “Sold out”)') ~ ', one line each, with the target price if set, else the market price.', below=true) }}</span>
+    <span class="tx-kpi-label">Copy as text {{ info(('Items still wanted (not “Got it” or “On the way”)' if want else 'Items you still own (not “Sold out”)') ~ ', one line each, with the target price if set, else the market price.', below=true) }}</span>
     <textarea id="list-copy-text" rows="{{ [detail.text_items | length + 1, 10] | min }}" readonly>{{ detail.text }}</textarea>
     <button type="button" class="secondary" onclick="navigator.clipboard.writeText(document.getElementById('list-copy-text').value)">Copy</button>
   </div>
