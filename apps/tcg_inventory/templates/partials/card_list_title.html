@@ -1,0 +1,18 @@
+{#- A list's heading (name, kind, note), or its in-place rename form
+    (issue #370). Swapped as a whole (#list-title). #}
+<div id="list-title" class="list-title">
+  {% if editing %}
+  <form class="list-rename-form" method="post" action="/lists/{{ card_list.id }}/rename"
+        hx-post="/lists/{{ card_list.id }}/rename" hx-target="#list-title" hx-swap="outerHTML">
+    <label>Name <input type="text" name="name" value="{{ card_list.name }}" class="tx-input-lg" required></label>
+    <label>Note <input type="text" name="note" value="{{ card_list.note or '' }}" class="tx-input-lg"></label>
+    <button type="submit">Save</button>
+    <button type="button" class="secondary" hx-get="/lists/{{ card_list.id }}/title" hx-target="#list-title" hx-swap="outerHTML">Cancel</button>
+    <p class="warnings" role="alert" hidden data-form-error></p>
+  </form>
+  {% else %}
+  <h1>{{ card_list.name }} <span class="tx-platform-badge list-kind-badge">{{ list_kinds[card_list.kind] }}</span></h1>
+  {% if card_list.note %}<p class="muted list-note">{{ card_list.note }}</p>{% endif %}
+  <button type="button" class="secondary list-rename-button" hx-get="/lists/{{ card_list.id }}/title?edit=1" hx-target="#list-title" hx-swap="outerHTML">Rename</button>
+  {% endif %}
+</div>

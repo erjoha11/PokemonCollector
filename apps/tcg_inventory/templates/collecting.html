@@ -2,9 +2,8 @@
 {% from "partials/macros.html" import info %}
 {% block title %}Sets & lists – TCG Inventory{% endblock %}
 {% block content %}
-{#- The collecting module's landing page (issue #369, epic #366). Tracked
-    sets now; the Lists section (want / sale lists) comes with #370 and goes
-    below it. #}
+{#- The collecting module's landing page (issue #369, epic #366): Tracked
+    sets, then the want / sale lists (#370). #}
 <h1>Sets &amp; lists</h1>
 
 <section class="card collecting-section" id="tracked-sets" aria-labelledby="tracked-sets-heading">
@@ -25,5 +24,44 @@
   {% else %}
   <p class="muted collecting-empty">No set is tracked yet. A set gets a checklist (the list of every print it should contain) from TCGdex with <code>set_checklist_seed.py</code>, e.g. <code>python set_checklist_seed.py --set ja:sv2a</code>; see the README's "Master sets / checklists".</p>
   {% endif %}
+</section>
+
+<section class="card collecting-section" id="lists" aria-labelledby="lists-heading">
+  <h2 id="lists-heading">Lists {{ info("Your own lists of prints: a want list for cards to buy, a sale list for spares to sell. Fill them from a set page (Add N missing / Add N spares). Status (Missing, Got it, Listed, ...) follows your cards after every Dex sync; nothing is added or removed by itself.", below=true) }}</h2>
+  <div class="collecting-lists">
+    {% for kind, lists in [('want', want_lists), ('sale', sale_lists)] %}
+    <div class="collecting-lists-kind" id="lists-{{ kind }}">
+      <h3>{{ 'Want' if kind == 'want' else 'Sale' }}</h3>
+      {% if lists %}
+      <table class="collecting-lists-table">
+        <thead><tr><th>List</th><th class="num">Items</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for d in lists %}
+          <tr>
+            <td><a href="/lists/{{ d.card_list.id }}">{{ d.card_list.name }}</a></td>
+            <td class="num">{{ d.items | length }}</td>
+            <td class="muted">{{ d.summary or 'Empty' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="muted">No {{ list_kinds[kind] | lower }}s yet.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <form class="list-new-form" method="post" action="/lists" hx-post="/lists">
+    <h3>New list</h3>
+    <label>Name <input type="text" name="name" class="tx-input-lg" required></label>
+    <fieldset class="list-new-kind">
+      <legend class="tx-kpi-label">Kind (fixed once created)</legend>
+      {% for key, label in list_kinds.items() %}
+      <label><input type="radio" name="kind" value="{{ key }}"{% if loop.first %} checked{% endif %}> {{ label }}</label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">Create list</button>
+    <p class="warnings" role="alert" hidden data-form-error></p>
+  </form>
 </section>
 {% endblock %}

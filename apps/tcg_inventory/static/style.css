@@ -1972,6 +1972,68 @@ html.card-modal-open { overflow: hidden; }
   color: var(--muted);
 }
 
+/* ---- Want and sale lists (/collecting Lists, /lists/{id}, the set
+   page's "Add to list" panel; #370) ---- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.collecting-lists { display: flex; flex-wrap: wrap; gap: 0.5rem 2rem; }
+.collecting-lists-kind { flex: 1 1 280px; min-width: 0; }
+.collecting-section h3 { font-size: 0.95rem; margin: 0.5rem 0 0.4rem; }
+.list-new-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem 1rem; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.list-new-form h3 { flex-basis: 100%; margin: 0; }
+.list-new-kind { border: none; margin: 0; padding: 0; display: flex; gap: 0.75rem; align-items: center; }
+.list-new-kind legend { float: left; margin-right: 0.5rem; }
+.list-new-form .warnings, .set-list-add .warnings { flex-basis: 100%; margin: 0; }
+.set-list-add-wrap { margin: 0 0 0.75rem; }
+.set-list-add { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1.25rem; margin-top: 0.3rem; }
+.set-list-add-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.set-list-add-form button { padding: 0.4rem 0.8rem; }
+.set-list-add-form button:disabled { opacity: 0.5; cursor: default; }
+.set-list-add-status { flex-basis: 100%; margin: 0; min-height: 1.2em; font-size: 0.85rem; }
+.list-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.75rem; }
+.list-title h1 { margin-bottom: 0.25rem; }
+.list-note { flex-basis: 100%; order: 3; margin: 0; }
+.list-rename-button { padding: 0.3rem 0.7rem; font-size: 0.8rem; }
+.list-rename-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.5rem; margin: 0.5rem 0; }
+.list-kind-badge { font-size: 0.7rem; vertical-align: middle; }
+.list-unpriced { margin: 0.25rem 0 0; font-size: 0.85rem; }
+.list-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-top: 0.75rem; }
+.list-toolbar form { margin: 0; }
+.list-copy { margin-top: 0.75rem; }
+.list-copy textarea { display: block; width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 0.82rem; margin: 0.3rem 0 0.4rem; }
+.list-status-summary { font-size: 0.95rem; }
+.card-list-table td { vertical-align: middle; }
+.card-list-thumb { width: 44px; }
+.card-list-thumb img { width: 40px; display: block; border-radius: 3px; }
+.card-list-thumb .card-view-trigger { padding: 0; background: none; border: none; }
+.card-list-ghost { filter: grayscale(1); opacity: 0.35; }
+.card-list-unowned { font-style: italic; color: var(--ink-secondary); }
+.card-list-meta { font-size: 0.78rem; }
+.card-list-actions { white-space: nowrap; text-align: right; }
+.card-list-actions button { padding: 0.3rem 0.65rem; font-size: 0.8rem; }
+.list-delete-form { margin-top: 1rem; }
+/* Status badges: text + colour, never colour alone. */
+.list-status {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.list-status-missing { border: 1px dashed var(--border-strong); color: var(--muted); font-weight: 500; }
+.list-status-got, .list-status-available { background: rgba(20, 150, 110, 0.14); color: #0d7a57; }
+.list-status-partial, .list-status-short { background: rgba(214, 150, 20, 0.16); color: #8a5a00; }
+.list-status-unmatched { background: rgba(120, 90, 200, 0.14); color: #6a3fb0; }
+.list-status-listed { background: rgba(42, 120, 214, 0.12); color: #1d5bb0; }
+.list-status-sold_out { background: rgba(200, 50, 50, 0.12); color: #a12a2a; }
+
 /* ---- Inventory pagination + column chooser ---- */
 .inventory-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin-bottom: 0.5rem; }
 .inventory-toolbar p { margin: 0; }

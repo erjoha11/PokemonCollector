@@ -1,0 +1,48 @@
+{% from "partials/macros.html" import card_view_attrs, card_link %}
+{#- One list item row (issue #370): display, or (editing) the in-place edit
+    row for qty / target price / note. Swapped as a whole (hx-target
+    "closest tr", outerHTML). Context: view (card_lists.ListItemView),
+    card_list, editing. A print you don't own has no Card, so it's never a
+    card link (no /cards/None): its name and photo come from the master
+    card. #}
+{%- set item = view.item %}
+{%- set row_url = '/lists/' ~ card_list.id ~ '/items/' ~ item.id %}
+{%- set set_url = master_set_url(view.master.language, view.master.set_code) if view.has_checklist else none %}
+<tr id="list-item-{{ item.id }}" class="card-list-row{{ ' card-list-row-editing' if editing }}">
+  <td class="card-list-thumb">
+    {%- if view.image_url %}
+    {%- if view.card %}<button type="button" class="card-view-trigger" {{ card_view_attrs(view.card) }} aria-label="Show {{ view.name }}"><img src="{{ view.image_url }}" alt="" loading="lazy"></button>
+    {%- else %}<img class="card-list-ghost" src="{{ view.image_url }}" alt="" loading="lazy">{% endif %}
+    {%- endif %}
+  </td>
+  <td class="card-list-card-cell">
+    {% if view.card %}{{ card_link(view.card) }}{% else %}<span class="card-list-unowned">{{ view.name or view.slot.number_label }}</span>{% endif %}
+    <div class="muted card-list-meta">{{ view.print_label }} · {% if set_url %}<a href="{{ set_url }}">{{ view.set_label }}</a>{% else %}{{ view.set_label }}{% endif %}</div>
+  </td>
+  {% if editing %}
+  <td class="num"><input type="number" name="qty" min="1" step="1" value="{{ item.qty }}" class="tx-input-xs" aria-label="Qty"></td>
+  {% else %}
+  <td class="num">{{ item.qty }}{% if card_list.kind == 'sale' %}<div class="muted card-list-meta" title="Copies beyond the first of this print">{{ view.spares }} spare{{ 's' if view.spares != 1 }}</div>{% elif view.owned_qty %}<div class="muted card-list-meta">own {{ view.owned_qty }}</div>{% endif %}</td>
+  {% endif %}
+  <td>
+    <span class="list-status list-status-{{ view.status }}">{{ view.status_label }}</span>
+    {%- if view.status == 'unmatched' and set_url %} <a href="{{ set_url }}#unmatched" class="card-list-meta">See Unmatched</a>{% endif %}
+    {%- if view.status == 'listed' and view.listing_ids %} <a href="/orders/listings#listing-{{ view.listing_ids[0] }}" class="card-list-meta">Open listing</a>{% endif %}
+  </td>
+  <td class="num">{% if view.price is not none %}{{ view.price | kr }}{% else %}<span class="muted" title="No price data for this print">—</span>{% endif %}</td>
+  {% if editing %}
+  <td class="num"><input type="text" inputmode="decimal" name="target_price" value="{{ '%g' % item.target_price if item.target_price is not none else '' }}" class="tx-input-sm" aria-label="Target price (kr)"></td>
+  <td><input type="text" name="note" value="{{ item.note or '' }}" class="tx-input-lg" aria-label="Note"></td>
+  <td class="card-list-actions">
+    <button type="button" hx-post="{{ row_url }}" hx-include="closest tr" hx-target="closest tr" hx-swap="outerHTML">Save</button>
+    <button type="button" class="secondary" hx-get="{{ row_url }}" hx-target="closest tr" hx-swap="outerHTML">Cancel</button>
+  </td>
+  {% else %}
+  <td class="num">{% if item.target_price is not none %}{{ item.target_price | kr }}{% endif %}</td>
+  <td>{{ item.note or '' }}</td>
+  <td class="card-list-actions">
+    <button type="button" class="secondary" hx-get="{{ row_url }}?edit=1" hx-target="closest tr" hx-swap="outerHTML" aria-label="Edit {{ view.name }}">Edit</button>
+    <button type="button" class="secondary" hx-post="{{ row_url }}/delete" hx-target="closest tr" hx-swap="outerHTML" aria-label="Remove {{ view.name }} from the list">Remove</button>
+  </td>
+  {% endif %}
+</tr>

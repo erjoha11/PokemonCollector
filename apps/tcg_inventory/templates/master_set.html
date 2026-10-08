@@ -54,6 +54,11 @@
   <p class="muted master-set-count">{{ slots | length }} print{{ 's' if slots | length != 1 }}{% if track == 'all' and master_ball_track %} <span>(Master Ball prints hidden: not collected, pick the track to see them)</span>
   {%- elif track == 'master_ball' and master_ball_track %} · Master Ball <span>(not collected, never part of the master set)</span>: {{ master_ball_track.owned }} / {{ master_ball_track.total }} owned{% endif %}</p>
 
+  <div class="set-list-add-wrap">
+    <span class="tx-kpi-label">Add to a list {{ info("Adds the prints this filter shows to a want or sale list: missing ones (1 copy each) or ones with spares (qty = spare count). Master Ball prints only when their track is picked. A print already on the list is left as it is. Lists never change your cards.", below=true) }}</span>
+    {% include "partials/set_list_add.html" %}
+  </div>
+
   {% if slots %}
   <div class="card-gallery">
     {% for slot in slots %}

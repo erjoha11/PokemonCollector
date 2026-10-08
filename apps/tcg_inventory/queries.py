@@ -1773,6 +1773,19 @@ MASTER_SET_TRACK_LABELS = {
 _TRACK_RANK = {t: i for i, t in enumerate(MASTER_SET_TRACK_LABELS)}
 
 
+def print_spares(owned_qty: int) -> int:
+    """Spares of one print from the summed qty of every Card linked to its
+    master card: every copy beyond the first, `max(sum(qty) - 1, 0)`. The
+    one definition the set page and sale lists (#370) share."""
+    return max(owned_qty - 1, 0)
+
+
+def owned_cards_of(master) -> list:
+    """A master card's owned (qty > 0) Cards, most copies first: the first
+    is the one a tile or list row opens."""
+    return sorted((c for c in master.cards if c.qty > 0), key=lambda c: (-c.qty, c.id))
+
+
 @dataclass
 class MasterSetSlot:
     """One checklist print and the owned cards linked to its master card."""
@@ -1800,8 +1813,8 @@ class MasterSetSlot:
     def spares(self) -> int:
         """Every copy beyond the first of this print, counted per master
         card (epic #366, decision 4): two Dex rows on one print still keep
-        only one copy for the master set."""
-        return max(self.owned_qty - 1, 0)
+        only one copy for the master set. See print_spares."""
+        return print_spares(self.owned_qty)
 
     @property
     def price(self) -> float | None:
@@ -1905,7 +1918,7 @@ def master_set_detail(db: Session, language: str, set_code: str) -> MasterSetDet
     for member in checklist.cards:
         master = member.master_card
         member_ids.add(master.id)
-        owned_cards = sorted((c for c in master.cards if c.qty > 0), key=lambda c: (-c.qty, c.id))
+        owned_cards = owned_cards_of(master)
         slots.append(
             MasterSetSlot(
                 master=master,
@@ -1965,6 +1978,19 @@ def master_set_detail(db: Session, language: str, set_code: str) -> MasterSetDet
         unmatched=unmatched,
         korean_proxy=any(pricing.is_jp_price_proxy(c) for c in owned_cards),
     )
+
+
+def filter_master_set_slots(detail: MasterSetDetail, track: str = "all", show: str = "all") -> list[MasterSetSlot]:
+    """The set page's Track / Show filter. `track="all"` is every print that
+    counts toward the master set (so Master Ball only when picked); `show`
+    is "all" / "missing" / "owned". Shared by the grid and its bulk "Add to
+    list" buttons (#370), so a button's count is what the grid shows."""
+    slots = [s for s in detail.slots if (s.counts if track == "all" else s.track == track)]
+    if show == "missing":
+        slots = [s for s in slots if not s.owned]
+    elif show == "owned":
+        slots = [s for s in slots if s.owned]
+    return slots
 
 
 def tracked_sets(db: Session) -> list[MasterSetDetail]:

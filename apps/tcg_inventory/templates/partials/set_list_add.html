@@ -1,0 +1,33 @@
+{#- The set page's bulk "Add to list" panel (issue #370). Inside #set-grid,
+    so a filter pill swap re-renders it with counts for the new filter (the
+    same prints the grid shows). Server-side, idempotent; the forms hx-post
+    and swap this whole panel, whose status line is always rendered, so an
+    add can never silently do nothing. Context: add_missing, add_spares,
+    add_spare_copies, want_lists, sale_lists, add_message, add_selected,
+    language, set_code, track, show. #}
+{%- set action = master_set_url(language, set_code) ~ '/add-to-list' %}
+<div id="set-list-add" class="set-list-add">
+  {% for what, kind, count, lists in [('missing', 'want', add_missing | length, want_lists), ('spares', 'sale', add_spares | length, sale_lists)] %}
+  <form class="set-list-add-form" method="post" action="{{ action }}" hx-post="{{ action }}" hx-target="#set-list-add" hx-swap="outerHTML">
+    <input type="hidden" name="what" value="{{ what }}">
+    <input type="hidden" name="track" value="{{ track }}">
+    <input type="hidden" name="show" value="{{ show }}">
+    <button type="submit" class="secondary"{% if not count %} disabled{% endif %}>Add {{ count }} {{ what }}{% if what == 'spares' and count %} <span class="muted">({{ add_spare_copies }} cop{{ 'ies' if add_spare_copies != 1 else 'y' }})</span>{% endif %} to</button>
+    <select name="list_id" aria-label="{{ list_kinds[kind] }}" onchange="this.form.elements.new_list_name.hidden = this.value !== 'new'">
+      {% for cl in lists %}<option value="{{ cl.id }}"{% if add_selected.get(kind) == cl.id %} selected{% endif %}>{{ cl.name }}</option>{% endfor %}
+      <option value="new"{% if not lists %} selected{% endif %}>New list…</option>
+    </select>
+    <input type="text" name="new_list_name" class="tx-input-lg" placeholder="New {{ list_kinds[kind] | lower }} name" aria-label="New {{ list_kinds[kind] | lower }} name"{% if lists %} hidden{% endif %}>
+    <p class="warnings" role="alert" hidden data-form-error></p>
+  </form>
+  {% endfor %}
+  <p id="set-list-add-status" class="set-list-add-status" role="status" aria-live="polite">
+    {%- if add_message -%}
+    {%- if add_message.added or add_message.already -%}
+    Added {{ add_message.added }}{% if add_message.already %}, {{ add_message.already }} already on list{% endif %}: <a href="/lists/{{ add_message.list.id }}">{{ add_message.list.name }}</a>
+    {%- else -%}
+    Nothing to add with this filter.
+    {%- endif -%}
+    {%- endif -%}
+  </p>
+</div>

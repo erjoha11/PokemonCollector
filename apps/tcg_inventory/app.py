@@ -36,6 +36,7 @@ load_dotenv(APP_DIR / ".env")
 
 import ads
 import auth
+import card_lists
 import cron_auth
 import job_locks
 import jobs
@@ -59,6 +60,8 @@ from form_validation import (
 from models import (
     Binder,
     Card,
+    CardList,
+    CardListItem,
     Collection,
     FavoritePokemon,
     ImportLog,
@@ -1186,15 +1189,25 @@ def _missing_list_text(detail: "queries.MasterSetDetail") -> str:
     return "\n".join(lines)
 
 
+templates.env.globals["master_set_url"] = _master_set_url
+templates.env.globals["list_kinds"] = card_lists.LIST_KINDS
+
+
 @app.get("/collecting")
 def collecting(request: Request):
     db = get_db_session()
     try:
         sets = queries.tracked_sets(db)
+        lists = card_lists.all_lists(db)
         return templates.TemplateResponse(
             request,
             "collecting.html",
-            {"sets": [(d, _master_set_url(d.checklist.language, d.checklist.set_code)) for d in sets]},
+            {
+                "sets": [(d, _master_set_url(d.checklist.language, d.checklist.set_code)) for d in sets],
+                "want_lists": [d for d in lists if d.kind == "want"],
+                "sale_lists": [d for d in lists if d.kind == "sale"],
+                "list_kinds": card_lists.LIST_KINDS,
+            },
         )
     finally:
         db.close()
@@ -1212,11 +1225,7 @@ def master_set_page(request: Request, language: str, set_code: str, track: str =
         detail = queries.master_set_detail(db, language, set_code)
         context = {"language": language, "set_code": set_code, "detail": detail, "track": track, "show": show}
         if detail is not None:
-            slots = [s for s in detail.slots if (s.counts if track == "all" else s.track == track)]
-            if show == "missing":
-                slots = [s for s in slots if not s.owned]
-            elif show == "owned":
-                slots = [s for s in slots if s.owned]
+            slots = queries.filter_master_set_slots(detail, track, show)
             track_pills = [("all", "All")] + [(t.key, t.label) for t in detail.tracks]
             context.update(
                 {
@@ -1233,9 +1242,311 @@ def master_set_page(request: Request, language: str, set_code: str, track: str =
                     "missing_text": _missing_list_text(detail),
                     "spares_sales_url": "/sales?"
                     + urlencode({"card_ids": [s.card.id for s in detail.spare_slots]}, doseq=True),
+                    **_list_add_context(db, slots),
                 }
             )
         return templates.TemplateResponse(request, "master_set.html", context)
+    finally:
+        db.close()
+
+
+# --------------------------------------------------------------------------
+# Want and sale lists (issue #370, epic #366): card_lists.py. Items are
+# master cards; every status is computed live. Lists never touch qty,
+# collections, binders or transactions.
+# --------------------------------------------------------------------------
+def _list_add_context(db: Session, slots: list, message: dict | None = None, selected: dict | None = None) -> dict:
+    """The set page's bulk "Add to list" panel. Its counts follow the
+    current Track / Show filter: `slots` are the prints the grid shows."""
+    lists = db.query(CardList).order_by(CardList.name, CardList.id).all()
+    spare_slots = [s for s in slots if s.spares]
+    return {
+        "add_missing": [s for s in slots if not s.owned],
+        "add_spares": spare_slots,
+        "add_spare_copies": sum(s.spares for s in spare_slots),
+        "want_lists": [cl for cl in lists if cl.kind == "want"],
+        "sale_lists": [cl for cl in lists if cl.kind == "sale"],
+        "add_message": message,
+        "add_selected": selected or {},
+    }
+
+
+@app.post("/sets/{language}/{set_code}/add-to-list")
+def master_set_add_to_list(
+    request: Request,
+    language: str,
+    set_code: str,
+    what: str = Form(...),
+    list_id: str = Form(""),
+    new_list_name: str = Form(""),
+    track: str = Form("all"),
+    show: str = Form("all"),
+):
+    """"Add N missing to [want list]" / "Add N spares to [sale list]" on the
+    set page. Server-side and filter-aware: the prints are the ones the
+    grid shows under `track` / `show` (so Master Ball only when its track is
+    shown); spares go in with qty = spare count. Idempotent: prints already
+    on the list are left alone and counted. Answers with the re-rendered
+    panel, whose always-present status line says what happened."""
+    track = track if track in MASTER_SET_TRACK_FILTERS else "all"
+    show = show if show in MASTER_SET_SHOW_FILTERS else "all"
+    if what not in ("missing", "spares"):
+        raise FormError("Pick missing cards or spares to add.")
+    kind = "want" if what == "missing" else "sale"
+    db = get_db_session()
+    try:
+        detail = queries.master_set_detail(db, language, set_code)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Set has no checklist")
+        slots = queries.filter_master_set_slots(detail, track, show)
+        if what == "missing":
+            entries = [(s.master.id, 1) for s in slots if not s.owned]
+        else:
+            entries = [(s.master.id, s.spares) for s in slots if s.spares]
+        if list_id == "new":
+            card_list = card_lists.create_list(db, new_list_name, kind)
+        else:
+            card_list = db.get(CardList, int(list_id)) if list_id.strip().isdigit() else None
+            if card_list is None:
+                raise FormError("Pick a list, or “New list…” with a name.")
+            if card_list.kind != kind:
+                raise FormError(
+                    f"“{card_list.name}” is a {card_lists.LIST_KINDS[card_list.kind].lower()}: "
+                    f"{what} go on a {card_lists.LIST_KINDS[kind].lower()}."
+                )
+        added, already = card_lists.add_items(db, card_list, entries, source=what)
+        db.commit()
+        if not request.headers.get("HX-Request"):
+            return RedirectResponse(_master_set_url(language, set_code, track=track, show=show), status_code=303)
+        message = {"list": card_list, "added": added, "already": already}
+        context = {
+            "language": language,
+            "set_code": set_code,
+            "track": track,
+            "show": show,
+            **_list_add_context(db, slots, message=message, selected={kind: card_list.id}),
+        }
+        return templates.TemplateResponse(request, "partials/set_list_add.html", context)
+    finally:
+        db.close()
+
+
+def _get_list(db: Session, list_id: int) -> CardList:
+    card_list = db.get(CardList, list_id)
+    if card_list is None:
+        raise HTTPException(status_code=404, detail="List not found")
+    return card_list
+
+
+def _get_list_item(db: Session, list_id: int, item_id: int) -> CardListItem:
+    item = db.get(CardListItem, item_id)
+    if item is None or item.list_id != list_id:
+        raise HTTPException(status_code=404, detail="List item not found")
+    return item
+
+
+def _list_url(list_id: int, hide_got: bool = False) -> str:
+    return f"/lists/{list_id}" + ("?hide_got=1" if hide_got else "")
+
+
+@app.post("/lists")
+def list_create(request: Request, name: str = Form(""), kind: str = Form(""), note: str = Form("")):
+    """The "New list" form on /collecting. The kind is fixed from here on."""
+    db = get_db_session()
+    try:
+        card_list = card_lists.create_list(db, name, kind, note)
+        db.commit()
+        url = _list_url(card_list.id)
+        if request.headers.get("HX-Request"):
+            return Response(status_code=200, headers={"HX-Redirect": url})
+        return RedirectResponse(url, status_code=303)
+    finally:
+        db.close()
+
+
+@app.get("/lists/{list_id}")
+def list_page(request: Request, list_id: int, hide_got: str = ""):
+    db = get_db_session()
+    try:
+        card_list = _get_list(db, list_id)
+        detail = card_lists.list_detail(db, card_list)
+        hide = card_list.kind == "want" and hide_got == "1"
+        rows = [v for v in detail.items if not (hide and v.status == "got")]
+        return templates.TemplateResponse(
+            request, "card_list.html", {"detail": detail, "card_list": card_list, "rows": rows, "hide_got": hide}
+        )
+    finally:
+        db.close()
+
+
+def _list_title_response(request: Request, card_list: CardList, editing: bool):
+    return templates.TemplateResponse(
+        request, "partials/card_list_title.html", {"card_list": card_list, "editing": editing}
+    )
+
+
+@app.get("/lists/{list_id}/title")
+def list_title(request: Request, list_id: int, edit: str = ""):
+    """The list's name/note heading, or (edit=1) its in-place rename form."""
+    db = get_db_session()
+    try:
+        return _list_title_response(request, _get_list(db, list_id), editing=edit == "1")
+    finally:
+        db.close()
+
+
+@app.post("/lists/{list_id}/rename")
+def list_rename(request: Request, list_id: int, name: str = Form(""), note: str = Form("")):
+    db = get_db_session()
+    try:
+        card_list = _get_list(db, list_id)
+        card_list.name = card_lists.clean_name(name)
+        card_list.note = note.strip() or None
+        db.commit()
+        if not request.headers.get("HX-Request"):
+            return RedirectResponse(_list_url(list_id), status_code=303)
+        response = _list_title_response(request, card_list, editing=False)
+        response.headers["HX-Trigger"] = LIST_CHANGED_EVENT  # the copy text is headed with the name
+        return response
+    finally:
+        db.close()
+
+
+def _navigate(request: Request, url: str):
+    """After a list write that changes the whole page: HX-Redirect for
+    htmx, a 303 for a plain form post."""
+    if request.headers.get("HX-Request"):
+        return Response(status_code=200, headers={"HX-Redirect": url})
+    return RedirectResponse(url, status_code=303)
+
+
+@app.post("/lists/{list_id}/delete")
+def list_delete(request: Request, list_id: int):
+    """Delete a list and its items (the button asks for confirmation
+    first). Cards, masterdata and everything else are untouched."""
+    db = get_db_session()
+    try:
+        db.delete(_get_list(db, list_id))
+        db.commit()
+        return _navigate(request, "/collecting")
+    finally:
+        db.close()
+
+
+@app.post("/lists/{list_id}/remove-got-it")
+def list_remove_got_it(request: Request, list_id: int, hide_got: str = Form("")):
+    """"Remove got-it items (N)": the one way items leave a want list in bulk."""
+    db = get_db_session()
+    try:
+        card_lists.remove_got_it(db, _get_list(db, list_id))
+        db.commit()
+        return _navigate(request, _list_url(list_id, hide_got == "1"))
+    finally:
+        db.close()
+
+
+@app.get("/lists/{list_id}/ad")
+def list_make_ad(list_id: int):
+    """"Make finn.no ad from this list": hands a sale list to the existing
+    /sales → /listings flow, one owned card per print (the print's card with
+    most copies). The list itself never builds an ad."""
+    db = get_db_session()
+    try:
+        ids = card_lists.list_detail(db, _get_list(db, list_id)).sale_card_ids
+        query = "?" + urlencode({"card_ids": ids}, doseq=True) if ids else ""
+        return RedirectResponse("/sales" + query, status_code=303)
+    finally:
+        db.close()
+
+
+# An htmx event a list write fires (HX-Trigger): the page's summary region
+# (totals, status counts, copy text) re-fetches itself on it, so an
+# in-place edit, a removal or a rename never leaves it stale. An event
+# rather than an out-of-band swap, because a <tr> response can't carry a
+# <div> along with it.
+LIST_CHANGED_EVENT = "list-changed"
+
+
+def _list_row_response(request: Request, db: Session, card_list: CardList, item_id: int, editing=False, changed=False):
+    """One table row: display, or (editing) the in-place edit row."""
+    detail = card_lists.list_detail(db, card_list)
+    view = next(v for v in detail.items if v.item.id == item_id)
+    response = templates.TemplateResponse(
+        request, "partials/card_list_row.html", {"card_list": card_list, "view": view, "editing": editing}
+    )
+    if changed:
+        response.headers["HX-Trigger"] = LIST_CHANGED_EVENT
+    return response
+
+
+@app.get("/lists/{list_id}/summary")
+def list_summary(request: Request, list_id: int, hide_got: str = ""):
+    """The list page's summary region (totals, status counts, actions,
+    copy text), re-fetched on LIST_CHANGED_EVENT."""
+    db = get_db_session()
+    try:
+        card_list = _get_list(db, list_id)
+        detail = card_lists.list_detail(db, card_list)
+        return templates.TemplateResponse(
+            request,
+            "partials/card_list_summary.html",
+            {"detail": detail, "card_list": card_list, "hide_got": card_list.kind == "want" and hide_got == "1"},
+        )
+    finally:
+        db.close()
+
+
+@app.get("/lists/{list_id}/items/{item_id}")
+def list_item_row(request: Request, list_id: int, item_id: int, edit: str = ""):
+    """An item's row, or (edit=1) its in-place edit row."""
+    db = get_db_session()
+    try:
+        card_list = _get_list(db, list_id)
+        _get_list_item(db, list_id, item_id)
+        return _list_row_response(request, db, card_list, item_id, editing=edit == "1")
+    finally:
+        db.close()
+
+
+@app.post("/lists/{list_id}/items/{item_id}")
+def list_item_save(
+    request: Request,
+    list_id: int,
+    item_id: int,
+    qty: str = Form("1"),
+    target_price: str = Form(""),
+    note: str = Form(""),
+):
+    """In-place edit of an item's qty, target price and note. Its print
+    and source never change."""
+    db = get_db_session()
+    try:
+        card_list = _get_list(db, list_id)
+        item = _get_list_item(db, list_id, item_id)
+        text_qty = qty.strip()
+        if not text_qty.isdigit() or int(text_qty) < 1:
+            raise FormError("Qty must be a whole number, 1 or more.")
+        item.qty = int(text_qty)
+        item.target_price = parse_optional_amount(target_price, "Target price")
+        item.note = note.strip() or None
+        db.commit()
+        return _list_row_response(request, db, card_list, item_id, changed=True)
+    finally:
+        db.close()
+
+
+@app.post("/lists/{list_id}/items/{item_id}/delete")
+def list_item_delete(request: Request, list_id: int, item_id: int):
+    """Remove one item. htmx gets an empty 200 (the row's outerHTML swap
+    removes it) and the summary refresh event."""
+    db = get_db_session()
+    try:
+        _get_list(db, list_id)
+        db.delete(_get_list_item(db, list_id, item_id))
+        db.commit()
+        if not request.headers.get("HX-Request"):
+            return RedirectResponse(_list_url(list_id), status_code=303)
+        return HTMLResponse("", headers={"HX-Trigger": LIST_CHANGED_EVENT})
     finally:
         db.close()
 
