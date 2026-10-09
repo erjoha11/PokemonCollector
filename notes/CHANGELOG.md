@@ -241,6 +241,22 @@ yet.
 
 ### tcg_inventory
 
+**"Incoming" instead of "On the way", dashboard Incoming row (#393)**
+- The in-transit badge says "Incoming" (overdue: "Incoming · 24 d"), and so
+  do the card page row, the Inventory "Incoming only" filter, the Dashboard
+  line "N cards incoming", the disabled sale checkbox, /sales and the
+  Facebook wins candidates. Want/sale list statuses still say "On the way".
+  `?transit=1` and the `in_transit_*` columns are unchanged.
+- The primary collection is no longer bold; the #389 order stays.
+- The Dashboard's Inventory breakdown has an Incoming row listing every
+  in-transit card, with a "shared with" badge naming its collections. It's
+  driven by the in-transit status, not a collection. An in-transit card
+  still counts in its own collection rows (or Bulk), and once in
+  Collections/Total.
+- The leftover prod "Incoming" collection (id 10) is kept but hidden
+  (`Collection.is_status`): no Dashboard row, never in a "shared with" /
+  "also in" badge or a Collections cell. No prod data change.
+
 **A card's collections in priority order, On the way first (#389)**
 - A card's collections are listed in priority order everywhere
   (`Card.collections_by_priority`). Ranks are read from
