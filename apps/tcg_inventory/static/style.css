@@ -695,14 +695,21 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .card-row-unowned {
   opacity: 0.55;
 }
-/* "shared with N" on a card listed under a collection it shares with others. */
+/* "shared with A, B +N" / "also in ..." on a card listed under a collection
+   it shares with others (macros.shared_badge): the names are links, the full
+   list is the title. Allowed to wrap so long collection names don't widen
+   the dashboard table or the gallery card. */
 .shared-badge {
   margin-left: 0.35rem;
   padding: 0.1rem 0.45rem;
   font-size: 0.65rem;
+  font-weight: 600;
   vertical-align: middle;
-  cursor: help;
+  white-space: normal;
+  max-width: 100%;
 }
+.shared-badge a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.shared-badge .shared-more { cursor: help; white-space: nowrap; }
 /* The deduplicated Total row closes the Inventory table. */
 .total-row td { border-top: 2px solid var(--border-strong); }
 .unowned-badge {

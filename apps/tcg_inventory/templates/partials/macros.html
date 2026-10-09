@@ -69,6 +69,16 @@ data-card-modal data-href="/cards/{{ card.id }}" data-name="{{ card.name }}"
    for a card in no collection. #}
 {% macro collection_links(card, empty='') %}{{ transit_badge(card) }}{% set ordered = card.collections_by_priority %}{% for c in ordered %}{% if loop.first and ordered | length > 1 %}<strong class="primary-collection" title="Primary collection"><a href="/collections/{{ c.id }}">{{ c.name }}</a></strong>{% else %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{% endif %}{{ ', ' if not loop.last }}{% else %}{{ empty | safe }}{% endfor %}{% endmacro %}
 
+{# "Shared" badge for a card listed under one collection that's also in
+   others (collection page "also in", dashboard "shared with"): names the
+   other collections as links in priority order (`collections_by_priority`),
+   the first `cap` visible and the rest as "+N", with the full list in the
+   title. `exclude` is the name of the collection whose page/row this is.
+   Renders nothing when there are no others. The links are plain
+   /collections/{id} links (no data-card-modal), siblings of the card link,
+   never nested in it. #}
+{% macro shared_badge(card, exclude, label, cap=2) %}{% set others = card.collections_by_priority | rejectattr('name', 'equalto', exclude) | list %}{% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | map(attribute='name') | join(', ') }}">{{ label }} {% for c in others[:cap] %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if others | length > cap %} <span class="shared-more">+{{ others | length - cap }}</span>{% endif %}</span>{% endif %}{% endmacro %}
+
 {% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 
 {# A small (i) icon with a hover/focus tooltip -- for a one-line "what does

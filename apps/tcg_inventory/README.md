@@ -1064,9 +1064,11 @@ without updating both the code and this doc.
 
    **Display order (#389).** Every place that lists a card's collections
    (Inventory's Collections column, the card page, the collection page's
-   "Also in" tooltip, the dashboard's "shared with" tooltip) goes through
+   "also in" badge, the dashboard's "shared with" badge) goes through
    one helper, `Card.collections_by_priority`: primary first, then by rank,
-   then by name. On Inventory and the card page the primary is bold with a
+   then by name. The two badges (`shared_badge` in `partials/macros.html`)
+   name the card's other collections as links, never the one being viewed:
+   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page the primary is bold with a
    "Primary collection" tooltip (only when the card has more than one), and
    an in-transit card's **On the way** badge (rule 1) leads, ahead of the
    primary; Incoming stays a status, not a collection link. **Since Phase 1

@@ -142,3 +142,87 @@ def test_collection_page_also_in_title_is_priority_ordered(client):
         unknown_id = s.query(Collection).filter(Collection.name == UNKNOWN).one().id
     html = client.get(f"/collections/{unknown_id}").text
     assert f'title="Also in: {ILLUSTRATOR}, {VINTAGE}, {GENERIC}"' in html
+
+
+# ── "Also in" / "shared with" badges name the other collections ──────────
+# (PR #390 follow-up): the first SHARED_CAP other collections as visible
+# links in priority order, the rest as "+N", the full list in the title,
+# never the collection whose page/row it is.
+
+SHARED_CAP = 2
+ALL_FOUR = [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN]  # Charizard's, in priority order
+
+
+def _collection_ids():
+    with db_module.SessionLocal() as s:
+        return {c.name: c.id for c in s.query(Collection)}
+
+
+def _expected_badge(label, others, ids):
+    visible = ", ".join(f'<a href="/collections/{ids[n]}">{n}</a>' for n in others[:SHARED_CAP])
+    more = f' <span class="shared-more">+{len(others) - SHARED_CAP}</span>' if len(others) > SHARED_CAP else ""
+    return (
+        f'<span class="tx-platform-badge shared-badge" title="Also in: {", ".join(others)}">'
+        f"{label} {visible}{more}</span>"
+    )
+
+
+def _dashboard_leaf_row(html, collection_name, card_name):
+    row_id = re.search(
+        rf'data-row-id="(coll-\d+)"[^>]*><span class="arrow">[^<]*</span> {re.escape(collection_name)}</button>', html
+    ).group(1)
+    for row in re.findall(rf'<tr class="grandchild-row[^"]*" data-group="{row_id}" hidden>.*?</tr>', html, re.S):
+        if f">{card_name}</a>" in row:
+            return row
+    raise AssertionError(f"{card_name} not listed under {collection_name}")
+
+
+def test_collection_page_also_in_badge_names_others_with_overflow(client):
+    _seed(client)
+    ids = _collection_ids()
+    for here in ALL_FOUR:
+        others = [n for n in ALL_FOUR if n != here]
+        html = client.get(f"/collections/{ids[here]}").text
+        badge = _expected_badge("also in", others, ids)
+        assert badge in html, here
+        # The current collection is never named, visibly or in the title.
+        shown = re.search(r'<span class="tx-platform-badge shared-badge"[^>]*>.*?</span>(?:</span>)?', html, re.S).group(0)
+        assert f">{here}</a>" not in shown
+        assert here not in re.search(r'title="Also in: ([^"]*)"', shown).group(1).split(", ")
+        assert f'href="/collections/{ids[here]}"' not in shown
+
+
+def test_dashboard_shared_with_badge_names_others_with_overflow(client):
+    _seed(client)
+    ids = _collection_ids()
+    html = client.get("/").text
+    for here in ALL_FOUR:
+        others = [n for n in ALL_FOUR if n != here]
+        row = _dashboard_leaf_row(html, here, "Charizard")
+        assert _expected_badge("shared with", others, ids) in row, here
+        assert f'href="/collections/{ids[here]}"' not in row
+        # Visible names in priority order, "+1" for the third.
+        assert _order(row, others[:SHARED_CAP])
+        assert '<span class="shared-more">+1</span>' in row
+        # The collection links sit next to the card link, not inside it.
+        assert re.search(r"<a [^>]*data-card-modal[^>]*>Charizard</a>", row)
+        assert not re.search(r"<a [^>]*>[^<]*<a ", row)
+
+
+def test_shared_badges_without_overflow_and_single_collection(client):
+    row = {"id": "c", "name": "Squirtle", "qty": 1}
+    seed_import(client, [
+        ("files", ("main.csv", make_csv("My Collection", [row, {"id": "d", "name": "Mew", "qty": 1}]), "text/csv")),
+        ("files", ("g.csv", make_csv(GENERIC, [row, {"id": "d", "name": "Mew", "qty": 1}]), "text/csv")),
+        ("files", ("v.csv", make_csv(VINTAGE, [row]), "text/csv")),
+        ("files", ("i.csv", make_csv(ILLUSTRATOR, [row]), "text/csv")),
+    ])
+    ids = _collection_ids()
+    # Exactly SHARED_CAP others: both visible, no "+N".
+    coll = client.get(f"/collections/{ids[GENERIC]}").text
+    assert _expected_badge("also in", [ILLUSTRATOR, VINTAGE], ids) in coll
+    assert "shared-more" not in coll
+    dash = client.get("/").text
+    assert _expected_badge("shared with", [ILLUSTRATOR, GENERIC], ids) in _dashboard_leaf_row(dash, VINTAGE, "Squirtle")
+    # Mew is only in GENERIC: no badge on its row.
+    assert "shared-badge" not in _dashboard_leaf_row(dash, GENERIC, "Mew")

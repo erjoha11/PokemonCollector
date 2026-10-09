@@ -208,7 +208,8 @@ def test_dashboard_shows_total_row_shared_badge_and_no_cost_line(client):
 
     assert "Total" in inventory and "total-row" in inventory
     # Pikachu is in Vintage + Komiya: listed (and marked shared) in both.
-    assert inventory.count("shared with 1") == 2
+    # The badge names the other collection (issue #389 follow-up).
+    assert inventory.count("shared with <a href=\"/collections/") == 2
     # Pikachu (2 x 100) and Bulbasaur (10) have no purchase price.
     assert "No purchase price" in html
     assert "2 cards" in html and "210 kr" in html
