@@ -68,7 +68,7 @@
     <tbody>
       {% for card in cards %}
       <tr{{ ' class="card-row-unowned"' | safe if card.qty == 0 }}>
-        <td>{% if card.fully_in_transit %}<input type="checkbox" class="sale-select" data-card-id="{{ card.id }}" disabled title="On the way: it can be sold once it arrives and the Incoming tag is removed in Dex" aria-label="On the way, can't be sold yet">{% else %}<input type="checkbox" class="sale-select" data-card-id="{{ card.id }}">{% endif %}</td>
+        <td>{% if card.fully_in_transit %}<input type="checkbox" class="sale-select" data-card-id="{{ card.id }}" disabled title="Incoming: it can be sold once it arrives and the Incoming tag is removed in Dex" aria-label="Incoming, can't be sold yet">{% else %}<input type="checkbox" class="sale-select" data-card-id="{{ card.id }}">{% endif %}</td>
         <td>{{ card_link(card) }}{{ transit_badge(card) }}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}{% if ripped_card_ids and card.id in ripped_card_ids %}<span class="tx-badge tx-badge-ripped ripped-flag" title="Pulled from a pack yourself">Ripped</span>{% endif %}{% if listed_by_card %}{{ listed_badge(listed_by_card.get(card.id)) }}{% endif %}</td>
         <td data-col="number">{{ card.number or '' }}</td>
         <td data-col="series">{{ card.series or '' }}</td>

@@ -718,7 +718,7 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
   font-size: 0.65rem;
   vertical-align: middle;
 }
-/* "On the way" (issue #382): a card tagged Incoming in Dex, paid for but
+/* "Incoming" (issue #382): a card tagged Incoming in Dex, paid for but
    not received. Same neutral pill as .unowned-badge -- a normal state, not
    an error -- until it's been on the way IN_TRANSIT_WARN_DAYS (21), when it
    takes .price-flag's amber warning tone and shows its age. */

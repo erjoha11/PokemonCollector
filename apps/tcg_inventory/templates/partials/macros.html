@@ -56,28 +56,31 @@ data-card-modal data-href="/cards/{{ card.id }}" data-name="{{ card.name }}"
    when the card is in several. Renders nothing for an empty/None value. #}
 {% macro listed_badge(listing_ids) %}{% if listing_ids %}<a href="/orders/listings#listing-{{ listing_ids[0] }}" class="tx-badge tx-badge-buy listed-badge" title="In {{ listing_ids | length }} active listing{{ '' if listing_ids | length == 1 else 's' }} -- open the newest">Listed{% if listing_ids | length > 1 %} &times;{{ listing_ids | length }}{% endif %}</a>{% endif %}{% endmacro %}
 
-{# "On the way" pill (issue #382) for a card tagged Incoming in Dex: paid
-   for, not received. Always just "On the way" -- Dex's Incoming qty mirrors
+{# "Incoming" pill (issue #382, worded "Incoming" since #393, matching the
+   Dex folder) for a card tagged Incoming in Dex: paid for, not received.
+   Always just "Incoming" -- Dex's Incoming qty mirrors
    the card's total, so it can't say "1 of 2". After IN_TRANSIT_WARN_DAYS
    (21) it shows its age in warning style. Renders nothing otherwise. #}
-{% macro transit_badge(card) %}{% if card.in_transit %}{% set days = card.in_transit_days %}<span class="tx-platform-badge transit-badge{{ ' transit-badge-overdue' if card.in_transit_overdue }}" title="Tagged Incoming in Dex{% if card.in_transit_since %} · seen since {{ card.in_transit_since.strftime('%d.%m.%Y') }} ({{ days }} day{{ '' if days == 1 else 's' }}){% endif %}">On the way{% if card.in_transit_overdue %} · {{ days }} d{% endif %}</span>{% endif %}{% endmacro %}
+{% macro transit_badge(card) %}{% if card.in_transit %}{% set days = card.in_transit_days %}<span class="tx-platform-badge transit-badge{{ ' transit-badge-overdue' if card.in_transit_overdue }}" title="Tagged Incoming in Dex{% if card.in_transit_since %} · seen since {{ card.in_transit_since.strftime('%d.%m.%Y') }} ({{ days }} day{{ '' if days == 1 else 's' }}){% endif %}">Incoming{% if card.in_transit_overdue %} · {{ days }} d{% endif %}</span>{% endif %}{% endmacro %}
 
 {# A card's collections as links in priority order (issue #389,
-   `Card.collections_by_priority`): an "On the way" badge leads when the card
-   is in transit, then the primary collection (bold, marked only when there's
-   more than one to choose from), then the rest. `empty` is the markup shown
-   for a card in no collection. #}
-{% macro collection_links(card, empty='') %}{{ transit_badge(card) }}{% set ordered = card.collections_by_priority %}{% for c in ordered %}{% if loop.first and ordered | length > 1 %}<strong class="primary-collection" title="Primary collection"><a href="/collections/{{ c.id }}">{{ c.name }}</a></strong>{% else %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{% endif %}{{ ', ' if not loop.last }}{% else %}{{ empty | safe }}{% endfor %}{% endmacro %}
+   `Card.collections_by_priority`): an "Incoming" badge leads when the card
+   is in transit, then the primary collection, then the rest -- order only,
+   no emphasis (#393). A leftover status-named collection (`is_status`,
+   prod's dead pre-#382 "Incoming") is never listed. `empty` is the markup
+   shown for a card in no collection. #}
+{% macro collection_links(card, empty='') %}{{ transit_badge(card) }}{% for c in card.collections_by_priority | rejectattr('is_status') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% else %}{{ empty | safe }}{% endfor %}{% endmacro %}
 
 {# "Shared" badge for a card listed under one collection that's also in
    others (collection page "also in", dashboard "shared with"): names the
    other collections as links in priority order (`collections_by_priority`),
    the first `cap` visible and the rest as "+N", with the full list in the
    title. `exclude` is the name of the collection whose page/row this is.
+   A leftover status-named collection (`is_status`, #393) is never named.
    Renders nothing when there are no others. The links are plain
    /collections/{id} links (no data-card-modal), siblings of the card link,
    never nested in it. #}
-{% macro shared_badge(card, exclude, label, cap=2) %}{% set others = card.collections_by_priority | rejectattr('name', 'equalto', exclude) | list %}{% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | map(attribute='name') | join(', ') }}">{{ label }} {% for c in others[:cap] %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if others | length > cap %} <span class="shared-more">+{{ others | length - cap }}</span>{% endif %}</span>{% endif %}{% endmacro %}
+{% macro shared_badge(card, exclude, label, cap=2) %}{% set others = card.collections_by_priority | rejectattr('is_status') | rejectattr('name', 'equalto', exclude) | list %}{% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | map(attribute='name') | join(', ') }}">{{ label }} {% for c in others[:cap] %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if others | length > cap %} <span class="shared-more">+{{ others | length - cap }}</span>{% endif %}</span>{% endif %}{% endmacro %}
 
 {% macro dex_url(card) %}https://app.dextcg.com/cards/{{ card.card_id | urlencode }}{% endmacro %}
 

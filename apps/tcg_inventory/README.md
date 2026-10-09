@@ -25,7 +25,8 @@ run).
   (`queries.collection_membership_breakdown`: one row per collection with
   every card carrying its tag, Bulk, a deduplicated Collections row and a
   deduplicated Total row — collection rows can sum to more than Total, a
-  multi-tagged card is marked "shared with N" in drilldown), by series
+  multi-tagged card is marked "shared with N" in drilldown; an Incoming
+  row lists every in-transit card, #382/#393, see business rule 1), by series
   (with completion, see below), most valuable cards (scrollable list), by
   rarity.
 - **Overview KPI band** — a full-width card at the top of the KPI row on
@@ -180,7 +181,7 @@ run).
   keep one order and a page boundary never repeats or skips a card (#376).
   Collection
   filter has "Bulk / no collection" (`collection=__none__`), and a
-  "Duplicates only" checkbox (`dup=1`), and an "On the way only" checkbox
+  "Duplicates only" checkbox (`dup=1`), and an "Incoming only" checkbox
   (`transit=1`, cards tagged Incoming in Dex, #382; also kept by the
   rarity "Clear filter" link). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
@@ -224,7 +225,7 @@ run).
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
     most copies). A print with copies on the way (#382) still looks owned
-    and counts toward completion, with a small **On the way** pill. Missing tiles have no `Card`, so they're ghosted
+    and counts toward completion, with a small **Incoming** pill. Missing tiles have no `Card`, so they're ghosted
     (dashed frame, faded photo from `master_cards.image_url`, else a
     "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
     "0 owned" style. A print whose only card is at qty 0 is missing.
@@ -600,7 +601,7 @@ run).
   writes `Transaction` rows. Reached from the Orders page's "Sell on
   finn.no" buttons, which carry no selection of their own: if Inventory's
   selection is still in sessionStorage (`tcg-sale-list`), `/sales` offers
-  a "Continue with the N cards selected on Inventory" link. **On the way**
+  a "Continue with the N cards selected on Inventory" link. **Incoming**
   cards (#382) can't be sold: a fully in-transit card's checkbox is
   disabled, `/sales` shows it muted with no fields and caps a partly
   in-transit card's qty at the copies in hand, and the server
@@ -1024,12 +1025,20 @@ without updating both the code and this doc.
    master set's Duplicates. `Card.in_hand_qty = qty - in_transit` is
    computed, never stored, and every sale-facing spares figure goes through
    one helper, `models.in_hand_spares` (`max(in_hand - 1, 0)`; per print:
-   `models.print_in_hand_spares`). Shown as an **On the way** badge
+   `models.print_in_hand_spares`). Shown as an **Incoming** badge
    (Inventory, the card page, the collection gallery, master-set tiles, the
-   Facebook wins cart), an "On the way only"
-   Inventory filter, and a Dashboard line "N cards on the way · X kr". After
-   21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows its
-   age in warning style ("On the way · 24 d").
+   Facebook wins cart; worded "On the way" until #393, now matching the Dex
+   folder), an "Incoming only" Inventory filter, a Dashboard line "N cards
+   incoming · X kr", and an **Incoming** row in the Dashboard's Inventory
+   breakdown (#393, `collection_membership_breakdown`'s `incoming`): every
+   in-transit card, driven by the status, never a collection, each with a
+   "shared with" badge naming its real collections. Same every-row rule as
+   the collection rows: an in-transit card counts (whole card) in Incoming
+   *and* in each of its collection rows, or Bulk if it has none; it's
+   counted once in Collections/Total, and Incoming isn't part of either.
+   After 21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows
+   its age in warning style ("Incoming · 24 d"). Want/sale list *statuses*
+   still say "On the way" (a list status, not this badge).
 
    **Dex's Incoming `Quantity` can't say "1 of 2"** (checked against a real
    combined export, 2026-10-08): Dex's `Quantity` is one number per card,
@@ -1039,11 +1048,14 @@ without updating both the code and this doc.
    copy of a card you already hold is on the way, the copy in hand counts
    as on the way too. That's the safe direction (it's only hidden from
    selling until the tag is removed), and a known limitation. The badge
-   therefore always says just "On the way", never "1 of 2".
+   therefore always says just "Incoming", never "1 of 2".
 
    The old "Incoming" collection (prod id 10, 8 tags from before #311) is
    no longer written by any sync and is dead data; removing it is a
-   separate, confirmed prod change (see #382).
+   separate, confirmed prod change (see #382). Until then it's kept but
+   hidden (`Collection.is_status`, #393): no Dashboard row, never named in
+   Inventory's Collections column or a "shared with"/"also in" badge, and a
+   card tagged only with it counts as Bulk on the Dashboard.
 2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored. This
    is the ownership figure; sale-facing spares use in-hand copies (rule 1).
 3. **Primary collection.** When a card belongs to more than one collection,
@@ -1056,8 +1068,8 @@ without updating both the code and this doc.
 
    Any other/unknown collection name defaults to the lowest priority,
    including a leftover collection literally named "Incoming" (dead data
-   from before #382, rule 1): in-transit cards are shown by their On the
-   way status instead (below), not by a collection rank. The ranks are
+   from before #382, rule 1): in-transit cards are shown by their Incoming
+   status instead (below), not by a collection rank. The ranks are
    always read from `constants.priority_rank_for(name)` at read time, never
    from the stored `collections.priority_rank`, which is only written when
    a collection is created and never re-synced. `card_collections` itself
@@ -1069,9 +1081,9 @@ without updating both the code and this doc.
    one helper, `Card.collections_by_priority`: primary first, then by rank,
    then by name. The two badges (`shared_badge` in `partials/macros.html`)
    name the card's other collections as links, never the one being viewed:
-   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page the primary is bold with a
-   "Primary collection" tooltip (only when the card has more than one), and
-   an in-transit card's **On the way** badge (rule 1) leads, ahead of the
+   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page
+   the order is the only emphasis (the primary isn't bold since #393), and
+   an in-transit card's **Incoming** badge (rule 1) leads, ahead of the
    primary; Incoming stays a status, not a collection link. **Since Phase 1
    (24.09.2026) the dashboard no longer uses this for its collection rows**:
    crediting a multi-tagged card to one collection made it vanish from the
@@ -1742,7 +1754,7 @@ happens at payment rather than arrival.
   way since the sale ended (`in_transit_since` on or after it, which also
   catches a 2nd copy of a card you already had) and cards first synced on
   or after the sale ended ("new since the sale"), on-the-way ones first; a
-  card on the way gets an **On the way** badge, and one already on an order
+  card on the way gets an **Incoming** badge, and one already on an order
   says "already on order #N". With none: "No matching card yet — it
   appears after you raise its qty in Dex (tag it Incoming until it
   arrives) and the daily sync runs."
