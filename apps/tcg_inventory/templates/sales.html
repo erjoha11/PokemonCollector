@@ -42,14 +42,14 @@
       </thead>
       <tbody>
         {% for card in cards %}
-        {#- "On the way" (#382): a card with no copy in hand has no form
+        {#- "Incoming" (#382): a card with no copy in hand has no form
             fields at all (the server skips it too); a partly in-transit one
             is muted, its qty capped at the copies in hand. #}
         {% if card.fully_in_transit %}
         <tr class="sale-row-transit">
           <td>
             {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }}) {{ transit_badge(card) }}
-            <div class="listed-warning">On the way — can't be sold until it arrives. Left out of the ad.</div>
+            <div class="listed-warning">Incoming — can't be sold until it arrives. Left out of the ad.</div>
           </td>
           <td class="num">{{ card.qty }}</td>
           <td class="num muted">–</td>

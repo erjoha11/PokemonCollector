@@ -12,13 +12,13 @@ the list is created.
   through `remove_got_it`.
 - Every status is computed live from the Cards linked to the item's master
   card, never stored, so it follows the next Dex sync with no list edits:
-  - want: Got it / On the way / Got k of n / Possibly owned (unmatched) /
+  - want: Got it / Incoming / Got k of n / Possibly owned (unmatched) /
     Missing;
-  - sale: Sold out / Listed / On the way / Not enough spares / Available.
+  - sale: Sold out / Listed / Incoming / Not enough spares / Available.
   Spares are the set page's per-print, in-hand figure (`MasterSetSlot.spares`,
   models.print_in_hand_spares), so the two never disagree.
 - Copies on the way (Dex's Incoming tag, issue #382) count as owned (a want
-  item says "On the way", so it isn't bought twice) but are never
+  item says "Incoming", so it isn't bought twice) but are never
   available: sale spares, the /sales link and "Copy as text" count only
   copies in hand.
 - Lists never touch qty, collections, binders or transactions (same
@@ -48,7 +48,7 @@ STATUS_LABELS = {
     "unmatched": "Possibly owned (unmatched)",
     "partial": "Got some",  # the row shows "Got k of n"
     "got": "Got it",
-    "on_the_way": "On the way",
+    "on_the_way": "Incoming",
     "available": "Available",
     "listed": "Listed",
     "short": "Not enough spares",
@@ -60,7 +60,7 @@ SUMMARY_LABELS = {
     "unmatched": "possibly owned",
     "partial": "partly got",
     "got": "got it",
-    "on_the_way": "on the way",
+    "on_the_way": "incoming",
     "available": "available",
     "listed": "listed",
     "short": "not enough spares",

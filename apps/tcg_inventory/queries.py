@@ -194,7 +194,7 @@ def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
 
 
 def in_transit_summary(cards: list[Card]) -> dict:
-    """The Dashboard's "N cards on the way · X kr" line (issue #382): copies
+    """The Dashboard's "N cards incoming · X kr" line (issue #382): copies
     paid for but not received yet, and their market value. Computed, never
     stored; the copies still count as owned everywhere else."""
     on_the_way = [c for c in cards if c.in_transit]
@@ -207,10 +207,10 @@ def in_transit_summary(cards: list[Card]) -> dict:
 def collection_membership_breakdown(db: Session, cards: list[Card] | None = None) -> dict:
     """Dashboard Inventory table: one row per collection with *every* card
     carrying that collection's tag (real membership, the same set Inventory's
-    collection filter shows), Bulk (no tag at all), and two deduplicated
-    rows that count each card exactly once:
+    collection filter shows), an "Incoming" row, Bulk (no tag at all), and
+    two deduplicated rows that count each card exactly once:
 
-    - "collections": every card with at least one tag
+    - "collections": every card in a collection row or the Incoming row
     - "total": every card, Bulk included -- the whole collection
 
     A card with several tags is in several rows, so the per-collection rows
@@ -218,30 +218,46 @@ def collection_membership_breakdown(db: Session, cards: list[Card] | None = None
     primary-collection credit (`Card.primary_collection`, lowest
     `priority_rank`) is no longer used to pick a single row for a card here:
     it made a multi-tagged card vanish from every collection but one.
+
+    "Incoming" (issue #393) works like Dex's Incoming folder: a card that's
+    in transit (`Card.in_transit`, #382) is listed only there, not under its
+    collections or Bulk, until it arrives; the dashboard names its real
+    collections in a "shared with" badge. It's driven by the in-transit
+    status, never by a collection: a leftover "Incoming" collection (prod's
+    frozen collection 10) is skipped like every status category, so it
+    never adds a second Incoming row. The Incoming bucket is kept apart
+    from "children" so it never competes for the KPI's top collection.
     """
     cards = all_cards_with_collections(db) if cards is None else cards
 
     children: dict[str, Bucket] = {}
     bulk = Bucket(name="Bulk", filterable=False)
+    incoming = Bucket(name=constants.INCOMING_CATEGORY, filterable=False)
     # Each card is visited once, so these two count it once whatever its tags.
     collections = Bucket(name="Collections")
     total = Bucket(name="Total", filterable=False)
 
     for card in cards:
         total.add(card)
-        if not card.collections:
+        if card.in_transit:
+            collections.add(card)
+            incoming.add(card)
+            continue
+        tags = [c for c in card.collections if not constants.is_status_category(c.name)]
+        if not tags:
             bulk.add(card)
             continue
         collections.add(card)
-        for collection in card.collections:
+        for collection in tags:
             children.setdefault(collection.name, Bucket(name=collection.name)).add(card)
 
-    for bucket in list(children.values()) + [bulk]:
+    for bucket in list(children.values()) + [bulk, incoming]:
         bucket.cards.sort(key=_card_sort_key)
 
     return {
         "collections": collections,
         "children": _ordered_children(children.values()),
+        "incoming": incoming,
         "bulk": bulk,
         "total": total,
     }
@@ -843,7 +859,7 @@ def collection_detail(db: Session, collection_id: int) -> dict | None:
         "collection": collection,
         "bucket": bucket,
         "completion": bucket.series_completion,
-        "shared_count": sum(1 for c in bucket.cards if len(c.collections) > 1),
+        "shared_count": sum(1 for c in bucket.cards if len(c.collections_by_priority) > 1),
     }
 
 

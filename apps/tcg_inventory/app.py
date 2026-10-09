@@ -588,7 +588,12 @@ def dashboard(
         invested_by_card = queries.net_invested_by_card(db, txs)
         queries.assign_bucket_investment(
             collection_breakdown["children"]
-            + [collection_breakdown["bulk"], collection_breakdown["collections"], collection_breakdown["total"]],
+            + [
+                collection_breakdown["incoming"],
+                collection_breakdown["bulk"],
+                collection_breakdown["collections"],
+                collection_breakdown["total"],
+            ],
             invested_by_card,
         )
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
@@ -602,7 +607,7 @@ def dashboard(
         # default order from queries.py -- clicking a column header only
         # re-sorts the cards nested inside each bucket, never the buckets
         # themselves.
-        collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
+        collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"], collection_breakdown["incoming"]]
         _sort_cards_in_buckets(collection_rows, csort, cdir)
         _sort_cards_in_buckets(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
@@ -1007,7 +1012,7 @@ def inventory(
             # Reuses the invested_by_card/txs already loaded above instead of
             # re-scanning Transaction twice more (net_invested_by_card +
             # economic_summary each used to run their own independent query).
-            queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+            queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"], collection_breakdown["incoming"]], invested_by_card)
             queries.assign_bucket_investment(series_breakdown, invested_by_card)
             for series_bucket in series_breakdown:
                 queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)
@@ -2748,7 +2753,7 @@ def _transactions_context(
     collection_breakdown = queries.collection_membership_breakdown(db, cards)
     series_breakdown = queries.by_series_breakdown(db, cards)
     invested_by_card = queries.net_invested_by_card(db)
-    queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"]], invested_by_card)
+    queries.assign_bucket_investment(collection_breakdown["children"] + [collection_breakdown["bulk"], collection_breakdown["incoming"]], invested_by_card)
     queries.assign_bucket_investment(series_breakdown, invested_by_card)
     for series_bucket in series_breakdown:
         queries.assign_bucket_investment(series_bucket.child_sets, invested_by_card)

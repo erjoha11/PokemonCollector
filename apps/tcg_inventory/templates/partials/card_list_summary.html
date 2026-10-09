@@ -46,7 +46,7 @@
 
   {% if detail.text_items %}
   <div class="list-copy">
-    <span class="tx-kpi-label">Copy as text {{ info(('Items still wanted (not “Got it” or “On the way”)' if want else 'Items you still own (not “Sold out”)') ~ ', one line each, with the target price if set, else the market price.', below=true) }}</span>
+    <span class="tx-kpi-label">Copy as text {{ info(('Items still wanted (not “Got it” or “Incoming”)' if want else 'Items you still own (not “Sold out”)') ~ ', one line each, with the target price if set, else the market price.', below=true) }}</span>
     <textarea id="list-copy-text" rows="{{ [detail.text_items | length + 1, 10] | min }}" readonly>{{ detail.text }}</textarea>
     <button type="button" class="secondary" onclick="navigator.clipboard.writeText(document.getElementById('list-copy-text').value)">Copy</button>
   </div>

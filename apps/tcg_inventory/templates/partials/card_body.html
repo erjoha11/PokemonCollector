@@ -19,7 +19,7 @@
   <div class="card-detail-facts">
     <div class="card-detail-kpis">
       <div><span class="tx-kpi-label">Market price</span><span class="tx-kpi-value">{{ card.display_price | kr }}</span></div>
-      <div><span class="tx-kpi-label">Owned</span><span class="tx-kpi-value">{{ card.qty }}{% if card.in_transit %} <span class="muted">(on the way)</span>{% elif card.duplicates %} <span class="muted">({{ card.duplicates }} dup.)</span>{% endif %}</span></div>
+      <div><span class="tx-kpi-label">Owned</span><span class="tx-kpi-value">{{ card.qty }}{% if card.in_transit %} <span class="muted">(incoming)</span>{% elif card.duplicates %} <span class="muted">({{ card.duplicates }} dup.)</span>{% endif %}</span></div>
       <div><span class="tx-kpi-label">Total value</span><span class="tx-kpi-value">{{ card.total_value | kr }}</span></div>
       <div><span class="tx-kpi-label">Net invested</span><span class="tx-kpi-value">{{ invested | kr if invested is not none else '–' }}</span></div>
       <div><span class="tx-kpi-label">Gain / loss {{ info('Total value minus net invested -- the same Gain / loss used across the app. "–" when no purchase is registered for this card.') }}</span>
@@ -53,7 +53,7 @@
       {% if card.location %}<dt>Location</dt><dd>{{ card.location }}</dd>{% endif %}
       {% if card.notes %}<dt>Notes</dt><dd>{{ card.notes }}</dd>{% endif %}
       <dt>Dex card ID</dt><dd><code>{{ card.card_id }}</code></dd>
-      {% if card.in_transit %}<dt>On the way</dt><dd>{% if card.in_transit_since %}since {{ card.in_transit_since.strftime('%d.%m.%Y') }} <span class="muted">({{ card.in_transit_days }} day{{ '' if card.in_transit_days == 1 else 's' }})</span>{% else %}yes{% endif %} {{ transit_badge(card) }}</dd>{% endif %}
+      {% if card.in_transit %}<dt>Incoming</dt><dd>{% if card.in_transit_since %}since {{ card.in_transit_since.strftime('%d.%m.%Y') }} <span class="muted">({{ card.in_transit_days }} day{{ '' if card.in_transit_days == 1 else 's' }})</span>{% else %}yes{% endif %} {{ transit_badge(card) }}</dd>{% endif %}
       {% if card.flagged_missing_since %}<dt>Missing from Dex</dt><dd>since {{ card.flagged_missing_since.strftime('%d.%m.%Y') }}</dd>{% endif %}
     </dl>
     {% if missing_entry %}{% include "partials/card_delete_missing.html" %}{% endif %}

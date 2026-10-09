@@ -328,28 +328,29 @@ def test_overdue_badge_shows_its_age(client):
         s.commit()
     html = client.get("/inventory").text
     assert "transit-badge-overdue" in html
-    assert "On the way · 24 d" in html
+    assert "Incoming · 24 d" in html
 
 
 def test_card_page_shows_on_the_way(client):
     ids = _seed(client)
     html = client.get(f"/cards/{ids['a']}").text
-    assert "(on the way)" in html
-    assert "<dt>On the way</dt>" in html
+    assert "(incoming)" in html
+    assert "<dt>Incoming</dt>" in html
+    assert "On the way" not in html and "on the way)" not in html
 
 
 def test_dashboard_line_only_when_something_is_on_the_way(client):
     _seed(client)
     html = client.get("/").text
     assert 'href="/inventory?transit=1"' in html
-    assert "2 cards on the way" in html
+    assert "2 cards incoming" in html
 
     with db_module.SessionLocal() as s:
         for card in s.query(Card):
             card.in_transit_qty = None
             card.in_transit_since = None
         s.commit()
-    assert "on the way ·" not in client.get("/").text
+    assert "incoming ·" not in client.get("/").text
 
 
 # ── Facebook wins inbox ──────────────────────────────────────────────────

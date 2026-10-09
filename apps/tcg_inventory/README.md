@@ -23,9 +23,11 @@ run).
 
 - **Dashboard** (`/`) — headline totals, collection breakdown
   (`queries.collection_membership_breakdown`: one row per collection with
-  every card carrying its tag, Bulk, a deduplicated Collections row and a
-  deduplicated Total row — collection rows can sum to more than Total, a
-  multi-tagged card is marked "shared with N" in drilldown), by series
+  every card carrying its tag, an Incoming row, Bulk, a deduplicated
+  Collections row and a deduplicated Total row — collection rows can sum to
+  more than Total, a multi-tagged card is marked "shared with N" in
+  drilldown; an in-transit card is counted only in the Incoming row, see
+  "In-transit cards on the Dashboard" under business rule 1), by series
   (with completion, see below), most valuable cards (scrollable list), by
   rarity.
 - **Overview KPI band** — a full-width card at the top of the KPI row on
@@ -180,7 +182,7 @@ run).
   keep one order and a page boundary never repeats or skips a card (#376).
   Collection
   filter has "Bulk / no collection" (`collection=__none__`), and a
-  "Duplicates only" checkbox (`dup=1`), and an "On the way only" checkbox
+  "Duplicates only" checkbox (`dup=1`), and an "Incoming only" checkbox
   (`transit=1`, cards tagged Incoming in Dex, #382; also kept by the
   rarity "Clear filter" link). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
@@ -224,7 +226,7 @@ run).
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
     most copies). A print with copies on the way (#382) still looks owned
-    and counts toward completion, with a small **On the way** pill. Missing tiles have no `Card`, so they're ghosted
+    and counts toward completion, with a small **Incoming** pill. Missing tiles have no `Card`, so they're ghosted
     (dashed frame, faded photo from `master_cards.image_url`, else a
     "#023 · Poké Ball" placeholder) and never links; deliberately unlike the
     "0 owned" style. A print whose only card is at qty 0 is missing.
@@ -600,7 +602,7 @@ run).
   writes `Transaction` rows. Reached from the Orders page's "Sell on
   finn.no" buttons, which carry no selection of their own: if Inventory's
   selection is still in sessionStorage (`tcg-sale-list`), `/sales` offers
-  a "Continue with the N cards selected on Inventory" link. **On the way**
+  a "Continue with the N cards selected on Inventory" link. **Incoming**
   cards (#382) can't be sold: a fully in-transit card's checkbox is
   disabled, `/sales` shows it muted with no fields and caps a partly
   in-transit card's qty at the copies in hand, and the server
@@ -944,7 +946,7 @@ its items.
 - **Status is computed live, never stored**, from the cards linked to the
   item's master card (sum of qty over cards with qty > 0), so it follows
   the next Dex sync with no list edits:
-  - want: **Got it** (own ≥ qty, with ≥ qty in hand), **On the way** (own
+  - want: **Got it** (own ≥ qty, with ≥ qty in hand), **Incoming** (own
     ≥ qty, but some of those copies are on the way, #382: they count as
     owned so it isn't bought twice; "Copy as text" leaves it out and
     "Remove got-it items" skips it), **Got k of n**, **Possibly owned
@@ -953,7 +955,7 @@ its items.
     may well be this print; links there), else **Missing**;
   - sale: **Sold out** (own none), **Listed** (an owned card of the print is
     in an `active` listing via `listing_cards`; delisted/sold don't count),
-    **On the way** (qty > spares in hand, but the duplicates on the way
+    **Incoming** (qty > spares in hand, but the duplicates on the way
     would cover it once they arrive, #382), **Not enough spares** (qty >
     spares even then), else **Available**.
   Spares are the master set's per-print Duplicates (`MasterSetSlot.spares`):
@@ -1019,17 +1021,32 @@ without updating both the code and this doc.
    not paid yet) are ignored and never create cards. **An in-transit copy
    counts as owned but is never available**: it counts in value, the
    dashboard, `card_snapshots`, master-set completion and want-list
-   matching (a want-list item says "On the way"), but can't be picked for
+   matching (a want-list item says "Incoming"), but can't be picked for
    `/sales` or finn.no ads, and isn't a spare on sale lists or in the
    master set's Duplicates. `Card.in_hand_qty = qty - in_transit` is
    computed, never stored, and every sale-facing spares figure goes through
    one helper, `models.in_hand_spares` (`max(in_hand - 1, 0)`; per print:
-   `models.print_in_hand_spares`). Shown as an **On the way** badge
+   `models.print_in_hand_spares`). Shown as an **Incoming** badge
    (Inventory, the card page, the collection gallery, master-set tiles, the
-   Facebook wins cart), an "On the way only"
-   Inventory filter, and a Dashboard line "N cards on the way · X kr". After
-   21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows its
-   age in warning style ("On the way · 24 d").
+   Facebook wins cart; called "On the way" until #393, renamed to match the
+   Dex folder), an "Incoming only" Inventory filter, a Dashboard line
+   "N cards incoming · X kr" and the Dashboard's Incoming row (below).
+   After 21 days on the way (`models.IN_TRANSIT_WARN_DAYS`) the badge shows
+   its age in warning style ("Incoming · 24 d"). Want/sale list items whose
+   shortfall is covered by in-transit copies show the status **Incoming**
+   too; plain sentences in tooltips and counts ("+2 on the way") keep the
+   wording.
+
+   **In-transit cards on the Dashboard (#393).** The Inventory breakdown
+   has an **Incoming** row, like Dex's folder: a card with `in_transit` is
+   counted there and nowhere else among the breakdown's rows (not in its
+   collection rows, not in Bulk) until it arrives, and its drilldown entry
+   carries a "shared with" badge naming the collections it belongs to. The
+   deduplicated Collections row counts it once (it's "tagged Incoming"), so
+   Collections + Bulk = Total still holds. It's driven by the in-transit
+   status, never by a collection, and isn't a "child" collection bucket, so
+   it can't be the KPI's top collection. The row only shows when something
+   is in transit; its Total links to `/inventory?transit=1&dup=1`.
 
    **Dex's Incoming `Quantity` can't say "1 of 2"** (checked against a real
    combined export, 2026-10-08): Dex's `Quantity` is one number per card,
@@ -1039,11 +1056,15 @@ without updating both the code and this doc.
    copy of a card you already hold is on the way, the copy in hand counts
    as on the way too. That's the safe direction (it's only hidden from
    selling until the tag is removed), and a known limitation. The badge
-   therefore always says just "On the way", never "1 of 2".
+   therefore always says just "Incoming", never "1 of 2".
 
    The old "Incoming" collection (prod id 10, 8 tags from before #311) is
    no longer written by any sync and is dead data; removing it is a
-   separate, confirmed prod change (see #382).
+   separate, confirmed prod change (see #382). Since #393 every display
+   skips a collection named after a status category
+   (`Card.collections_by_priority` filters it), so it never shows as a
+   collection link, a "shared with Incoming" badge or a second Incoming
+   row on the Dashboard.
 2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored. This
    is the ownership figure; sale-facing spares use in-hand copies (rule 1).
 3. **Primary collection.** When a card belongs to more than one collection,
@@ -1056,8 +1077,9 @@ without updating both the code and this doc.
 
    Any other/unknown collection name defaults to the lowest priority,
    including a leftover collection literally named "Incoming" (dead data
-   from before #382, rule 1): in-transit cards are shown by their On the
-   way status instead (below), not by a collection rank. The ranks are
+   from before #382, rule 1), which `collections_by_priority` leaves out
+   altogether (#393): in-transit cards are shown by their Incoming status
+   instead, not by a collection rank. The ranks are
    always read from `constants.priority_rank_for(name)` at read time, never
    from the stored `collections.priority_rank`, which is only written when
    a collection is created and never re-synced. `card_collections` itself
@@ -1069,10 +1091,9 @@ without updating both the code and this doc.
    one helper, `Card.collections_by_priority`: primary first, then by rank,
    then by name. The two badges (`shared_badge` in `partials/macros.html`)
    name the card's other collections as links, never the one being viewed:
-   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page the primary is bold with a
-   "Primary collection" tooltip (only when the card has more than one), and
-   an in-transit card's **On the way** badge (rule 1) leads, ahead of the
-   primary; Incoming stays a status, not a collection link. **Since Phase 1
+   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page the order alone marks the primary
+   (no bold since #393), and an in-transit card's **Incoming** badge
+   (rule 1) leads, ahead of the primary; Incoming stays a status, not a collection link. **Since Phase 1
    (24.09.2026) the dashboard no longer uses this for its collection rows**:
    crediting a multi-tagged card to one collection made it vanish from the
    others (Vintage showed 142 of its 151 cards), so each row now counts real
@@ -1742,7 +1763,7 @@ happens at payment rather than arrival.
   way since the sale ended (`in_transit_since` on or after it, which also
   catches a 2nd copy of a card you already had) and cards first synced on
   or after the sale ended ("new since the sale"), on-the-way ones first; a
-  card on the way gets an **On the way** badge, and one already on an order
+  card on the way gets an **Incoming** badge, and one already on an order
   says "already on order #N". With none: "No matching card yet — it
   appears after you raise its qty in Dex (tag it Incoming until it
   arrives) and the daily sync runs."

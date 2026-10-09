@@ -1,6 +1,6 @@
 """A card's collections are listed in priority order, primary first, with
-"On the way" leading when the card is in transit (issue #389; README
-"Business rules" #1 and #3)."""
+"Incoming" leading when the card is in transit (issue #389; README
+"Business rules" #1 and #3). No bold on the primary (#393)."""
 from __future__ import annotations
 
 import re
@@ -61,13 +61,16 @@ def test_stale_stored_rank_is_ignored(db_session):
 
 
 def test_leftover_incoming_collection_gets_default_rank(db_session):
-    # Prod's dead pre-#382 "Incoming" collection: no special rank, so it
-    # sorts like any unknown name and never wins primary. In-transit cards
-    # are shown by the On the way status instead.
+    # Prod's dead pre-#382 "Incoming" collection: no special rank, and
+    # since #393 left out of a card's listed collections altogether (it's a
+    # status, shown by the Incoming badge), so it never wins primary.
     assert constants.priority_rank_for("Incoming") == constants.PRIORITY_RANK_DEFAULT
     card = _card_with(db_session, ["Incoming", GENERIC], ranks={"Incoming": 0})
     assert card.primary_collection.name == GENERIC
-    assert [c.name for c in card.collections_by_priority] == [GENERIC, "Incoming"]
+    assert [c.name for c in card.collections_by_priority] == [GENERIC]
+    only_dead = Card(card_id="jpn_x-2", name="Mew", qty=1)
+    only_dead.collections.append(next(c for c in card.collections if c.name == "Incoming"))
+    assert only_dead.collections_by_priority == [] and only_dead.primary_collection is None
 
 
 # ── Pages ────────────────────────────────────────────────────────────────
@@ -100,12 +103,12 @@ def _collections_cell(html, card_name):
     return re.search(r'<td data-col="collections">(.*?)</td>', row, re.S).group(1)
 
 
-def test_inventory_lists_collections_in_priority_order_primary_marked(client):
+def test_inventory_lists_collections_in_priority_order_primary_not_bold(client):
     _seed(client)
     cell = _collections_cell(client.get("/inventory").text, "Charizard")
     assert _order(cell, [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN])
-    assert re.search(rf'<strong class="primary-collection"[^>]*><a [^>]*>{ILLUSTRATOR}</a></strong>', cell)
-    assert cell.count("primary-collection") == 1
+    # Order only, no emphasis (#393).
+    assert "<strong" not in cell and "primary-collection" not in cell
     assert "transit-badge" not in cell
 
 
@@ -129,7 +132,7 @@ def test_card_detail_lists_collections_in_priority_order(client):
     dd = re.search(r"<dt>Collections</dt>\s*<dd>(.*?)</dd>", html, re.S).group(1)
     assert _order(dd, [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN])
     assert dd.index("transit-badge") < dd.index(f">{ILLUSTRATOR}</a>")
-    assert 'class="primary-collection"' in dd
+    assert "<strong" not in dd and "primary-collection" not in dd
 
 
 def test_card_detail_bulk_card_still_says_none(client):
@@ -230,3 +233,88 @@ def test_shared_badges_without_overflow_and_single_collection(client):
     assert _expected_badge("shared with", [ILLUSTRATOR, GENERIC], ids) in _dashboard_leaf_row(dash, VINTAGE, "Squirtle")
     # Mew is only in GENERIC: no badge on its row.
     assert "shared-badge" not in _dashboard_leaf_row(dash, GENERIC, "Mew")
+
+
+# ── Dashboard: in-transit cards under "Incoming" (issue #393) ────────────
+# Driven by Card.in_transit (#382), never by a collection: an in-transit
+# card is counted only in the Incoming row, with a "shared with" badge
+# naming its real collections; a leftover "Incoming" collection (prod's
+# dead collection 10) adds no second row and no "shared with Incoming".
+
+
+def _tag_with_dead_incoming(*card_ids):
+    with db_module.SessionLocal() as s:
+        dead = Collection(name="Incoming", priority_rank=99)
+        cards = [s.get(Card, pk) for pk in card_ids]
+        for card in cards:
+            card.collections.append(dead)
+        s.commit()
+
+
+def _leaf_rows(html, row_id):
+    return re.findall(rf'<tr class="grandchild-row[^"]*" data-group="{row_id}" hidden>.*?</tr>', html, re.S)
+
+
+def test_breakdown_counts_in_transit_card_only_under_incoming(client):
+    import queries
+
+    ids = _seed(client, incoming=True)
+    _tag_with_dead_incoming(ids["a"], ids["b"])
+    with db_module.SessionLocal() as s:
+        bd = queries.collection_membership_breakdown(s)
+        names = [b.name for b in bd["children"]]
+        # The dead collection never becomes a row.
+        assert "Incoming" not in names
+        # Charizard (in transit) left its four collections; Bulbasaur stays.
+        assert [c.name for c in bd["incoming"].cards] == ["Charizard"]
+        for b in bd["children"]:
+            assert "Charizard" not in [c.name for c in b.cards], b.name
+        assert ILLUSTRATOR not in names  # Charizard was its only card
+        assert [c.name for c in next(b for b in bd["children"] if b.name == GENERIC).cards] == ["Bulbasaur"]
+        # Each card still counted once: Collections + Bulk == Total.
+        assert bd["collections"].qty == 2 and bd["bulk"].qty == 0
+        assert bd["collections"].qty + bd["bulk"].qty == bd["total"].qty
+        # Incoming isn't a "child", so it can't be the KPI's top collection.
+        assert bd["incoming"] not in bd["children"]
+
+
+def test_in_transit_bulk_card_counts_under_incoming_not_bulk(db_session):
+    import queries
+
+    card = Card(card_id="jpn_x-9", name="Mew", qty=1, in_transit_qty=1)
+    db_session.add(card)
+    db_session.flush()
+    bd = queries.collection_membership_breakdown(db_session)
+    assert bd["incoming"].cards == [card] and bd["bulk"].cards == []
+    assert bd["collections"].qty == 1 and bd["total"].qty == 1
+
+
+def test_dashboard_lists_in_transit_card_under_incoming_with_shared_badge(client):
+    ids = _seed(client, incoming=True)
+    _tag_with_dead_incoming(ids["a"], ids["b"])
+    cids = _collection_ids()
+    html = client.get("/").text
+
+    # Exactly one Incoming row, from the status.
+    assert html.count('data-row-id="coll-incoming"') == 1
+    assert len(re.findall(r'<span class="arrow">[^<]*</span> Incoming</button>', html)) == 1
+    rows = _leaf_rows(html, "coll-incoming")
+    assert len(rows) == 1 and ">Charizard</a>" in rows[0]
+    # "shared with" names its real collections, never Incoming.
+    assert _expected_badge("shared with", ALL_FOUR, cids) in rows[0]
+
+    # Not listed under any real collection row, and no "shared with Incoming".
+    for row_id in re.findall(r'data-row-id="(coll-\d+)"', html):
+        assert not any(">Charizard</a>" in r for r in _leaf_rows(html, row_id)), row_id
+    assert f'href="/collections/{cids["Incoming"]}"' not in html
+    assert "Also in: Incoming" not in html and ', Incoming"' not in html
+    # Bulbasaur (dead tag only, not in transit) stays in its collection.
+    assert "shared-badge" not in _dashboard_leaf_row(html, GENERIC, "Bulbasaur")
+
+
+def test_dashboard_has_no_incoming_row_when_nothing_is_in_transit(client):
+    ids = _seed(client)
+    _tag_with_dead_incoming(ids["b"])
+    html = client.get("/").text
+    assert 'data-row-id="coll-incoming"' not in html
+    assert not re.search(r'<span class="arrow">[^<]*</span> Incoming</button>', html)

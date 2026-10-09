@@ -108,12 +108,12 @@ def test_want_list_on_the_way_status(db_session):
 
     detail = card_lists.list_detail(db_session, wants)
     assert _statuses(detail) == {
-        ("1", "normal"): "On the way",
+        ("1", "normal"): "Incoming",
         ("1", "poke_ball_holo"): "Got it",
         ("4", "poke_ball_holo"): "Got 2 of 3",
         ("5", "poke_ball_holo"): "Missing",
     }
-    assert detail.summary == "1 missing · 1 partly got · 1 on the way · 1 got it"
+    assert detail.summary == "1 missing · 1 partly got · 1 incoming · 1 got it"
     # Copies on the way count as owned: nothing to pay for #1.
     on_way = next(v for v in detail.items if v.status == "on_the_way")
     assert on_way.counted_qty == 0 and on_way.in_transit == 3 and on_way.in_hand_qty == 0
@@ -135,7 +135,7 @@ def test_want_item_turns_got_it_when_it_arrives(db_session):
     card_lists.add_items(db_session, wants, [(_master(db_session, 1, "normal").id, 1)])
     db_session.commit()
     _put_on_the_way(db_session)
-    assert _statuses(card_lists.list_detail(db_session, wants)) == {("1", "normal"): "On the way"}
+    assert _statuses(card_lists.list_detail(db_session, wants)) == {("1", "normal"): "Incoming"}
 
     card = db_session.query(Card).filter_by(card_id="jpn_sv2a-1", variant="Normal").one()
     card.in_transit_qty = None
@@ -157,11 +157,11 @@ def test_sale_list_on_the_way_status_and_in_hand_cards(db_session):
 
     detail = card_lists.list_detail(db_session, sale)
     assert _statuses(detail) == {
-        ("1", "normal"): "On the way",  # 0 in hand, 2 on the way: enough once they arrive
+        ("1", "normal"): "Incoming",  # 0 in hand, 2 on the way: enough once they arrive
         ("3", "holo"): "Available",
-        ("4", "poke_ball_holo"): "On the way",
+        ("4", "poke_ball_holo"): "Incoming",
     }
-    assert detail.summary == "1 available · 2 on the way"
+    assert detail.summary == "1 available · 2 incoming"
     # Only copies in hand count toward the value, and go to /sales.
     assert detail.est_total == 200
     three = {c.id for c in db_session.query(Card).filter_by(card_id="jpn_sv2a-3")}
@@ -187,7 +187,7 @@ def test_sale_list_page_shows_spares_on_the_way(client):
         list_id = sale.id
     html = client.get(f"/lists/{list_id}").text
     assert "0 spares +2 on the way" in html
-    assert 'class="list-status list-status-on_the_way">On the way<' in html
+    assert 'class="list-status list-status-on_the_way">Incoming<' in html
     assert "/lists/%d/ad" % list_id in html  # #3 is still in hand
 
 

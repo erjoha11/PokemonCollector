@@ -308,9 +308,15 @@ class Card(Base):
         `collections.priority_rank`: that column is written once when the
         importer creates a collection and never re-synced, so a rule change
         in constants.py would otherwise never reach existing rows.
+
+        A collection named after a status category (Dex's "Incoming", issue
+        #382) is left out: that status lives in `in_transit`, and a leftover
+        tag from before #382 (prod's frozen collection 10, see HANDOFF) would
+        otherwise show up as a collection, e.g. a "shared with Incoming"
+        badge (issue #393).
         """
         return sorted(
-            self.collections,
+            (c for c in self.collections if not constants.is_status_category(c.name)),
             key=lambda c: (constants.priority_rank_for(c.name), c.name.casefold(), c.name),
         )
 
