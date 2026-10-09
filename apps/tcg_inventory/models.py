@@ -14,6 +14,7 @@ from sqlalchemy import Boolean, DateTime, Date, Float, ForeignKey, Integer, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
+import constants
 
 card_collections = Table(
     "card_collections",
@@ -298,14 +299,29 @@ class Card(Base):
         return self.qty * (self.display_price or 0.0)
 
     @property
-    def primary_collection(self) -> Collection | None:
-        """The collection that gets "credit" for this card in summaries:
-        the one with the lowest priority_rank among all collections the
-        card actually belongs to. Does not affect card_collections itself.
+    def collections_by_priority(self) -> list[Collection]:
+        """This card's collections in display order (issue #389): primary
+        first, then by `constants.priority_rank_for`, then by name. The one
+        place every page that lists a card's collections sorts them.
+
+        Ranks come from the constant at read time, not the stored
+        `collections.priority_rank`: that column is written once when the
+        importer creates a collection and never re-synced, so a rule change
+        in constants.py would otherwise never reach existing rows.
         """
-        if not self.collections:
-            return None
-        return min(self.collections, key=lambda c: c.priority_rank)
+        return sorted(
+            self.collections,
+            key=lambda c: (constants.priority_rank_for(c.name), c.name.casefold(), c.name),
+        )
+
+    @property
+    def primary_collection(self) -> Collection | None:
+        """The collection that gets "credit" for this card: the highest
+        priority one (README "Business rules" #3), i.e. the first of
+        `collections_by_priority`. Does not affect card_collections itself.
+        """
+        ordered = self.collections_by_priority
+        return ordered[0] if ordered else None
 
 
 class CardSnapshot(Base):

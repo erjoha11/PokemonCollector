@@ -9,8 +9,8 @@
       <div class="gallery-card-figures">
         <span>{{ card.display_price | kr }}</span>
         {% if card.qty > 1 %}<span class="tx-platform-badge" title="{{ card.duplicates }} duplicate{{ 's' if card.duplicates != 1 }}">×{{ card.qty }}</span>{% elif card.qty == 0 %}<span class="tx-platform-badge unowned-badge">0 owned</span>{% endif %}
-        {% set others = card.collections | map(attribute='name') | reject('equalto', collection.name) | list %}
-        {% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | sort | join(', ') }}">shared</span>{% endif %}
+        {% set others = card.collections_by_priority | map(attribute='name') | reject('equalto', collection.name) | list %}
+        {% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | join(', ') }}">shared</span>{% endif %}
         {{ transit_badge(card) }}
       </div>
     </div>

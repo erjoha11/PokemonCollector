@@ -2,7 +2,7 @@
     and the in-page card modal's panel (partials/card_panel.html, served at
     /cards/{id}/panel -- issue #280), so the two can never drift. Context
     comes from app._card_detail_context; `in_panel` is true in the modal. #}
-{% from "partials/macros.html" import info, chart_card, dex_url, transit_badge %}
+{% from "partials/macros.html" import info, chart_card, dex_url, transit_badge, collection_links %}
 <div class="card-detail">
   <div class="card-detail-image">
     {% if card.image_url %}
@@ -41,7 +41,7 @@
 
     <dl class="card-detail-list">
       <dt>Collections</dt>
-      <dd>{% for c in card.collections | sort(attribute='name') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% else %}<span class="muted">None (Bulk)</span>{% endfor %}</dd>
+      <dd>{{ collection_links(card, empty='<span class="muted">None (Bulk)</span>') }}</dd>
       <dt>Binder</dt><dd>{{ card.binder.name if card.binder else '–' }}</dd>
       <dt>Series / set</dt><dd>{{ card.series or '–' }} · {% if master_set_url %}<a href="{{ master_set_url }}" title="Master set: what's owned and missing">{{ card.set or 'Master set' }}</a>{% else %}{{ card.set or '–' }}{% endif %}{% if card.linked_set and card.linked_set.total_cards %} <span class="muted">({{ card.linked_set.total_cards }} cards)</span>{% endif %}</dd>
       <dt>Variant</dt><dd>{{ card.variant or '–' }}</dd>

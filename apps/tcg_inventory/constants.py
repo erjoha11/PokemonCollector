@@ -48,8 +48,14 @@ AUTO_BINDER_RULES = [
 ]
 
 # Primary-collection priority ranks -- lower number wins when a card belongs
-# to more than one collection at once. Only affects which collection gets
-# "credit" in summaries; card_collections keeps every actual tag regardless.
+# to more than one collection at once. Decides `Card.primary_collection` and
+# the order a card's collections are listed in (`Card.collections_by_priority`,
+# issue #389); card_collections keeps every actual tag regardless. Always read
+# through `priority_rank_for(name)`, never the stored
+# `collections.priority_rank` (set once at creation, never re-synced).
+# A leftover collection literally named "Incoming" (from before #382 made it
+# a status) ranks above everything, matching "On the way" leading the list.
+PRIORITY_RANK_INCOMING = 0
 PRIORITY_RANK_ILLUSTRATOR = 1
 PRIORITY_RANK_VINTAGE = 2
 PRIORITY_RANK_GENERIC_COLLECTION = 3
@@ -60,6 +66,8 @@ PRIORITY_RANK_DEFAULT = 99
 
 
 def priority_rank_for(collection_name: str) -> int:
+    if collection_name == INCOMING_CATEGORY:
+        return PRIORITY_RANK_INCOMING
     if collection_name in ILLUSTRATOR_COLLECTIONS:
         return PRIORITY_RANK_ILLUSTRATOR
     if collection_name == VINTAGE_COLLECTION_NAME:
