@@ -1054,13 +1054,14 @@ without updating both the code and this doc.
    3. Collection (generic Dex folder)
    4. Scarlet & Violet: 151 JP/KR
 
-   Any other/unknown collection name defaults to the lowest priority. A
-   leftover collection literally named "Incoming" (dead data from before
-   #382, rule 1) ranks above all of them. The ranks are always read from
-   `constants.priority_rank_for(name)` at read time, never from the stored
-   `collections.priority_rank`, which is only written when a collection is
-   created and never re-synced. `card_collections` itself always keeps
-   every real tag.
+   Any other/unknown collection name defaults to the lowest priority,
+   including a leftover collection literally named "Incoming" (dead data
+   from before #382, rule 1): in-transit cards are shown by their On the
+   way status instead (below), not by a collection rank. The ranks are
+   always read from `constants.priority_rank_for(name)` at read time, never
+   from the stored `collections.priority_rank`, which is only written when
+   a collection is created and never re-synced. `card_collections` itself
+   always keeps every real tag.
 
    **Display order (#389).** Every place that lists a card's collections
    (Inventory's Collections column, the card page, the collection page's

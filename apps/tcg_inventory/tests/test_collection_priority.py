@@ -31,8 +31,8 @@ def _card_with(db, names, ranks=None):
 
 
 def test_priority_rank_for_order():
-    ranks = [constants.priority_rank_for(n) for n in ("Incoming", ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN)]
-    assert ranks == sorted(ranks) and len(set(ranks)) == 5
+    ranks = [constants.priority_rank_for(n) for n in (ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN)]
+    assert ranks == sorted(ranks) and len(set(ranks)) == 4
 
 
 def test_collections_by_priority_illustrator_vintage_collection_unknown(db_session):
@@ -60,10 +60,14 @@ def test_stale_stored_rank_is_ignored(db_session):
     assert card.primary_collection.name == VINTAGE
 
 
-def test_leftover_incoming_collection_ranks_first(db_session):
-    # Prod's dead pre-#382 "Incoming" collection (stored rank 99).
-    card = _card_with(db_session, [ILLUSTRATOR, "Incoming"], ranks={"Incoming": 99})
-    assert card.primary_collection.name == "Incoming"
+def test_leftover_incoming_collection_gets_default_rank(db_session):
+    # Prod's dead pre-#382 "Incoming" collection: no special rank, so it
+    # sorts like any unknown name and never wins primary. In-transit cards
+    # are shown by the On the way status instead.
+    assert constants.priority_rank_for("Incoming") == constants.PRIORITY_RANK_DEFAULT
+    card = _card_with(db_session, ["Incoming", GENERIC], ranks={"Incoming": 0})
+    assert card.primary_collection.name == GENERIC
+    assert [c.name for c in card.collections_by_priority] == [GENERIC, "Incoming"]
 
 
 # ── Pages ────────────────────────────────────────────────────────────────
