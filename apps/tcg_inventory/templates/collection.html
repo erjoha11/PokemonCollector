@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ collection.name }} – TCG Inventory{% endblock %}
-{% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge %}
+{% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge, shared_badge %}
 {% macro gallery_card(card) %}
     <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">
       {% if card.image_url %}<button type="button" class="card-view-trigger gallery-card-image" {{ card_view_attrs(card) }} aria-label="Show {{ card.name }}"><img src="{{ card.image_url }}" alt="" loading="lazy"></button>{% else %}<div class="gallery-card-image gallery-card-noimage muted">No picture</div>{% endif %}
@@ -9,8 +9,7 @@
       <div class="gallery-card-figures">
         <span>{{ card.display_price | kr }}</span>
         {% if card.qty > 1 %}<span class="tx-platform-badge" title="{{ card.duplicates }} duplicate{{ 's' if card.duplicates != 1 }}">×{{ card.qty }}</span>{% elif card.qty == 0 %}<span class="tx-platform-badge unowned-badge">0 owned</span>{% endif %}
-        {% set others = card.collections | map(attribute='name') | reject('equalto', collection.name) | list %}
-        {% if others %}<span class="tx-platform-badge shared-badge" title="Also in: {{ others | sort | join(', ') }}">shared</span>{% endif %}
+        {{ shared_badge(card, collection.name, 'also in') }}
         {{ transit_badge(card) }}
       </div>
     </div>

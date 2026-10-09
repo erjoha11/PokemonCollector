@@ -307,7 +307,9 @@ def test_sales_page_mutes_in_transit_rows(client):
 def test_inventory_badges_disables_and_filters(client):
     ids = _seed(client)
     html = client.get("/inventory").text
-    assert html.count("transit-badge") == 2
+    # Twice per in-transit card: next to the name, and leading the
+    # Collections cell (issue #389).
+    assert html.count("transit-badge") == 4
     assert re.search(rf'data-card-id="{ids["a"]}" disabled', html)
     assert not re.search(rf'data-card-id="{ids["b"]}" disabled', html)
     assert "Tagged Incoming in Dex · seen since" in html

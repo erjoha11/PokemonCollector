@@ -1054,8 +1054,25 @@ without updating both the code and this doc.
    3. Collection (generic Dex folder)
    4. Scarlet & Violet: 151 JP/KR
 
-   Any other/unknown collection name defaults to the lowest priority.
-   `card_collections` itself always keeps every real tag. **Since Phase 1
+   Any other/unknown collection name defaults to the lowest priority,
+   including a leftover collection literally named "Incoming" (dead data
+   from before #382, rule 1): in-transit cards are shown by their On the
+   way status instead (below), not by a collection rank. The ranks are
+   always read from `constants.priority_rank_for(name)` at read time, never
+   from the stored `collections.priority_rank`, which is only written when
+   a collection is created and never re-synced. `card_collections` itself
+   always keeps every real tag.
+
+   **Display order (#389).** Every place that lists a card's collections
+   (Inventory's Collections column, the card page, the collection page's
+   "also in" badge, the dashboard's "shared with" badge) goes through
+   one helper, `Card.collections_by_priority`: primary first, then by rank,
+   then by name. The two badges (`shared_badge` in `partials/macros.html`)
+   name the card's other collections as links, never the one being viewed:
+   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page the primary is bold with a
+   "Primary collection" tooltip (only when the card has more than one), and
+   an in-transit card's **On the way** badge (rule 1) leads, ahead of the
+   primary; Incoming stays a status, not a collection link. **Since Phase 1
    (24.09.2026) the dashboard no longer uses this for its collection rows**:
    crediting a multi-tagged card to one collection made it vanish from the
    others (Vintage showed 142 of its 151 cards), so each row now counts real

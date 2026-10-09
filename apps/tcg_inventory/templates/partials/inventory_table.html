@@ -1,5 +1,5 @@
 {% from "partials/macros.html" import sort_th with context %}
-{% from "partials/macros.html" import card_link, listed_badge, transit_badge %}
+{% from "partials/macros.html" import card_link, listed_badge, transit_badge, collection_links %}
 {% macro sort_link(field, label) %}{{ sort_th(label, field, 'sort', 'direction', sort, direction, path='/inventory', hx_target='#inventory-results', hx_push_url=true) }}{% endmacro %}
 {% macro page_link(label, url, current=false) %}{% if current %}<span class="current" aria-current="page">{{ label }}</span>{% else %}<a href="{{ url }}" hx-get="{{ url }}" hx-target="#inventory-results" hx-push-url="true">{{ label }}</a>{% endif %}{% endmacro %}
 
@@ -73,7 +73,7 @@
         <td data-col="number">{{ card.number or '' }}</td>
         <td data-col="series">{{ card.series or '' }}</td>
         <td data-col="set">{{ card.set or '' }}</td>
-        <td data-col="collections">{% for c in card.collections | sort(attribute='name') %}<a href="/collections/{{ c.id }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %}</td>
+        <td data-col="collections">{{ collection_links(card) }}</td>
         <td data-col="price" class="num">{{ card.display_price | kr }}</td>
         {% set net_paid = invested_by_card.get(card.id) %}
         <td data-col="net_paid" class="num">{{ net_paid | kr if net_paid is not none else '-' }}</td>

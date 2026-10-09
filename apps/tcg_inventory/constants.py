@@ -48,8 +48,11 @@ AUTO_BINDER_RULES = [
 ]
 
 # Primary-collection priority ranks -- lower number wins when a card belongs
-# to more than one collection at once. Only affects which collection gets
-# "credit" in summaries; card_collections keeps every actual tag regardless.
+# to more than one collection at once. Decides `Card.primary_collection` and
+# the order a card's collections are listed in (`Card.collections_by_priority`,
+# issue #389); card_collections keeps every actual tag regardless. Always read
+# through `priority_rank_for(name)`, never the stored
+# `collections.priority_rank` (set once at creation, never re-synced).
 PRIORITY_RANK_ILLUSTRATOR = 1
 PRIORITY_RANK_VINTAGE = 2
 PRIORITY_RANK_GENERIC_COLLECTION = 3
