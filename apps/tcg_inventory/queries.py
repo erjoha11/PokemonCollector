@@ -194,7 +194,7 @@ def headline_summary(db: Session, cards: list[Card] | None = None) -> dict:
 
 
 def in_transit_summary(cards: list[Card]) -> dict:
-    """The Dashboard's "N cards on the way · X kr" line (issue #382): copies
+    """The Dashboard's "N cards incoming · X kr" line (issue #382): copies
     paid for but not received yet, and their market value. Computed, never
     stored; the copies still count as owned everywhere else."""
     on_the_way = [c for c in cards if c.in_transit]
@@ -218,31 +218,44 @@ def collection_membership_breakdown(db: Session, cards: list[Card] | None = None
     primary-collection credit (`Card.primary_collection`, lowest
     `priority_rank`) is no longer used to pick a single row for a card here:
     it made a multi-tagged card vanish from every collection but one.
+
+    "incoming" (issue #393): every in-transit card (`Card.in_transit`, the
+    Dex Incoming status from #382), driven by that status, never by a
+    collection. Same every-row rule: an in-transit card counts in Incoming
+    *and* in each of its collection rows (or Bulk), whole card each time.
+    A leftover collection named like a status category (prod's dead pre-#382
+    "Incoming" collection) is ignored here: no row of its own, and a card
+    tagged only with it counts as Bulk.
     """
     cards = all_cards_with_collections(db) if cards is None else cards
 
     children: dict[str, Bucket] = {}
     bulk = Bucket(name="Bulk", filterable=False)
+    incoming = Bucket(name=constants.INCOMING_CATEGORY, filterable=False)
     # Each card is visited once, so these two count it once whatever its tags.
     collections = Bucket(name="Collections")
     total = Bucket(name="Total", filterable=False)
 
     for card in cards:
         total.add(card)
-        if not card.collections:
+        if card.in_transit:
+            incoming.add(card)
+        tagged = [c for c in card.collections if not c.is_status]
+        if not tagged:
             bulk.add(card)
             continue
         collections.add(card)
-        for collection in card.collections:
+        for collection in tagged:
             children.setdefault(collection.name, Bucket(name=collection.name)).add(card)
 
-    for bucket in list(children.values()) + [bulk]:
+    for bucket in list(children.values()) + [bulk, incoming]:
         bucket.cards.sort(key=_card_sort_key)
 
     return {
         "collections": collections,
         "children": _ordered_children(children.values()),
         "bulk": bulk,
+        "incoming": incoming,
         "total": total,
     }
 

@@ -1,6 +1,6 @@
 """A card's collections are listed in priority order, primary first, with
-"On the way" leading when the card is in transit (issue #389; README
-"Business rules" #1 and #3)."""
+"Incoming" leading when the card is in transit (issue #389; README
+"Business rules" #1 and #3). The primary isn't emphasized (#393)."""
 from __future__ import annotations
 
 import re
@@ -100,19 +100,20 @@ def _collections_cell(html, card_name):
     return re.search(r'<td data-col="collections">(.*?)</td>', row, re.S).group(1)
 
 
-def test_inventory_lists_collections_in_priority_order_primary_marked(client):
+def test_inventory_lists_collections_in_priority_order_primary_not_bold(client):
     _seed(client)
-    cell = _collections_cell(client.get("/inventory").text, "Charizard")
+    html = client.get("/inventory").text
+    cell = _collections_cell(html, "Charizard")
     assert _order(cell, [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN])
-    assert re.search(rf'<strong class="primary-collection"[^>]*><a [^>]*>{ILLUSTRATOR}</a></strong>', cell)
-    assert cell.count("primary-collection") == 1
+    # Order only, no emphasis on the primary (#393).
+    assert "<strong" not in cell and "primary-collection" not in html
     assert "transit-badge" not in cell
 
 
-def test_single_collection_is_not_marked_primary(client):
+def test_single_collection_is_a_plain_link(client):
     _seed(client)
     cell = _collections_cell(client.get("/inventory").text, "Bulbasaur")
-    assert f">{GENERIC}</a>" in cell and "primary-collection" not in cell
+    assert f">{GENERIC}</a>" in cell and "<strong" not in cell
 
 
 def test_inventory_in_transit_leads_the_collections_cell(client):
@@ -129,7 +130,7 @@ def test_card_detail_lists_collections_in_priority_order(client):
     dd = re.search(r"<dt>Collections</dt>\s*<dd>(.*?)</dd>", html, re.S).group(1)
     assert _order(dd, [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN])
     assert dd.index("transit-badge") < dd.index(f">{ILLUSTRATOR}</a>")
-    assert 'class="primary-collection"' in dd
+    assert "<strong" not in dd and "primary-collection" not in dd
 
 
 def test_card_detail_bulk_card_still_says_none(client):

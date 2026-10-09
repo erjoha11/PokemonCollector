@@ -42,14 +42,14 @@
       </thead>
       <tbody>
         {% for card in cards %}
-        {#- "On the way" (#382): a card with no copy in hand has no form
+        {#- "Incoming" (#382): a card with no copy in hand has no form
             fields at all (the server skips it too); a partly in-transit one
             is muted, its qty capped at the copies in hand. #}
         {% if card.fully_in_transit %}
         <tr class="sale-row-transit">
           <td>
             {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }}) {{ transit_badge(card) }}
-            <div class="listed-warning">On the way — can't be sold until it arrives. Left out of the ad.</div>
+            <div class="listed-warning">Incoming — can't be sold until it arrives. Left out of the ad.</div>
           </td>
           <td class="num">{{ card.qty }}</td>
           <td class="num muted">–</td>
@@ -62,7 +62,7 @@
             <input type="hidden" name="card_id" value="{{ card.id }}">
             {{ card.name }} ({{ card.set or '' }} {{ '#' + card.number if card.number }})
             {%- if card.in_transit %} {{ transit_badge(card) }}
-            <div class="listed-warning">{{ card.in_hand_qty }} in hand; the rest is on the way</div>
+            <div class="listed-warning">{{ card.in_hand_qty }} in hand; the rest is incoming</div>
             {%- endif %}
             {%- if card.id in listed_by_card %}
             {{ listed_badge(listed_by_card[card.id]) }}
@@ -94,7 +94,7 @@
   {% if cards | rejectattr('fully_in_transit') | list %}
   <button type="submit">Generate ad</button>
   {% else %}
-  <button type="submit" disabled title="Every selected card is on the way">Generate ad</button>
+  <button type="submit" disabled title="Every selected card is incoming">Generate ad</button>
   {% endif %}
 </form>
 
