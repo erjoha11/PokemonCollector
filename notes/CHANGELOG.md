@@ -241,6 +241,22 @@ yet.
 
 ### tcg_inventory
 
+**A card's collections in priority order, On the way first (#389)**
+- A card's collections are listed in priority order everywhere
+  (`Card.collections_by_priority`). Ranks are read from
+  `constants.priority_rank_for` at display time, so a stale stored
+  `priority_rank` is ignored. When a card is in two or more collections, the
+  primary one is shown in bold.
+- "On the way" leads the Collections cell and the card page for in-transit
+  cards.
+- The "also in" badge (collection page) and "shared with" badge (dashboard)
+  show the other collections as links in priority order: 2 visible, then
+  "+N", with the full list in the tooltip. The current collection is left
+  out.
+- A leftover "Incoming" collection gets the default rank (99). In-transit
+  cards are shown by status, not by collection rank. No prod data change;
+  prod collection 10 is untouched.
+
 **Live TCGplayer first in the price chain, Dex as fallback (#386)**
 - `pricing.CHAIN` is now `(tcgdex_tcgplayer, pokemontcg, dex,
   tcgdex_cardmarket)`. This reverses the Dex-first order from #210 / #213.
