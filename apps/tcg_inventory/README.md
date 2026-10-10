@@ -215,13 +215,45 @@ run).
   - When the owned cards are Korean cards priced from the Japanese print
     (`pricing.is_jp_price_proxy`, #367), a note says they're logged in Dex as
     Japanese and that prices are JP-market proxies.
+  - Order (#385): heading + **progress bar** → KPIs → **Copy lists** →
+    filters / Add to a list / grid → Duplicates (collapsed) → Unmatched (only
+    when there is any) → other cards filed under the same Dex set name.
+  - **Progress bar** (#385): one full-width bar under the heading, "X / Y ·
+    Z%", the same figures as the Master set KPI (`macros.progress_bar`, a
+    `role="progressbar"` div with `aria-valuenow`/`aria-valuemax`). The
+    collection-level KPIs above get no bar (it would repeat the number); the
+    `/collections` overview's Master set column gets a thin mini-bar.
   - KPI band: **Master set** X / Y (every print with
     `counts_toward_completion`: base prints + Poké Ball), then one X / Y per
     counting track (Main, Secret, Poké Ball), each a strict count of
-    checklist prints owned, so never above 100%; then **Duplicates** (N ·
-    kr) and (if any) Unmatched. A print is owned when the cards linked to
-    its master card add up to qty ≥ 1. Master Ball prints never count and
-    are hidden unless their track is picked.
+    checklist prints owned, so never above 100%, with a thin mini-bar and
+    "N left" (total − owned); then **Duplicates** (N · kr, every track,
+    Master Ball included) and (if any) Unmatched. A print is owned when the
+    cards linked to its master card add up to qty ≥ 1. Master Ball prints
+    never count and are hidden unless their track is picked.
+  - **Copy lists** (#385), between the KPIs and the filters: three buttons,
+    **Owned / Missing / Duplicates for sale**, each copying a plain-text list
+    (English, for Messenger, Facebook or notes) built server-side in
+    `app.py` (`_owned_list_text`, `_missing_list_text`,
+    `_duplicates_list_text`). A "Show text" `<details>` holds one readonly
+    textarea with the picked list (Missing at first). **Set-wide, never
+    filter-aware**, like every count in the block; it sits outside
+    `#set-grid-<key>`, so a filter swap never touches it.
+    `static/master-set.js` copies: the button reads "Copied" for ~2 s
+    (`aria-live`); if the clipboard fails, the textarea opens and is
+    selected with "Press Ctrl/Cmd+C". Formats:
+    - Missing: `<set name>: missing N of Y`, then `<number> <name>` per
+      missing counted print, plus ` · <track>` off main/secret.
+    - Owned: `<set name>: owned X of Y`, same lines plus ` ×N` when you own
+      more than one copy (copies on the way included: they're owned).
+      Counted prints only, so its line count is the Master set X.
+    - Duplicates for sale: `<set name>: N duplicates for sale` (N = copies),
+      then `<number> <name> · <track> ×<spares> · <price> kr` in printed
+      order, Master Ball prints included, the price left out when unknown,
+      no total. Spares are **in hand** (`MasterSetSlot.spares`, #382): a
+      print whose only extra copy is on the way isn't listed. Not `ads.py`
+      (that's the Norwegian finn.no ad); the "Make a finn.no ad from these
+      cards" link sits next to the buttons.
   - Grid in printed order (number, then base before ball prints), reusing
     `.card-gallery`. Owned tiles open the card modal (the linked card with
     most copies). A print with copies on the way (#382) still looks owned
@@ -237,15 +269,19 @@ run).
     `owned` / `duplicates` (prints with duplicates > 0). The pills link to
     `/collections/{id}?…`, `hx-get` it, swap the block's
     `#set-grid-<language>-<set_code>` and push the URL, so a reload keeps
-    them. Unknown values fall back to the defaults.
+    them; `static/master-set.js` then puts focus back on the active pill.
+    Unknown values fall back to the defaults. With Show = Duplicates the
+    count line reads "N prints · M duplicate copies" (with Track = All, plus
+    "(Master Ball prints: pick their track)", since the KPI counts those
+    too).
   - **Unique ids per block**: every id in a block is suffixed with
     `<language>-<set_code>` (`app._set_dom_key`): `#set-<key>` (the
     section anchor), `#set-grid-`, `#set-list-add-`, `#set-list-add-status-`,
-    `#missing-list-text-`, `#spares-`, `#unmatched-`. A page with two
-    checklisted sets would otherwise make `hx-select`/`hx-target` and the
-    Copy button act on the first.
-  - **Copy missing list**: every missing master-set print as text, headed
-    with the display name.
+    `#master-set-progress-`, `#copy-lists-`, `#copy-lists-text-`,
+    `#copy-lists-status-`, `#copy-owned-`/`#copy-missing-`/`#copy-duplicates-`,
+    `#spares-`, `#unmatched-`. A page with two checklisted sets would
+    otherwise make `hx-select`/`hx-target` and the Copy buttons act on the
+    first.
   - **Duplicates** (the user's word; #366's spares): per print (per master
     card, not per Dex row), copies **in hand** only (#382):
     `max(sum(in-hand qty) − 1, 0)` (`MasterSetSlot.spares`, via
@@ -257,10 +293,14 @@ run).
     tooltips (`spares_on_the_way` = `queries.print_spares(owned)` minus the
     in-hand figure). The `/collections` overview's Duplicates uses the same
     in-hand figure for a set's home. Sale lists still say "spares" for
-    now.
+    now. The table sits in a `details.collapsible`, closed by default,
+    summary "Duplicates · N · X kr" (#385), in a horizontal-scroll wrapper
+    for narrow screens.
   - **Unmatched**: owned cards of the set on no checklist print (linked to
     another master card of the set, or unlinked and matched on the Dex
     `card_id`), with card ID and Dex variant. They count nowhere above.
+    Rendered only when there is any (#385), so the KPI's `#unmatched-<key>`
+    link always lands on it.
   - **Add to a list** (#370), under the filters: "Add N missing to [want
     list ▾]" and "Add N spares to [sale list ▾]". The POST stays at
     `/sets/{language}/{set_code}/add-to-list` (it answers with the panel

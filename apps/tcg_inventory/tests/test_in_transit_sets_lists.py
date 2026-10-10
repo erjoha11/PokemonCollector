@@ -207,7 +207,7 @@ def _collection_page(client, query="", with_checklist=True):
 
 
 def _grid(html, key="ja-sv2a"):
-    return html.split(f'id="set-grid-{key}"', 1)[1].split(f'id="missing-list-{key}"', 1)[0]
+    return html.split(f'id="set-grid-{key}"', 1)[1].split(f'id="spares-{key}"', 1)[0]
 
 
 def test_master_set_block_in_transit_tiles_and_duplicates(client):
@@ -220,7 +220,7 @@ def test_master_set_block_in_transit_tiles_and_duplicates(client):
     assert "Tagged Incoming in Dex · seen since" in grid
     # Duplicates KPI: in hand only, the tooltip notes the rest.
     assert re.search(r">2 <span class=\"muted\">· 200 kr", html)
-    assert re.search(r'aria-label="Every copy in hand beyond the first of each print\. Value at market price\. \+3 on the way', html)
+    assert re.search(r'aria-label="Every copy in hand beyond the first of each print, on every track \(Master Ball included\)\. Value at market price\. \+3 on the way', html)
     spares = html.split('id="spares-ja-sv2a"', 1)[1].split('id="unmatched-ja-sv2a"', 1)[0]
     assert "+3 on the way" in spares
     # The table lists only prints with duplicates in hand.

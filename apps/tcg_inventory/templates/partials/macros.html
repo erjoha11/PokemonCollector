@@ -275,3 +275,11 @@ data-card-modal data-href="/cards/{{ card.id }}" data-name="{{ card.name }}"
   {% endif %}
 </div>
 {% endmacro %}
+
+{#- A progress bar over X / Y (#385): the master-set bar, the track KPI
+    mini-bars and the /collections overview's. role="progressbar" with its
+    aria values, so a screen reader reads "275 of 363". css_class
+    'progress-bar-mini' is the thin one. #}
+{% macro progress_bar(owned, total, label, css_class='') -%}
+<div class="progress-bar{{ ' ' ~ css_class if css_class }}" role="progressbar" aria-label="{{ label }}" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ owned }}" aria-valuetext="{{ owned }} of {{ total }}"><span style="width: {{ ((owned / total * 100) if total else 0) | round(2) }}%"></span></div>
+{%- endmacro %}

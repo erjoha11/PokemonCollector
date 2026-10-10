@@ -4,31 +4,62 @@
     (queries.master_set_detail: every card of the set you own, not only the
     ones tagged with this collection). Every id carries ms.dom_key, so two
     blocks on one page never share one: hx-select / hx-target / the Copy
-    button would otherwise silently act on the first. Owned tiles open the
+    buttons would otherwise silently act on the first. Owned tiles open the
     shared card modal; missing tiles have no Card, so they're ghosted and
-    never links. #}
-{% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge %}
+    never links.
+
+    Order (#385): progress bar → KPIs → Copy lists → filters / Add to list /
+    grid → Duplicates (collapsed) → Unmatched (only when there is any). #}
+{% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge, progress_bar %}
 {% set detail = ms.detail %}
 {% set k = ms.dom_key %}
+{% set m = detail.master_set %}
+<div class="master-set-progress" id="master-set-progress-{{ k }}">
+  {{ progress_bar(m.owned, m.total, 'Master set progress, ' ~ detail.checklist.display_name) }}
+  <span class="master-set-progress-label"><strong>{{ m.owned }} / {{ m.total }}</strong> <span class="muted">· {{ m.pct | round(1) }}%</span></span>
+</div>
 {% if detail.korean_proxy %}
 <p class="muted master-set-note">Your cards in this set are Korean, logged in Dex as Japanese <code>{{ detail.checklist.set_code }}</code> (Dex has no Korean print of it). Prices are Japanese-market prices, used as a proxy.</p>
 {% endif %}
 
 <div class="card collection-kpis master-set-kpis">
-  {% set m = detail.master_set %}
   <div><span class="tx-kpi-label">Master set {{ info('Prints owned / prints in the master set: every base print plus every Poké Ball print. A print counts as owned when you have at least one copy of it, any number of copies counting once. Master Ball prints are listed on the checklist but never count.', below=true) }}</span>
     <span class="tx-kpi-value">{{ m.owned }} / {{ m.total }} <span class="muted">· {{ m.pct | round(1) }}%</span></span></div>
   {% for t in detail.tracks if t.counts %}
-  <div><span class="tx-kpi-label">{{ t.label }}</span>
-    <span class="tx-kpi-value">{{ t.owned }} / {{ t.total }} <span class="muted">· {{ t.pct | round(1) }}%</span></span></div>
+  <div class="master-set-track"><span class="tx-kpi-label">{{ t.label }}</span>
+    <span class="tx-kpi-value">{{ t.owned }} / {{ t.total }} <span class="muted">· {{ t.pct | round(1) }}%</span></span>
+    {{ progress_bar(t.owned, t.total, t.label ~ ' progress', 'progress-bar-mini') }}
+    <span class="muted track-left">{{ t.total - t.owned }} left</span></div>
   {% endfor %}
   {%- set on_way = detail.spares_on_the_way %}
   {%- set on_way_note = (' +' ~ on_way ~ ' on the way (tagged Incoming in Dex), not counted until they arrive.') if on_way else '' %}
-  <div><span class="tx-kpi-label">Duplicates {{ info('Every copy in hand beyond the first of each print. Value at market price.' ~ on_way_note, below=true, align_right=true) }}</span>
+  <div><span class="tx-kpi-label">Duplicates {{ info('Every copy in hand beyond the first of each print, on every track (Master Ball included). Value at market price.' ~ on_way_note, below=true, align_right=true) }}</span>
     <span class="tx-kpi-value">{{ detail.spares }} <span class="muted">· {{ detail.spare_value | kr }}</span></span></div>
   {% if detail.unmatched %}
   <div><span class="tx-kpi-label">Unmatched</span><span class="tx-kpi-value"><a href="#unmatched-{{ k }}">{{ detail.unmatched | length }}</a></span></div>
   {% endif %}
+</div>
+
+{#- Copy lists (#385): set-wide plain text built server-side (app.py, next
+    to _missing_list_text). Outside #set-grid-<key>, so a filter swap never
+    touches it (and never needs to). static/master-set.js puts the picked
+    list in the textarea and copies it: "Copied" on success, else selects
+    the text with a Ctrl/Cmd+C hint. #}
+{% set missing_list = ms.copy_lists | selectattr(0, 'eq', 'missing') | first %}
+<div class="card master-set-section copy-lists" id="copy-lists-{{ k }}">
+  <h3>Copy lists {{ info('Plain text for Messenger, Facebook or notes, over the whole set (the filters below don’t change them). Owned and Missing cover the prints that count toward the master set; Duplicates for sale lists every print with copies in hand beyond the first, Master Ball included, never copies still on the way.', below=true) }}</h3>
+  <div class="copy-lists-buttons" role="group" aria-label="Copy a list">
+    {% for key, label, count, text in ms.copy_lists %}
+    <button type="button" id="copy-{{ key }}-{{ k }}" data-copy-list="{{ key }}" data-copy-target="copy-lists-text-{{ k }}" data-copy-status="copy-lists-status-{{ k }}"
+            data-copy-text="{{ text }}" aria-pressed="{{ 'true' if key == 'missing' else 'false' }}"><span class="copy-label" aria-live="polite">{{ label }} <span class="muted">{{ count }}</span></span></button>
+    {% endfor %}
+    {% if detail.spare_slots %}<a href="{{ ms.spares_sales_url }}">Make a finn.no ad from these cards</a>{% endif %}
+    <span class="muted copy-lists-status" id="copy-lists-status-{{ k }}" aria-live="polite"></span>
+  </div>
+  <details class="copy-lists-show">
+    <summary>Show text</summary>
+    <textarea id="copy-lists-text-{{ k }}" rows="{{ [missing_list[3].count('\n') + 1, 10] | min }}" readonly aria-label="Copy list text, {{ detail.checklist.display_name }}">{{ missing_list[3] }}</textarea>
+  </details>
 </div>
 
 {#- The filters are links that hx-get the page, swap just this block's grid
@@ -49,7 +80,11 @@
     </div>
   </div>
   {% set slots = ms.slots %}
-  <p class="muted master-set-count">{{ slots | length }} print{{ 's' if slots | length != 1 }}{% if ms.track == 'all' and ms.master_ball_track %} <span>(Master Ball prints hidden: not collected, pick the track to see them)</span>
+  {#- With Show=Duplicates the line counts prints and copies, so it
+      matches the Duplicates KPI (which counts copies, Master Ball too). #}
+  <p class="muted master-set-count">{{ slots | length }} print{{ 's' if slots | length != 1 }}
+  {%- if ms.show == 'duplicates' %} · {{ ms.add_spare_copies }} duplicate cop{{ 'ies' if ms.add_spare_copies != 1 else 'y' }}{% endif %}
+  {%- if ms.track == 'all' and ms.master_ball_track %} <span>{% if ms.show == 'duplicates' %}(Master Ball prints: pick their track){% else %}(Master Ball prints hidden: not collected, pick the track to see them){% endif %}</span>
   {%- elif ms.track == 'master_ball' and ms.master_ball_track %} · Master Ball <span>(not collected, never part of the master set)</span>: {{ ms.master_ball_track.owned }} / {{ ms.master_ball_track.total }} owned{% endif %}</p>
 
   <div class="set-list-add-wrap">
@@ -93,20 +128,12 @@
   {% endif %}
 </div>
 
-<div class="card master-set-section" id="missing-list-{{ k }}">
-  <h3>Copy missing list {{ info('Every missing print that counts toward the master set, in printed order, as plain text.', below=true) }}</h3>
-  {% if detail.missing %}
-  <textarea id="missing-list-text-{{ k }}" rows="{{ [detail.missing | length + 1, 10] | min }}" readonly aria-label="Missing prints of {{ detail.checklist.display_name }}">{{ ms.missing_text }}</textarea>
-  <button type="button" onclick="navigator.clipboard.writeText(document.getElementById('missing-list-text-{{ k }}').value)">Copy</button>
-  {% else %}
-  <p class="muted">Nothing missing: the master set is complete.</p>
-  {% endif %}
-</div>
-
-<div class="card master-set-section" id="spares-{{ k }}">
-  <h3>Duplicates {{ info('Every copy in hand beyond the first of each print (sum of copies in hand − 1, per print), at market price. Computed, never stored.' ~ on_way_note, below=true) }}</h3>
+<details class="collapsible master-set-spares" id="spares-{{ k }}">
+  <summary>Duplicates · {{ detail.spares }} · {{ detail.spare_value | kr }}</summary>
+  <p class="muted">Every copy in hand beyond the first of each print (sum of copies in hand − 1, per print), on every track (Master Ball included), at market price. Computed, never stored.{{ on_way_note }}</p>
   {% if detail.spare_slots %}
   <p><strong>{{ detail.spares }}</strong> duplicate{{ 's' if detail.spares != 1 }} · {{ detail.spare_value | kr }}{% if on_way %} <span class="muted spares-on-the-way">+{{ on_way }} on the way</span>{% endif %} · <a href="{{ ms.spares_sales_url }}">Make a finn.no ad from these cards</a></p>
+  <div class="table-scroll">
   <table class="master-set-spares">
     <thead><tr><th>Card</th><th>Print</th><th class="num">Owned</th><th class="num">Duplicates</th><th class="num">Price</th><th class="num">Value</th></tr></thead>
     <tbody>
@@ -122,14 +149,18 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% else %}
   <p class="muted">{% if on_way %}No duplicates in hand yet: +{{ on_way }} on the way.{% else %}No duplicates: you have at most one copy of each print.{% endif %}</p>
   {% endif %}
-</div>
+</details>
 
+{#- Only when there is any, so the KPI's #unmatched-<key> link always lands
+    on visible content. #}
+{% if detail.unmatched %}
 <div class="card master-set-section" id="unmatched-{{ k }}">
   <h3>Unmatched {{ info("Cards you own from this set that don't land on any checklist print (e.g. a variant the checklist doesn't have). They aren't counted above.", below=true) }}</h3>
-  {% if detail.unmatched %}
+  <div class="table-scroll">
   <table>
     <thead><tr><th>Card</th><th>Dex card ID</th><th>Dex variant</th><th class="num">Qty</th></tr></thead>
     <tbody>
@@ -138,7 +169,6 @@
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <p class="muted">None: every card you own from this set is on the checklist.</p>
-  {% endif %}
+  </div>
 </div>
+{% endif %}
