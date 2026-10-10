@@ -1,6 +1,6 @@
 """The shared job-run service (issue #274): one function per background job,
-called by every trigger -- the `/cron/*` routes today, #199's in-app Run-now
-buttons and #276's Claude connector later. Each trigger only maps the
+called by every trigger -- the `/cron/*` routes, the in-app Run-now buttons
+on /sync-status (#199) and #276's Claude connector later. Each trigger only maps the
 returned result to its own response format (the cron routes: JSON, 409 for
 an abort or a run already in progress), so the job bodies, their
 /sync-status rows and the circuit breaker can't drift between triggers.
@@ -94,7 +94,8 @@ class AlreadyRunningResult:
 class DexSyncResult:
     """`status`: `ok`, `empty` (no CSV files), `aborted` (circuit breaker,
     see `abort` for the structured counts) or `failed` (a Dropbox error,
-    see `error`)."""
+    see `error`; `not_configured` when that error is the DROPBOX_* env vars
+    missing rather than a call that failed)."""
 
     status: str
     trigger: str
@@ -105,6 +106,7 @@ class DexSyncResult:
     cards_snapshotted: int = 0
     error: str | None = None
     abort: ImportAborted | None = None
+    not_configured: bool = False
 
 
 @dataclass
@@ -294,6 +296,7 @@ def _dex_sync(db: Session, trigger: str, allow_mass_missing: bool) -> DexSyncRes
         )
         result.status = "failed"
         result.error = str(exc)
+        result.not_configured = isinstance(exc, dropbox_client.DropboxNotConfigured)
         return result
     except Exception as exc:
         _record_failure(db, sync_status.DEX_SYNC, trigger, exc, files=result.files)

@@ -894,8 +894,9 @@ class ImportLog(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     ran_at: Mapped[dt.datetime] = mapped_column(DateTime, nullable=False)
     # How the run was triggered: "cron" (the real scheduled Vercel call) or
-    # "manual" (a ?secret= call, a local run, or a test seed). Older rows
-    # may also say "dropbox" (the manual Dropbox picker, removed in #264).
+    # "manual" (a Run-now button on /sync-status, #199, a local run, or a
+    # test seed). Older rows may also say "dropbox" (the manual Dropbox
+    # picker, removed in #264).
     source: Mapped[str] = mapped_column(String, nullable=False)
     files: Mapped[str | None] = mapped_column(String, nullable=True)  # comma-joined filenames
     cards_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

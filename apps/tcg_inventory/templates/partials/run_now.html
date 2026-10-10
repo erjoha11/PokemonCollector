@@ -1,0 +1,28 @@
+{# "Run now" on /sync-status (issue #199): start the Dex sync or the price
+   refresh by hand, behind the normal login -- no CRON_SECRET. Each button
+   POSTs to /sync-status/run/<job>, which calls the same jobs.run_* the
+   daily cron does (trigger "manual") and answers 200 for every handled
+   outcome (htmx 1.9 doesn't swap a 4xx/5xx): the result lands in
+   #run-now-result, and the at-a-glance block, Missing from Dex and the run
+   log are swapped back in out-of-band (partials/run_now_result.html).
+   Both buttons are disabled while either run is in flight; each job is
+   single-flight anyway (jobs.py), so a second click elsewhere (another
+   tab, the cron) gets "already running" rather than a second run. #}
+{% from "partials/macros.html" import info %}
+<div class="card run-now" id="run-now">
+  <h2>Run now {{ info("Starts the job straight away instead of waiting for tomorrow's scheduled run. Dex sync pulls every Dex export CSV from Dropbox and runs a normal sync: it never deletes cards, only flags missing ones, and stops without writing anything if too many cards would go missing. Price refresh fetches TCGplayer and TCGdex prices and fills a few missing card images. Either can take a minute or two; the result shows below and is recorded in the run log as \"manual\".") }}</h2>
+  <div class="run-now-actions">
+    <form hx-post="/sync-status/run/dex-sync" hx-target="#run-now-result" hx-swap="innerHTML"
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy">
+      <button type="submit" class="run-now-button">Run Dex sync now</button>
+    </form>
+    <form hx-post="/sync-status/run/price-refresh" hx-target="#run-now-result" hx-swap="innerHTML"
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy">
+      <button type="submit" class="run-now-button secondary">Run price refresh now</button>
+    </form>
+    <span id="run-now-busy" class="htmx-indicator muted">Running… this can take a minute or two.</span>
+  </div>
+  {#- A failed request (5xx, network) shows here -- form-errors.js (#228). #}
+  <p class="warnings" role="alert" hidden data-form-error></p>
+  <div id="run-now-result" aria-live="polite"></div>
+</div>

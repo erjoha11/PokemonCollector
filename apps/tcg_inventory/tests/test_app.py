@@ -556,7 +556,8 @@ def test_image_backfill_route_is_secret_gated_and_reports_progress(client, monke
     monkeypatch.setenv("CRON_SECRET", "s3cret")
     assert client.get("/cron/image-backfill").status_code == 401
 
-    body = client.get("/cron/image-backfill?secret=s3cret").json()
+    assert client.get("/cron/image-backfill?secret=s3cret").status_code == 401  # off since #199
+    body = client.get("/cron/image-backfill", headers={"Authorization": "Bearer s3cret"}).json()
     assert body["filled"] == 1 and body["remaining"] == 0 and body["cards_with_image"] == 1
 
 

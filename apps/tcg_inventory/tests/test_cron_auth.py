@@ -1,6 +1,6 @@
 """The shared /cron/* auth check (cron_auth.require_cron_secret, issue #226),
 over all four routes: fails closed on a deploy without CRON_SECRET, Bearer
-first, the deprecated `?secret=` still accepted, local no-login dev open.
+only (`?secret=` refused since #199), local no-login dev open.
 """
 from types import SimpleNamespace
 
@@ -95,21 +95,23 @@ def test_correct_bearer_runs_as_cron(client, monkeypatch, request, route, auth_o
     assert _sources(JOBS[route]) == ["cron"]  # the same trigger split on every route
 
 
+def test_query_secret_is_off():
+    # #199: the in-app Run-now buttons replaced the deprecated ?secret=.
+    assert cron_auth.ACCEPT_QUERY_SECRET is False
+
+
 @pytest.mark.parametrize("route", ROUTES)
-def test_deprecated_query_secret_still_runs_as_manual(client, monkeypatch, configured_auth, route):
+@pytest.mark.parametrize("auth_on", [False, True])
+def test_query_secret_is_refused_and_bearer_still_works(client, monkeypatch, request, route, auth_on):
+    if auth_on:
+        request.getfixturevalue("configured_auth")
     monkeypatch.setenv("CRON_SECRET", SECRET)
     response = client.get(route, params={"secret": SECRET})
-    assert response.status_code == 200, response.text
-    assert _sources(JOBS[route]) == ["manual"]
-
-
-@pytest.mark.parametrize("route", ROUTES)
-def test_query_secret_refused_once_switched_off(client, monkeypatch, configured_auth, route):
-    # The one-line removal planned with #199: Bearer keeps working.
-    monkeypatch.setattr(cron_auth, "ACCEPT_QUERY_SECRET", False)
-    monkeypatch.setenv("CRON_SECRET", SECRET)
-    assert client.get(route, params={"secret": SECRET}).status_code == 401
+    assert response.status_code == 401, response.text
+    assert response.headers.get("www-authenticate") == "Bearer"
+    assert _sources(JOBS[route]) == []  # refused before the job ran
     assert client.get(route, headers={"Authorization": f"Bearer {SECRET}"}).status_code == 200
+    assert _sources(JOBS[route]) == ["cron"]
 
 
 @pytest.mark.parametrize("route", ROUTES)

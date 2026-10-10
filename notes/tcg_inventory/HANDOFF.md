@@ -1217,8 +1217,9 @@ user test (Phase 2 = card detail/collection pages, Phase 3 = cleanup).
 
 - **Set sync has not run on prod yet.** This container can't reach
   api.pokemontcg.io (egress policy). After deploy, trigger
-  `GET /cron/set-sync?secret=<CRON_SECRET>` once, or wait for the 1st of the
-  month. Until then completion stays "unknown".
+  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
+  once, or wait for the 1st of the month. Until then completion stays
+  "unknown". (Updated 2026-10-11, #199: `?secret=` is refused now.)
 - JP/KR sets never match the API, so SV151 JP/KR etc. stay "unknown"; a
   manual `total_cards` path would be needed for those.
 
@@ -1781,7 +1782,8 @@ run automatically through `init_db()` on the first start after deploy.
   daily at 06:00 UTC, set sync monthly (the 1st, 04:00 UTC). Image backfill
   has no cron of its own (the daily price refresh runs a small image pass,
   counted in its summary), so that card only fills in after a manual
-  `/cron/image-backfill?secret=...` call.
+  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/image-backfill`
+  call. (Updated 2026-10-11, #199: `?secret=` is refused now.)
 
 # Handoff notes — 2026-10-04 session (#309 slice 2: Facebook wins link flow, #312)
 
@@ -2134,11 +2136,9 @@ None.
 
 ## Open items
 
-- **`?secret=` is still accepted, deprecated** (constant-time, same
-  fail-closed rule, recorded as `manual`). #226 asked to drop it, but #199's
-  Run-now buttons aren't built and it's the only browser-based manual
-  trigger. Dropping it is `cron_auth.ACCEPT_QUERY_SECRET = False`; do that
-  with #199. User's call.
+- ~~**`?secret=` is still accepted, deprecated**~~ Done in #199
+  (2026-10-11): `cron_auth.ACCEPT_QUERY_SECRET = False`, see that session's
+  entry.
 
 
 # Handoff notes — 2026-10-08 session (#367: Korean marker from a "KR" note)
@@ -2471,3 +2471,36 @@ Evidence (verified 2026-10-09, from the issue):
   TCGdex requests per cron and more of the cron's time box. Not changed.
 - Out of scope per #386: eBay sold data via PokeTrace; Eevee swsh7-125
   Normal (Dex) vs Reverse Holo (Collectr) is a data question for the user.
+
+# Handoff notes — 2026-10-11 session (#199: Run-now buttons, `?secret=` off)
+
+## Code (in git, PR for #199)
+
+- `/sync-status` has a **Run now** card: "Run Dex sync now"
+  (`POST /sync-status/run/dex-sync`) and "Run price refresh now"
+  (`POST /sync-status/run/price-refresh`). Behind the normal login, no
+  `CRON_SECRET`; they call `jobs.run_dex_sync` / `jobs.run_price_refresh`
+  with `trigger="manual"` (import_log source and snapshot source `manual`).
+  Every outcome renders `partials/run_now_result.html` (200), never a 500.
+- **`?secret=` on `/cron/*` is off**: `cron_auth.ACCEPT_QUERY_SECRET =
+  False`, so `GET /cron/...?secret=<CRON_SECRET>` now answers 401 like a
+  wrong secret. The Vercel crons are unaffected: `vercel.json`'s cron paths
+  carry no query string, and Vercel sends `Authorization: Bearer
+  <CRON_SECRET>` itself. No workflow, script or `fb_auction_watcher` code
+  called `/cron/*` with `?secret=`.
+- Set sync and image backfill have no button: run them with
+  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
+  (or `/cron/image-backfill?limit=N`). That needs the real prod value of
+  `CRON_SECRET` (a Sensitive Vercel variable, not readable back); rotate it
+  in Vercel if it's lost. Older entries above that said `?secret=` were
+  updated to this form.
+
+## Direct database changes
+
+- None.
+
+## Open items (not built)
+
+- Run-now buttons for set sync and image backfill (fast-follow to #199).
+- No override for the circuit breaker from Run now: an aborted sync shows
+  the reason; `allow_mass_missing` is still offered nowhere in the UI.

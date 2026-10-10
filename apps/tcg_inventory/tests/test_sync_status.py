@@ -97,7 +97,7 @@ def test_cron_source_is_cron_only_for_the_real_scheduled_header(client, monkeypa
     monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: FakeDropbox(pages=[FakeListFolderResult([])]))
 
     client.get("/cron/dropbox-sync", headers={"Authorization": "Bearer s3cr3t"})
-    client.get("/cron/dropbox-sync?secret=s3cr3t")
+    client.post("/sync-status/run/dex-sync")  # the in-app Run-now button (#199)
 
     assert [log[2] for log in _logs()] == ["cron", "manual"]
 

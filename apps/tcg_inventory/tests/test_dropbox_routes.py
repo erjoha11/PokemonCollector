@@ -38,8 +38,9 @@ def test_cron_sync_accepts_correct_secret(client, monkeypatch):
         assert snap.source == "cron"  # real Vercel header -> the scheduled slot
 
 
-def test_cron_sync_accepts_secret_as_query_param(client, monkeypatch):
-    # Fallback for callers that can't set a custom Authorization header.
+def test_cron_sync_refuses_secret_as_query_param(client, monkeypatch):
+    # Off since #199 (the in-app Run-now button replaced it): even the right
+    # value in ?secret= is a 401, and nothing runs.
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     csv_bytes = make_csv("My Collection", [{"id": "a", "name": "Pikachu", "qty": 2, "price": "150"}])
     fake = FakeDropbox(
@@ -49,14 +50,13 @@ def test_cron_sync_accepts_secret_as_query_param(client, monkeypatch):
     monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
 
     response = client.get("/cron/dropbox-sync?secret=s3cr3t")
-    assert response.status_code == 200
-    assert response.json()["cards_created"] == 1
+    assert response.status_code == 401
+    assert fake.downloaded_paths == []  # refused before the job ran
 
     import db as db_module
 
     with db_module.SessionLocal() as db:
-        snap = db.query(CardSnapshot).one()
-        assert snap.source == "manual"  # off-schedule trigger, not the real cron header
+        assert db.query(CardSnapshot).count() == 0
 
 
 def test_cron_sync_scheduled_then_manual_same_day_yields_two_snapshot_rows(client, monkeypatch):
@@ -69,7 +69,7 @@ def test_cron_sync_scheduled_then_manual_same_day_yields_two_snapshot_rows(clien
     monkeypatch.setattr(dropbox_client, "build_client_from_env", lambda: fake)
 
     client.get("/cron/dropbox-sync", headers={"Authorization": "Bearer s3cr3t"})
-    client.get("/cron/dropbox-sync?secret=s3cr3t")
+    client.post("/sync-status/run/dex-sync")  # the in-app Run-now button (#199)
 
     import db as db_module
 
