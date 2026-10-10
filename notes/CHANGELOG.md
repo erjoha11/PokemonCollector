@@ -246,6 +246,24 @@ yet.
 
 ### tcg_inventory
 
+**Run-now buttons on /sync-status, `?secret=` turned off (#199)**
+- /sync-status has a Run now card: "Run Dex sync now"
+  (`POST /sync-status/run/dex-sync`) and "Run price refresh now"
+  (`POST /sync-status/run/price-refresh`). Behind the normal login, not
+  under `/cron/`, no `CRON_SECRET`. They call `jobs.run_dex_sync` /
+  `jobs.run_price_refresh` with trigger `manual`.
+- Every outcome (ok, already running, Dropbox not configured or failing,
+  circuit-breaker abort, degraded, unexpected error) renders a result
+  partial, never a 500. The at-a-glance block, Missing from Dex and the run
+  log refresh out-of-band, so the run shows without a reload.
+- `?secret=` on `/cron/*` is refused with 401: cron auth is
+  `Authorization: Bearer <CRON_SECRET>` only. Vercel Cron sends the header
+  itself, so the schedule is unaffected.
+- Docs updated: README ("Run now", "Cron endpoint auth"), `CLAUDE.md`,
+  `notes/tcg_inventory/HANDOFF.md`.
+- Fast-follows: Run now for set sync and image backfill (until then `curl`
+  with the Bearer header), and a circuit-breaker override in the UI.
+
 **"Incoming" instead of "On the way", dashboard Incoming row (#393)**
 - The in-transit badge says "Incoming" (overdue: "Incoming · 24 d"), and so
   do the card page row, the Inventory "Incoming only" filter, the Dashboard
