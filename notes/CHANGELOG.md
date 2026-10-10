@@ -20,6 +20,11 @@ yet.
 
 ### Repo
 
+**Removed the `/repo_review` command and `reviewer` agent (#392)**
+- Deleted `.claude/commands/repo_review.md` and `.claude/agents/reviewer.md`,
+  and their mentions in the root `CLAUDE.md`.
+- `notes/REVIEW.md` stays as a historical report.
+
 **Reproducible builds: pinned lockfiles and one Python version (#227)**
 - The `>=` requirement files are now `requirements-dev.in` and
   `apps/*/requirements.in`. The `requirements.txt` files next to them are
