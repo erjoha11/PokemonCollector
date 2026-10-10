@@ -2093,6 +2093,13 @@ html.card-modal-open { overflow: hidden; }
    Sync status (issue #264): one small card per background job, then the
    run log. Status pills reuse .tx-badge's shape.
    -------------------------------------------------------------------- */
+/* Run now (issue #199): the two job buttons and the in-flight note. */
+.run-now { margin-top: 1rem; }
+.run-now h2 { font-size: 1rem; margin: 0 0 0.6rem; }
+.run-now-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.run-now-actions form { margin: 0; }
+#run-now-result:not(:empty) { margin-top: 0.75rem; }
+#run-now-result .warnings, #run-now-result .saved-note { margin: 0; }
 .sync-glance {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

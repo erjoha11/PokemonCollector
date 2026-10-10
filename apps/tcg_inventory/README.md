@@ -629,8 +629,10 @@ run).
   Cancel (and edit/delist/delete without htmx) return to the Listings tab
   with `show_delisted`/`sold_only` kept.
 - **Sync status** (`/sync-status`, issue #264; formerly the Activity Log
-  at `/releases`) — nothing runs from this page. First an
-  at-a-glance block with one card per background job (Dex sync, Price
+  at `/releases`). First **Run now** (#199): "Run Dex sync now" and "Run
+  price refresh now" start that job straight away, behind the normal login
+  and without `CRON_SECRET` (see "Run now" under "Sync status" below).
+  Then an at-a-glance block with one card per background job (Dex sync, Price
   refresh, Set sync, Image backfill): its last successful run (time,
   trigger, and a one-line summary — the card counts for a Dex sync), plus
   its last empty/aborted/failed run *only* when that is newer than the last
@@ -644,8 +646,8 @@ run).
   Details. See "Sync status" below for what gets recorded. `GET /releases`
   and `GET /import` 308-redirect here and `GET /releases/sync-log` to
   `/sync-status/log`, keeping any query string. There is no manual
-  CSV-upload page or Dropbox file picker; see "Dropbox import setup" below
-  for the only way to sync outside the cron.
+  CSV-upload page or Dropbox file picker: Run now syncs whatever is in the
+  Dropbox folder, same as the cron (see "Dropbox import setup" below).
 
 ## Money figures (glossary)
 
@@ -1383,7 +1385,7 @@ of these does:
 | `source` | Meaning |
 |---|---|
 | `cron` | The real scheduled Vercel call (it carries `Authorization: Bearer <CRON_SECRET>`; checked by `cron_auth.require_cron_secret`, #226) |
-| `manual` | A person: a `/cron/*` call with `?secret=`, a local run, later #199's Run-now buttons |
+| `manual` | A person: the Run-now buttons on `/sync-status` (#199), or a `/cron/*` call in local no-login dev without `CRON_SECRET` |
 | `connector` | The Claude connector (#276, not built yet) |
 
 Older rows may say `dropbox` (the removed manual picker). An interrupted
@@ -1422,6 +1424,36 @@ its row on its own, so an aborted import's rollback never takes the log row
 with it. It never raises: a failure to write the log is printed and rolled
 back rather than masking the job's real response.
 
+### Run now (issue #199)
+
+The **Run now** card at the top of `/sync-status` re-runs a scheduled job
+by hand without `CRON_SECRET` (which, as a Vercel "Sensitive" variable,
+can't be read back):
+
+| Button | Route | Job | Trigger / snapshot source |
+|---|---|---|---|
+| Run Dex sync now | `POST /sync-status/run/dex-sync` | `jobs.run_dex_sync` | `manual` / `manual` |
+| Run price refresh now | `POST /sync-status/run/price-refresh` | `jobs.run_price_refresh` | `manual` / `manual` |
+
+- **Auth:** behind the normal Supabase login — not under `/cron/`, not in
+  `_PUBLIC_PATHS`; a request without a session is redirected to `/login`
+  and runs nothing. Like every other state-changing POST in the app, it
+  relies on the session cookie's `SameSite=Lax` against cross-site forms.
+- **Same job as the cron:** the routes call `jobs.run_*` directly (never
+  the cron route bodies), so the circuit breaker, the single-flight lock,
+  the `import_log` row and the snapshot are exactly the cron's, only
+  recorded as `manual`. The breaker is never overridden from here.
+- **Answer:** an htmx partial (`partials/run_now_result.html`), always
+  HTTP 200 since htmx 1.9 doesn't swap an error status: the result (counts
+  or the price summary), or a readable message for already running,
+  Dropbox not configured, a Dropbox error, a circuit-breaker abort, a
+  degraded refresh, or an unexpected error (recorded as `failed` by
+  `jobs.py`). The at-a-glance block, Missing from Dex and the run log are
+  swapped back in out-of-band, so the new run shows without a reload. Both
+  buttons are disabled (`hx-disabled-elt`) while either run is in flight.
+- Set sync and image backfill have no button yet; call their `/cron/*`
+  route with the Bearer header (see "Cron endpoint auth").
+
 ### Single-flight guard (issues #340, #274)
 
 Only one run of each job runs at a time (`jobs._single_flight`, every
@@ -1438,7 +1470,8 @@ other (a price refresh can run during a Dex sync, as before).
   uses its own session, so its commits never mix with the sync's.
 - **Already running.** A second run while the row is live gets HTTP 409
   `{"status": "already_running", "job", "started_at", "trigger", "error"}`
-  and writes nothing (no `import_log` row, no Dropbox or API call).
+  from a `/cron/*` route, or an "already running" message from a Run-now
+  button, and writes nothing (no `import_log` row, no Dropbox or API call).
 - **Killed runs.** A row older than `job_locks.STALE_AFTER` (15 min,
   well above Vercel's limit) belongs to a run that died. The next run takes
   it over, and the dead run gets a `failed` row on Sync status, dated when
@@ -1495,9 +1528,9 @@ Dropbox is how card data gets into the app at all — there is no manual
 CSV-upload page (removed; nobody used it). This pulls CSV files directly
 from a Dropbox folder (read-only: `files.metadata.read` +
 `files.content.read`), via the daily cron (see "Automatic daily sync"
-below) or a manual off-schedule run of that same endpoint
-(`GET /cron/dropbox-sync?secret=...`), so setting this up is required
-before the app has any data to show.
+below) or an off-schedule run of that same job from the "Run Dex sync now"
+button on `/sync-status`, so setting this up is required before the app has
+any data to show.
 
 One-time setup:
 
@@ -1519,13 +1552,11 @@ One-time setup:
    Dex exports to, e.g. `/Dex Exports`).
 5. Restart `python app.py`. The daily cron (see "Automatic daily sync"
    below) picks up every CSV currently in that folder automatically — for
-   an immediate off-schedule sync instead of waiting for it, hit
-   `GET /cron/dropbox-sync?secret=<CRON_SECRET>` directly (deprecated, see
-   "Cron endpoint auth" below; `curl -H "Authorization: Bearer
-   <CRON_SECRET>"` works too and keeps the secret out of logs). There is no
-   in-app file picker: its UI was removed earlier (HANDOFF.md #87) and its
-   leftover `/import/dropbox/list` and `/import/dropbox/sync` routes in
-   #264 (#199's "Run now" is the planned replacement).
+   an immediate off-schedule sync instead of waiting for it, press "Run
+   Dex sync now" on `/sync-status` (#199). There is no in-app file picker:
+   its UI was removed earlier (HANDOFF.md #87) and its leftover
+   `/import/dropbox/list` and `/import/dropbox/sync` routes in #264; Run
+   now replaces it.
 
 The refresh token doesn't expire, so this is a one-time setup. Nothing is
 ever written back to Dropbox.
@@ -1633,8 +1664,8 @@ CSV currently in the configured `DROPBOX_FOLDER` and runs a normal sync
 import circuit breaker trips (empty/header-only My Collection, or a mass
 drop above 5%), nothing is written, no snapshot is taken, and the route
 returns HTTP 409 with `{"status": "aborted", "error": ...}` so the Vercel
-cron run shows as failed; fix the export and the next run (or a manual
-sync) picks up normally. Every outcome (synced, empty folder, aborted,
+cron run shows as failed; fix the export and the next run (or "Run Dex
+sync now" on `/sync-status`) picks up normally. Every outcome (synced, empty folder, aborted,
 Dropbox error) also lands on the Sync status page (see "Sync status").
 
 To turn it on:
@@ -1674,15 +1705,18 @@ session) and share one check, `cron_auth.require_cron_secret`:
 | missing/empty | yes (a deploy) | **Every request refused, 503** — fails closed |
 | missing/empty | no (local `python app.py`) | Open, as before |
 
-- **`Authorization: Bearer <CRON_SECRET>`** is the primary path. Vercel
-  Cron sends it itself, and it's the only one recorded as `source=cron`
-  (and the `cron`/`price-cron` snapshot slot).
-- **`?secret=<CRON_SECRET>` is deprecated.** It lands in request logs and
-  browser history, but until #199's logged-in Run-now buttons exist it's
-  the only way to start a job by hand from a browser, so it's still
-  accepted (recorded as `manual`). Removing it is one line
-  (`cron_auth.ACCEPT_QUERY_SECRET = False`), planned with #199. From a
-  terminal, prefer `curl -H "Authorization: Bearer <CRON_SECRET>" ...`.
+- **`Authorization: Bearer <CRON_SECRET>`** is the only accepted secret.
+  Vercel Cron sends it itself on every scheduled call (`vercel.json`'s
+  `crons` paths carry no query secret), and it's recorded as
+  `source=cron` (and the `cron`/`price-cron` snapshot slot).
+- **`?secret=<CRON_SECRET>` is refused (401) since #199.** It landed in
+  request logs and browser history (#226 deprecated it). To re-run the
+  Dex sync or the price refresh by hand, use the **Run now** buttons on
+  `/sync-status` (behind the login, no secret, recorded as `manual`). For
+  the two jobs without a button, `set-sync` and `image-backfill`, call the
+  route from a terminal with the header, e.g.
+  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
+  (recorded as `cron`, since the header is all the route can see).
 
 ### Facebook wins inbox (issue #309)
 
@@ -2209,10 +2243,10 @@ with no match is stamped `image_lookup_failed_at` and retried after 30 days
 instead of blocking the queue. It runs:
 
 - daily, after prices, inside `/cron/price-refresh` (up to 60 cards, 25 s);
-- on demand via `GET /cron/image-backfill?secret=<CRON_SECRET>[&limit=N]`
-  (time-boxed to ~50 s; call again while `remaining` > 0; better with
-  `Authorization: Bearer <CRON_SECRET>`, `?secret=` is deprecated, see
-  "Cron endpoint auth");
+- on demand via `curl -H "Authorization: Bearer $CRON_SECRET"
+  "https://<host>/cron/image-backfill?limit=N"` (time-boxed to ~50 s; call
+  again while `remaining` > 0; `?secret=` is refused since #199, see "Cron
+  endpoint auth");
 - by hand: `python backfill_images.py [--limit N]` (same `DATABASE_URL`
   convention as `seed_set_release_order.py`).
 
@@ -2299,8 +2333,7 @@ month) rendered anywhere in the UI — the function itself is still in
 Snapshots are stored per source (the chart then keeps each day's last one):
 up to two per day from the Dex-sync side: the scheduled cron run
 (`CardSnapshot.source="cron"`) and, separately, the latest off-schedule sync
-that day (`source="manual"` — a manual Dropbox sync, or `/cron/dropbox-sync`
-hit by hand with `?secret=` instead of the real Vercel cron header).
+that day (`source="manual"` — "Run Dex sync now" on `/sync-status`, #199).
 Re-running either one again the same day overwrites that same slot rather
 than adding a third point. `/cron/price-refresh` (see "Price refresh" above)
 writes its own independent slot the same way (`source="price-cron"` when

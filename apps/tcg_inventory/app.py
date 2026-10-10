@@ -14,6 +14,7 @@ import hmac
 import json
 import os
 import threading
+import traceback
 from contextlib import asynccontextmanager, contextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
@@ -3824,6 +3825,67 @@ def releases_sync_log_redirect(request: Request):
     return _redirect_keeping_query(request, "/sync-status/log")
 
 
+# --------------------------------------------------------------------------
+# Run now (issue #199): the in-app replacement for hitting /cron/* by hand.
+# Behind the normal login (not in _PUBLIC_PATHS, not under /cron/), so no
+# CRON_SECRET; like every other state-changing POST here, the session
+# cookie's SameSite=Lax keeps a cross-site form from riding on it. Each
+# calls the same jobs.run_* as its cron route with trigger "manual" (its
+# import_log source and snapshot source), never the cron route bodies.
+# --------------------------------------------------------------------------
+_RUN_NOW_JOBS = {
+    sync_status.DEX_SYNC: lambda db: jobs.run_dex_sync(db, trigger=jobs.MANUAL),
+    sync_status.PRICE_REFRESH: lambda db: jobs.run_price_refresh(db, trigger=jobs.MANUAL),
+}
+
+
+def _run_now(request: Request, job: str):
+    """Run `job` and answer with partials/run_now_result.html: 200 for every
+    outcome, including already running, Dropbox not configured, an abort and
+    an unexpected error (jobs.py records that one as failed before
+    re-raising), since htmx 1.9 doesn't swap a 4xx/5xx. The at-a-glance
+    block, Missing from Dex and the run log come back out-of-band."""
+    run, error = None, None
+    db = get_db_session()
+    try:
+        run = _RUN_NOW_JOBS[job](db)
+    except Exception as exc:  # noqa: BLE001 -- shown as a partial, never a 500
+        traceback.print_exc()
+        error = f"{exc.__class__.__name__}: {exc}"
+    finally:
+        db.close()
+    db = get_db_session()
+    try:
+        return templates.TemplateResponse(
+            request,
+            "partials/run_now_result.html",
+            {
+                "job": job,
+                "run": run,
+                "error": error,
+                "oob": True,
+                "overview": sync_status.overview(db),
+                "missing": missing_cards.flagged_cards(db),
+                "logs": _recent_import_logs(db),
+                "lsort": "ran_at",
+                "ldir": "desc",
+                "job_labels": sync_status.JOB_LABELS,
+            },
+        )
+    finally:
+        db.close()
+
+
+@app.post("/sync-status/run/dex-sync")
+def run_now_dex_sync(request: Request):
+    return _run_now(request, sync_status.DEX_SYNC)
+
+
+@app.post("/sync-status/run/price-refresh")
+def run_now_price_refresh(request: Request):
+    return _run_now(request, sync_status.PRICE_REFRESH)
+
+
 def _already_running_response(result: jobs.AlreadyRunningResult) -> JSONResponse:
     return JSONResponse(
         status_code=409,
@@ -3854,20 +3916,17 @@ def cron_dropbox_sync(trigger: str = Depends(cron_auth.require_cron_secret)):
     CRON_SECRET rather than the Supabase login: Vercel's cron invocations
     carry no browser session to log in with. Vercel automatically sends
     `Authorization: Bearer <CRON_SECRET>` on cron requests when that env
-    var is set -- see README "Automatic daily sync". A manual trigger (e.g.
-    from a tool that can't set custom headers, or a person running this by
-    hand mid-day) may instead pass the same value as `?secret=` (deprecated,
-    kept until #199's Run-now buttons exist). The check itself, shared by
-    every /cron route and failing closed, is cron_auth.require_cron_secret.
+    var is set -- see README "Automatic daily sync". The check itself,
+    shared by every /cron route and failing closed, is
+    cron_auth.require_cron_secret; the old `?secret=` query parameter is
+    refused since #199 (a person re-runs this from /sync-status's Run-now
+    button instead, `run_now_dex_sync`).
 
-    The two are told apart: only a request carrying that exact header is
-    trusted as the real scheduled Vercel invocation (trigger "cron",
-    CardSnapshot.source="cron"); a `?secret=` request is a manual
-    off-schedule run (trigger and snapshot source "manual") even though it
-    hits this same route -- see snapshots.record_daily_snapshot and
-    HANDOFF.md. With no CRON_SECRET configured (only allowed locally,
-    without login) there's no way to tell the two apart, so every request
-    is treated as "manual".
+    A Bearer request is the real scheduled invocation (trigger "cron",
+    CardSnapshot.source="cron"); a Run-now click is "manual" -- see
+    snapshots.record_daily_snapshot. With no CRON_SECRET configured (only
+    allowed locally, without login) there's no way to tell a scheduled call
+    apart, so every request here is treated as "manual".
 
     A second request while a run is in progress gets 409
     `{"status": "already_running"}` and writes nothing (issue #340).

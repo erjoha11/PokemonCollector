@@ -5,7 +5,7 @@
    syncs; other jobs show their one-line summary under Details. #}
 {% from "partials/macros.html" import sort_th with context %}
 {% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'lsort', 'ldir', lsort, ldir, path='/sync-status/log', hx_target='#sync-log', hx_swap='outerHTML') }}{% endmacro %}
-<div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;">
+<div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;"{% if oob %} hx-swap-oob="true"{% endif %}>
   <h2>Run log</h2>
   {% if logs %}
   <div class="table-scroll">

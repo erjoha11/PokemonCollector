@@ -59,20 +59,20 @@ def test_cron_price_refresh_accepts_correct_secret_and_refreshes_prices(client, 
     assert body["fx_source"] == "live"
 
 
-def test_cron_price_refresh_accepts_secret_as_query_param(client, monkeypatch):
+def test_cron_price_refresh_refuses_secret_as_query_param(client, monkeypatch):
+    # Off since #199 (the in-app Run-now button replaced it).
     monkeypatch.setenv("CRON_SECRET", "s3cr3t")
     _add_card(client)
     _pokemontcg(monkeypatch, _shellder())
 
     response = client.get("/cron/price-refresh?secret=s3cr3t")
 
-    assert response.status_code == 200
+    assert response.status_code == 401
 
     import db as db_module
 
     with db_module.SessionLocal() as db:
-        snap = db.query(CardSnapshot).one()
-        assert snap.source == "manual"  # off-schedule trigger, not the real cron header
+        assert db.query(CardSnapshot).count() == 0
 
 
 def test_cron_price_refresh_reports_low_confidence_matches(client, monkeypatch):
