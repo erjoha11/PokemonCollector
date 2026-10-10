@@ -588,7 +588,12 @@ def dashboard(
         invested_by_card = queries.net_invested_by_card(db, txs)
         queries.assign_bucket_investment(
             collection_breakdown["children"]
-            + [collection_breakdown["bulk"], collection_breakdown["collections"], collection_breakdown["total"]],
+            + [
+                collection_breakdown["bulk"],
+                collection_breakdown["incoming"],
+                collection_breakdown["collections"],
+                collection_breakdown["total"],
+            ],
             invested_by_card,
         )
         queries.assign_bucket_investment(series_breakdown, invested_by_card)
@@ -603,7 +608,7 @@ def dashboard(
         # re-sorts the cards nested inside each bucket, never the buckets
         # themselves.
         collection_rows = collection_breakdown["children"] + [collection_breakdown["bulk"]]
-        _sort_cards_in_buckets(collection_rows, csort, cdir)
+        _sort_cards_in_buckets(collection_rows + [collection_breakdown["incoming"]], csort, cdir)
         _sort_cards_in_buckets(series_breakdown, ssort, sdir)
         _sort_cards_in_buckets(rarity_breakdown, rsort, rdir)
         # "Most valuable cards" is always market price, highest first -- no
@@ -818,7 +823,7 @@ def _inventory_page_links(request: Request, page: int, page_count: int) -> list[
 
 def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, dup, rarity, language, unowned, transit=""):
     query = db.query(Card).options(selectinload(Card.collections), selectinload(Card.binder))
-    if transit:  # "On the way only" (issue #382); in_transit is clamped to qty
+    if transit:  # "Incoming only" (issue #382); in_transit is clamped to qty
         query = query.filter(Card.in_transit_qty > 0, Card.qty > 0)
     if q:
         like = _like_pattern(q)
@@ -874,7 +879,7 @@ def inventory(
     # Same query-string presence/truthiness idiom as `dup` above -- "Show
     # cards I no longer own" (qty == 0), default OFF/hidden. See issue #132.
     unowned: str = "",
-    # "On the way only" (issue #382), same presence/truthiness idiom as `dup`.
+    # "Incoming only" (issue #382), same presence/truthiness idiom as `dup`.
     transit: str = "",
     sort: str = "release",
     direction: str = "asc",

@@ -70,7 +70,7 @@
 {#- Copies paid for but not received yet (Dex "Incoming", issue #382). They
     still count in every figure below; this just says how much is on its way. #}
 {% if in_transit and in_transit.count %}
-<p class="dashboard-transit"><a href="/inventory?transit=1" title="Tagged Incoming in Dex: paid for, not received yet. Counted as owned everywhere, but can't be sold until they arrive.">{{ in_transit.count }} card{{ '' if in_transit.count == 1 else 's' }} on the way · {{ in_transit.value | kr }}</a></p>
+<p class="dashboard-transit"><a href="/inventory?transit=1" title="Tagged Incoming in Dex: paid for, not received yet. Counted as owned everywhere, but can't be sold until they arrive.">{{ in_transit.count }} card{{ '' if in_transit.count == 1 else 's' }} incoming ·{{ in_transit.value | kr }}</a></p>
 {% endif %}
 
 {% include "partials/kpi_module.html" %}
@@ -121,7 +121,7 @@
 
   <div class="card-pair">
   <div class="card" id="dashboard-inventory-card">
-    <h2>Inventory {{ info('Unique = number of distinct cards. Duplicates = extra copies beyond the first. Total = unique + duplicates. Value = price of unique cards. Total value = duplicates included. Gain/loss = total value minus net invested. Each collection row counts every card tagged with it, so a card in several collections is counted in each of them (marked \'shared\' when expanded) and the rows can add up to more than the Total. Collections and Total count every card once. Bulk is cards with no collection.', below=true) }}</h2>
+    <h2>Inventory {{ info('Unique = number of distinct cards. Duplicates = extra copies beyond the first. Total = unique + duplicates. Value = price of unique cards. Total value = duplicates included. Gain/loss = total value minus net invested. Each collection row counts every card tagged with it, so a card in several collections is counted in each of them (marked \'shared\' when expanded) and the rows can add up to more than the Total. Collections and Total count every card once. Bulk is cards with no collection. Incoming is cards tagged Incoming in Dex (paid for, not received), also counted in their own rows.', below=true) }}</h2>
     <table>
       <thead>
         <tr>
@@ -161,6 +161,27 @@
         {{ card_leaf_row(card, 'grandchild-row', row_id, in_collection=c.name) }}
         {% endfor %}
         {% endfor %}
+        {# Incoming (issue #393): every in-transit card (the Dex Incoming
+           status, #382 -- never a collection), each with a "shared with"
+           badge naming its real collections. Same every-row rule as the
+           collection rows: these cards are also counted in their own
+           collection rows (or Bulk), so this row isn't part of any sum.
+           Only shown when something is incoming. #}
+        {% set incoming = collection_breakdown.incoming %}
+        {% if incoming.cards %}
+        <tr>
+          <td>{{ toggle_button(incoming.name, 'coll-incoming') }} {{ info('Tagged Incoming in Dex: paid for, not received yet. These cards are also counted in their own collection rows (or Bulk), shown as \'shared with\' when expanded.') }}</td>
+          <td class="num">{{ incoming.unique_count }}</td>
+          <td class="num">{{ incoming.duplicates }}</td>
+          <td class="num"><a href="/inventory?transit=1">{{ incoming.qty }}</a></td>
+          <td class="num">{{ incoming.unique_value | kr }}</td>
+          <td class="num">{{ incoming.total_value | kr }}</td>
+          {{ bucket_money_cells(incoming) }}
+        </tr>
+        {% for card in incoming.cards %}
+        {{ card_leaf_row(card, 'grandchild-row', 'coll-incoming', in_collection=incoming.name) }}
+        {% endfor %}
+        {% endif %}
         {# Bulk (cards with no collection) is the complement of "Collections",
            not a member of it -- shown at the same indentation level as the
            "Collections" summary row above, not nested under it like a named

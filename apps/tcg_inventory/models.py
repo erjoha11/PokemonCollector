@@ -63,6 +63,15 @@ class Collection(Base):
         secondary=card_collections, back_populates="collections"
     )
 
+    @property
+    def is_status(self) -> bool:
+        """Named like a Dex status folder (constants.STATUS_CATEGORIES, e.g.
+        "Incoming"): the importer never creates one since #382, so this is
+        only ever a leftover from before it (prod's id 10). Kept in the
+        database, but never shown as a collection next to the in-transit
+        badge or in "shared with"/"also in" badges (issue #393)."""
+        return constants.is_status_category(self.name)
+
 
 class Card(Base):
     __tablename__ = "cards"
