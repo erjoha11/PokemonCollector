@@ -25,8 +25,12 @@ Every `run_*` function:
   `failed` and then re-raised, as the cron routes always did.
 
 The circuit breaker behaves the same for every trigger: only
-`run_dex_sync(..., allow_mass_missing=True)` overrides it, and no cron route
-(or, later, connector tool) passes that.
+`run_dex_sync(..., allow_mass_missing=True, expected_missing=N)` overrides
+it, and only with trigger `manual` -- a `cron` or `connector` trigger asking
+for it is refused with ValueError before anything runs. The one caller that
+passes it is the in-app override route on /sync-status (#275,
+`app.run_now_dex_sync_override`); no cron route or connector tool does
+(tests/test_sync_override.py asserts both).
 """
 from __future__ import annotations
 
@@ -200,22 +204,44 @@ def resolve_all_prices(db: Session) -> None:
 # --------------------------------------------------------------------------
 # Dex sync (Dropbox)
 # --------------------------------------------------------------------------
-def run_dex_sync(db: Session, *, trigger: str, allow_mass_missing: bool = False) -> DexSyncResult | AlreadyRunningResult:
+def run_dex_sync(
+    db: Session,
+    *,
+    trigger: str,
+    allow_mass_missing: bool = False,
+    expected_missing: int | None = None,
+) -> DexSyncResult | AlreadyRunningResult:
     """Pull every CSV in the configured Dropbox folder and run a normal sync
     (flags missing cards, never deletes). A circuit-breaker trip writes
     nothing and returns `aborted`; only `allow_mass_missing=True` (the
-    in-app override, #275) skips the mass-missing check.
+    in-app override, #275) skips the mass-missing check, and only up to
+    `expected_missing` newly flagged cards (the count the user confirmed):
+    more than that aborts again with the new count
+    (`ImportAborted.expected_missing` set), still before any write. The
+    override needs trigger `manual` and an `expected_missing`, otherwise
+    ValueError before anything runs. It never skips the empty-My-Collection
+    abort.
 
     Every outcome leaves an `import_log` row: a successful import writes its
     own (importer._log_import); empty, aborted and failed are recorded here,
     committed separately after the rollback so the row survives it."""
     _check_trigger(trigger)
+    if allow_mass_missing:
+        if trigger != MANUAL:
+            raise ValueError(f"allow_mass_missing is in-app only (trigger 'manual'), not {trigger!r}")
+        if expected_missing is None or expected_missing < 0:
+            raise ValueError("allow_mass_missing needs the confirmed expected_missing count")
     return _single_flight(
-        db, sync_status.DEX_SYNC, trigger, lambda: _dex_sync(db, trigger, allow_mass_missing)
+        db,
+        sync_status.DEX_SYNC,
+        trigger,
+        lambda: _dex_sync(db, trigger, allow_mass_missing, expected_missing if allow_mass_missing else None),
     )
 
 
-def _dex_sync(db: Session, trigger: str, allow_mass_missing: bool) -> DexSyncResult:
+def _dex_sync(
+    db: Session, trigger: str, allow_mass_missing: bool, expected_missing: int | None = None
+) -> DexSyncResult:
     snapshot_source = _DEX_SNAPSHOT_SOURCE[trigger]
     folder = dropbox_client.default_folder()
     result = DexSyncResult(status="ok", trigger=trigger, snapshot_source=snapshot_source, folder=folder)
@@ -245,6 +271,7 @@ def _dex_sync(db: Session, trigger: str, allow_mass_missing: bool) -> DexSyncRes
                 payload,
                 source=trigger,
                 allow_mass_missing=allow_mass_missing,
+                expected_missing=expected_missing,
                 file_dates={f.name: f.export_date for f in files},
             )
         except ImportAborted as exc:

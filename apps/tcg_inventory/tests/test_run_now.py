@@ -216,7 +216,8 @@ def test_dex_sync_now_circuit_breaker_abort(client, monkeypatch):
     assert response.status_code == 200
     assert "stopped before writing anything" in response.text
     assert "390 of 400" in response.text
-    assert "re-export My Collection from Dex and run again" in response.text  # #401
+    # #401's re-export hint, in the override's wording since #275.
+    assert "re-export My Collection from Dex and run the sync again" in response.text
     assert _logs()[-1] == ("dex-sync", "aborted", "manual")
 
 

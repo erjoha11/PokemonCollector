@@ -2502,5 +2502,35 @@ Evidence (verified 2026-10-09, from the issue):
 ## Open items (not built)
 
 - Run-now buttons for set sync and image backfill (fast-follow to #199).
-- No override for the circuit breaker from Run now: an aborted sync shows
+- No override for the circuit breaker from Run now (built in #275, below): an aborted sync shows
   the reason; `allow_mass_missing` is still offered nowhere in the UI.
+
+# Handoff notes — 2026-10-11 session (#275: in-app circuit-breaker override)
+
+## Code (in git, PR for #275)
+
+- After a *manual* "Run Dex sync now" that the mass-missing check stops
+  (`ImportAborted.overridable`), `partials/run_now_result.html` shows the
+  override: counts, files, first 10 names, a required "Yes, I removed about
+  N cards in Dex. Flag them as missing." checkbox and "Run sync anyway",
+  posting to `POST /sync-status/run/dex-sync/override` (login, POST-only,
+  trigger `manual`). This closes the #199 open item above.
+- `expected_missing` is enforced in `importer._check_circuit_breaker`
+  (before any write): with the override, more than the confirmed count
+  newly flagged aborts again (`ImportAborted.expected_missing` set, row
+  recorded `aborted`), and the override re-renders with the new count.
+- `jobs.run_dex_sync` raises ValueError for `allow_mass_missing` with any
+  trigger but `manual`, or without `expected_missing`.
+  `tests/test_sync_override.py` also fails if any code other than the
+  override route passes `allow_mass_missing` (AST scan), so a future
+  connector/`/mcp` tool can't quietly gain it.
+
+## Direct database changes
+
+- None.
+
+## Open items (not built)
+
+- A missing tick or invalid count answers 422 plain text (form-errors.js
+  shows it, the form stays), not a 200 partial: the browser's `required`
+  normally stops that request before it is sent.
