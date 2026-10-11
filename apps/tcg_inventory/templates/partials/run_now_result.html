@@ -7,6 +7,8 @@
    when `missing_changed`; the run log re-fetches itself on the response's
    `sync-ran` HX-Trigger (partials/import_log.html), keeping its sort. #}
 {% set label = job_labels[job] %}
+{#- Same text as partials/run_now.html's forms, for the override form (#275). #}
+{% set run_now_error = "Lost contact with the server before the job finished ({error}). It may still have completed: reload the page to see the run log." %}
 {% if error %}
 <p class="warnings">{{ label }} failed with an unexpected error ({{ error }}). It's recorded in the run log below; try again later, or check the server logs.</p>
 {% elif run.status == 'already_running' %}
@@ -16,6 +18,37 @@
 <p class="warnings">Dropbox isn't set up on this server, so there was nothing to sync. Set DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN (see the README, "Automatic daily sync").</p>
   {% elif run.status == 'failed' %}
 <p class="warnings">Dex sync failed, nothing was imported. Dropbox error: {{ run.error }}</p>
+  {% elif run.status == 'aborted' and run.abort and run.abort.overridable and run.trigger == 'manual' %}
+  {#- The override (issue #275): only after a *manual* run the mass-missing
+      check stopped (never the empty-My-Collection abort, which isn't
+      overridable). Posts the count shown here as expected_missing; the
+      importer refuses, before writing, if the export now flags more, and
+      this re-renders with the new count. Native `required` on the
+      checkbox (htmx 1.9 validates before sending), no hx-confirm. #}
+  {% set abort = run.abort %}
+<div class="warnings run-now-override">
+  {% if abort.expected_missing is not none %}
+  <p style="margin: 0 0 0.5rem;">Dex sync stopped before writing anything: the export changed since you confirmed {{ abort.expected_missing }} cards. Nothing was changed. Check the new count below before running it anyway.</p>
+  {% else %}
+  <p style="margin: 0 0 0.5rem;">Dex sync stopped before writing anything.</p>
+  {% endif %}
+  <p style="margin: 0 0 0.5rem;">This export would flag <strong>{{ abort.newly_missing }} of {{ abort.total_cards }} cards</strong> as missing (limit {{ "%.0f" | format(abort.limit_fraction * 100) }}%). Usually that means a truncated or incomplete export: re-export My Collection from Dex and run the sync again. If you really removed that many cards, you can run it anyway. Nothing is deleted: the cards are only flagged, and are un-flagged automatically if they show up in a later export.</p>
+  {% if run.files %}<p style="margin: 0 0 0.5rem;">Files: {{ run.files | join(', ') }}</p>{% endif %}
+  {% if abort.sample_names %}
+  <p style="margin: 0;">{{ 'First ' ~ abort.sample_names | length ~ ' of them' if abort.newly_missing > abort.sample_names | length else 'The cards' }}:</p>
+  <ul style="margin: 0.25rem 0 0.5rem;">{% for name in abort.sample_names %}<li>{{ name }}</li>{% endfor %}</ul>
+  {% endif %}
+  <form hx-post="/sync-status/run/dex-sync/override" hx-target="#run-now-result" hx-swap="innerHTML"
+        hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-dex-sync"
+        data-refocus="run-now-dex-sync" data-error-message="{{ run_now_error }}">
+    <input type="hidden" name="expected_missing" value="{{ abort.newly_missing }}">
+    <label style="display: block; margin-bottom: 0.5rem;">
+      <input type="checkbox" name="confirm" value="yes" required>
+      Yes, I removed about {{ abort.newly_missing }} cards in Dex. Flag them as missing.
+    </label>
+    <button type="submit" class="run-now-button secondary">Run sync anyway</button>
+  </form>
+</div>
   {% elif run.status == 'aborted' %}
 <p class="warnings">Dex sync stopped before writing anything: {{ run.error }} Usually a truncated export: re-export My Collection from Dex and run again.</p>
   {% elif run.status == 'empty' %}

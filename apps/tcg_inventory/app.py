@@ -3875,8 +3875,8 @@ def _missing_changed(before: dict[int, tuple], after: dict[int, tuple], db) -> b
     return before != after
 
 
-def _run_now(request: Request, job: str):
-    """Run `job` and answer with partials/run_now_result.html: 200 for every
+def _run_now(request: Request, job: str, runner=None):
+    """Run `job` (or `runner(db)`, the override's own call) and answer with partials/run_now_result.html: 200 for every
     outcome, including already running, Dropbox not configured, an abort and
     an unexpected error (jobs.py records that one as failed before
     re-raising), since htmx 1.9 doesn't swap a 4xx/5xx. The at-a-glance
@@ -3892,7 +3892,7 @@ def _run_now(request: Request, job: str):
         db.close()
     db = get_db_session()
     try:
-        run = _RUN_NOW_JOBS[job](db)
+        run = (runner or _RUN_NOW_JOBS[job])(db)
     except Exception as exc:  # noqa: BLE001 -- shown as a partial, never a 500
         traceback.print_exc()
         error = f"{exc.__class__.__name__}: {exc}"
@@ -3929,6 +3929,54 @@ def run_now_dex_sync(request: Request):
 @app.post("/sync-status/run/price-refresh")
 def run_now_price_refresh(request: Request):
     return _run_now(request, sync_status.PRICE_REFRESH)
+
+
+@app.post("/sync-status/run/dex-sync/override")
+def run_now_dex_sync_override(
+    request: Request,
+    expected_missing: str = Form(""),
+    confirm: str = Form(""),
+):
+    """Run the Dex sync anyway after a manual Run-now abort by the mass-missing
+    circuit breaker (issue #275). The form only renders in
+    partials/run_now_result.html after a manual run whose
+    `ImportAborted.overridable` is True (never for the empty-My-Collection
+    abort, which this can't skip either: the importer checks that first).
+
+    The **only** caller of `jobs.run_dex_sync(..., allow_mass_missing=True)`.
+    Behind the normal login (not in _PUBLIC_PATHS, not under /cron/),
+    POST-only, trigger `manual`. Refused with a 422 and nothing run unless
+    the confirmation box is ticked and `expected_missing` (the count the user
+    saw) is a whole number: the browser's `required` normally stops it first,
+    and form-errors.js shows the text with the form left in place.
+
+    The importer enforces `expected_missing` inside the same run, before
+    anything is written: if the export now flags more cards than that, the
+    run aborts again (recorded `aborted`, nothing changed) and the same
+    partial re-renders the override with the new count. Every handled run
+    outcome is the Run-now partial at 200, with `_run_now`'s out-of-band
+    glance / Missing from Dex and `sync-ran` HX-Trigger."""
+    if not confirm:
+        return PlainTextResponse(
+            "Tick the confirmation box to run the sync anyway. Nothing was run.", status_code=422
+        )
+    try:
+        expected = int(expected_missing)
+    except ValueError:
+        expected = -1
+    if expected < 0:
+        return PlainTextResponse(
+            "The confirmed number of missing cards is missing or invalid. Run the Dex sync again "
+            "to get a fresh count. Nothing was run.",
+            status_code=422,
+        )
+    return _run_now(
+        request,
+        sync_status.DEX_SYNC,
+        runner=lambda db: jobs.run_dex_sync(
+            db, trigger=jobs.MANUAL, allow_mass_missing=True, expected_missing=expected
+        ),
+    )
 
 
 def _already_running_response(result: jobs.AlreadyRunningResult) -> JSONResponse:

@@ -67,7 +67,11 @@ class ImportAborted(Exception):
     newly flag), `total_cards` (cards in the database), `limit_fraction`
     (MISSING_ABORT_FRACTION) and `sample_names` (the first
     ABORT_SAMPLE_NAMES of those cards' names, sorted). All None/empty for
-    the empty-My-Collection abort."""
+    the empty-My-Collection abort.
+
+    `expected_missing` is set only when an override run (#275) was refused
+    because the export now flags more cards than the user confirmed: it is
+    the confirmed count, and `newly_missing` the new one."""
 
     def __init__(
         self,
@@ -78,6 +82,7 @@ class ImportAborted(Exception):
         total_cards: int | None = None,
         limit_fraction: float | None = None,
         sample_names: list[str] | None = None,
+        expected_missing: int | None = None,
     ):
         super().__init__(message)
         self.overridable = overridable
@@ -85,6 +90,7 @@ class ImportAborted(Exception):
         self.total_cards = total_cards
         self.limit_fraction = limit_fraction
         self.sample_names = list(sample_names or [])
+        self.expected_missing = expected_missing
 
 
 @dataclass
@@ -203,6 +209,7 @@ def import_dex_csv_files(
     source: str = "manual",
     allow_mass_missing: bool = False,
     file_dates: dict[str, dt.date] | None = None,
+    expected_missing: int | None = None,
 ) -> ImportResult:
     """Import one or more Dex CSV exports as a single sync.
 
@@ -232,7 +239,10 @@ def import_dex_csv_files(
     (the old `full_load` hard-delete path was removed in issue #225, since
     deleting a card took its transactions and value history with it).
     Raises ImportAborted, before writing anything, if the export looks
-    broken -- see _check_circuit_breaker.
+    broken -- see _check_circuit_breaker. With `allow_mass_missing`,
+    `expected_missing` (the count the user confirmed, #275) caps the
+    override: a sync that would newly flag more cards than that still
+    aborts, with the new count.
     """
     today = today or dt.date.today()
     result = ImportResult()
@@ -272,7 +282,7 @@ def import_dex_csv_files(
     my_collection_rows = rows_by_category.pop(MY_COLLECTION_CATEGORY, [])
     seen_keys: set[tuple[str, str | None]] = set()
 
-    _check_circuit_breaker(db, my_collection_rows, empty_files, allow_mass_missing)
+    _check_circuit_breaker(db, my_collection_rows, empty_files, allow_mass_missing, expected_missing)
 
     if my_collection_rows:
         row_ids = {
@@ -598,6 +608,7 @@ def _check_circuit_breaker(
     my_collection_rows: list[dict],
     empty_files: list[str],
     allow_mass_missing: bool,
+    expected_missing: int | None = None,
 ) -> None:
     """Refuse an import that looks like a broken export, before any write
     (issue #225).
@@ -610,6 +621,13 @@ def _check_circuit_breaker(
     2. The sync would newly flag more than MISSING_ABORT_FRACTION of the
        existing cards (and more than MISSING_ABORT_MIN_CARDS) as missing --
        looks like a truncated export. Overridable, see allow_mass_missing.
+
+    The override (#275) never skips check 1. With `expected_missing` set
+    (the in-app override always sets it) it is also capped: a sync that
+    would newly flag more than `expected_missing` cards -- the export
+    changed since the user confirmed -- aborts anyway, with the new count
+    and `ImportAborted.expected_missing` set. Without it (a direct call)
+    `allow_mass_missing` skips check 2 entirely, as before.
     """
     if not my_collection_rows and empty_files:
         raise ImportAborted(
@@ -617,7 +635,7 @@ def _check_circuit_breaker(
             f"has no data rows (empty or header-only), and no \"{MY_COLLECTION_CATEGORY}\" "
             "rows were found. Re-export My Collection from Dex and sync again."
         )
-    if not my_collection_rows or allow_mass_missing:
+    if not my_collection_rows or (allow_mass_missing and expected_missing is None):
         return
 
     seen_keys = {
@@ -633,19 +651,34 @@ def _check_circuit_breaker(
     ]
     newly_missing = len(missing_names)
     limit = max(len(existing) * MISSING_ABORT_FRACTION, MISSING_ABORT_MIN_CARDS)
-    if newly_missing > limit:
+    if newly_missing <= limit:
+        return
+    sample_names = sorted(missing_names, key=lambda n: (n or "").casefold())[:ABORT_SAMPLE_NAMES]
+    if allow_mass_missing:
+        if newly_missing <= expected_missing:
+            return
         raise ImportAborted(
-            f"Sync aborted, nothing was changed: this {MY_COLLECTION_CATEGORY} export would flag "
-            f"{newly_missing} of {len(existing)} cards as missing (limit: "
-            f"{MISSING_ABORT_FRACTION:.0%}). That usually means a truncated or incomplete "
-            "export -- re-export from Dex and sync again. If you really did remove that "
-            "many cards, run the sync again with the override.",
+            f"Sync aborted, nothing was changed: the export changed since you confirmed. It would "
+            f"now flag {newly_missing} of {len(existing)} cards as missing, not {expected_missing}.",
             overridable=True,
             newly_missing=newly_missing,
             total_cards=len(existing),
             limit_fraction=MISSING_ABORT_FRACTION,
-            sample_names=sorted(missing_names, key=lambda n: (n or "").casefold())[:ABORT_SAMPLE_NAMES],
+            sample_names=sample_names,
+            expected_missing=expected_missing,
         )
+    raise ImportAborted(
+        f"Sync aborted, nothing was changed: this {MY_COLLECTION_CATEGORY} export would flag "
+        f"{newly_missing} of {len(existing)} cards as missing (limit: "
+        f"{MISSING_ABORT_FRACTION:.0%}). That usually means a truncated or incomplete "
+        "export -- re-export from Dex and sync again. If you really did remove that "
+        "many cards, run the sync again with the override.",
+        overridable=True,
+        newly_missing=newly_missing,
+        total_cards=len(existing),
+        limit_fraction=MISSING_ABORT_FRACTION,
+        sample_names=sample_names,
+    )
 
 
 def _log_import(db: Session, result: ImportResult, source: str, filenames: list[str]) -> None:

@@ -231,7 +231,7 @@ def test_aborted_dex_sync_result_and_override(client, monkeypatch):
     assert _logs()[-1] == ("dex-sync", "aborted", "connector")
 
     with _session() as db:
-        result = jobs.run_dex_sync(db, trigger="manual", allow_mass_missing=True)
+        result = jobs.run_dex_sync(db, trigger="manual", allow_mass_missing=True, expected_missing=390)
     assert result.status == "ok"
     assert result.import_result.cards_flagged_missing == 390
 

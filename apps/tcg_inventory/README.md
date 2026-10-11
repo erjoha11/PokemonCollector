@@ -1122,10 +1122,21 @@ without updating both the code and this doc.
        all cards as missing, and more than `MISSING_ABORT_MIN_CARDS` (10) —
        almost always a truncated export. The daily cron never overrides: it
        returns HTTP 409 with `"status": "aborted"` and records an `aborted`
-       row on Sync status (see "Automatic daily sync"). The importer's
-       `allow_mass_missing` override still exists for a deliberate big
-       clear-out, but no page offers it since the manual Dropbox picker was
-       removed (#264).
+       row on Sync status (see "Automatic daily sync"). For a deliberate
+       big clear-out, `/sync-status` offers an override (#275), and only
+       there: after a *manual* "Run Dex sync now" stops on this check, the
+       result shows the counts, the files and the first 10 card names,
+       with a required checkbox ("Yes, I removed about N cards in Dex.
+       Flag them as missing.") and a "Run sync anyway" button
+       (`POST /sync-status/run/dex-sync/override`, see "Run now"). It
+       posts the count it showed as `expected_missing`, and the importer
+       refuses the run, before writing anything, if the export would now
+       flag more cards than that, showing the new count instead. The
+       override never skips the empty-My-Collection check, and no
+       `/cron/*` route or connector can pass it: `jobs.run_dex_sync`
+       refuses `allow_mass_missing` for any trigger but `manual`, and
+       `tests/test_sync_override.py` fails if anything but the override
+       route passes it.
    - **Quantity-0 rows (#340).** Dex can export "all variants", which
      lists every unowned variant with Quantity 0 (one real export had 823
      of its 1,686 My Collection rows at 0, and importing them all ran the
@@ -1402,8 +1413,10 @@ source (`card_snapshots.source`), which stays `cron` / `price-cron` /
 `manual`: a `connector` run snapshots as `manual`, so
 `queries._SNAPSHOT_SOURCE_ORDER` and the one-point-per-(day, source) rule
 are unchanged. The circuit breaker is the same for every trigger: only
-`run_dex_sync(..., allow_mass_missing=True)` skips the mass-missing check,
-and no `/cron/*` route can pass it. An abort's `importer.ImportAborted`
+`run_dex_sync(..., allow_mass_missing=True, expected_missing=N)` skips the
+mass-missing check (up to N newly flagged cards), only with trigger
+`manual`, and only the in-app override route passes it (#275); no `/cron/*`
+route can. An abort's `importer.ImportAborted`
 carries `newly_missing`, `total_cards`, `limit_fraction` and the first 10
 `sample_names`, so callers never parse its message.
 
@@ -1434,6 +1447,7 @@ can't be read back):
 |---|---|---|---|
 | Run Dex sync now | `POST /sync-status/run/dex-sync` | `jobs.run_dex_sync` | `manual` / `manual` |
 | Run price refresh now | `POST /sync-status/run/price-refresh` | `jobs.run_price_refresh` | `manual` / `manual` |
+| Run sync anyway (override, #275) | `POST /sync-status/run/dex-sync/override` | `jobs.run_dex_sync(allow_mass_missing=True, expected_missing=N)` | `manual` / `manual` |
 
 - **Auth:** behind the normal Supabase login — not under `/cron/`, not in
   `_PUBLIC_PATHS`; a request without a session is redirected to `/login`
@@ -1442,7 +1456,22 @@ can't be read back):
 - **Same job as the cron:** the routes call `jobs.run_*` directly (never
   the cron route bodies), so the circuit breaker, the single-flight lock,
   the `import_log` row and the snapshot are exactly the cron's, only
-  recorded as `manual`. The breaker is never overridden from here.
+  recorded as `manual`. The two buttons never override the breaker.
+- **Override (#275):** when a Run-now Dex sync stops on the mass-missing
+  check (`ImportAborted.overridable`), its result carries the override
+  form: the counts, files and first 10 names, a required "Yes, I removed
+  about N cards in Dex. Flag them as missing." checkbox and a secondary
+  "Run sync anyway" button (no `hx-confirm`; htmx runs the browser's
+  validation first). It posts `expected_missing=N` and `confirm` into
+  `#run-now-result`, and is disabled with the other run buttons while a
+  run is in flight. Without the tick or a whole-number count the route
+  answers 422 with a short text (shown by form-errors.js) and runs
+  nothing. Otherwise it runs the sync with the override, capped at N: if
+  the export now flags more, the importer aborts before any write
+  (recorded `aborted`) and the answer re-renders the override with the new
+  count. Any other answer is the normal Run-now result. An abort recorded
+  by the cron shows no override; run the sync now first to get a fresh
+  count. It never skips the empty-My-Collection abort.
 - **Answer:** an htmx partial (`partials/run_now_result.html`), always
   HTTP 200 since htmx 1.9 doesn't swap an error status: the result (counts
   or the price summary), or a readable message for already running,
