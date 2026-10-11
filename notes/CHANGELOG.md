@@ -246,6 +246,23 @@ yet.
 
 ### tcg_inventory
 
+**In-app override for an aborted Dex sync (#275)**
+- After a manual Run-now Dex sync stopped by the mass-missing circuit
+  breaker, the result shows how many cards the export would flag (N of T,
+  limit 5%), the files and the first 10 card names, plus a form: a required
+  "Yes, I removed about N cards in Dex" checkbox and "Run sync anyway"
+  (`POST /sync-status/run/dex-sync/override`, login only, trigger manual).
+  Never offered for the empty-My-Collection abort or for another trigger's
+  abort.
+- The confirmed count is enforced in `importer._check_circuit_breaker`
+  before anything is written: if the run would flag more cards than
+  confirmed, it aborts again and the form re-renders with the new count.
+- Neither cron nor a connector can override: `jobs.run_dex_sync` refuses
+  `allow_mass_missing` for any trigger but manual or without a count, and
+  `tests/test_sync_override.py` checks the cron route ignores the params.
+- Docs: README circuit-breaker section and "Run now",
+  `notes/tcg_inventory/HANDOFF.md`.
+
 **Run-now polish on /sync-status (#401)**
 - Lost-contact errors: `htmx:sendError` and `htmx:timeout` are handled for
   every htmx form (`static/form-errors.js`), with a per-form
