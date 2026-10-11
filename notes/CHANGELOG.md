@@ -246,6 +246,28 @@ yet.
 
 ### tcg_inventory
 
+**Run-now buttons for set sync and image backfill (#402)**
+- The Run now card on /sync-status adds "Run set sync now"
+  (`POST /sync-status/run/set-sync`) and "Run image backfill now"
+  (`POST /sync-status/run/image-backfill`, limit 100). Login only, not under
+  `/cron/`, no `CRON_SECRET` needed, trigger manual. Before this, the only
+  manual way to run either job was `curl` with `CRON_SECRET`.
+- Dex sync stays the only primary button; the other three are secondary.
+  All four share the disabled-while-running group, the result area, #401's
+  lost-contact message and refocus, and each has its own busy text. Set
+  sync's button and busy text say it usually takes a few seconds, up to about
+  half a minute.
+- Results: set sync reports sets matched and unmatched (the unmatched ones
+  in a collapsible list), or "nothing was updated" if api.pokemontcg.io
+  can't be reached. Image backfill reports filled X of Y, how many cards have
+  an image, and how many are still to look up, with "run it again to
+  continue" when any are left.
+- `app.IMAGE_BACKFILL_DEFAULT_LIMIT` (100) is now also the default for
+  `GET /cron/image-backfill`, so the two can't drift apart.
+- Docs: README "Run now", "Cron endpoint auth", the image-backfill section
+  and the Sync status page summary; `notes/tcg_inventory/HANDOFF.md` now
+  points at the buttons instead of curl for these two jobs.
+
 **In-app override for an aborted Dex sync (#275)**
 - After a manual Run-now Dex sync stopped by the mass-missing circuit
   breaker, the result shows how many cards the export would flag (N of T,
