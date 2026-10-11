@@ -629,9 +629,10 @@ run).
   Cancel (and edit/delist/delete without htmx) return to the Listings tab
   with `show_delisted`/`sold_only` kept.
 - **Sync status** (`/sync-status`, issue #264; formerly the Activity Log
-  at `/releases`). First **Run now** (#199): "Run Dex sync now" and "Run
-  price refresh now" start that job straight away, behind the normal login
-  and without `CRON_SECRET` (see "Run now" under "Sync status" below).
+  at `/releases`). First **Run now** (#199, #402): "Run Dex sync now"
+  (the primary button), "Run price refresh now", "Run set sync now" and
+  "Run image backfill now" start that job straight away, behind the normal
+  login and without `CRON_SECRET` (see "Run now" under "Sync status" below).
   Then an at-a-glance block with one card per background job (Dex sync, Price
   refresh, Set sync, Image backfill): its last successful run (time,
   trigger, and a one-line summary — the card counts for a Dex sync), plus
@@ -1437,7 +1438,7 @@ its row on its own, so an aborted import's rollback never takes the log row
 with it. It never raises: a failure to write the log is printed and rolled
 back rather than masking the job's real response.
 
-### Run now (issue #199)
+### Run now (issues #199, #402)
 
 The **Run now** card at the top of `/sync-status` re-runs a scheduled job
 by hand without `CRON_SECRET` (which, as a Vercel "Sensitive" variable,
@@ -1447,6 +1448,8 @@ can't be read back):
 |---|---|---|---|
 | Run Dex sync now | `POST /sync-status/run/dex-sync` | `jobs.run_dex_sync` | `manual` / `manual` |
 | Run price refresh now | `POST /sync-status/run/price-refresh` | `jobs.run_price_refresh` | `manual` / `manual` |
+| Run set sync now (#402) | `POST /sync-status/run/set-sync` | `jobs.run_set_sync` | `manual` / no snapshot |
+| Run image backfill now (#402) | `POST /sync-status/run/image-backfill` | `jobs.run_image_backfill(limit=100)`, the cron route's default | `manual` / no snapshot |
 | Run sync anyway (override, #275) | `POST /sync-status/run/dex-sync/override` | `jobs.run_dex_sync(allow_mass_missing=True, expected_missing=N)` | `manual` / `manual` |
 
 - **Auth:** behind the normal Supabase login — not under `/cron/`, not in
@@ -1456,7 +1459,14 @@ can't be read back):
 - **Same job as the cron:** the routes call `jobs.run_*` directly (never
   the cron route bodies), so the circuit breaker, the single-flight lock,
   the `import_log` row and the snapshot are exactly the cron's, only
-  recorded as `manual`. The two buttons never override the breaker.
+  recorded as `manual`. The four buttons never override the breaker.
+- **Order:** Dex sync is first and the only primary button; price refresh,
+  set sync and image backfill are secondary. Set sync is one call to
+  api.pokemontcg.io (normally monthly); its busy text and tooltip say it
+  usually takes a few seconds, up to about half a minute, so there is no
+  `hx-confirm`. Image backfill does up to 100 cards in about 50 seconds;
+  its result says how many are still to look up and to run it again while
+  any are.
 - **Override (#275):** when a Run-now Dex sync stops on the mass-missing
   check (`ImportAborted.overridable`), its result carries the override
   form: the counts, files and first 10 names, a required "Yes, I removed
@@ -1474,16 +1484,18 @@ can't be read back):
   count. It never skips the empty-My-Collection abort.
 - **Answer:** an htmx partial (`partials/run_now_result.html`), always
   HTTP 200 since htmx 1.9 doesn't swap an error status: the result (counts
-  or the price summary), or a readable message for already running,
-  Dropbox not configured, a Dropbox error, a circuit-breaker abort, a
-  degraded refresh, or an unexpected error (recorded as `failed` by
+  or the price summary, the set sync's matched/unmatched sets, the image
+  backfill's filled/attempted/remaining), or a readable message for already
+  running, Dropbox not configured, a Dropbox error, a circuit-breaker
+  abort, a degraded refresh, api.pokemontcg.io unreachable for the set
+  sync, or an unexpected error (recorded as `failed` by
   `jobs.py`). The at-a-glance block is swapped back in out-of-band, and
   Missing from Dex too when the run changed it (a card deleted by hand
   during the run doesn't count, so that delete's note stays). The answer
   also sends `HX-Trigger: sync-ran`, on which the run log re-fetches itself
   with the sort it's showing (#401), so the new run shows without a reload
-  and without resetting the sort. Both buttons are disabled
-  (`hx-disabled-elt`) while either run is in flight, with a per-job busy
+  and without resetting the sort. Every button is disabled
+  (`hx-disabled-elt`) while any run is in flight, with a per-job busy
   text; focus goes back to the clicked button afterwards (`data-refocus`).
 - **Lost answers:** a 5xx, a network failure or a timeout on a Run-now
   form says "Lost contact with the server before the job finished ... It
@@ -1492,8 +1504,6 @@ can't be read back):
   the server cut it off. Set per form with `data-error-message`
   (`static/form-errors.js`, which since #401 also reports
   `htmx:sendError`/`htmx:timeout` on every htmx form).
-- Set sync and image backfill have no button yet; call their `/cron/*`
-  route with the Bearer header (see "Cron endpoint auth").
 
 ### Single-flight guard (issues #340, #274)
 
@@ -1751,13 +1761,13 @@ session) and share one check, `cron_auth.require_cron_secret`:
   `crons` paths carry no query secret), and it's recorded as
   `source=cron` (and the `cron`/`price-cron` snapshot slot).
 - **`?secret=<CRON_SECRET>` is refused (401) since #199.** It landed in
-  request logs and browser history (#226 deprecated it). To re-run the
-  Dex sync or the price refresh by hand, use the **Run now** buttons on
-  `/sync-status` (behind the login, no secret, recorded as `manual`). For
-  the two jobs without a button, `set-sync` and `image-backfill`, call the
-  route from a terminal with the header, e.g.
+  request logs and browser history (#226 deprecated it). To re-run any of
+  the four jobs by hand (Dex sync, price refresh, set sync, image backfill),
+  use the **Run now** buttons on `/sync-status` (behind the login, no
+  secret, recorded as `manual`; set sync and image backfill since #402).
+  A terminal call with the header still works, e.g.
   `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
-  (recorded as `cron`, since the header is all the route can see).
+  (recorded as `cron`), but needs the real `CRON_SECRET`.
 
 ### Facebook wins inbox (issue #309)
 
@@ -2284,10 +2294,11 @@ with no match is stamped `image_lookup_failed_at` and retried after 30 days
 instead of blocking the queue. It runs:
 
 - daily, after prices, inside `/cron/price-refresh` (up to 60 cards, 25 s);
-- on demand via `curl -H "Authorization: Bearer $CRON_SECRET"
-  "https://<host>/cron/image-backfill?limit=N"` (time-boxed to ~50 s; call
-  again while `remaining` > 0; `?secret=` is refused since #199, see "Cron
-  endpoint auth");
+- on demand with **Run image backfill now** on `/sync-status` (#402: up to
+  100 cards, time-boxed to ~50 s; run it again while cards are still to
+  look up), or from a terminal with `curl -H "Authorization: Bearer
+  $CRON_SECRET" "https://<host>/cron/image-backfill?limit=N"` (same time
+  box; `?secret=` is refused since #199, see "Cron endpoint auth");
 - by hand: `python backfill_images.py [--limit N]` (same `DATABASE_URL`
   convention as `seed_set_release_order.py`).
 

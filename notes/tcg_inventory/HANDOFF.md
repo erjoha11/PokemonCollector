@@ -1216,10 +1216,10 @@ user test (Phase 2 = card detail/collection pages, Phase 3 = cleanup).
 ## Open items
 
 - **Set sync has not run on prod yet.** This container can't reach
-  api.pokemontcg.io (egress policy). After deploy, trigger
-  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
-  once, or wait for the 1st of the month. Until then completion stays
-  "unknown". (Updated 2026-10-11, #199: `?secret=` is refused now.)
+  api.pokemontcg.io (egress policy). After deploy, click **Run set sync
+  now** on `/sync-status` once, or wait for the 1st of the month. Until then
+  completion stays "unknown". (Updated 2026-10-11, #402: the button
+  replaces the `curl` call, which needed the unreadable `CRON_SECRET`.)
 - JP/KR sets never match the API, so SV151 JP/KR etc. stay "unknown"; a
   manual `total_cards` path would be needed for those.
 
@@ -1781,9 +1781,9 @@ run automatically through `init_db()` on the first start after deploy.
   "No successful run recorded yet" until their next run: price refresh
   daily at 06:00 UTC, set sync monthly (the 1st, 04:00 UTC). Image backfill
   has no cron of its own (the daily price refresh runs a small image pass,
-  counted in its summary), so that card only fills in after a manual
-  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/image-backfill`
-  call. (Updated 2026-10-11, #199: `?secret=` is refused now.)
+  counted in its summary), so that card only fills in after a manual run:
+  **Run image backfill now** on `/sync-status`. (Updated 2026-10-11, #402:
+  the button replaces the `curl` call.)
 
 # Handoff notes — 2026-10-04 session (#309 slice 2: Facebook wins link flow, #312)
 
@@ -2488,12 +2488,9 @@ Evidence (verified 2026-10-09, from the issue):
   carry no query string, and Vercel sends `Authorization: Bearer
   <CRON_SECRET>` itself. No workflow, script or `fb_auction_watcher` code
   called `/cron/*` with `?secret=`.
-- Set sync and image backfill have no button: run them with
-  `curl -H "Authorization: Bearer $CRON_SECRET" https://<host>/cron/set-sync`
-  (or `/cron/image-backfill?limit=N`). That needs the real prod value of
-  `CRON_SECRET` (a Sensitive Vercel variable, not readable back); rotate it
-  in Vercel if it's lost. Older entries above that said `?secret=` were
-  updated to this form.
+- Set sync and image backfill had no button here; they got one in #402
+  (entry below), so no `curl` with the real `CRON_SECRET` is needed any
+  more. Older entries above that said `?secret=` or `curl` were updated.
 
 ## Direct database changes
 
@@ -2501,7 +2498,8 @@ Evidence (verified 2026-10-09, from the issue):
 
 ## Open items (not built)
 
-- Run-now buttons for set sync and image backfill (fast-follow to #199).
+- Run-now buttons for set sync and image backfill (fast-follow to #199):
+  built in #402, below.
 - No override for the circuit breaker from Run now (built in #275, below): an aborted sync shows
   the reason; `allow_mass_missing` is still offered nowhere in the UI.
 
@@ -2534,3 +2532,26 @@ Evidence (verified 2026-10-09, from the issue):
 - A missing tick or invalid count answers 422 plain text (form-errors.js
   shows it, the form stays), not a 200 partial: the browser's `required`
   normally stops that request before it is sent.
+
+# Handoff notes — 2026-10-11 session (#402: Run-now for set sync and image backfill)
+
+## Code (in git, PR for #402)
+
+- `/sync-status`'s Run now card has "Run set sync now"
+  (`POST /sync-status/run/set-sync`) and "Run image backfill now"
+  (`POST /sync-status/run/image-backfill`), secondary, after the Dex sync
+  (still first and primary) and price refresh buttons. Both go through
+  `_run_now` with `trigger="manual"`; image backfill uses the cron route's
+  default limit (`app.IMAGE_BACKFILL_DEFAULT_LIMIT`, 100). Every handled
+  outcome is a 200 partial.
+- No more `curl` with `CRON_SECRET` needed for either job; the README and
+  the older entries above now point at the buttons.
+
+## Direct database changes
+
+- None.
+
+## Open items (not built)
+
+- Set sync on prod still hasn't run (open item above): one click on "Run
+  set sync now" after this deploys.

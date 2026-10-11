@@ -1,5 +1,5 @@
-{# "Run now" on /sync-status (issue #199): start the Dex sync or the price
-   refresh by hand, behind the normal login -- no CRON_SECRET. Each button
+{# "Run now" on /sync-status (issue #199): start the Dex sync, the price
+   refresh, the set sync or an image backfill (#402) by hand, behind the normal login -- no CRON_SECRET. Each button
    POSTs to /sync-status/run/<job>, which calls the same jobs.run_* the
    daily cron does (trigger "manual") and answers 200 for every handled
    outcome (htmx 1.9 doesn't swap a 4xx/5xx): the result lands in
@@ -7,7 +7,8 @@
    run changed it) is swapped back in out-of-band, and the `sync-ran`
    HX-Trigger makes the run log re-fetch itself with its current sort
    (partials/run_now_result.html, #401).
-   Both buttons are disabled while either run is in flight; each job is
+   Dex sync stays first and is the one primary button; the other three are
+   secondary (#402). Every button is disabled while any run is in flight; each job is
    single-flight anyway (jobs.py), so a second click elsewhere (another
    tab, the cron) gets "already running" rather than a second run.
    The buttons sit outside every swapped region, so they keep their place;
@@ -19,7 +20,7 @@
 {% from "partials/macros.html" import info %}
 {% set run_now_error = "Lost contact with the server before the job finished ({error}). It may still have completed: reload the page to see the run log." %}
 <div class="card run-now" id="run-now">
-  <h2>Run now {{ info("Starts the job straight away instead of waiting for tomorrow's scheduled run. Dex sync pulls every Dex export CSV from Dropbox and runs a normal sync: it never deletes cards, only flags missing ones, and stops without writing anything if too many cards would go missing. Price refresh fetches TCGplayer and TCGdex prices and fills a few missing card images. Either can take a minute or two; the result shows below and is recorded in the run log as \"manual\".") }}</h2>
+  <h2>Run now {{ info("Starts the job straight away instead of waiting for tomorrow's scheduled run. Dex sync pulls every Dex export CSV from Dropbox and runs a normal sync: it never deletes cards, only flags missing ones, and stops without writing anything if too many cards would go missing. Price refresh fetches TCGplayer and TCGdex prices and fills a few missing card images. Either can take a minute or two. Set sync fetches every set's card count and release order from api.pokemontcg.io (normally run monthly); it is one API call, usually a few seconds, up to about half a minute when the API is slow. Image backfill looks up pictures for up to 100 cards still without one, stopping after about 50 seconds; run it again while cards are still missing. The result shows below and is recorded in the run log as \"manual\".") }}</h2>
   <div class="run-now-actions">
     <form hx-post="/sync-status/run/dex-sync" hx-target="#run-now-result" hx-swap="innerHTML"
           hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-dex-sync"
@@ -31,11 +32,24 @@
           data-refocus="run-now-price-refresh" data-error-message="{{ run_now_error }}">
       <button type="submit" id="run-now-price-refresh" class="run-now-button secondary">Run price refresh now</button>
     </form>
+    <form hx-post="/sync-status/run/set-sync" hx-target="#run-now-result" hx-swap="innerHTML"
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-set-sync"
+          data-refocus="run-now-set-sync" data-error-message="{{ run_now_error }}">
+      <button type="submit" id="run-now-set-sync" class="run-now-button secondary"
+              title="Usually a few seconds, up to about half a minute">Run set sync now</button>
+    </form>
+    <form hx-post="/sync-status/run/image-backfill" hx-target="#run-now-result" hx-swap="innerHTML"
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-image-backfill"
+          data-refocus="run-now-image-backfill" data-error-message="{{ run_now_error }}">
+      <button type="submit" id="run-now-image-backfill" class="run-now-button secondary">Run image backfill now</button>
+    </form>
     {#- One persistent live region; only the running job's text is shown
         (display: none otherwise, so it's not read out while idle). #}
     <span class="muted" role="status">
       <span id="run-now-busy-dex-sync" class="run-now-busy">Dex sync running… this can take a minute or two.</span>
       <span id="run-now-busy-price-refresh" class="run-now-busy">Price refresh running… this can take a minute or two.</span>
+      <span id="run-now-busy-set-sync" class="run-now-busy">Set sync running… usually a few seconds, up to about half a minute.</span>
+      <span id="run-now-busy-image-backfill" class="run-now-busy">Image backfill running… up to about a minute.</span>
     </span>
   </div>
   {#- A failed request (5xx, network) shows here -- form-errors.js (#228). #}

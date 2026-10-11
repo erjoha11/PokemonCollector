@@ -3833,9 +3833,18 @@ def releases_sync_log_redirect(request: Request):
 # calls the same jobs.run_* as its cron route with trigger "manual" (its
 # import_log source and snapshot source), never the cron route bodies.
 # --------------------------------------------------------------------------
+# GET /cron/image-backfill's default `limit`, shared with its Run-now
+# button (#402) so both catch-up passes are the same size.
+IMAGE_BACKFILL_DEFAULT_LIMIT = 100
+
 _RUN_NOW_JOBS = {
     sync_status.DEX_SYNC: lambda db: jobs.run_dex_sync(db, trigger=jobs.MANUAL),
     sync_status.PRICE_REFRESH: lambda db: jobs.run_price_refresh(db, trigger=jobs.MANUAL),
+    sync_status.SET_SYNC: lambda db: jobs.run_set_sync(db, trigger=jobs.MANUAL),
+    # Same default limit as GET /cron/image-backfill (#402).
+    sync_status.IMAGE_BACKFILL: lambda db: jobs.run_image_backfill(
+        db, trigger=jobs.MANUAL, limit=IMAGE_BACKFILL_DEFAULT_LIMIT
+    ),
 }
 
 
@@ -3929,6 +3938,16 @@ def run_now_dex_sync(request: Request):
 @app.post("/sync-status/run/price-refresh")
 def run_now_price_refresh(request: Request):
     return _run_now(request, sync_status.PRICE_REFRESH)
+
+
+@app.post("/sync-status/run/set-sync")
+def run_now_set_sync(request: Request):
+    return _run_now(request, sync_status.SET_SYNC)
+
+
+@app.post("/sync-status/run/image-backfill")
+def run_now_image_backfill(request: Request):
+    return _run_now(request, sync_status.IMAGE_BACKFILL)
 
 
 @app.post("/sync-status/run/dex-sync/override")
@@ -4138,7 +4157,7 @@ def _tcgdex_summary(result) -> dict | None:
 
 
 @app.get("/cron/image-backfill")
-def cron_image_backfill(limit: int = 100, trigger: str = Depends(cron_auth.require_cron_secret)):
+def cron_image_backfill(limit: int = IMAGE_BACKFILL_DEFAULT_LIMIT, trigger: str = Depends(cron_auth.require_cron_secret)):
     """Manual catch-up pass for missing card images (backfill_images.py) --
     the daily /cron/price-refresh already does a small one; this lets a
     person fill in a whole collection in a few calls instead of waiting.

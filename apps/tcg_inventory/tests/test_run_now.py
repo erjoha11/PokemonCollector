@@ -71,7 +71,8 @@ def test_sync_status_page_has_both_buttons_disabled_while_running(client):
     html = client.get("/sync-status").text
     assert f'hx-post="{DEX}"' in html
     assert f'hx-post="{PRICES}"' in html
-    assert html.count('hx-disabled-elt=".run-now-button"') == 2
+    # Four since #402 (set sync, image backfill); see test_run_now_more_jobs.py.
+    assert html.count('hx-disabled-elt=".run-now-button"') == 4
     assert "Run Dex sync now" in html and "Run price refresh now" in html
 
 
@@ -243,7 +244,7 @@ def test_price_refresh_now_unexpected_error_renders_a_partial(client, monkeypatc
 def test_run_now_forms_have_an_honest_error_text_refocus_and_per_job_busy_text(client):
     html = client.get("/sync-status").text
     honest = 'data-error-message="Lost contact with the server before the job finished ({error}). It may still have completed: reload the page to see the run log."'
-    assert html.count(honest) == 2
+    assert html.count(honest) == 4  # one per Run-now form (#402)
     assert "nothing was changed" not in html
     for button_id in ("run-now-dex-sync", "run-now-price-refresh"):
         assert f'id="{button_id}"' in html and f'data-refocus="{button_id}"' in html
