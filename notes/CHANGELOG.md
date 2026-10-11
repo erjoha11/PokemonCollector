@@ -246,6 +246,21 @@ yet.
 
 ### tcg_inventory
 
+**Run-now polish on /sync-status (#401)**
+- Lost-contact errors: `htmx:sendError` and `htmx:timeout` are handled for
+  every htmx form (`static/form-errors.js`), with a per-form
+  `data-error-message`. The Run-now forms say the job may still have
+  completed and to reload for the run log.
+- The run log is no longer an out-of-band swap: the Run-now response sends
+  `HX-Trigger: sync-ran` and `#sync-log` re-fetches itself, keeping its sort.
+- "Already running" is a neutral note with the started-at time and trigger.
+  Stable button ids, and focus returns to the clicked button after a run.
+- Missing from Dex is swapped back only when the run changed it, so a "Deleted
+  X" note for a card deleted by hand during the run stays.
+- One live region (`#run-now-result`) and a per-job busy text ("Dex sync
+  running…"). An aborted Dex sync adds a re-export hint.
+- Docs: README "Run now", `notes/tcg_inventory/UX_NOTES.md`.
+
 **Run-now buttons on /sync-status, `?secret=` turned off (#199)**
 - /sync-status has a Run now card: "Run Dex sync now"
   (`POST /sync-status/run/dex-sync`) and "Run price refresh now"
