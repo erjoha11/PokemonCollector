@@ -96,10 +96,12 @@ def test_dex_sync_now_runs_the_sync_as_manual(client, monkeypatch):
     assert "Dex sync done" in response.text and "1 created" in response.text
     assert _logs() == [("dex-sync", "ok", "manual")]
     assert _snapshot_sources() == ["manual"]
-    # The rest of the page comes back out-of-band, with the new run in it.
-    for element_id in ("sync-glance", "missing-cards", "sync-log"):
-        assert f'id="{element_id}"' in response.text
-    assert response.text.count('hx-swap-oob="true"') == 3
+    # The at-a-glance block comes back out-of-band; the run log re-fetches
+    # itself on the HX-Trigger (#401), and Missing from Dex is unchanged.
+    assert 'id="sync-glance"' in response.text
+    assert 'id="sync-log"' not in response.text and 'id="missing-cards"' not in response.text
+    assert response.text.count('hx-swap-oob="true"') == 1
+    assert response.headers["HX-Trigger"] == "sync-ran"
     assert "Pikachu" in client.get("/inventory").text
 
 
@@ -174,6 +176,9 @@ def test_already_running_renders_a_partial_and_runs_nothing(client, monkeypatch,
     assert response.status_code == 200
     assert "already running" in response.text
     assert "cron" in response.text  # who started it
+    # A neutral note, not an error (#401).
+    assert '<p class="muted run-now-note">' in response.text
+    assert 'class="warnings"' not in response.text and 'role="alert"' not in response.text
     assert _logs() == []
 
 
@@ -211,6 +216,7 @@ def test_dex_sync_now_circuit_breaker_abort(client, monkeypatch):
     assert response.status_code == 200
     assert "stopped before writing anything" in response.text
     assert "390 of 400" in response.text
+    assert "re-export My Collection from Dex and run again" in response.text  # #401
     assert _logs()[-1] == ("dex-sync", "aborted", "manual")
 
 
@@ -228,3 +234,88 @@ def test_price_refresh_now_unexpected_error_renders_a_partial(client, monkeypatc
     assert _logs() == [("price-refresh", "failed", "manual")]  # recorded by jobs.py
     with _session() as db:
         assert db.query(JobLock).count() == 0  # the lock was released
+
+
+# --- polish (#401) -------------------------------------------------------------
+
+
+def test_run_now_forms_have_an_honest_error_text_refocus_and_per_job_busy_text(client):
+    html = client.get("/sync-status").text
+    honest = 'data-error-message="Lost contact with the server before the job finished ({error}). It may still have completed: reload the page to see the run log."'
+    assert html.count(honest) == 2
+    assert "nothing was changed" not in html
+    for button_id in ("run-now-dex-sync", "run-now-price-refresh"):
+        assert f'id="{button_id}"' in html and f'data-refocus="{button_id}"' in html
+    assert 'hx-indicator="#run-now-busy-dex-sync"' in html and 'hx-indicator="#run-now-busy-price-refresh"' in html
+    assert "Dex sync running…" in html and "Price refresh running…" in html
+    card = html[html.index('id="run-now"'):html.index('id="run-now-result"')]
+    assert 'role="status"' in card  # the one busy live region
+    # The result has one live region, its container; the notes carry no role.
+    assert '<div id="run-now-result" aria-live="polite"></div>' in html
+
+
+def test_form_errors_js_handles_lost_requests_custom_text_and_refocus(client):
+    js = client.get("/static/form-errors.js").text
+    assert "htmx:sendError" in js and "htmx:timeout" in js
+    assert "data-error-message" in js and "'{error}'" in js
+    assert "htmx:afterRequest" in js and "data-refocus" in js
+
+
+@pytest.mark.parametrize("path", [DEX, PRICES])
+def test_run_now_results_carry_no_role_of_their_own(client, monkeypatch, offline_prices, path):
+    _dropbox_with(monkeypatch, make_csv("My Collection", [{"id": "a"}]))
+
+    response = client.post(path)
+
+    result = response.text[: response.text.index('id="sync-glance"')]
+    assert 'role="' not in result
+    assert response.headers["HX-Trigger"] == "sync-ran"
+
+
+def test_run_log_refetches_itself_with_its_current_sort(client):
+    html = client.get("/sync-status?lsort=job&ldir=asc").text
+    assert 'hx-get="/sync-status/log?lsort=job&amp;ldir=asc"' in html
+    assert 'hx-trigger="sync-ran from:body"' in html
+
+    # A sort swaps in a log that carries its new sort for the next re-fetch.
+    partial = client.get("/sync-status/log?lsort=status&ldir=desc").text
+    assert 'hx-get="/sync-status/log?lsort=status&amp;ldir=desc"' in partial
+    assert "hx-swap-oob" not in partial
+
+
+def test_missing_from_dex_is_swapped_when_the_run_flags_cards(client, monkeypatch):
+    seed_import(client, [("files", ("main.csv", make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Eevee"}]), "text/csv"))])
+    _dropbox_with(monkeypatch, make_csv("My Collection", [{"id": "a", "name": "Pikachu"}]))
+
+    response = client.post(DEX)
+
+    assert "1 flagged missing" in response.text
+    assert 'id="missing-cards"' in response.text and "Eevee" in response.text
+    assert response.text.count('hx-swap-oob="true"') == 2
+
+
+def test_missing_from_dex_keeps_a_delete_made_during_the_run(client, monkeypatch):
+    import app as app_module
+    from models import Card
+
+    seed_import(client, [("files", ("main.csv", make_csv("My Collection", [{"id": "a", "name": "Pikachu"}, {"id": "b", "name": "Eevee"}]), "text/csv"))])
+    _dropbox_with(monkeypatch, make_csv("My Collection", [{"id": "a", "name": "Pikachu"}]))
+    client.post(DEX)  # flags Eevee
+    with _session() as db:
+        eevee_id = db.query(Card.id).filter(Card.name == "Eevee").scalar()
+
+    real = app_module._RUN_NOW_JOBS["dex-sync"]
+
+    def sync_while_user_deletes(db):
+        assert "Deleted" in client.post(f"/cards/{eevee_id}/delete-missing", data={"confirm": "1"}).text
+        return real(db)
+
+    monkeypatch.setitem(app_module._RUN_NOW_JOBS, "dex-sync", sync_while_user_deletes)
+
+    response = client.post(DEX)
+
+    assert "Dex sync done" in response.text
+    with _session() as db:
+        assert db.get(Card, eevee_id) is None  # the delete really happened mid-run
+    # The section isn't swapped, so its "Deleted Eevee" note stays.
+    assert 'id="missing-cards"' not in response.text

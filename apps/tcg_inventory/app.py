@@ -3839,13 +3839,57 @@ _RUN_NOW_JOBS = {
 }
 
 
+# The htmx event a Run-now answer fires (HX-Trigger, #401): the run log
+# (partials/import_log.html) re-fetches itself on it with its own current
+# lsort/ldir, instead of being swapped out-of-band with a hard-coded sort.
+SYNC_RAN_EVENT = "sync-ran"
+
+
+def _missing_signature(db) -> dict[int, tuple]:
+    """What Missing from Dex shows per card, keyed by card id: compared before
+    and after a run so the section is only swapped when the run changed it."""
+    return {
+        m.card.id: (
+            m.card.flagged_missing_since,
+            m.card.qty,
+            m.card.name,
+            m.card.set,
+            m.card.number,
+            m.card.variant,
+            m.tx_count,
+            m.listing_count,
+        )
+        for m in missing_cards.flagged_cards(db)
+    }
+
+
+def _missing_changed(before: dict[int, tuple], after: dict[int, tuple], db) -> bool:
+    """Did the run change Missing from Dex? A card that's gone from the
+    database entirely was deleted by hand during the run (a sync never deletes
+    a card, #225), so it doesn't count: swapping the section back in would
+    only wipe that delete's "Deleted X" note."""
+    vanished = before.keys() - after.keys()
+    if vanished:
+        still_there = {row[0] for row in db.query(Card.id).filter(Card.id.in_(vanished))}
+        before = {k: v for k, v in before.items() if k not in vanished - still_there}
+    return before != after
+
+
 def _run_now(request: Request, job: str):
     """Run `job` and answer with partials/run_now_result.html: 200 for every
     outcome, including already running, Dropbox not configured, an abort and
     an unexpected error (jobs.py records that one as failed before
     re-raising), since htmx 1.9 doesn't swap a 4xx/5xx. The at-a-glance
-    block, Missing from Dex and the run log come back out-of-band."""
+    block comes back out-of-band, and Missing from Dex too when the run
+    changed it (#401: otherwise a delete made during the run keeps its
+    note). The run log isn't swapped here: the `sync-ran` HX-Trigger makes
+    it re-fetch itself with the user's current sort."""
     run, error = None, None
+    db = get_db_session()
+    try:
+        missing_before = _missing_signature(db)
+    finally:
+        db.close()
     db = get_db_session()
     try:
         run = _RUN_NOW_JOBS[job](db)
@@ -3856,7 +3900,8 @@ def _run_now(request: Request, job: str):
         db.close()
     db = get_db_session()
     try:
-        return templates.TemplateResponse(
+        missing = missing_cards.flagged_cards(db)
+        response = templates.TemplateResponse(
             request,
             "partials/run_now_result.html",
             {
@@ -3865,13 +3910,13 @@ def _run_now(request: Request, job: str):
                 "error": error,
                 "oob": True,
                 "overview": sync_status.overview(db),
-                "missing": missing_cards.flagged_cards(db),
-                "logs": _recent_import_logs(db),
-                "lsort": "ran_at",
-                "ldir": "desc",
+                "missing": missing,
+                "missing_changed": _missing_changed(missing_before, _missing_signature(db), db),
                 "job_labels": sync_status.JOB_LABELS,
             },
         )
+        response.headers["HX-Trigger"] = SYNC_RAN_EVENT
+        return response
     finally:
         db.close()
 

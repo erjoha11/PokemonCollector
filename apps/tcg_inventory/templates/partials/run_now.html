@@ -3,26 +3,44 @@
    POSTs to /sync-status/run/<job>, which calls the same jobs.run_* the
    daily cron does (trigger "manual") and answers 200 for every handled
    outcome (htmx 1.9 doesn't swap a 4xx/5xx): the result lands in
-   #run-now-result, and the at-a-glance block, Missing from Dex and the run
-   log are swapped back in out-of-band (partials/run_now_result.html).
+   #run-now-result, the at-a-glance block (and Missing from Dex, when the
+   run changed it) is swapped back in out-of-band, and the `sync-ran`
+   HX-Trigger makes the run log re-fetch itself with its current sort
+   (partials/run_now_result.html, #401).
    Both buttons are disabled while either run is in flight; each job is
    single-flight anyway (jobs.py), so a second click elsewhere (another
-   tab, the cron) gets "already running" rather than a second run. #}
+   tab, the cron) gets "already running" rather than a second run.
+   The buttons sit outside every swapped region, so they keep their place;
+   form-errors.js puts focus back on the clicked one (data-refocus) once
+   hx-disabled-elt has dropped it to <body>, and shows data-error-message
+   for a 5xx or a lost connection -- a Dex sync may have committed before
+   the server was cut off, so the generic "nothing was changed" would be
+   false here (#401). #}
 {% from "partials/macros.html" import info %}
+{% set run_now_error = "Lost contact with the server before the job finished ({error}). It may still have completed: reload the page to see the run log." %}
 <div class="card run-now" id="run-now">
   <h2>Run now {{ info("Starts the job straight away instead of waiting for tomorrow's scheduled run. Dex sync pulls every Dex export CSV from Dropbox and runs a normal sync: it never deletes cards, only flags missing ones, and stops without writing anything if too many cards would go missing. Price refresh fetches TCGplayer and TCGdex prices and fills a few missing card images. Either can take a minute or two; the result shows below and is recorded in the run log as \"manual\".") }}</h2>
   <div class="run-now-actions">
     <form hx-post="/sync-status/run/dex-sync" hx-target="#run-now-result" hx-swap="innerHTML"
-          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy">
-      <button type="submit" class="run-now-button">Run Dex sync now</button>
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-dex-sync"
+          data-refocus="run-now-dex-sync" data-error-message="{{ run_now_error }}">
+      <button type="submit" id="run-now-dex-sync" class="run-now-button">Run Dex sync now</button>
     </form>
     <form hx-post="/sync-status/run/price-refresh" hx-target="#run-now-result" hx-swap="innerHTML"
-          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy">
-      <button type="submit" class="run-now-button secondary">Run price refresh now</button>
+          hx-disabled-elt=".run-now-button" hx-indicator="#run-now-busy-price-refresh"
+          data-refocus="run-now-price-refresh" data-error-message="{{ run_now_error }}">
+      <button type="submit" id="run-now-price-refresh" class="run-now-button secondary">Run price refresh now</button>
     </form>
-    <span id="run-now-busy" class="htmx-indicator muted">Running… this can take a minute or two.</span>
+    {#- One persistent live region; only the running job's text is shown
+        (display: none otherwise, so it's not read out while idle). #}
+    <span class="muted" role="status">
+      <span id="run-now-busy-dex-sync" class="run-now-busy">Dex sync running… this can take a minute or two.</span>
+      <span id="run-now-busy-price-refresh" class="run-now-busy">Price refresh running… this can take a minute or two.</span>
+    </span>
   </div>
   {#- A failed request (5xx, network) shows here -- form-errors.js (#228). #}
   <p class="warnings" role="alert" hidden data-form-error></p>
+  {#- The one live region for the result: the notes inside carry no role of
+      their own, so a screen reader reads each result once (#401). #}
   <div id="run-now-result" aria-live="polite"></div>
 </div>

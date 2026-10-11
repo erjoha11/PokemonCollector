@@ -24,6 +24,50 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-10-11 — /sync-status Run-now card, as built (#199 / PR #399 → #401)
+
+**Reviewed:** (from source on origin/main after #399; the page wasn't rendered)
+`templates/partials/run_now.html`, `partials/run_now_result.html`,
+`partials/import_log.html`, `partials/missing_cards.html`,
+`static/form-errors.js`, and `_run_now` in `app.py`.
+
+**Layout verdict:** keep the single top "Run now" card, not the per-card
+buttons intake suggested (epic #277, "Updates to #199"): the buttons sit
+outside every swapped region (no focus loss or swap-in-progress problems),
+and one result slot is #275's home.
+
+**Findings:**
+- Must-fix 1: a 504/5xx on a Run-now form said "Could not save (error 504)
+  -- nothing was changed", which may be false for a Dex sync that committed
+  before the function was killed. Needs a per-form override
+  (`data-error-message`): "Lost contact with the server before the job
+  finished ... It may still have completed: reload the page to see the run
+  log." (a reload reaps stale locks).
+- Must-fix 2: a network failure did nothing visible: form-errors.js only
+  handled `htmx:responseError`. Also handle `htmx:sendError`/`htmx:timeout`.
+- Should 3: a run reset the run log's chosen sort (hard-coded
+  `lsort=ran_at`/`ldir=desc` in the out-of-band swap). Prefer
+  `HX-Trigger: sync-ran` with the log re-fetching itself at its own sort.
+- Should 4: "already running" rendered as a red alert; make it a neutral note.
+- Should 5: focus fell to `<body>` after a run (`hx-disabled-elt` disables the
+  focused button); give the buttons ids and refocus after the request.
+- Should 6: a run's out-of-band swaps wiped a sort change or a "Deleted X"
+  note made during the run. Item 3 fixes the log; skip Missing from Dex's
+  swap when the run didn't change it.
+- Nice 7: nested live regions (`aria-live` container + `role` children) may
+  read a result twice; keep one.
+- Nice 8: the busy text didn't name the job; make it per job, `role="status"`.
+- Nice 9: an aborted Dex sync gave no next step; add "Usually a truncated
+  export: re-export My Collection from Dex and run again." until #275.
+
+**Status:** Addressed in #401's PR (feat-401-run-now-polish). Item 7 kept the
+persistent `#run-now-result` (`aria-live="polite"`) as the one live region,
+so item 4's note and the other results carry no `role` of their own; item
+8's busy texts sit in one persistent `role="status"` span, shown per job with
+`display` (not opacity) so the idle text isn't read out. Item 6: a card that
+vanished from the database during the run counts as a hand delete (a sync
+never deletes, #225), so it doesn't trigger the swap.
+
 ## 2026-10-04 — Facebook wins inbox → New Order cart (design review, #309)
 
 **Reviewed:** (from source; nothing built or rendered yet) the proposed flow for
