@@ -2099,7 +2099,11 @@ html.card-modal-open { overflow: hidden; }
 .run-now-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
 .run-now-actions form { margin: 0; }
 #run-now-result:not(:empty) { margin-top: 0.75rem; }
-#run-now-result .warnings, #run-now-result .saved-note { margin: 0; }
+#run-now-result .warnings, #run-now-result .saved-note, #run-now-result .run-now-note { margin: 0; }
+/* Per-job busy text (#401): display:none, not the usual .htmx-indicator
+   opacity, so the idle text isn't read out by a screen reader. */
+.run-now-busy { display: none; }
+.run-now-busy.htmx-request { display: inline; }
 .sync-glance {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

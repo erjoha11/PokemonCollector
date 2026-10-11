@@ -2,10 +2,15 @@
    partial's outerHTML back into the same target (/sync-status/log) instead
    of a plain page navigation, so sorting doesn't reload the page and jump
    back above the at-a-glance block. The card counters only apply to Dex
-   syncs; other jobs show their one-line summary under Details. #}
+   syncs; other jobs show their one-line summary under Details.
+   A Run-now answer (#199) fires `sync-ran` (HX-Trigger, #401): the section
+   then re-fetches itself with the sort it's showing, so a run neither
+   resets the user's chosen sort nor needs an out-of-band copy of the log. #}
 {% from "partials/macros.html" import sort_th with context %}
 {% macro sort_th_hx(label, field) %}{{ sort_th(label, field, 'lsort', 'ldir', lsort, ldir, path='/sync-status/log', hx_target='#sync-log', hx_swap='outerHTML') }}{% endmacro %}
-<div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;"{% if oob %} hx-swap-oob="true"{% endif %}>
+<div class="card" id="sync-log" tabindex="-1" style="margin-top: 1.5rem;"
+     hx-get="/sync-status/log?lsort={{ lsort | urlencode }}&amp;ldir={{ ldir | urlencode }}"
+     hx-trigger="sync-ran from:body" hx-target="this" hx-swap="outerHTML">
   <h2>Run log</h2>
   {% if logs %}
   <div class="table-scroll">

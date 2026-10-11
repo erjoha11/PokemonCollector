@@ -1,26 +1,28 @@
 {# The answer to a Run-now button (issue #199, partials/run_now.html):
    `job` ("dex-sync" / "price-refresh") and either `run` (a jobs.*Result
    or jobs.AlreadyRunningResult) or `error` (an unexpected exception's text;
-   jobs.py has already recorded it as failed). Swapped into #run-now-result;
-   the rest is out-of-band, so the page shows the run's new row without a
-   reload. #}
+   jobs.py has already recorded it as failed). Swapped into #run-now-result,
+   which is the live region: the notes here carry no role of their own (#401).
+   The at-a-glance block comes back out-of-band, and Missing from Dex only
+   when `missing_changed`; the run log re-fetches itself on the response's
+   `sync-ran` HX-Trigger (partials/import_log.html), keeping its sort. #}
 {% set label = job_labels[job] %}
 {% if error %}
-<p class="warnings" role="alert">{{ label }} failed with an unexpected error ({{ error }}). It's recorded in the run log below; try again later, or check the server logs.</p>
+<p class="warnings">{{ label }} failed with an unexpected error ({{ error }}). It's recorded in the run log below; try again later, or check the server logs.</p>
 {% elif run.status == 'already_running' %}
-<p class="warnings" role="alert">{{ label }} is already running (started {{ run.started_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if run.trigger %}, {{ run.trigger }}{% endif %}). Nothing new was started; its result will show in the run log below once it finishes.</p>
+<p class="muted run-now-note">{{ label }} is already running (started {{ run.started_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if run.trigger %}, {{ run.trigger }}{% endif %}). Nothing new was started; its result will show in the run log below once it finishes.</p>
 {% elif job == 'dex-sync' %}
   {% if run.status == 'failed' and run.not_configured %}
-<p class="warnings" role="alert">Dropbox isn't set up on this server, so there was nothing to sync. Set DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN (see the README, "Automatic daily sync").</p>
+<p class="warnings">Dropbox isn't set up on this server, so there was nothing to sync. Set DROPBOX_APP_KEY, DROPBOX_APP_SECRET and DROPBOX_REFRESH_TOKEN (see the README, "Automatic daily sync").</p>
   {% elif run.status == 'failed' %}
-<p class="warnings" role="alert">Dex sync failed, nothing was imported. Dropbox error: {{ run.error }}</p>
+<p class="warnings">Dex sync failed, nothing was imported. Dropbox error: {{ run.error }}</p>
   {% elif run.status == 'aborted' %}
-<p class="warnings" role="alert">Dex sync stopped before writing anything: {{ run.error }}</p>
+<p class="warnings">Dex sync stopped before writing anything: {{ run.error }} Usually a truncated export: re-export My Collection from Dex and run again.</p>
   {% elif run.status == 'empty' %}
-<p class="saved-note" role="status">Dex sync ran: no CSV files in {{ run.folder }}, so nothing was imported. {{ run.cards_snapshotted }} cards snapshotted.</p>
+<p class="saved-note">Dex sync ran: no CSV files in {{ run.folder }}, so nothing was imported. {{ run.cards_snapshotted }} cards snapshotted.</p>
   {% else %}
   {% set imported = run.import_result %}
-<div class="saved-note" role="status">
+<div class="saved-note">
   <p style="margin: 0;">Dex sync done: {{ run.files | join(', ') }} · {{ imported.cards_created }} created, {{ imported.cards_updated }} updated, {{ imported.cards_flagged_missing }} flagged missing · {{ run.cards_snapshotted }} cards snapshotted.</p>
   {% if imported.warnings %}
   <details class="sync-warnings">
@@ -32,11 +34,10 @@
   {% endif %}
 {% else %}
   {% if run.status == 'degraded' %}
-<p class="warnings" role="alert">Price refresh ran, but degraded: {{ run.degraded_reason }} {{ run.message }}</p>
+<p class="warnings">Price refresh ran, but degraded: {{ run.degraded_reason }} {{ run.message }}</p>
   {% else %}
-<p class="saved-note" role="status">Price refresh done: {{ run.message }}</p>
+<p class="saved-note">Price refresh done: {{ run.message }}</p>
   {% endif %}
 {% endif %}
 {% include "partials/sync_glance.html" %}
-{% include "partials/missing_cards.html" %}
-{% include "partials/import_log.html" %}
+{% if missing_changed %}{% include "partials/missing_cards.html" %}{% endif %}

@@ -1448,9 +1448,21 @@ can't be read back):
   or the price summary), or a readable message for already running,
   Dropbox not configured, a Dropbox error, a circuit-breaker abort, a
   degraded refresh, or an unexpected error (recorded as `failed` by
-  `jobs.py`). The at-a-glance block, Missing from Dex and the run log are
-  swapped back in out-of-band, so the new run shows without a reload. Both
-  buttons are disabled (`hx-disabled-elt`) while either run is in flight.
+  `jobs.py`). The at-a-glance block is swapped back in out-of-band, and
+  Missing from Dex too when the run changed it (a card deleted by hand
+  during the run doesn't count, so that delete's note stays). The answer
+  also sends `HX-Trigger: sync-ran`, on which the run log re-fetches itself
+  with the sort it's showing (#401), so the new run shows without a reload
+  and without resetting the sort. Both buttons are disabled
+  (`hx-disabled-elt`) while either run is in flight, with a per-job busy
+  text; focus goes back to the clicked button afterwards (`data-refocus`).
+- **Lost answers:** a 5xx, a network failure or a timeout on a Run-now
+  form says "Lost contact with the server before the job finished ... It
+  may still have completed: reload the page to see the run log", never
+  the generic "nothing was changed": a Dex sync may have committed before
+  the server cut it off. Set per form with `data-error-message`
+  (`static/form-errors.js`, which since #401 also reports
+  `htmx:sendError`/`htmx:timeout` on every htmx form).
 - Set sync and image backfill have no button yet; call their `/cron/*`
   route with the Bearer header (see "Cron endpoint auth").
 
