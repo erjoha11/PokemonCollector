@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ detail.checklist.display_name if detail else 'Master set' }} – TCG Inventory{% endblock %}
+{% block page_scripts %}<script src="/static/master-set.js" defer></script>{% endblock %}
 {% block content %}
 {#- /sets/{language}/{set_code} (issue #369). Since #378 a set with a home
     collection redirects to that collection's section, so this only renders

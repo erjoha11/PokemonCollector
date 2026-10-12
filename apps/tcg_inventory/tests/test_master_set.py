@@ -217,7 +217,7 @@ def _active_nav(html):
 
 
 def _grid(html, key="ja-sv2a"):
-    return html.split(f'id="set-grid-{key}"', 1)[1].split(f'id="missing-list-{key}"', 1)[0]
+    return html.split(f'id="set-grid-{key}"', 1)[1].split(f'id="spares-{key}"', 1)[0]
 
 
 def _tag(db, name, cards, rank=1):
@@ -436,6 +436,23 @@ def test_home_collection_shows_the_master_set_block(client):
     assert "Total value" in html and "Gain / loss" in html
 
 
+MISSING_LINES = [
+    f"{DISPLAY}: missing 4 of 11",
+    "#2 Mon 2 · Poké Ball",
+    "#4 Mon 4",
+    "#5 Mon 5 · Poké Ball",
+    "#7 Mon 7",
+]
+
+
+def _copy_text(html, which, key="ja-sv2a"):
+    """A Copy lists button's text (#385), unescaped."""
+    import html as html_lib
+
+    button = re.search(rf'<button type="button" id="copy-{which}-{key}"[^>]*>', html).group(0)
+    return html_lib.unescape(re.search(r'data-copy-text="([^"]*)"', button).group(1))
+
+
 def test_home_block_spares_link_and_missing_text(client):
     _, html = _home_page(client)
     with _session() as db:
@@ -446,15 +463,10 @@ def test_home_block_spares_link_and_missing_text(client):
     url = re.search(r'href="(/sales\?[^"]+)"', html).group(1)
     got = {int(x) for x in re.findall(r"card_ids=(\d+)", url)}
     assert ids <= got and len(got) == 3  # one Card per print with duplicates
-    text = re.search(r'<textarea id="missing-list-text-ja-sv2a"[^>]*>(.*?)</textarea>', html, re.S).group(1)
-    assert text.splitlines() == [
-        f"{DISPLAY}: missing 4 of 11",
-        "#2 Mon 2 · Poké Ball",
-        "#4 Mon 4",
-        "#5 Mon 5 · Poké Ball",
-        "#7 Mon 7",
-    ]
-    assert "document.getElementById('missing-list-text-ja-sv2a')" in html
+    # The Copy lists panel's textarea opens on the Missing list (#385).
+    text = re.search(r'<textarea id="copy-lists-text-ja-sv2a"[^>]*>(.*?)</textarea>', html, re.S).group(1)
+    assert text.splitlines() == MISSING_LINES
+    assert _copy_text(html, "missing").splitlines() == MISSING_LINES
 
 
 @pytest.mark.parametrize(
@@ -581,11 +593,28 @@ def test_two_checklisted_sections_have_unique_ids(client):
     dupes = sorted({i for i in ids if ids.count(i) > 1})
     assert dupes == []
     for key in ("ja-sv2a", "ja-s12a"):
-        for prefix in ("set", "set-grid", "set-list-add", "set-list-add-status", "missing-list-text", "spares", "unmatched"):
+        for prefix in (
+            "set", "set-grid", "set-list-add", "set-list-add-status", "spares", "master-set-progress",
+            "copy-lists", "copy-lists-text", "copy-lists-status", "copy-owned", "copy-missing", "copy-duplicates",
+        ):
             assert f'id="{prefix}-{key}"' in html, (prefix, key)
         assert f'hx-target="#set-list-add-{key}"' in html
         assert f'hx-select="#set-grid-{key}" hx-target="#set-grid-{key}"' in html
-        assert f"document.getElementById('missing-list-text-{key}')" in html
+        # Each block's Copy buttons fill and report in their own block (#385).
+        for which in ("owned", "missing", "duplicates"):
+            button = re.search(rf'<button type="button" id="copy-{which}-{key}"[^>]*>', html).group(0)
+            assert f'data-copy-target="copy-lists-text-{key}"' in button
+            assert f'data-copy-status="copy-lists-status-{key}"' in button
+    # Unmatched renders only where there is any: sv2a has two, s12a none.
+    assert 'id="unmatched-ja-sv2a"' in html and 'id="unmatched-ja-s12a"' not in html
+    # Each block copies its own set's lists.
+    assert _copy_text(html, "missing").splitlines() == MISSING_LINES
+    assert _copy_text(html, "missing", "ja-s12a").splitlines() == ["VSTAR Universe: missing 1 of 2", "#2 Uni 2"]
+    assert _copy_text(html, "owned", "ja-s12a").splitlines() == ["VSTAR Universe: owned 1 of 2", "#1 Uni 1 ×2"]
+    assert _copy_text(html, "duplicates", "ja-s12a").splitlines() == [
+        "VSTAR Universe: 1 duplicate for sale",
+        "#1 Uni 1 · Main ×1 · 5 kr",
+    ]
     assert 'action="/sets/ja/s12a/add-to-list"' in html and 'action="/sets/ja/sv2a/add-to-list"' in html
 
 

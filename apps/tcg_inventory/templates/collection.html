@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ collection.name }} – TCG Inventory{% endblock %}
+{% block page_scripts %}<script src="/static/master-set.js" defer></script>{% endblock %}
 {% from "partials/macros.html" import info, card_view_attrs, card_link, transit_badge, shared_badge %}
 {% macro gallery_card(card) %}
     <div class="gallery-card{{ ' card-row-unowned' if card.qty == 0 }}">

@@ -13,6 +13,9 @@
      chart_card. Every other route (login, listings, sales, sync status,
      inventory) never fetches/parses them. See issue #164. #}
   {% block chart_scripts %}{% endblock %}
+  {#- Page-specific scripts, e.g. static/master-set.js on the pages that
+      render a master-set block (#385). #}
+  {% block page_scripts %}{% endblock %}
 </head>
 <body>
   <nav>

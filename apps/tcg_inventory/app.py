@@ -1269,7 +1269,13 @@ def _master_set_block(
         "track_pills": [(key, label, pill_url(track=key, show=show)) for key, label in track_pills],
         "show_pills": [(key, label, pill_url(track=track, show=key)) for key, label in MASTER_SET_SHOW_FILTERS.items()],
         "master_ball_track": next((t for t in detail.tracks if t.key == "master_ball"), None),
-        "missing_text": _missing_list_text(detail),
+        # (key, label, count, text): the Copy lists panel's buttons, Missing
+        # first selected. Set-wide, like every count in the block.
+        "copy_lists": [
+            ("owned", "Owned", detail.master_set.owned, _owned_list_text(detail)),
+            ("missing", "Missing", len(detail.missing), _missing_list_text(detail)),
+            ("duplicates", "Duplicates for sale", detail.spares, _duplicates_list_text(detail)),
+        ],
         "spares_sales_url": "/sales?" + urlencode({"card_ids": [s.in_hand_card.id for s in detail.spare_slots]}, doseq=True),
         "elsewhere": elsewhere,
         **_list_add_context(db, slots, lists=lists),
@@ -1393,14 +1399,54 @@ def collection_page(
         db.close()
 
 
+# A master-set block's "Copy lists" panel (#385): plain text for Messenger,
+# Facebook or notes, one builder per list, all set-wide (never the grid's
+# filter). English like the UI; ads.py is the Norwegian finn.no ad, not this.
+def _print_line(slot: "queries.MasterSetSlot") -> str:
+    """`<number> <name>`, plus ` · <track>` off the main/secret tracks."""
+    line = f"{slot.number_label} {slot.name}".rstrip()
+    if slot.track not in ("main", "secret"):
+        line += f" · {slot.track_label}"
+    return line
+
+
 def _missing_list_text(detail: "queries.MasterSetDetail") -> str:
-    """The "Copy missing list" block: one line per missing master-set print."""
+    """Copy lists → Missing: one line per missing master-set print."""
     missing = detail.missing
     lines = [f"{detail.checklist.display_name}: missing {len(missing)} of {detail.master_set.total}"]
-    for slot in missing:
-        line = f"{slot.number_label} {slot.name}".rstrip()
-        if slot.track not in ("main", "secret"):
-            line += f" · {slot.track_label}"
+    lines += [_print_line(slot) for slot in missing]
+    return "\n".join(lines)
+
+
+def _owned_list_text(detail: "queries.MasterSetDetail") -> str:
+    """Copy lists → Owned: one line per owned print that counts toward the
+    master set (no Master Ball, so its line count is the Master set X),
+    ` ×N` when you own more than one copy (copies on the way included:
+    they're owned, #382)."""
+    owned = [s for s in detail.slots if s.counts and s.owned]
+    lines = [f"{detail.checklist.display_name}: owned {len(owned)} of {detail.master_set.total}"]
+    for slot in owned:
+        line = _print_line(slot)
+        if slot.owned_qty > 1:
+            line += f" ×{slot.owned_qty}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _duplicates_list_text(detail: "queries.MasterSetDetail") -> str:
+    """Copy lists → Duplicates for sale: one line per print with duplicates
+    *in hand* (`slot.spares`, #382: copies on the way aren't for sale), on
+    every track (Master Ball included: often the most valuable spares), in
+    printed order. `<number> <name> · <track> ×<spares> · <price> kr`, the
+    price left out when unknown. No total: JP proxy prices, and buyers
+    don't need it."""
+    slots = detail.spare_slots
+    n = detail.spares
+    lines = [f"{detail.checklist.display_name}: {n} duplicate{'s' if n != 1 else ''} for sale"]
+    for slot in slots:
+        line = f"{slot.number_label} {slot.name}".rstrip() + f" · {slot.track_label} ×{slot.spares}"
+        if slot.price is not None:
+            line += f" · {_format_kr(slot.price)}"
         lines.append(line)
     return "\n".join(lines)
 

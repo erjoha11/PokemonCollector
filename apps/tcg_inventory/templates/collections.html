@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/macros.html" import info %}
+{% from "partials/macros.html" import info, progress_bar %}
 {% block title %}Collections – TCG Inventory{% endblock %}
 {% block content %}
 {#- The Collections overview (issue #378): every collection, empty ones
@@ -25,7 +25,7 @@
         <td><a href="/collections/{{ row.collection.id }}">{{ row.collection.name }}</a></td>
         <td class="num">{{ row.bucket.qty }}</td>
         <td class="num">{{ row.bucket.total_value | kr }}</td>
-        <td class="num">{% for d in row.master_sets %}<a href="/collections/{{ row.collection.id }}#set-{{ set_dom_key(d.checklist.language, d.checklist.set_code) }}" title="{{ d.checklist.display_name }}">{{ d.master_set.owned }}/{{ d.master_set.total }}</a> <span class="muted">· {{ d.master_set.pct | round(1) }}%</span>{% if not loop.last %}<br>{% endif %}{% else %}<span class="muted">–</span>{% endfor %}</td>
+        <td class="num">{% for d in row.master_sets %}<a href="/collections/{{ row.collection.id }}#set-{{ set_dom_key(d.checklist.language, d.checklist.set_code) }}" title="{{ d.checklist.display_name }}">{{ d.master_set.owned }}/{{ d.master_set.total }}</a> <span class="muted">· {{ d.master_set.pct | round(1) }}%</span>{{ progress_bar(d.master_set.owned, d.master_set.total, 'Master set progress, ' ~ d.checklist.display_name, 'progress-bar-mini') }}{% else %}<span class="muted">–</span>{% endfor %}</td>
         <td class="num">{{ row.duplicates }}</td>
       </tr>
       {% endfor %}
