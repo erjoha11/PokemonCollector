@@ -246,6 +246,28 @@ yet.
 
 ### tcg_inventory
 
+**Master-set progress bars and copy lists (#385)**
+- A full-width progress bar under each master-set heading ("X / Y · Z%",
+  the same figures as the Master set KPI), a mini-bar and "N left" in each
+  counting track's KPI cell, and a mini-bar in the `/collections` overview's
+  Master set column. One shared `macros.progress_bar` with
+  `role="progressbar"` and aria values.
+- A Copy lists panel between the KPIs and the filters replaces the old
+  "Copy missing list" card: Owned (counted prints, ` ×N` for more than one
+  copy), Missing (unchanged) and Duplicates for sale (in-hand spares, Master
+  Ball included, no price when unknown, no total), set-wide and built in
+  `app.py`, plus a "Show text" textarea. The button reads "Copied" for about
+  2 s; if copying fails the textarea opens selected with "Press Ctrl/Cmd+C"
+  (`static/master-set.js`, via a new `page_scripts` block in `base.html`).
+- Page order: bar, KPIs, Copy lists, grid, Duplicates (collapsed by default,
+  "Duplicates · N · X kr"), Unmatched (only when non-empty), other cards.
+  Show=Duplicates counts "N prints · M duplicate copies"; the KPI tooltip
+  says Master Ball is included.
+- Focus returns to the active filter pill after a grid swap, and the
+  Duplicates and Unmatched tables scroll on narrow screens.
+- No schema change. Docs: README "Master sets / checklists",
+  `notes/tcg_inventory/UX_NOTES.md`.
+
 **Run-now buttons for set sync and image backfill (#402)**
 - The Run now card on /sync-status adds "Run set sync now"
   (`POST /sync-status/run/set-sync`) and "Run image backfill now"
