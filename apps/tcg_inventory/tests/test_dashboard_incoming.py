@@ -155,3 +155,18 @@ def test_no_incoming_row_when_nothing_is_in_transit(client):
     html = _inventory_card(client.get("/").text)
     assert "coll-incoming" not in html
     assert "</span> Incoming</button>" not in html
+
+
+def test_incoming_rows_name_a_non_normal_variant(client):
+    """A Normal and a Poke Ball Holo copy of one number are two cards; the
+    leaf rows name the variant so they don't read as one card listed twice."""
+    normal = {"id": "sv2a-2", "name": "Ivysaur", "number": "2/165", "variant": "Normal", "qty": 1, "price": "2"}
+    ball = {**normal, "variant": "Poké Ball Holo", "price": "8"}
+    seed_import(client, [
+        ("files", ("main.csv", make_csv("My Collection", [normal, ball]), "text/csv")),
+        ("files", ("in.csv", make_csv("Incoming", [normal, ball]), "text/csv")),
+    ])
+    rows = _leaf_rows(_inventory_card(client.get("/").text), "coll-incoming")
+    assert len(rows) == 2
+    assert sum("· Poké Ball Holo" in r for r in rows) == 1
+    assert not any("· Normal" in r for r in rows)

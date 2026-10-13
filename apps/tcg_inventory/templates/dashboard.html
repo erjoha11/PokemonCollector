@@ -29,7 +29,10 @@
    rows too. #}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false, in_collection=none) %}
 <tr class="{{ css_class }}{{ ' card-row-unowned' if card.qty == 0 else '' }}" data-group="{{ group_id }}" hidden>
-  <td>{{ card_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}
+  <td>{{ card_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}
+  {#- Non-Normal variant named, so a Normal and a Poke Ball copy of the same
+      number don't read as one card listed twice. #}
+  {%- if card.variant and card.variant != 'Normal' %} <span class="muted">· {{ card.variant }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}
   {%- if in_collection %} {{ shared_badge(card, in_collection, 'shared with') }}{% endif %}</td>
   {% if show_set_series %}
   <td>{% if card.set %}{{ filter_link('set', card.set) }}{% else %}-{% endif %}</td>
