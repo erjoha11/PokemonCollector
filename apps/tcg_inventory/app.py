@@ -2549,6 +2549,15 @@ def _price_for(tx_type: str, price: float) -> float:
     return 0.0 if tx_type == "ripped" else price
 
 
+def _parse_row_price(tx_type: str, raw: str, row: int) -> float:
+    """An order row's Price. Blank is 0 -- "not priced yet", the convention
+    Edit order's Distribute and Remaining already use -- so an order can be
+    registered with only a Total and its cards priced later (or never).
+    Except on a sale, where 0 would book a card as given away for nothing."""
+    value = parse_amount(raw, "Price", row=row, required=tx_type == "sale")
+    return 0.0 if value is None else value
+
+
 def _trade_direction(tx_type: str, values: list[str], i: int) -> str | None:
     """The `direction` to store for form row `i`: "in"/"out" on a trade row,
     NULL on anything else (see Transaction.direction). Tolerates a form that
@@ -3234,7 +3243,7 @@ def create_purchase(
     if not note and not won_item_id:
         note = won_item_id = [""] * len(card_id)
     require_same_length(card_id=card_id, price=price, note=note, won_item_id=won_item_id)
-    parsed = [parse_amount(raw, "Price", row=i + 1) for i, raw in enumerate(price)]
+    parsed = [_parse_row_price(type, raw, row=i + 1) for i, raw in enumerate(price)]
     item_refs = [_parse_item_ref(raw, row=i + 1) for i, raw in enumerate(won_item_id)]
     db = get_db_session()
     try:
@@ -3576,7 +3585,7 @@ def update_purchase(
         for i in kept:
             row_types[i] = parse_tx_type(type[i], row=i + 1)
             row_dates[i] = parse_date(date[i], row=i + 1)
-            row_prices[i] = parse_amount(price[i], "Price", row=i + 1)
+            row_prices[i] = _parse_row_price(row_types[i], price[i], row=i + 1)
             row_targets[i] = _parse_target_order_id(new_purchase_id[i], row=i + 1)
     total_value = parse_optional_amount(purchase_total, "Total")
     shipping_value = parse_optional_amount(purchase_shipping, "Shipping")

@@ -1398,10 +1398,10 @@ def test_purchase_cart_search_box_guards_against_enter_submitting_the_form(clien
 
 
 def test_purchase_cart_register_guards_against_silent_native_validation_failure(client):
-    # `price` (and `date`) are `required` on the cart form -- a blank price
-    # blocks the browser's native validation before any request reaches the
-    # server, so no server-rendered error can ever show for that case. The
-    # form needs its own client-side guard instead.
+    # `date` is `required` on the cart form, so a blank one blocks the
+    # browser's native validation before any request reaches the server.
+    # The form needs its own client-side guard (which also asks before
+    # registering blank prices with no Total, and blocks them on a sale).
     response = client.get("/transactions/purchase/start")
     assert response.status_code == 200
     assert 'onsubmit="return confirmRegisterOrder(this)"' in response.text

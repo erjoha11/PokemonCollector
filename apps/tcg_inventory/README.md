@@ -579,7 +579,10 @@ run).
   100 over 3 is 33.33 / 33.33 / 33.34, `static/money-split.js`) fills `Total − Shipping −
   Σ(already-priced cards)` into the still-unpriced rows — useful
   for a lot where a few cards' values are known and the rest should
-  absorb the remainder. A "Split" choice picks **By market value** (each
+  absorb the remainder. **Clear all prices** (client-side too, saved only
+  by Save changes) blanks the price on every purchase row — sale, trade,
+  ripped and to-be-deleted rows keep theirs — so the order goes back to
+  "only a Total" and Distribute can start over. A "Split" choice picks **By market value** (each
   card's share is proportional to its current `display_price`; a card
   with no price gets the average share) or **Evenly**. Shares use
   largest-remainder rounding, so they always add up to the remainder to
@@ -768,6 +771,12 @@ written:
   suggested prices) must be finite and 0 or more. `nan`/`inf`, which a plain
   `float` field accepts, are rejected, and so are negatives. A decimal comma
   is accepted. Mark sold is stricter and requires each sold price to be above 0.
+  A **blank card price** in the New Order cart or on Edit order is allowed
+  on purchase, trade and ripped rows and is saved as 0, "not priced yet"
+  (the convention Distribute and Remaining use), so an order can be
+  registered with just a Total and its cards priced later. A sale row still
+  requires a price. The cart asks before registering blank prices when no
+  Total is typed either, since the order would then carry no cost at all.
 - **Date** must be an ISO date (`YYYY-MM-DD`).
 - **Parallel row lists** (cart rows, Edit order rows, the ad builder's rows)
   must line up one-to-one. Edit order only checks the rows being kept, so a

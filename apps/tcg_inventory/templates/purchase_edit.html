@@ -70,6 +70,10 @@
             title="Splits what's left of the Total after the cards already priced across the cards that still have no price. Trade rows and rows marked for deletion are skipped.">
       Distribute remaining across unpriced cards
     </button>
+    <button type="button" class="secondary" onclick="clearAllPrices()"
+            title="Blanks the price on every purchase row (blank = not priced yet, saved as 0). Sale, trade and ripped rows and rows marked for deletion keep theirs. Nothing is saved until Save changes.">
+      Clear all prices
+    </button>
     {{ info("Type what you actually paid as Total, then Distribute spreads what's left after the priced cards over the unpriced ones (price 0). By market value: shares follow each card's current price (no price gets the average share). Evenly: same amount each. With Include shipping on, the unpriced cards absorb the shipping too and Shipping is set to 0, so it's never counted twice. Nothing is saved until Save changes.", align_right=true) }}
   </div>
   <p class="muted"><span id="distribute_note"></span></p>
@@ -86,6 +90,26 @@
 </form>
 
 <script>
+// "Clear all prices" -- blanks every purchase row's price, so the order is
+// back to "only a Total" (blank saves as 0, not priced yet) and Distribute
+// can start over. Sale rows keep theirs (a sale needs a price), trade rows
+// theirs (it's cash that moved, not a cost share), ripped rows are always
+// 0. Client-side only, like Distribute: nothing is saved until Save changes.
+function clearAllPrices() {
+  var cleared = 0;
+  document.querySelectorAll('#purchase-edit-rows tr').forEach(function (row) {
+    var priceEl = row.querySelector('input[name="price"]');
+    var typeEl = row.querySelector('select[name="type"]');
+    var deleteEl = row.querySelector('input[name="delete_tx_id"]');
+    if (!priceEl || (typeEl && typeEl.value !== 'purchase') || (deleteEl && deleteEl.checked)) return;
+    if (priceEl.value !== '') cleared += 1;
+    priceEl.value = '';
+  });
+  document.getElementById('distribute_note').textContent = cleared
+    ? 'Cleared the price on ' + cleared + ' card' + (cleared === 1 ? '' : 's') + ' -- Save changes to keep it.'
+    : 'No purchase row had a price to clear.';
+}
+
 // "Distribute remaining across unpriced cards" -- price 0 means "not priced
 // yet" (same convention as the Legacy import table's Order column), so a
 // card counts as unpriced here if its price field is 0 or blank. Trade rows
