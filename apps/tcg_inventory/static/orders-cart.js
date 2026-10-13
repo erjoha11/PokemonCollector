@@ -15,7 +15,7 @@
 // The New Order cart's type drives which columns show: Trade adds In/Out,
 // Ripped hides Price and fills 0 (ripped cards are free -- the server
 // forces 0 anyway). Re-run after every row htmx appends, since those rows
-// arrive with an empty required price input.
+// arrive with an empty price input.
 // The cart's type is a <select> on Purchased but a hidden type=sale input on
 // Sold -- form.elements.type reads either. (A select-only querySelector threw
 // on the Sold cart and silently broke every row append.)
@@ -314,10 +314,10 @@ if (!window.__tcgOrdersCartInit) {
 }
 window.__tcgOrdersCartInit = true;
 
-// The cart form's price/date inputs are `required`, so a blank one blocks
-// native validation *before* the request reaches the server -- no
-// server-side error can show, which reads exactly like "Register does
-// nothing, not even an error". Check the two likely gaps explicitly.
+// Register's client-side checks. A blank price is allowed on a purchase,
+// trade or ripped order -- it's registered as 0, "not priced yet" (Edit
+// order's Distribute fills those in later) -- but not on a sale. With no
+// Total either, the order would carry no cost at all, so ask first.
 function confirmRegisterOrder(form) {
   var cartBody = document.getElementById('cart-body');
   var rows = cartBody ? cartBody.querySelectorAll('tr') : [];
@@ -325,14 +325,23 @@ function confirmRegisterOrder(form) {
     alert('Search for at least one card and add it to the order first.');
     return false;
   }
-  var emptyPrice = Array.prototype.find.call(
+  var emptyPrices = Array.prototype.filter.call(
     cartBody.querySelectorAll('input[name="price"]'),
     function (el) { return el.value.trim() === ''; }
   );
-  if (emptyPrice) {
-    alert('Enter a price for every card before registering (or use "Distribute evenly across empty prices").');
-    emptyPrice.focus();
-    return false;
+  var totalInput = form.querySelector('input[name="purchase_total"]');
+  if (emptyPrices.length) {
+    if (cartType(form) === 'sale') {
+      alert('Enter a price for every card before registering a sale (or use "Distribute evenly across empty prices").');
+      emptyPrices[0].focus();
+      return false;
+    }
+    if (!importedState(form) && totalInput.value.trim() === '' &&
+        !confirm(emptyPrices.length + ' card' + (emptyPrices.length === 1 ? ' has' : 's have') +
+                 ' no price and there\'s no Total, so the order is registered with no cost. Register anyway?')) {
+      emptyPrices[0].focus();
+      return false;
+    }
   }
   // Facebook wins (#309): never leave imported items behind without asking.
   var state = importedState(form);
@@ -340,8 +349,7 @@ function confirmRegisterOrder(form) {
     if (state.unlinked && !confirm(unlinkedText(state) + '. They stay in the inbox for a later order. Register the linked cards now?')) {
       return false;
     }
-    var totalInput = form.querySelector('input[name="purchase_total"]');
-    if (totalInput.value.trim() === '' && (state.unlinked || state.unpriced) &&
+    if (totalInput.value.trim() === '' && (state.unlinked || state.unpriced || emptyPrices.length) &&
         !confirm('There\'s no Total, so the order won\'t show what\'s unaccounted for (items not linked or without a price). Register anyway?')) {
       totalInput.focus();
       return false;

@@ -155,6 +155,24 @@ def test_cart_still_registers_a_valid_order(client):
     assert sum(row[5] for row in rows) == pytest.approx(3.0)
 
 
+def test_cart_registers_blank_prices_as_unpriced_with_only_a_total(client):
+    ids = _seed(client)
+    r = client.post("/transactions/purchase", data=_cart(ids, price=["", ""], purchase_total="300"), headers=HX)
+    assert r.status_code == 200
+    rows = _tx_snapshot()
+    assert [row[4] for row in rows] == [0.0, 0.0]
+    assert [row[7] for row in rows] == [300.0, 300.0]
+
+
+def test_cart_still_requires_a_price_on_every_sale_row(client):
+    ids = _seed(client)
+    _order(client, ids)
+    before = _tx_snapshot()
+    r = client.post("/transactions/purchase", data=_cart(ids, type="sale", price=["10", ""]), headers=HX)
+    _assert_plain_422(r, "Price on row 2", "required")
+    assert _tx_snapshot() == before
+
+
 # --- Order history total/shipping form -----------------------------------
 
 
@@ -201,6 +219,29 @@ def test_edit_order_rejects_bad_prices_without_writing_any_row(client, bad):
         r = client.post("/transactions/purchase/5/edit", data=_edit(ids, tx_ids, **{field: bad}), headers=HX)
         _assert_plain_422(r, label)
     assert _tx_snapshot() == before
+
+
+def test_edit_order_saves_blank_prices_as_unpriced_but_not_on_a_sale(client):
+    ids = _seed(client)
+    tx_ids = _order(client, ids)
+    r = client.post("/transactions/purchase/5/edit", data=_edit(ids, tx_ids, price=["", ""]), follow_redirects=False)
+    assert r.status_code == 303
+    assert [row[4] for row in _tx_snapshot()] == [0.0, 0.0]
+    before = _tx_snapshot()
+    r = client.post(
+        "/transactions/purchase/5/edit", data=_edit(ids, tx_ids, type=["purchase", "sale"], price=["", ""]), headers=HX
+    )
+    _assert_plain_422(r, "Price on row 2", "required")
+    assert _tx_snapshot() == before
+
+
+def test_edit_order_page_has_clear_all_prices(client):
+    ids = _seed(client)
+    _order(client, ids)
+    page = client.get("/transactions/purchase/5/edit").text
+    assert 'onclick="clearAllPrices()"' in page
+    assert "function clearAllPrices()" in page
+    assert 'name="price" value="10.0" required' not in page
 
 
 def test_edit_order_rejects_unknown_type_malformed_date_and_mismatched_lists(client):
