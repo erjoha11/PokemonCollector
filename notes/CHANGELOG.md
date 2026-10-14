@@ -246,6 +246,33 @@ yet.
 
 ### tcg_inventory
 
+**eBay sold prices via PokeTrace, reference only (#414)**
+- New `poketrace_prices.py`: eBay's sold Near Mint 30-day median from
+  PokeTrace's free tier, stored as `card_prices` source `poketrace_ebay` (USD
+  → NOK) with the sale count and window. It's for comparison only and never
+  sets the market price, snapshots or totals.
+- `pricing.resolve()` now only considers `CHAIN` sources
+  (`pricing.REFERENCE_SOURCES`), so a reference row can't win as a fresh
+  fallback, as the stale last resort or as a card's only price.
+- Schema 18: `card_prices.sample_size` / `window_days` and
+  `import_log.api_requests` (the daily request cap is counted across runs).
+- Matching is never guessed: a known PokeTrace ID first (in batches of 20
+  via `tcgplayer_ids` once the TCGplayer ID is stored), else a search pinned
+  on game, number, variant and name that has to return exactly one match.
+  Korean cards and prints PokeTrace doesn't list are skipped before any
+  request. No Cardmarket shortcut, because it needs PokeTrace's paid plan.
+- Cards in hand worth >= 20 NOK, refreshed weekly by a daily cron
+  (`/cron/poketrace-refresh`, `0 7 * * *`) plus a "Run eBay prices now"
+  button. Limits: 2.1 s pacing, one 429 retry, a 60 s time box and 200
+  requests/day, and it also stops when PokeTrace's `x-ratelimit-remaining`
+  reaches 0. Without `POKETRACE_API_KEY` the run is skipped and shown on
+  /sync-status.
+- Card page: a muted "Reference" row under the price sources ("eBay sold
+  via PokeTrace (NM median)", `n=551 · 30d · +5% vs used`). It reads "Few
+  sales" below 5 sales or when PokeTrace marks the price low-confidence.
+- Docs: README "Pricing" (including the terms-of-use check), "Sync status",
+  "Run now" and "Cron endpoint auth"; `.env.example`.
+
 **Run-now buttons for set sync and image backfill (#402)**
 - The Run now card on /sync-status adds "Run set sync now"
   (`POST /sync-status/run/set-sync`) and "Run image backfill now"

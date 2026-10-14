@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from models import ImportLog
@@ -26,6 +26,7 @@ DEX_SYNC = "dex-sync"
 PRICE_REFRESH = "price-refresh"
 SET_SYNC = "set-sync"
 IMAGE_BACKFILL = "image-backfill"
+POKETRACE_REFRESH = "poketrace-refresh"  # reference-only eBay sold prices (#414)
 
 # Display order on the at-a-glance block.
 JOBS: list[tuple[str, str]] = [
@@ -33,6 +34,7 @@ JOBS: list[tuple[str, str]] = [
     (PRICE_REFRESH, "Price refresh"),
     (SET_SYNC, "Set sync"),
     (IMAGE_BACKFILL, "Image backfill"),
+    (POKETRACE_REFRESH, "eBay prices (PokeTrace)"),
 ]
 JOB_LABELS = dict(JOBS)
 
@@ -43,7 +45,11 @@ FAILED = "failed"  # an error (Dropbox, API, or unexpected)
 # Price refresh ran, but wrote no prices: only fx_rates' fallback constant
 # was available (issue #229).
 DEGRADED = "degraded"
-PROBLEM_STATUSES = (EMPTY, ABORTED, FAILED, DEGRADED)
+# Ran but did nothing on purpose (issue #414): the PokeTrace refresh with no
+# POKETRACE_API_KEY, or with today's request cap already used. Shown like a
+# problem, so a missing key on the deploy is visible.
+SKIPPED = "skipped"
+PROBLEM_STATUSES = (EMPTY, ABORTED, FAILED, DEGRADED, SKIPPED)
 
 
 def record_run(
@@ -55,6 +61,7 @@ def record_run(
     message: str | None = None,
     files: list[str] | None = None,
     ran_at: dt.datetime | None = None,
+    api_requests: int | None = None,
 ) -> ImportLog | None:
     """Add and commit one `import_log` row for a job run.
 
@@ -64,7 +71,8 @@ def record_run(
     log row with it.
 
     `ran_at` defaults to now; a run recorded after the fact (an interrupted
-    one, see job_locks) passes the time it started.
+    one, see job_locks) passes the time it started. `api_requests`: metered
+    requests the run made (the PokeTrace refresh's daily cap, #414).
 
     Never raises: failing to write the log must not turn a finished job (or
     its real error response) into a different error. A failure here is
@@ -77,6 +85,7 @@ def record_run(
         job=job,
         status=status,
         message=message,
+        api_requests=api_requests,
     )
     try:
         db.add(row)
@@ -115,3 +124,16 @@ def overview(db: Session) -> list[dict]:
                 last_problem = None
         entries.append({"job": job, "label": label, "last_ok": last_ok, "last_problem": last_problem})
     return entries
+
+
+def api_requests_today(db: Session, job: str, now: dt.datetime | None = None) -> int:
+    """Metered API requests `job` recorded today (UTC day, which is when
+    PokeTrace's daily quota resets), from `import_log.api_requests`."""
+    now = now or dt.datetime.utcnow()
+    day_start = dt.datetime(now.year, now.month, now.day)
+    total = (
+        db.query(func.coalesce(func.sum(ImportLog.api_requests), 0))
+        .filter(ImportLog.job == job, ImportLog.ran_at >= day_start)
+        .scalar()
+    )
+    return int(total or 0)

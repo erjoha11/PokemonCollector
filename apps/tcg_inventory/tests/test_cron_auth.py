@@ -1,5 +1,5 @@
 """The shared /cron/* auth check (cron_auth.require_cron_secret, issue #226),
-over all four routes: fails closed on a deploy without CRON_SECRET, Bearer
+over all five routes: fails closed on a deploy without CRON_SECRET, Bearer
 only (`?secret=` refused since #199), local no-login dev open.
 """
 from types import SimpleNamespace
@@ -17,12 +17,19 @@ from test_dropbox_client import FakeDropbox, FakeListFolderResult
 from test_price_refresh import FakeClient
 
 SECRET = "s3cr3t"
-ROUTES = ["/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync"]
+ROUTES = [
+    "/cron/dropbox-sync",
+    "/cron/price-refresh",
+    "/cron/image-backfill",
+    "/cron/set-sync",
+    "/cron/poketrace-refresh",
+]
 JOBS = {
     "/cron/dropbox-sync": "dex-sync",
     "/cron/price-refresh": "price-refresh",
     "/cron/image-backfill": "image-backfill",
     "/cron/set-sync": "set-sync",
+    "/cron/poketrace-refresh": "poketrace-refresh",
 }
 
 

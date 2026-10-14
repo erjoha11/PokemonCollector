@@ -42,6 +42,7 @@ import cron_auth
 import job_locks
 import jobs
 import missing_cards
+import poketrace_prices
 import pricing
 import sync_status
 import queries
@@ -157,6 +158,9 @@ templates.env.filters["card_source_label"] = pricing.card_source_label
 templates.env.filters["price_flags"] = pricing.flag_list
 templates.env.filters["flag_label"] = pricing.flag_label
 templates.env.filters["flag_title"] = pricing.flag_title
+# Reference-only price sources (#414): never "Used" on the card page.
+templates.env.filters["is_reference_source"] = pricing.is_reference_source
+templates.env.globals["poketrace_min_sales"] = poketrace_prices.min_sales
 
 
 def _card_image_large(url: str | None) -> str | None:
@@ -241,13 +245,14 @@ templates.env.globals["type_filter_url"] = _type_filter_url
 # Paths reachable without a session -- everything else needs a login once
 # Supabase Auth is configured. Unconfigured (no SUPABASE_* env vars, e.g.
 # local dev) leaves the app open, same as before this was added.
-# The four /cron/* routes have their own separate auth (CRON_SECRET, via
+# The five /cron/* routes have their own separate auth (CRON_SECRET, via
 # cron_auth.require_cron_secret, failing closed, #226) -- a scheduled job has
 # no browser session to log in with.
 # /inbox/fb-wins (fb_auction_watcher sending your Facebook wins, #309) has its
 # own secret, INBOX_TOKEN, and fails closed -- see _inbox_auth_error.
 _PUBLIC_PATHS = {
-    "/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync", "/inbox/fb-wins",
+    "/login", "/cron/dropbox-sync", "/cron/price-refresh", "/cron/image-backfill", "/cron/set-sync",
+    "/cron/poketrace-refresh", "/inbox/fb-wins",
 }
 
 
@@ -1067,6 +1072,10 @@ def _card_detail_context(db: Session, card_pk: int) -> dict:
     invested = queries.net_invested_by_card(db, list(all_txs)).get(card.id)
     shipping = queries.shipping_shares(list(all_txs))
     history = queries.card_price_history(db, card.id)
+    price_rows = sorted(
+        (p for p in card.prices if not pricing.is_reference_source(p.source)),
+        key=lambda p: pricing.chain_rank(p.source),
+    )
     # The set name links to the set's master-set page when it has a
     # checklist (#369).
     set_key = queries.card_set_key(card)
@@ -1079,11 +1088,35 @@ def _card_detail_context(db: Session, card_pk: int) -> dict:
         "invested": invested,
         "gain": (card.total_value - invested) if invested is not None else None,
         "price_history": history,
-        # Per-source table, display-priority order (pricing.CHAIN).
-        "price_rows": sorted(card.prices, key=lambda p: pricing.chain_rank(p.source)),
+        # Per-source table, display-priority order (pricing.CHAIN). The
+        # reference-only sources (poketrace_ebay, #414) are never in it:
+        # they get their own rows below a divider, never "Used".
+        "price_rows": price_rows,
+        "reference_rows": _reference_price_rows(card, price_rows),
         "fresh_days": pricing.FRESH_DAYS,
         "missing_entry": _missing_entry(db, card),
     }
+
+
+def _reference_price_rows(card: Card, price_rows: list) -> list[dict]:
+    """The card page's reference-only rows (issue #414), one per
+    reference source that has a price (a row with only a failed lookup
+    shows nothing). `shows_value`: the display gate
+    (poketrace_prices.shows_value); otherwise the row reads "Few sales".
+    `vs_used`: the % difference from the price of the row marked Used,
+    None when no row is Used or the value isn't shown."""
+    used = next(
+        (p for p in price_rows if p.source == card.market_price_source and p.price_nok),
+        None,
+    )
+    rows = []
+    for p in card.prices:
+        if not pricing.is_reference_source(p.source) or p.price_nok is None:
+            continue
+        shows = poketrace_prices.shows_value(p)
+        vs_used = round((p.price_nok - used.price_nok) / used.price_nok * 100) if shows and used else None
+        rows.append({"row": p, "shows_value": shows, "vs_used": vs_used})
+    return rows
 
 
 @app.get("/cards/{card_pk}")
@@ -3900,6 +3933,9 @@ _RUN_NOW_JOBS = {
     sync_status.IMAGE_BACKFILL: lambda db: jobs.run_image_backfill(
         db, trigger=jobs.MANUAL, limit=IMAGE_BACKFILL_DEFAULT_LIMIT
     ),
+    # Same daily request cap and lock as the cron (#414): a click spends
+    # from the same POKETRACE_DAILY_REQUESTS budget.
+    sync_status.POKETRACE_REFRESH: lambda db: jobs.run_poketrace_refresh(db, trigger=jobs.MANUAL),
 }
 
 
@@ -4003,6 +4039,11 @@ def run_now_set_sync(request: Request):
 @app.post("/sync-status/run/image-backfill")
 def run_now_image_backfill(request: Request):
     return _run_now(request, sync_status.IMAGE_BACKFILL)
+
+
+@app.post("/sync-status/run/poketrace-refresh")
+def run_now_poketrace_refresh(request: Request):
+    return _run_now(request, sync_status.POKETRACE_REFRESH)
 
 
 @app.post("/sync-status/run/dex-sync/override")
@@ -4255,6 +4296,41 @@ def cron_set_sync(trigger: str = Depends(cron_auth.require_cron_secret)):
     if isinstance(result, jobs.AlreadyRunningResult):
         return _already_running_response(result)
     return {"status": result.status, "matched": result.matched, "unmatched": result.unmatched}
+
+
+@app.get("/cron/poketrace-refresh")
+def cron_poketrace_refresh(trigger: str = Depends(cron_auth.require_cron_secret)):
+    """Daily eBay sold reference prices via PokeTrace (poketrace_prices.py,
+    issue #414): whatever is due, each card at most weekly. A thin wrapper
+    over `jobs.run_poketrace_refresh`, behind the same CRON_SECRET gate as
+    the other /cron routes. Reference-only: never changes a market price.
+    A run with no POKETRACE_API_KEY, or with today's request cap used, is a
+    200 with `"status": "skipped"` and makes no request."""
+    db = get_db_session()
+    try:
+        result = jobs.run_poketrace_refresh(db, trigger=trigger)
+    finally:
+        db.close()
+    if isinstance(result, jobs.AlreadyRunningResult):
+        return _already_running_response(result)
+    refresh = result.refresh
+    return {
+        "status": result.status,
+        "reason": result.reason,
+        "requests": result.requests,
+        "day_used": result.day_used,
+        "day_cap": result.day_cap,
+        "cards_due": refresh.cards_due if refresh else 0,
+        "cards_checked": refresh.cards_checked if refresh else 0,
+        "cards_priced": refresh.cards_priced if refresh else 0,
+        "cards_thin": refresh.cards_thin if refresh else 0,
+        "ids_matched": refresh.ids_matched if refresh else 0,
+        "cards_unmatched": refresh.cards_unmatched if refresh else [],
+        "korean_skipped": refresh.korean_skipped if refresh else 0,
+        "stopped": refresh.stopped if refresh else None,
+        "rate_remaining": refresh.rate_remaining if refresh else None,
+        "message": result.message,
+    }
 
 
 # --------------------------------------------------------------------------

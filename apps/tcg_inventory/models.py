@@ -396,7 +396,10 @@ class CardPrice(Base):
     written by importer.py), "pokemontcg" (pokemontcg.io TCGplayer market
     price, USD, written by price_refresh.py / importer.py), and
     "tcgdex_tcgplayer" (USD) / "tcgdex_cardmarket" (EUR), written by
-    tcgdex_prices.py (#211).
+    tcgdex_prices.py (#211). Plus the reference-only "poketrace_ebay" (USD,
+    eBay's sold Near Mint median via PokeTrace, poketrace_prices.py, #414),
+    which is outside CHAIN and never resolved into the market price
+    (pricing.REFERENCE_SOURCES).
 
     A row can exist with no price at all -- only `lookup_failed_at` -- for a
     source that has been tried and never priced this card; that's the
@@ -433,6 +436,12 @@ class CardPrice(Base):
     flags: Mapped[str | None] = mapped_column(String, nullable=True)
     # Last lookup that came back with no usable price; cleared on success.
     lookup_failed_at: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    # For an aggregate price (schema 18, #414): how many sales it's based on
+    # (`sample_size`) over how many days (`window_days`). Source-generic, so
+    # e.g. Cardmarket's avg30 could reuse them; only poketrace_ebay writes
+    # them so far, null for every other source.
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     card: Mapped[Card] = relationship(back_populates="prices")
 
@@ -907,14 +916,19 @@ class ImportLog(Base):
     binders_touched: Mapped[str | None] = mapped_column(String, nullable=True)
     warnings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # --- added in #264, all nullable (additive ALTER, no default on old rows) ---
-    # "dex-sync" | "price-refresh" | "set-sync" | "image-backfill"
+    # "dex-sync" | "price-refresh" | "set-sync" | "image-backfill" | "poketrace-refresh"
     job: Mapped[str | None] = mapped_column(String, nullable=True, default="dex-sync")
     # "ok" | "empty" (no CSV files) | "aborted" (circuit breaker) | "failed"
+    # | "degraded" | "skipped" (PokeTrace refresh: no key / daily cap used)
     status: Mapped[str | None] = mapped_column(String, nullable=True, default="ok")
     # One-line summary (other jobs) or the error / abort reason.
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # The import's warnings, one per line (only the count was kept before).
     warnings_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Metered API requests the run made (schema 18, #414): only the PokeTrace
+    # refresh sets it; its daily cap (POKETRACE_DAILY_REQUESTS) is the sum
+    # over today's (UTC) rows. Null for every other job.
+    api_requests: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # NULL job/status = a row from before #264, always a successful Dex sync.
     @property

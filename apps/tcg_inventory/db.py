@@ -90,7 +90,8 @@ class Base(DeclarativeBase):
 # 15: set_checklists, set_checklist_cards, master_cards.rarity/image_url (#368)
 # 16: card_lists, card_list_items (want and sale lists, #370)
 # 17: cards.in_transit_qty/in_transit_since ("On the way" status from Dex Incoming, #382)
-CURRENT_SCHEMA_VERSION = 17
+# 18: card_prices.sample_size/window_days, import_log.api_requests (PokeTrace eBay reference prices, #414)
+CURRENT_SCHEMA_VERSION = 18
 
 # A single-row table recording which schema version the migration chain has
 # already been run against, so a serverless cold start (Vercel + Supabase,
