@@ -24,6 +24,32 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-10-14 — eBay sold prices on the card page (#412, ux via architect)
+
+**Reviewed:** design review before building (no page rendered): the card
+page's "Price sources" table and `pricing.resolve()`, for a reference-only
+`ebay_sold` source (SoldComps median of recent sales, top ~100 cards).
+
+**Findings:**
+- Leaving `ebay_sold` out of `CHAIN` does **not** keep it reference-only:
+  `resolve()` ranks unknown sources last but still considers them, so the
+  eBay row would become `market_price` when no CHAIN source is fresh, as the
+  stale fallback (most recent fetch), or when it's the card's only price —
+  i.e. exactly the high-value cards. `resolve()` must filter to CHAIN sources.
+- Show it **only** as a separate, muted row in the existing "Price sources"
+  table, not next to the headline price: neutral "Reference" badge, a
+  provenance line like `n=7 · 90d · last sale 02.10.2026`, and "Few sales"
+  when n ≤ 2.
+- Show the gap as `+18% vs used`, measured against the source actually
+  Used, not hard-coded to TCGplayer.
+- Cards with no eBay price show nothing (no empty row).
+- Not in v1: list columns, sorting, dashboard, snapshots, ad text.
+- Later: after 1–2 months of data, a one-off comparison script over the
+  ~100 cards informs the blend/CHAIN decision better than more UI.
+
+**Status:** Open — specified in #412, waiting on the SoldComps verification
+step before build.
+
 ## 2026-10-11 — /sync-status Run-now card, as built (#199 / PR #399 → #401)
 
 **Reviewed:** (from source on origin/main after #399; the page wasn't rendered)
