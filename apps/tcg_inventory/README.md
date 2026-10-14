@@ -1440,6 +1440,7 @@ of these does:
 | `price-refresh` | `ok` (one-line summary: TCGplayer/TCGdex counts, images, snapshot, FX), `degraded` (no prices written, only the FX fallback constant was available, #229; shown as a problem), `failed` | `jobs.run_price_refresh` |
 | `set-sync` | `ok`, `failed` (API call failed, or an error) | `jobs.run_set_sync` |
 | `image-backfill` | `ok`, `failed` | `jobs.run_image_backfill` |
+| `poketrace-refresh` | `ok` (requests, priced/due, few sales, unmatched, stop reason, today's budget), `skipped` (no `POKETRACE_API_KEY`, or today's request cap used; shown as a problem so a missing key is visible), `degraded` (FX fallback only, nothing fetched), `failed` (key refused, rate-limited or errors before any card, or an unexpected error). Each row records `api_requests` (#414) | `jobs.run_poketrace_refresh` |
 
 `source` is the run's **trigger**, i.e. who started it:
 
@@ -1499,6 +1500,7 @@ can't be read back):
 | Run price refresh now | `POST /sync-status/run/price-refresh` | `jobs.run_price_refresh` | `manual` / `manual` |
 | Run set sync now (#402) | `POST /sync-status/run/set-sync` | `jobs.run_set_sync` | `manual` / no snapshot |
 | Run image backfill now (#402) | `POST /sync-status/run/image-backfill` | `jobs.run_image_backfill(limit=100)`, the cron route's default | `manual` / no snapshot |
+| Run eBay prices now (#414) | `POST /sync-status/run/poketrace-refresh` | `jobs.run_poketrace_refresh`, same lock and daily request cap as the cron | `manual` / no snapshot |
 | Run sync anyway (override, #275) | `POST /sync-status/run/dex-sync/override` | `jobs.run_dex_sync(allow_mass_missing=True, expected_missing=N)` | `manual` / `manual` |
 
 - **Auth:** behind the normal Supabase login — not under `/cron/`, not in
@@ -1795,8 +1797,8 @@ export doesn't make its prices fresh: they're dated at the export (see
 
 ### Cron endpoint auth (issue #226)
 
-The four `/cron/*` routes (`dropbox-sync`, `price-refresh`,
-`image-backfill`, `set-sync`) skip the login (a scheduled call has no
+The five `/cron/*` routes (`dropbox-sync`, `price-refresh`,
+`image-backfill`, `set-sync`, `poketrace-refresh`) skip the login (a scheduled call has no
 session) and share one check, `cron_auth.require_cron_secret`:
 
 | `CRON_SECRET` | Login configured (`SUPABASE_*`) | Result |
@@ -1968,6 +1970,20 @@ live TCGplayer first, Dex as fallback, by the owner's choice in #386):
 | 2 | `pokemontcg` | pokemontcg.io's TCGplayer market price | USD | `price_refresh.py` (daily, by ID, #349) |
 | 3 | `dex` | Dex CSV `Price` cell (Dex is set to TCGplayer) | NOK | `importer.py`, every sync |
 | 4 | `tcgdex_cardmarket` | TCGdex's Cardmarket `trend` (else `avg30`) | EUR | `tcgdex_prices.py` (#211) |
+
+**Reference-only sources** (`pricing.REFERENCE_SOURCES`, issue #414) are
+stored in `card_prices` and shown on the card page for comparison, but are
+**never** the market price: `pricing.resolve` only considers `CHAIN`
+sources, so a reference row can't win as a fresh fallback, as the stale
+last resort, or as a card's only priced row (that card stays `no_price`).
+Snapshots, totals and charts are unaffected. Today that's one source:
+
+| `source` | What | Currency | Written by |
+|---|---|---|---|
+| `poketrace_ebay` | eBay sold Near Mint median (30 days) via PokeTrace | USD | `poketrace_prices.py` (#414, see "eBay sold via PokeTrace" below) |
+
+Promoting one into the chain later is a deliberate pricing-rule change:
+move it into `CHAIN` and update this section.
 
 **Why live TCGplayer first (#386, 2026-10-09).** This reverses #210's
 Dex-first order (epic #213). The goal is for displayed prices to match
@@ -2161,6 +2177,115 @@ cd apps/tcg_inventory
 python tcgdex_prices.py --dry-run      # how many cards are due
 python tcgdex_prices.py [--limit N]    # one refresh pass
 ```
+
+#### eBay sold via PokeTrace (issue #414, reference only)
+
+`poketrace_prices.py` stores eBay's **sold** prices from
+[PokeTrace](https://api.poketrace.com/v1) as the reference-only source
+`poketrace_ebay`, to collect about a month of eBay-vs-TCGplayer data before
+deciding whether eBay should ever feed the displayed price. **It never
+changes a market price** (see "Reference-only sources" above). It replaces
+#412's SoldComps plan, whose free tier (100 requests/month) couldn't cover a
+weekly refresh.
+
+**Terms of use.** The user checked PokeTrace's free-tier terms on
+2026-10-14: OK for this use (a personal collection tool storing derived
+aggregates).
+
+**What's stored.** Per card, the eBay `NEAR_MINT` tier's `median30d` in
+USD, converted to NOK at Norges Bank's rate (`fx_rates`, like the other USD
+sources), with `sample_size` = the tier's `saleCount` and `window_days` =
+30 (two nullable, source-generic `card_prices` columns, schema version 18).
+`source_updated_at` is the tier's own `lastUpdated`, falling back to the
+card's. Graded tiers and PokeTrace's own TCGplayer tier are not used (the
+latter is a cheap fast-follow: same response, no extra request).
+**Caveat:** PokeTrace doesn't document which window `saleCount` covers
+(the live record had `approxSaleCount: true`); we store 30 to match the
+median and treat `n` as approximate. A median whose newest NM data is more
+than 30 days old isn't stored.
+
+**Flags** go on the row: PokeTrace `confidence: low` → `low_confidence`
+(a tier without a `confidence` field, as on the live US records, counts as
+not low); fewer than `POKETRACE_MIN_SALES` (default 5) NM sales →
+`few_sales`. The row is stored regardless; the card page gates the display
+(below).
+
+**Matching, never guessed.** Pinned on game (masterdata language: `int` →
+`pokemon`, `ja` → `pokemon-japanese`, `zh-hans` → `pokemon-chinese`), card
+number (with set size), variant (`Holo` → `Holofoil`, `Reverse Holo` →
+`Reverse_Holofoil`, `Normal` → `Normal`/`Unlimited`, 1st Edition prints,
+blank = any) and name (`tcgdex_prices.names_match`):
+
+1. **Known ID first.** The first match stores PokeTrace's UUID in
+   `master_card_ids` (source `poketrace`, `verified`) and its
+   `refs.tcgplayerId` (source `tcgplayer`). Later refreshes never search:
+   cards with both are fetched in batches of up to 20 via `tcgplayer_ids`
+   (64 cards ≈ 4 requests a week), others by `GET /cards/{id}`.
+2. **No Cardmarket shortcut.** `cardmarket_ids` lookups are HTTP 403
+   `UPGRADE_REQUIRED` on the free tier ("EU market data requires a Pro
+   plan", checked live 2026-10-14), and US records carry
+   `refs.cardmarketId: null`, so TCGdex's Cardmarket `idProduct` is not
+   persisted for this.
+3. **Search:** `search` (name) + `card_number` + `game` + `variant`,
+   `market=US`; exactly one result must agree on all four. None or
+   several (name + number searches can return several prints) →
+   `record_failure` (`lookup_failed_at`), never a guessed price. No
+   `GET /sets` step: name + number + game + variant already pin it.
+
+A Dex `Normal` card PokeTrace only lists as `Holofoil` (or the reverse)
+doesn't match: strict on purpose, it shows up under "unmatched" in the
+run's summary.
+
+**Which cards.** In hand (qty > 0, not flagged missing) with
+`market_price` >= `POKETRACE_MIN_PRICE_NOK` (default 20), most valuable
+first. Skipped up front, with no request and no failure stamp: **Korean**
+cards (PokeTrace has no Korean game) and prints PokeTrace has no variant
+for (Poké Ball / Master Ball patterns, cosmos holo, stamps, ...). **Due** =
+no `poketrace_ebay` row fetched or failed in the last 7 days.
+
+**Job and cadence.** `jobs.run_poketrace_refresh` (own `job_locks`
+single-flight), `GET /cron/poketrace-refresh` behind `cron_auth`, a
+**daily** Vercel cron at `0 7 * * *` (after the 06:00 price refresh, so
+selection sees fresh market prices), and a Run-now button on `/sync-status`
+(same lock, same cap). Daily runs do whatever is due, so each card is still
+refreshed weekly but each run stays small and resumes after an
+interruption. Not folded into `/cron/price-refresh`, which already uses
+~215 s of its time box.
+
+**Limits (free tier: 250 requests/day, reset 00:00 UTC; ~1 request per 2 s
+burst).**
+
+- **Pacing:** at least 2.1 s between requests.
+- **429:** `retryAfter` honoured once, a second 429 (or a non-burst 429)
+  ends the run. 401/403 ends it too; 3 transient errors (timeouts, 5xx) in
+  a row end it.
+- **Time box:** `POKETRACE_SECONDS` (default 60), checked before each
+  request.
+- **Daily cap:** `POKETRACE_DAILY_REQUESTS` (default 200, headroom under
+  250 for testing), summed over today's (UTC) runs of this job from
+  `import_log.api_requests` (schema 18), so cron and Run-now share it. Also
+  stops when PokeTrace's `x-ratelimit-remaining` reaches 0. A run killed
+  before recording (e.g. a Vercel timeout) isn't counted; that header is
+  the backstop.
+
+**Key.** `POKETRACE_API_KEY`, sent only as the `X-API-Key` header: never
+in the DB, repo, templates, logs or `import_log`. Local:
+`apps/tcg_inventory/.env`; prod: a Vercel Production env var. **No key:**
+the run is recorded as `skipped` ("Skipped: no key ...") on `/sync-status`
+and nothing else happens. Tunables: `POKETRACE_MIN_PRICE_NOK`,
+`POKETRACE_MIN_SALES`, `POKETRACE_DAILY_REQUESTS`, `POKETRACE_SECONDS`
+(see `.env.example`).
+
+**On the card page** (only there). A row in "Price sources", below a
+divider, muted, with a neutral "Reference" badge (tooltip "Comparison only,
+never used for the market price."), labelled "eBay sold via PokeTrace (NM
+median)". Its Fetched cell adds `n=551 · 30d · +5% vs used`: the
+difference is against whichever row is marked Used, and is left out when
+none is. With fewer than `POKETRACE_MIN_SALES` sales or `low_confidence`,
+the row reads "Few sales" instead of a price. A card with no eBay price
+(never checked, or only a failed lookup) shows no row. The Used marker can
+never land on a reference row. Not in lists, sorting, Inventory/sets
+columns, the dashboard, snapshots, charts or `ads.py`.
 
 ### Price refresh (Vercel Cron)
 

@@ -1927,6 +1927,26 @@ html.card-modal-open { overflow: hidden; }
 .price-sources summary { cursor: pointer; color: var(--ink-secondary); }
 .price-sources-table { margin-top: 0.5rem; }
 .price-sources-table .price-source-used td:first-child { font-weight: 600; }
+/* Reference-only sources (eBay sold via PokeTrace, #414): below a divider,
+   muted, with a neutral "Reference" badge -- never the amber flag tone,
+   never "Used", no gain/loss colouring on the "vs used" difference. */
+.price-sources-table tr.price-source-divider td {
+  padding: 0;
+  border-top: 2px solid var(--border-strong);
+}
+.price-sources-table .price-source-reference td { color: var(--ink-secondary); }
+.price-sources-table .price-source-reference .price-reference-muted { opacity: 0.7; font-style: italic; }
+.price-reference-provenance { white-space: nowrap; }
+.price-reference {
+  display: inline-block;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(120, 120, 120, 0.14);
+  color: var(--ink-secondary);
+}
 @media (max-width: 640px) {
   .card-detail { grid-template-columns: 1fr; }
   .card-detail-image { max-width: 260px; }

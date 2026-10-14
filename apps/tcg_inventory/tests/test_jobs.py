@@ -63,12 +63,14 @@ RUNNERS = {
     sync_status.PRICE_REFRESH: jobs.run_price_refresh,
     sync_status.IMAGE_BACKFILL: jobs.run_image_backfill,
     sync_status.SET_SYNC: jobs.run_set_sync,
+    sync_status.POKETRACE_REFRESH: jobs.run_poketrace_refresh,
 }
 ROUTES = {
     sync_status.DEX_SYNC: "/cron/dropbox-sync",
     sync_status.PRICE_REFRESH: "/cron/price-refresh",
     sync_status.IMAGE_BACKFILL: "/cron/image-backfill",
     sync_status.SET_SYNC: "/cron/set-sync",
+    sync_status.POKETRACE_REFRESH: "/cron/poketrace-refresh",
 }
 
 
@@ -183,6 +185,8 @@ def test_lock_is_released_after_an_unexpected_error(client, monkeypatch, offline
     monkeypatch.setattr(jobs.price_refresh, "refresh_stale_prices", boom)
     monkeypatch.setattr(jobs.backfill_images, "run_backfill", boom)
     monkeypatch.setattr(set_sync, "sync_set_metadata", boom)
+    monkeypatch.setattr(jobs.poketrace_prices, "refresh_poketrace_prices", boom)
+    monkeypatch.setenv("POKETRACE_API_KEY", "test-key")  # else it skips before the bug
 
     with _session() as db, pytest.raises(RuntimeError):
         RUNNERS[job](db, trigger="manual")

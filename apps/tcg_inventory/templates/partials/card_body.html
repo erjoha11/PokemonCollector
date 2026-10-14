@@ -59,27 +59,54 @@
     {% if missing_entry %}{% include "partials/card_delete_missing.html" %}{% endif %}
 
     {#- Every source's latest price (card_prices), in display-priority order.
-        Open by default only when the price is flagged. #}
+        Open by default only when the price is flagged. Reference-only
+        sources (eBay sold via PokeTrace, #414) follow below a divider:
+        muted, never "Used", and gated on enough sales (else "Few sales"). #}
     <details class="price-sources"{{ ' open' if flags }}>
-      <summary>Price sources {{ info('Every source\'s latest price for this card, in priority order. The market price is the first source with a price fetched in the last ' ~ fresh_days ~ ' days; if none is that fresh, the most recent price is used and flagged Stale.') }}</summary>
-      {% if price_rows %}
+      <summary>Price sources {{ info('Every source\'s latest price for this card, in priority order. The market price is the first source with a price fetched in the last ' ~ fresh_days ~ ' days; if none is that fresh, the most recent price is used and flagged Stale. Rows marked Reference, below the line, are for comparison only and never used for the market price.') }}</summary>
+      {% if price_rows or reference_rows %}
       <div class="table-scroll">
       <table class="price-sources-table">
         <thead><tr><th>Source</th><th class="num">Price</th><th class="num">NOK</th><th>Fetched</th><th>Status</th></tr></thead>
         <tbody>
           {% for p in price_rows %}
-          <tr{{ ' class="price-source-used"' | safe if p.source == card.market_price_source }}>
+          {%- set is_used = p.source == card.market_price_source and not (p.source | is_reference_source) %}
+          <tr{{ ' class="price-source-used"' | safe if is_used }}>
             <td>{{ p.source | card_source_label(card) }}</td>
             <td class="num">{% if p.price is not none and p.currency and p.currency != 'NOK' %}{{ '%.2f' | format(p.price) }} {{ p.currency }}{% else %}–{% endif %}</td>
             <td class="num">{{ p.price_nok | kr if p.price_nok is not none else '–' }}</td>
             <td>{% if p.fetched_at %}{{ p.fetched_at.strftime('%d.%m.%Y') }} <span class="muted">({{ p.fetched_at | days_ago }})</span>{% else %}–{% endif %}</td>
             <td>
-              {%- if p.source == card.market_price_source %}<span class="price-used">Used</span>{% endif %}
+              {%- if is_used %}<span class="price-used">Used</span>{% endif %}
               {%- if p.lookup_failed_at %} <span class="price-flag" title="The last lookup at this source found no usable price; its previous price (if any) is kept">Lookup failed {{ p.lookup_failed_at.strftime('%d.%m.%Y') }}</span>{% endif %}
               {%- for f in p.flags | price_flags %} <span class="price-flag" title="{{ f | flag_title }}">{{ f | flag_label }}</span>{% endfor %}
             </td>
           </tr>
           {% endfor %}
+          {%- if reference_rows %}
+          {%- if price_rows %}<tr class="price-source-divider" aria-hidden="true"><td colspan="5"></td></tr>{% endif %}
+          {%- for ref in reference_rows %}
+          {%- set p = ref.row %}
+          <tr class="price-source-reference">
+            <td>{{ p.source | source_label }} (NM median)</td>
+            {%- if ref.shows_value %}
+            <td class="num">{% if p.price is not none and p.currency and p.currency != 'NOK' %}{{ '%.2f' | format(p.price) }} {{ p.currency }}{% else %}–{% endif %}</td>
+            <td class="num">{{ p.price_nok | kr }}</td>
+            {%- else %}
+            <td class="num" colspan="2"><span class="price-reference-muted" title="Fewer than {{ poketrace_min_sales() }} Near Mint sales in the window, or the source marks this median low-confidence: too thin to compare.">Few sales</span></td>
+            {%- endif %}
+            <td>{% if p.fetched_at %}{{ p.fetched_at.strftime('%d.%m.%Y') }} <span class="muted">({{ p.fetched_at | days_ago }})</span>{% else %}–{% endif %}
+              {%- if p.sample_size is not none or p.window_days %}<br><span class="muted price-reference-provenance">
+                {%- if p.sample_size is not none %}n={{ p.sample_size }}{% endif %}
+                {%- if p.window_days %}{{ ' · ' if p.sample_size is not none }}{{ p.window_days }}d{% endif %}
+                {%- if ref.vs_used is not none %} · {{ '%+d' | format(ref.vs_used) }}% vs used{% endif %}</span>{% endif %}</td>
+            <td>
+              <span class="price-reference" title="Comparison only, never used for the market price.">Reference</span>
+              {%- if p.lookup_failed_at %} <span class="price-flag" title="The last lookup at this source found no usable price; its previous price is kept">Lookup failed {{ p.lookup_failed_at.strftime('%d.%m.%Y') }}</span>{% endif %}
+            </td>
+          </tr>
+          {%- endfor %}
+          {%- endif %}
         </tbody>
       </table>
       </div>

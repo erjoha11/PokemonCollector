@@ -69,13 +69,16 @@ def _log_in(client):
 # --- the page --------------------------------------------------------------
 
 
-def test_the_card_has_four_buttons_dex_sync_first_and_the_only_primary(client):
+def test_the_card_has_five_buttons_dex_sync_first_and_the_only_primary(client):
     html = client.get("/sync-status").text
     card = html[html.index('id="run-now"'):html.index('id="run-now-result"')]
-    order = [card.index(f'hx-post="{path}"') for path in (DEX, "/sync-status/run/price-refresh", SETS, IMAGES)]
+    order = [
+        card.index(f'hx-post="{path}"')
+        for path in (DEX, "/sync-status/run/price-refresh", SETS, IMAGES, "/sync-status/run/poketrace-refresh")
+    ]
     assert order == sorted(order)
     assert '<button type="submit" id="run-now-dex-sync" class="run-now-button">' in card
-    for button_id in ("run-now-price-refresh", "run-now-set-sync", "run-now-image-backfill"):
+    for button_id in ("run-now-price-refresh", "run-now-set-sync", "run-now-image-backfill", "run-now-poketrace-refresh"):
         assert f'id="{button_id}" class="run-now-button secondary"' in card
     assert "Run set sync now" in card and "Run image backfill now" in card
 

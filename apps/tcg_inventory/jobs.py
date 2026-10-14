@@ -43,6 +43,7 @@ from sqlalchemy.orm import Session
 import backfill_images
 import dropbox_client
 import job_locks
+import poketrace_prices
 import price_refresh
 import pricing
 import set_sync
@@ -138,6 +139,23 @@ class ImageBackfillResult:
     filled: int
     cards_with_image: int
     remaining: int
+
+
+@dataclass
+class PoketraceRefreshResult:
+    """`status`: `ok`, `skipped` (no POKETRACE_API_KEY, or today's request
+    cap already used -- see `reason`), `degraded` (only the FX fallback
+    rate, no request made) or `failed` (PokeTrace refused the key, rate
+    limits or errors before any card was checked)."""
+
+    status: str
+    trigger: str
+    reason: str | None = None  # "no_key" | "cap_reached" | a stop reason
+    refresh: Any | None = None  # poketrace_prices.RefreshResult
+    requests: int = 0
+    day_used: int = 0  # recorded today (UTC), this run included
+    day_cap: int = 0
+    message: str = ""
 
 
 @dataclass
@@ -519,3 +537,77 @@ def _set_sync(db: Session, trigger: str) -> SetSyncResult:
     except Exception as exc:
         _record_failure(db, sync_status.SET_SYNC, trigger, exc)
         raise
+
+
+# --------------------------------------------------------------------------
+# PokeTrace refresh (eBay sold prices, reference-only, issue #414)
+# --------------------------------------------------------------------------
+def run_poketrace_refresh(db: Session, *, trigger: str) -> PoketraceRefreshResult | AlreadyRunningResult:
+    """eBay's sold Near Mint median via PokeTrace for the due cards
+    (poketrace_prices.py), daily, each card at most weekly. Never changes a
+    market price, snapshot or total: `poketrace_ebay` is reference-only.
+
+    Budget: at most POKETRACE_DAILY_REQUESTS (default 200) requests per UTC
+    day, summed from this job's `import_log.api_requests` (so cron and
+    Run-now share it), also stopping when PokeTrace's own
+    `x-ratelimit-remaining` reaches 0, and time-boxed to POKETRACE_SECONDS
+    (default 60). With no POKETRACE_API_KEY it records a `skipped` run and
+    makes no request. Every run records its request count."""
+    _check_trigger(trigger)
+    return _single_flight(db, sync_status.POKETRACE_REFRESH, trigger, lambda: _poketrace_refresh(db, trigger))
+
+
+def _poketrace_refresh(db: Session, trigger: str) -> PoketraceRefreshResult:
+    job = sync_status.POKETRACE_REFRESH
+    cap = poketrace_prices.daily_requests()
+    used = sync_status.api_requests_today(db, job)
+    result = PoketraceRefreshResult(status="ok", trigger=trigger, day_used=used, day_cap=cap)
+
+    def _skip(reason: str, message: str) -> PoketraceRefreshResult:
+        print(f"[jobs/{job}] skipped: trigger={trigger} {message}")
+        sync_status.record_run(db, job=job, status=sync_status.SKIPPED, source=trigger, message=message, api_requests=0)
+        result.status, result.reason, result.message = "skipped", reason, message
+        return result
+
+    key = poketrace_prices.api_key()
+    if key is None:
+        return _skip(
+            "no_key", f"Skipped: no key ({poketrace_prices.KEY_ENV} isn't set on this server). Nothing was fetched."
+        )
+    if used >= cap:
+        return _skip("cap_reached", f"Skipped: today's request cap is used ({used} of {cap}). Nothing was fetched.")
+
+    client = poketrace_prices.Client(key, max_requests=cap - used, time_budget_s=poketrace_prices.time_budget_s())
+    try:
+        refresh = poketrace_prices.refresh_poketrace_prices(db, client)
+    except Exception as exc:
+        db.rollback()
+        sync_status.record_run(
+            db,
+            job=job,
+            status=sync_status.FAILED,
+            source=trigger,
+            message=f"{exc.__class__.__name__}: {exc}",
+            api_requests=client.requests,
+        )
+        raise
+
+    result.refresh = refresh
+    result.requests = refresh.requests
+    result.day_used = used + refresh.requests
+    budget = f"{result.day_used} of {cap} requests used today"
+    summary = poketrace_prices.summary_line(refresh)
+    if refresh.stopped == "fx_unavailable":
+        status, result.reason = sync_status.DEGRADED, "fx_unavailable"
+        message = f"{refresh.degraded_reason} Nothing fetched; {budget}."
+    elif refresh.stopped in ("forbidden", "rate_limited", "errors") and refresh.cards_checked == 0:
+        status, result.reason = sync_status.FAILED, refresh.stopped
+        message = f"{summary}; {budget}."
+    else:
+        status, result.reason = sync_status.OK, refresh.stopped
+        message = f"{summary}; {budget}."
+    print(f"[jobs/{job}] {status}: trigger={trigger} {message}")
+    sync_status.record_run(db, job=job, status=status, source=trigger, message=message, api_requests=refresh.requests)
+    result.status = status
+    result.message = message
+    return result

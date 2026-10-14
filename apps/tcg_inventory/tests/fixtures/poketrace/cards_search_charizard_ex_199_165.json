@@ -1,0 +1,78 @@
+{
+  "data": [
+    {
+      "id": "019bffab-58b9-77cf-912b-acdfb23b0a46",
+      "name": "Charizard ex",
+      "cardNumber": "199/165",
+      "set": {
+        "slug": "sv-scarlet-and-violet-151",
+        "name": "SV: Scarlet & Violet 151"
+      },
+      "variant": "Holofoil",
+      "rarity": "Special Illustration Rare",
+      "game": "pokemon",
+      "market": "US",
+      "currency": "USD",
+      "refs": {
+        "tcgplayerId": "517045",
+        "cardmarketId": null
+      },
+      "prices": {
+        "ebay": {
+          "NEAR_MINT": {
+            "avg": 330.69,
+            "low": 330.69,
+            "high": 330.69,
+            "lastUpdated": "2026-10-09T00:00:00.000Z",
+            "avg1d": 333,
+            "avg7d": 334.95715,
+            "avg30d": 347.80798,
+            "median3d": 330.69,
+            "median7d": 330.69,
+            "median30d": 342.745,
+            "saleCount": 551,
+            "approxSaleCount": true
+          },
+          "LIGHTLY_PLAYED": {
+            "avg": 299.99,
+            "low": 299.99,
+            "high": 299.99,
+            "lastUpdated": "2026-09-21T00:00:00.000Z",
+            "avg1d": 325,
+            "avg7d": 312.495,
+            "avg30d": 312.495,
+            "median3d": 299.99,
+            "median7d": 299.99,
+            "median30d": 325,
+            "saleCount": 49,
+            "approxSaleCount": true
+          }
+        },
+        "tcgplayer": {
+          "NEAR_MINT": {
+            "avg": 326.16,
+            "low": null,
+            "high": null,
+            "lastUpdated": "2026-10-14T00:00:00.000Z",
+            "avg1d": 326.16,
+            "avg7d": 323.02,
+            "avg30d": 344.85678,
+            "median3d": null,
+            "median7d": null,
+            "median30d": null,
+            "dataUpdatedAt": null,
+            "lastRecordedSaleDate": "2026-10-13",
+            "saleCount": 4134,
+            "approxSaleCount": false
+          }
+        }
+      },
+      "lastUpdated": "2026-10-14T17:30:44.810Z"
+    }
+  ],
+  "pagination": {
+    "hasMore": false,
+    "nextCursor": null,
+    "count": 1
+  }
+}

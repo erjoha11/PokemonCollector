@@ -1,6 +1,6 @@
 {# The answer to a Run-now button (issue #199, partials/run_now.html):
    `job` ("dex-sync" / "price-refresh" / "set-sync" / "image-backfill",
-   #402) and either `run` (a jobs.*Result
+   #402, / "poketrace-refresh", #414) and either `run` (a jobs.*Result
    or jobs.AlreadyRunningResult) or `error` (an unexpected exception's text;
    jobs.py has already recorded it as failed). Swapped into #run-now-result,
    which is the live region: the notes here carry no role of their own (#401).
@@ -76,6 +76,23 @@
   <details class="sync-warnings">
     <summary>{{ run.unmatched | length }} unmatched set{{ '' if run.unmatched | length == 1 else 's' }}</summary>
     <ul>{% for name in run.unmatched %}<li>{{ name }}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</div>
+  {% endif %}
+{% elif job == 'poketrace-refresh' %}
+  {% if run.status == 'skipped' %}
+<p class="warnings">eBay prices: {{ run.message }}</p>
+  {% elif run.status in ('failed', 'degraded') %}
+<p class="warnings">eBay prices ran, but {{ run.status }}: {{ run.message }}</p>
+  {% else %}
+  {% set refresh = run.refresh %}
+<div class="saved-note">
+  <p style="margin: 0;">eBay prices done (reference only, no market price changed): {{ run.message }}</p>
+  {% if refresh and refresh.cards_unmatched %}
+  <details class="sync-warnings">
+    <summary>{{ refresh.cards_unmatched | length }} not matched or not priced</summary>
+    <ul>{% for line in refresh.cards_unmatched %}<li>{{ line }}</li>{% endfor %}</ul>
   </details>
   {% endif %}
 </div>

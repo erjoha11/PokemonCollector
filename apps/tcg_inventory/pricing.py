@@ -19,6 +19,12 @@ Resolution rule (`resolve`):
    `stale` -- never 0 and never None while any price ever existed.
 3. Only a card with no price from any source at all is flagged `no_price`.
 
+Only `CHAIN` sources are ever considered. A reference-only source
+(`REFERENCE_SOURCES`, e.g. `poketrace_ebay`, issue #414) or any other source
+outside CHAIN is dropped before steps 1-3, so it can never become the market
+price: not as a fresh fallback, not as the stale last resort, and not when
+it's a card's only priced row (that card is `no_price`).
+
 The winning row's own flags (e.g. `variant_price_uncertain`) are carried onto
 the card.
 
@@ -55,6 +61,14 @@ SOURCE_TCGDEX_TCGPLAYER = "tcgdex_tcgplayer"
 SOURCE_POKEMONTCG = "pokemontcg"
 SOURCE_TCGDEX_CARDMARKET = "tcgdex_cardmarket"
 CHAIN: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG, SOURCE_DEX, SOURCE_TCGDEX_CARDMARKET)
+# Reference-only sources (issue #414): stored in card_prices and shown on the
+# card page for comparison, but never considered by `resolve` -- so never the
+# market price, a snapshot or any total. Promoting one later is a deliberate
+# pricing-rule change: move it into CHAIN (and update README "Pricing").
+# `poketrace_ebay` is eBay's sold Near Mint median via PokeTrace
+# (poketrace_prices.py).
+SOURCE_POKETRACE_EBAY = "poketrace_ebay"
+REFERENCE_SOURCES: frozenset[str] = frozenset({SOURCE_POKETRACE_EBAY})
 # The sources that price a card from TCGplayer's per-print keys, chosen by
 # card_images._match_variant_key (issue #350).
 TCGPLAYER_SOURCES: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG)
@@ -65,6 +79,7 @@ SOURCE_LABELS: dict[str, str] = {
     SOURCE_TCGDEX_TCGPLAYER: "TCGplayer via TCGdex",
     SOURCE_POKEMONTCG: "TCGplayer via pokemontcg.io",
     SOURCE_TCGDEX_CARDMARKET: "Cardmarket via TCGdex",
+    SOURCE_POKETRACE_EBAY: "eBay sold via PokeTrace",
 }
 
 FRESH_DAYS = 14
@@ -73,6 +88,9 @@ FLAG_STALE = "stale"
 FLAG_NO_PRICE = "no_price"
 FLAG_VARIANT_UNCERTAIN = "variant_price_uncertain"
 FLAG_LOW_CONFIDENCE = "low_confidence"
+# Per-source and informational: an aggregate price (poketrace_ebay's median)
+# from fewer sales than the source's minimum (POKETRACE_MIN_SALES).
+FLAG_FEW_SALES = "few_sales"
 # A source row carrying one of these is never chosen while it's fresh (it
 # can still be the stale last resort). Nothing writes one yet; #212's
 # cross-checks will.
@@ -88,6 +106,7 @@ FLAG_LABELS: dict[str, tuple[str, str]] = {
         "The source had several prints of this card and the variant couldn't be matched to one of them.",
     ),
     FLAG_LOW_CONFIDENCE: ("Low confidence", "This price failed a cross-check against the other sources."),
+    FLAG_FEW_SALES: ("Few sales", "Too few recent sales behind this median to rely on it."),
 }
 
 
@@ -165,6 +184,12 @@ def _join_flags(flags: Iterable[str]) -> str | None:
     return ",".join(unique) if unique else None
 
 
+def is_reference_source(source: str | None) -> bool:
+    """True for a comparison-only source (REFERENCE_SOURCES) that `resolve`
+    never picks."""
+    return source in REFERENCE_SOURCES
+
+
 def chain_rank(source: str) -> int:
     """Position in CHAIN (display priority); unknown sources sort last."""
     return CHAIN.index(source) if source in CHAIN else len(CHAIN)
@@ -188,8 +213,9 @@ def is_fresh(fetched_at: dt.date | None, today: dt.date) -> bool:
 def resolve(rows: Iterable, today: dt.date) -> Resolution:
     """Pick the displayed price from one card's card_prices rows (ORM
     CardPrice objects or anything with source/price_nok/fetched_at/flags).
-    Pure -- no DB access. See the module docstring for the rule."""
-    priced = [r for r in rows if r.price_nok is not None]
+    Pure -- no DB access. See the module docstring for the rule. Only CHAIN
+    sources count (issue #414): a reference-only row can't win in any case."""
+    priced = [r for r in rows if r.price_nok is not None and r.source in CHAIN]
     if not priced:
         return Resolution(None, None, None, FLAG_NO_PRICE)
 
@@ -234,9 +260,13 @@ def record_price(
     variant_key: str | None = None,
     source_updated_at: dt.date | None = None,
     flags: Iterable[str] = (),
+    sample_size: int | None = None,
+    window_days: int | None = None,
 ) -> CardPrice:
     """Store a successful lookup as `card`'s latest `source` price (replacing
-    whatever was there, flags included) and clear any failure stamp."""
+    whatever was there, flags included) and clear any failure stamp.
+    `sample_size`/`window_days`: how many sales over how many days an
+    aggregate price is based on (poketrace_ebay, #414); None otherwise."""
     row = _row_for_write(card, source)
     row.price = price
     row.currency = currency
@@ -246,6 +276,8 @@ def record_price(
     row.fetched_at = fetched_at
     row.source_updated_at = source_updated_at
     row.flags = _join_flags(flags)
+    row.sample_size = sample_size
+    row.window_days = window_days
     row.lookup_failed_at = None
     return row
 

@@ -65,6 +65,25 @@ def no_inbox_token_from_dotenv(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_poketrace_settings_from_dotenv(monkeypatch):
+    """Same for the PokeTrace refresh (#414): a real POKETRACE_API_KEY or
+    tunable in a developer's .env must never reach the suite (the network
+    is off anyway, see below). Tests that need a key setenv a fake one.
+    Its pacing sleeps are made instant too."""
+    for name in (
+        "POKETRACE_API_KEY",
+        "POKETRACE_MIN_PRICE_NOK",
+        "POKETRACE_MIN_SALES",
+        "POKETRACE_DAILY_REQUESTS",
+        "POKETRACE_SECONDS",
+    ):
+        monkeypatch.setenv(name, "")
+    import poketrace_prices
+
+    monkeypatch.setattr(poketrace_prices, "_SLEEP", lambda seconds: None)
+
+
+@pytest.fixture(autouse=True)
 def no_card_image_network_calls(monkeypatch):
     """Every CSV import looks up images for cards missing one (see
     importer.py), and the price cron calls pokemontcg_client, which

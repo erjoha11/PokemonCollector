@@ -2555,3 +2555,41 @@ Evidence (verified 2026-10-09, from the issue):
 
 - Set sync on prod still hasn't run (open item above): one click on "Run
   set sync now" after this deploys.
+
+# Handoff notes — 2026-10-14 session (#414: eBay sold prices via PokeTrace, reference only)
+
+## Code (in git, PR for #414)
+
+- `poketrace_prices.py` + `jobs.run_poketrace_refresh`,
+  `GET /cron/poketrace-refresh` (daily `0 7 * * *` in `vercel.json`), a
+  "Run eBay prices now" button and a `/sync-status` row. It stores
+  `card_prices` source `poketrace_ebay`, which is reference only:
+  `pricing.resolve()` now filters to `CHAIN`. Schema 17 → 18
+  (`card_prices.sample_size`/`window_days`, `import_log.api_requests`),
+  added by `init_db()`'s additive pass on the first cold start after
+  deploy. See README "eBay sold via PokeTrace".
+- 3 live PokeTrace calls were made before the build (the user's cap). The
+  build and tests made none; fixtures are trimmed from those calls.
+
+## Direct database changes
+
+- None.
+
+## Open items (not built)
+
+- **Prod setup:** set `POKETRACE_API_KEY` as a Vercel Production env var.
+  Until then every daily run records "Skipped: no key" on /sync-status
+  (shown as a problem, on purpose).
+- `saleCount`'s window is unverified (`approxSaleCount: true` on the live
+  record). We store `window_days=30`; check this against PokeTrace's docs
+  or support if `n` ever matters for a decision.
+- No Cardmarket shortcut: `cardmarket_ids` is 403 `UPGRADE_REQUIRED`
+  (EU needs Pro), so TCGdex's `idProduct` isn't persisted.
+- Variant matching is strict: a Dex "Normal" card that PokeTrace only lists
+  as `Holofoil` doesn't match. Watch the run summary's "unmatched" count
+  for the first week and loosen the rule only if real cards need it.
+- Fast-follow (separate ticket): PokeTrace's own TCGplayer NM tier as an
+  extra source for Japanese cards (same response, no extra requests).
+- After about a month: the one-off eBay-vs-Used comparison, then decide
+  whether to promote, use the gap for #212's `low_confidence`, or keep it as
+  reference only (issue #414 "Later").

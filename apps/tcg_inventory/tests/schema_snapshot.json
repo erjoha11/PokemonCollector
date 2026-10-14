@@ -1,6 +1,6 @@
 {
-  "schema_version": 17,
-  "fingerprint": "060add152e3aa7ad0231fe40acfd1bcd71a335a9e0ee93d87f666f0517bbc6c2",
+  "schema_version": 18,
+  "fingerprint": "4908dc26239239144f5ec5c6e57ed6d7715672b3cb591c8ecb085849e3abb42e",
   "tables": {
     "binders": [
       ["id", "INTEGER", false],
@@ -37,9 +37,11 @@
       ["lookup_failed_at", "DATE", true],
       ["price", "FLOAT", true],
       ["price_nok", "FLOAT", true],
+      ["sample_size", "INTEGER", true],
       ["source", "VARCHAR", false],
       ["source_updated_at", "DATE", true],
-      ["variant_key", "VARCHAR", true]
+      ["variant_key", "VARCHAR", true],
+      ["window_days", "INTEGER", true]
     ],
     "card_snapshots": [
       ["card_id", "INTEGER", false],
@@ -101,6 +103,7 @@
       ["rate_nok", "FLOAT", false]
     ],
     "import_log": [
+      ["api_requests", "INTEGER", true],
       ["binders_touched", "VARCHAR", true],
       ["cards_created", "INTEGER", false],
       ["cards_deleted", "INTEGER", false],
