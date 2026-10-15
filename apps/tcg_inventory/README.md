@@ -170,7 +170,6 @@ run).
     too). The "Also show cards no longer owned" toggle (`?owned=0`) only
     affects the plain galleries, so it shows only with one.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
-- **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table, paginated 100 per page (`page`, `page_size=0` = all; sliced after
   sorting, so value sorts stay correct; sort links drop `page`). The
   default `release` sort orders by `Set.release_rank`, then set name, series
@@ -185,7 +184,15 @@ run).
   (`transit=1`, cards tagged Incoming in Dex, #382; also kept by the
   rarity "Clear filter" link). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
-  Notes are omitted server-side when empty in the current result. A qty == 0 card (traded/sold away, but still present in the latest
+  Notes are omitted server-side when empty in the current result. Right of
+  "Market price", two reference-only columns (#416): **eBay sold** (the
+  `poketrace_ebay` 30-day NM median) and **eBay 7d avg**
+  (`poketrace_ebay_7d`), each the NOK price with a muted `n=551 · 30d` /
+  `· 7d`, a muted "Few sales" when the card page's gate fails, and "—" with
+  no row or no price (most Korean cards and cards under 20 NOK). Both sort
+  (`sort=ebay_sold` / `ebay_7d`) with "—" and "Few sales" rows last in
+  either direction; the page's rows load in one query
+  (`poketrace_prices.rows_by_card`). See "eBay sold via PokeTrace". A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
   from the export entirely) is hidden by default and shown dimmed with a
   small "0 owned" badge when the "Show cards I no longer own" toggle is
@@ -1976,11 +1983,13 @@ stored in `card_prices` and shown on the card page for comparison, but are
 **never** the market price: `pricing.resolve` only considers `CHAIN`
 sources, so a reference row can't win as a fresh fallback, as the stale
 last resort, or as a card's only priced row (that card stays `no_price`).
-Snapshots, totals and charts are unaffected. Today that's one source:
+Snapshots, totals and charts are unaffected. Today that's two sources,
+both from the same PokeTrace response:
 
 | `source` | What | Currency | Written by |
 |---|---|---|---|
 | `poketrace_ebay` | eBay sold Near Mint median (30 days) via PokeTrace | USD | `poketrace_prices.py` (#414, see "eBay sold via PokeTrace" below) |
+| `poketrace_ebay_7d` | eBay sold Near Mint average (7 days) via PokeTrace | USD | `poketrace_prices.py` (#416, same refresh, no extra request) |
 
 Promoting one into the chain later is a deliberate pricing-rule change:
 move it into `CHAIN` and update this section.
@@ -2199,6 +2208,19 @@ sources), with `sample_size` = the tier's `saleCount` and `window_days` =
 `source_updated_at` is the tier's own `lastUpdated`, falling back to the
 card's. Graded tiers and PokeTrace's own TCGplayer tier are not used (the
 latter is a cheap fast-follow: same response, no extra request).
+
+**7-day average (#416).** From the same record, the tier's `avg7d` goes to
+source `poketrace_ebay_7d` (USD → NOK at the same rate, `window_days` = 7,
+`sample_size` = the same `saleCount`, the same flags and the same 30-day
+staleness check). The user asked for "the average of the last 5 sold", but
+individual sales (`/cards/{id}/listings`) are HTTP 403 "Listings endpoint
+requires Scale plan" on the free tier; `avg7d` is the closest free figure
+(the tier also has `avg1d`, `median3d`, `median7d`). A record without a
+positive `avg7d` (no sales in the last 7 days) stamps only
+`poketrace_ebay_7d`'s `lookup_failed_at`; the median is still stored. An
+unmatched card gets no 7d row (an existing one is stamped failed and keeps
+its last price). Existing cards get it on their next weekly refresh: no
+migration, no backfill run.
 **Caveat:** PokeTrace doesn't document which window `saleCount` covers
 (the live record had `approxSaleCount: true`); we store 30 to match the
 median and treat `n` as approximate. A median whose newest NM data is more
@@ -2276,16 +2298,23 @@ and nothing else happens. Tunables: `POKETRACE_MIN_PRICE_NOK`,
 `POKETRACE_MIN_SALES`, `POKETRACE_DAILY_REQUESTS`, `POKETRACE_SECONDS`
 (see `.env.example`).
 
-**On the card page** (only there). A row in "Price sources", below a
+**On the card page.** A row in "Price sources", below a
 divider, muted, with a neutral "Reference" badge (tooltip "Comparison only,
 never used for the market price."), labelled "eBay sold via PokeTrace (NM
-median)". Its Fetched cell adds `n=551 · 30d · +5% vs used`: the
+median)", then a second one, "eBay 7d avg via PokeTrace (NM)", with the
+same gate (#416). Its Fetched cell adds `n=551 · 30d · +5% vs used`: the
 difference is against whichever row is marked Used, and is left out when
 none is. With fewer than `POKETRACE_MIN_SALES` sales or `low_confidence`,
 the row reads "Few sales" instead of a price. A card with no eBay price
 (never checked, or only a failed lookup) shows no row. The Used marker can
-never land on a reference row. Not in lists, sorting, Inventory/sets
-columns, the dashboard, snapshots, charts or `ads.py`.
+never land on a reference row.
+
+**On Inventory** (#416, reversing #414's "card page only"): the "eBay
+sold" and "eBay 7d avg" columns (see "Pages"), using the same gate
+(`poketrace_prices.shows_value`; for the sort its SQL twin
+`shown_price_expr`), so a card reads "Few sales" in both places alike. Not
+in lists, sets columns, the dashboard, totals, snapshots, charts or
+`ads.py`.
 
 ### Price refresh (Vercel Cron)
 

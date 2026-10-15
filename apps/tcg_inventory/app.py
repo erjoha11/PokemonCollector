@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import case, func, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, aliased, selectinload
 from starlette.concurrency import run_in_threadpool
 
 APP_DIR = Path(__file__).resolve().parent
@@ -64,6 +64,7 @@ from models import (
     Card,
     CardList,
     CardListItem,
+    CardPrice,
     Collection,
     FavoritePokemon,
     ImportLog,
@@ -287,6 +288,9 @@ SORT_COLUMNS = {
     "language": Card.language,
 }
 INVENTORY_VALUE_SORTS = {"net_invested", "gain_loss"}
+# Reference-only eBay columns (#416): sort key -> card_prices source. Sorted
+# in SQL by poketrace_prices.shown_price_expr over an outer join.
+EBAY_SORTS = {"ebay_sold": poketrace_prices.SOURCE, "ebay_7d": poketrace_prices.SOURCE_7D}
 # Cards with no linked Set row, or a linked one with no known release_rank
 # yet (no research done for that set), sort after every known set, not
 # before -- see Set's docstring.
@@ -866,6 +870,21 @@ def _apply_inventory_filters(db: Session, q, series, set_, collection, binder, d
     return query
 
 
+def _ebay_cells(db: Session, cards) -> dict[int, dict[str, dict]]:
+    """{card_id: {source: {"row", "shows_value"}}} for the Inventory's eBay
+    reference columns (#416), loaded in one query for the page's cards
+    (poketrace_prices.rows_by_card). `shows_value` is the card page's gate
+    (poketrace_prices.shows_value), so a cell reads "Few sales" exactly when
+    the card page does. A source with no row or no price is left out ("—")."""
+    cells: dict[int, dict[str, dict]] = {}
+    for card_id, by_source in poketrace_prices.rows_by_card(db, [c.id for c in cards]).items():
+        for source, row in by_source.items():
+            if row.price_nok is None:
+                continue
+            cells.setdefault(card_id, {})[source] = {"row": row, "shows_value": poketrace_prices.shows_value(row)}
+    return cells
+
+
 @app.get("/inventory")
 def inventory(
     request: Request,
@@ -923,7 +942,18 @@ def inventory(
             if sort in INVENTORY_VALUE_SORTS:
                 order_cols = [number_sort.asc()]
             else:
-                sort_col = SORT_COLUMNS.get(sort, Card.name)
+                if sort in EBAY_SORTS:
+                    # eBay reference columns (#416): outer-join that source's
+                    # row (at most one per card) and sort by the price the
+                    # card page would show -- no row, no price and Few sales
+                    # are all NULL, so last in either direction (#176).
+                    ebay = aliased(CardPrice)
+                    query = query.outerjoin(
+                        ebay, (ebay.card_id == Card.id) & (ebay.source == EBAY_SORTS[sort])
+                    )
+                    sort_col = poketrace_prices.shown_price_expr(ebay)
+                else:
+                    sort_col = SORT_COLUMNS.get(sort, Card.name)
                 # Keep cards without a price at the bottom in either direction.
                 # Direction first, THEN nulls_last(): the reverse order renders
                 # "<col> NULLS LAST ASC", a syntax error on both SQLite and
@@ -967,6 +997,8 @@ def inventory(
         page = min(max(page, 1), page_count)
         page_cards = cards[(page - 1) * page_size : page * page_size] if page_size else cards
         empty_columns = [col for col in INVENTORY_SPARSE_COLUMNS if not any(getattr(card, col) for card in cards)]
+        # The page's eBay reference cells (#416): one query for both sources.
+        ebay_by_card = _ebay_cells(db, page_cards)
 
         all_series = _distinct_values(db, Card.series)
         all_sets = _distinct_values(db, Card.set)
@@ -1001,6 +1033,7 @@ def inventory(
             "invested_by_card": invested_by_card,
             "ripped_card_ids": ripped_card_ids,
             "listed_by_card": listed_by_card,
+            "ebay_by_card": ebay_by_card,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,
@@ -1100,7 +1133,7 @@ def _card_detail_context(db: Session, card_pk: int) -> dict:
 
 def _reference_price_rows(card: Card, price_rows: list) -> list[dict]:
     """The card page's reference-only rows (issue #414), one per
-    reference source that has a price (a row with only a failed lookup
+    reference source that has a price (eBay median, then eBay 7d avg, #416) (a row with only a failed lookup
     shows nothing). `shows_value`: the display gate
     (poketrace_prices.shows_value); otherwise the row reads "Few sales".
     `vs_used`: the % difference from the price of the row marked Used,
@@ -1110,8 +1143,10 @@ def _reference_price_rows(card: Card, price_rows: list) -> list[dict]:
         None,
     )
     rows = []
-    for p in card.prices:
-        if not pricing.is_reference_source(p.source) or p.price_nok is None:
+    references = [p for p in card.prices if pricing.is_reference_source(p.source)]
+    references.sort(key=lambda p: pricing.REFERENCE_SOURCE_ORDER.index(p.source))
+    for p in references:
+        if p.price_nok is None:
             continue
         shows = poketrace_prices.shows_value(p)
         vs_used = round((p.price_nok - used.price_nok) / used.price_nok * 100) if shows and used else None

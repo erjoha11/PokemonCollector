@@ -24,6 +24,30 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-10-16 — eBay sold columns on Inventory (#416, owner decision)
+
+**Reviewed:** no ux pass; the owner asked directly for an Inventory column
+next to "Market price" with the PokeTrace eBay sold price, then also for
+the 7-day average.
+
+**Findings / decisions:**
+- **Reverses** the #412/#414 item "Not in v1: list columns, sorting": the
+  owner reversed it on 2026-10-16. Inventory now has "eBay sold" (30-day
+  NM median) and "eBay 7d avg" columns right of "Market price", both
+  sortable.
+- Same display gate as the card page (`poketrace_prices.shows_value`, read
+  live), so a card says "Few sales" in both places alike: muted "Few
+  sales" below `POKETRACE_MIN_SALES` or when low-confidence, "—" with no
+  row or a failed lookup without a price. Muted `n=… · 30d` / `· 7d` under
+  the price; the header tooltips say "reference only".
+- Sorting puts "—" and "Few sales" rows last in either direction (#176).
+- Still not in: lists, sets pages, dashboard, totals, snapshots, ad text.
+- The owner asked for "the average of the last 5 sold"; PokeTrace's free
+  plan has no individual sales (403, Scale plan), so the 7-day average is
+  shown instead.
+
+**Status:** Addressed in the #416 PR (awaiting the owner's review).
+
 ## 2026-10-14 — eBay sold prices on the card page (#412, ux via architect)
 
 **Reviewed:** design review before building (no page rendered): the card
@@ -48,7 +72,9 @@ page's "Price sources" table and `pricing.resolve()`, for a reference-only
   ~100 cards informs the blend/CHAIN decision better than more UI.
 
 **Status:** Open — specified in #412, waiting on the SoldComps verification
-step before build.
+step before build. (2026-10-16: built as #414 via PokeTrace instead; the
+"no list columns / sorting in v1" item was reversed by the owner, see the
+#416 entry above.)
 
 ## 2026-10-11 — /sync-status Run-now card, as built (#199 / PR #399 → #401)
 

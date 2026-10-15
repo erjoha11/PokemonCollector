@@ -1937,6 +1937,9 @@ html.card-modal-open { overflow: hidden; }
 .price-sources-table .price-source-reference td { color: var(--ink-secondary); }
 .price-sources-table .price-source-reference .price-reference-muted { opacity: 0.7; font-style: italic; }
 .price-reference-provenance { white-space: nowrap; }
+/* Inventory's eBay reference columns (#416): count/window and Few sales, muted. */
+.inventory-table .price-reference-provenance { font-size: 0.75rem; }
+.inventory-table .price-reference-muted { font-style: italic; }
 .price-reference {
   display: inline-block;
   padding: 0.05rem 0.5rem;
