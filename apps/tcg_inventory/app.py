@@ -64,6 +64,7 @@ from models import (
     Card,
     CardList,
     CardListItem,
+    CardPrice,
     Collection,
     FavoritePokemon,
     ImportLog,
@@ -161,6 +162,7 @@ templates.env.filters["flag_title"] = pricing.flag_title
 # Reference-only price sources (#414): never "Used" on the card page.
 templates.env.filters["is_reference_source"] = pricing.is_reference_source
 templates.env.globals["poketrace_min_sales"] = poketrace_prices.min_sales
+templates.env.globals["poketrace_shows_value"] = poketrace_prices.shows_value
 
 
 def _card_image_large(url: str | None) -> str | None:
@@ -919,6 +921,19 @@ def inventory(
                 _SUBSET_NUMBER_BUCKET.asc(),
                 number_sort.asc(),
             ]
+        elif sort == "ebay_sold":
+            # eBay sold (PokeTrace, #416): the value the column shows, i.e.
+            # price_nok only when poketrace_prices.shows_value's gate passes
+            # -- no row, a failed lookup and "Few sales" all sort as NULL,
+            # last in either direction (direction first, then nulls_last(),
+            # see #176). At most one row per card (uq card_id+source).
+            query = query.outerjoin(
+                CardPrice,
+                (CardPrice.card_id == Card.id) & (CardPrice.source == pricing.SOURCE_POKETRACE_EBAY),
+            )
+            ebay_col = poketrace_prices.shown_price_nok_expr()
+            ebay_col = ebay_col.desc() if direction == "desc" else ebay_col.asc()
+            order_cols = [ebay_col.nulls_last(), number_sort.asc()]
         else:
             if sort in INVENTORY_VALUE_SORTS:
                 order_cols = [number_sort.asc()]
@@ -967,6 +982,8 @@ def inventory(
         page = min(max(page, 1), page_count)
         page_cards = cards[(page - 1) * page_size : page * page_size] if page_size else cards
         empty_columns = [col for col in INVENTORY_SPARSE_COLUMNS if not any(getattr(card, col) for card in cards)]
+        # eBay sold column (#416): this page's poketrace_ebay rows, one IN query.
+        ebay_by_card = poketrace_prices.rows_by_card(db, (card.id for card in page_cards))
 
         all_series = _distinct_values(db, Card.series)
         all_sets = _distinct_values(db, Card.set)
@@ -1001,6 +1018,7 @@ def inventory(
             "invested_by_card": invested_by_card,
             "ripped_card_ids": ripped_card_ids,
             "listed_by_card": listed_by_card,
+            "ebay_by_card": ebay_by_card,
             "all_series": all_series,
             "all_sets": all_sets,
             "all_collections": all_collections,

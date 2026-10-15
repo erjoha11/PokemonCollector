@@ -170,7 +170,6 @@ run).
     too). The "Also show cards no longer owned" toggle (`?owned=0`) only
     affects the plain galleries, so it shows only with one.
 - **Inventory** (`/inventory`) — full searchable/filterable/sortable card
-- **Inventory** (`/inventory`) — full searchable/filterable/sortable card
   table, paginated 100 per page (`page`, `page_size=0` = all; sliced after
   sorting, so value sorts stay correct; sort links drop `page`). The
   default `release` sort orders by `Set.release_rank`, then set name, series
@@ -185,7 +184,17 @@ run).
   (`transit=1`, cards tagged Incoming in Dex, #382; also kept by the
   rarity "Clear filter" link). Column chooser
   (`static/inventory-columns.js`, localStorage); Classification/Location/
-  Notes are omitted server-side when empty in the current result. A qty == 0 card (traded/sold away, but still present in the latest
+  Notes are omitted server-side when empty in the current result. An
+  **eBay sold** column (#416) sits right of Market price: PokeTrace's eBay
+  Near Mint 30-day median (`card_prices` source `poketrace_ebay`, reference
+  only, see Pricing "eBay sold via PokeTrace") in NOK with a muted
+  `n=551 · 30d`. It uses the card page's display gate
+  (`poketrace_prices.shows_value`): "Few sales" below `POKETRACE_MIN_SALES`
+  or when low-confidence, "—" with no row or only a failed lookup (most
+  Korean cards and cards under 20 NOK). The page's rows load in one IN query
+  (`poketrace_prices.rows_by_card`). Sortable (`sort=ebay_sold`) on the
+  shown value (`poketrace_prices.shown_price_nok_expr`, the same gate in
+  SQL), so "Few sales" and "—" cards sort last in both directions. A qty == 0 card (traded/sold away, but still present in the latest
   Dex export — distinct from `flagged_missing_since`, which is a card absent
   from the export entirely) is hidden by default and shown dimmed with a
   small "0 owned" badge when the "Show cards I no longer own" toggle is
@@ -2284,8 +2293,12 @@ difference is against whichever row is marked Used, and is left out when
 none is. With fewer than `POKETRACE_MIN_SALES` sales or `low_confidence`,
 the row reads "Few sales" instead of a price. A card with no eBay price
 (never checked, or only a failed lookup) shows no row. The Used marker can
-never land on a reference row. Not in lists, sorting, Inventory/sets
-columns, the dashboard, snapshots, charts or `ads.py`.
+never land on a reference row.
+
+**On Inventory** (#416, reversing v1's "card page only"): an "eBay sold"
+column right of Market price, with the same gate ("Few sales" / "—") and
+sortable on the shown value; see Pages "Inventory". Still not in lists,
+sets columns, the dashboard, snapshots, charts, totals or `ads.py`.
 
 ### Price refresh (Vercel Cron)
 

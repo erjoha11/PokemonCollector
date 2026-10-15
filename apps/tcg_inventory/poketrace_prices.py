@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import httpx
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, case, exists, func, literal, or_
 from sqlalchemy.orm import Session, selectinload
 
 import constants
@@ -165,6 +165,38 @@ def shows_value(row) -> bool:
     if (row.sample_size or 0) < min_sales():
         return False
     return pricing.FLAG_LOW_CONFIDENCE not in pricing.flag_list(row.flags)
+
+
+def shown_price_nok_expr():
+    """`shows_value` as a SQL expression over `CardPrice`: its `price_nok`
+    when the gate passes, else NULL. Used to sort Inventory's eBay sold
+    column (#416) so few-sales / low-confidence rows sort with the cards
+    that have no row at all. Keep in step with `shows_value` above.
+    Flags are stored comma-joined (pricing._join_flags), hence the
+    `,flags,` LIKE `%,low_confidence,%` test."""
+    padded_flags = literal(",") + func.coalesce(CardPrice.flags, "") + literal(",")
+    return case(
+        (
+            and_(
+                CardPrice.price_nok.isnot(None),
+                func.coalesce(CardPrice.sample_size, 0) >= min_sales(),
+                ~padded_flags.like(f"%,{pricing.FLAG_LOW_CONFIDENCE},%"),
+            ),
+            CardPrice.price_nok,
+        ),
+        else_=None,
+    )
+
+
+def rows_by_card(db: Session, card_ids) -> dict[int, CardPrice]:
+    """Each card's `poketrace_ebay` row, for a page of cards, in one IN
+    query (Inventory's eBay sold column, #416). Cards without a row are
+    simply absent."""
+    ids = list(card_ids)
+    if not ids:
+        return {}
+    rows = db.query(CardPrice).filter(CardPrice.source == SOURCE, CardPrice.card_id.in_(ids)).all()
+    return {row.card_id: row for row in rows}
 
 
 # --------------------------------------------------------------------------

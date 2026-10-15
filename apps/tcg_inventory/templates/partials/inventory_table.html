@@ -9,7 +9,7 @@
    the current result has a value (`empty_columns`, see app.inventory). #}
 {% set optional_cols = [
   ('number', 'No.'), ('series', 'Series'), ('set', 'Set'), ('collections', 'Collections'),
-  ('price', 'Market price'), ('net_paid', 'Net paid'), ('total_value', 'Total value'), ('gain', 'Gain'),
+  ('price', 'Market price'), ('ebay_sold', 'eBay sold'), ('net_paid', 'Net paid'), ('total_value', 'Total value'), ('gain', 'Gain'),
   ('qty', 'Total'), ('duplicates', 'Duplicates'), ('variant', 'Variant'), ('language', 'Language'),
   ('rarity', 'Rarity'), ('illustrator', 'Illustrator'), ('binder', 'Binder'),
   ('classification', 'Classification'), ('location', 'Location'), ('notes', 'Notes'), ('card_id', 'Card ID'),
@@ -49,6 +49,7 @@
         <th data-col="set">{{ sort_link('release', 'Set') }}</th>
         <th data-col="collections">Collections</th>
         <th data-col="price" class="num">{{ sort_link('market_price', 'Market price') }}</th>
+        <th data-col="ebay_sold" class="num" title="eBay Near Mint median, last 30 days (PokeTrace) · reference only">{{ sort_link('ebay_sold', 'eBay sold') }}</th>
         <th data-col="net_paid" class="num">{{ sort_link('net_invested', 'Net paid') }}</th>
         <th data-col="total_value" class="num">{{ sort_link('total_value', 'Total value') }}</th>
         <th data-col="gain" class="num">{{ sort_link('gain_loss', 'Gain') }}</th>
@@ -75,6 +76,18 @@
         <td data-col="set">{{ card.set or '' }}</td>
         <td data-col="collections">{{ collection_links(card) }}</td>
         <td data-col="price" class="num">{{ card.display_price | kr }}</td>
+        {#- eBay sold (PokeTrace, #416): reference only, never the market price.
+            Same display gate as the card page's Reference row
+            (poketrace_prices.shows_value). #}
+        {%- set ebay = ebay_by_card.get(card.id) if ebay_by_card else none %}
+        <td data-col="ebay_sold" class="num">
+          {%- if ebay is none or ebay.price_nok is none %}—
+          {%- elif poketrace_shows_value(ebay) %}{{ ebay.price_nok | kr }}
+            {%- if ebay.sample_size is not none or ebay.window_days %}<span class="muted ebay-sold-meta">
+              {%- if ebay.sample_size is not none %}n={{ ebay.sample_size }}{% endif %}
+              {%- if ebay.window_days %}{{ ' · ' if ebay.sample_size is not none }}{{ ebay.window_days }}d{% endif %}</span>{% endif %}
+          {%- else %}<span class="muted ebay-sold-few" title="Fewer than {{ poketrace_min_sales() }} Near Mint sales in the window, or the source marks this median low-confidence: too thin to compare.">Few sales</span>
+          {%- endif %}</td>
         {% set net_paid = invested_by_card.get(card.id) %}
         <td data-col="net_paid" class="num">{{ net_paid | kr if net_paid is not none else '-' }}</td>
         <td data-col="total_value" class="num">{{ card.total_value | kr }}</td>

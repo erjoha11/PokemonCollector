@@ -24,6 +24,21 @@ that the issue was seen and handled, not just silence.
 **Status:** Open
 -->
 
+## 2026-10-16 — eBay sold column on Inventory (#416, owner decision)
+
+**Reviewed:** no ux pass; the owner asked for it directly.
+
+**Findings:**
+- The 2026-10-14 entry's "Not in v1: list columns, sorting" (#412/#414) was
+  **reversed by the owner on 2026-10-16**: Inventory now has an "eBay sold"
+  column right of Market price, sortable.
+- It keeps the card page's rules: muted, header tooltip "eBay Near Mint
+  median, last 30 days (PokeTrace) · reference only", the same "Few sales"
+  gate and tooltip, "—" when there's no price. Dashboard, snapshots, ad
+  text and totals still leave it out.
+
+**Status:** Addressed — built in #416.
+
 ## 2026-10-14 — eBay sold prices on the card page (#412, ux via architect)
 
 **Reviewed:** design review before building (no page rendered): the card

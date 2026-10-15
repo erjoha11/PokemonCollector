@@ -246,6 +246,18 @@ yet.
 
 ### tcg_inventory
 
+**eBay sold column on Inventory (#416)**
+- New "eBay sold" column right of Market price: the PokeTrace eBay Near
+  Mint 30-day median in NOK, with a muted `n=… · 30d`. Reference only: no
+  change to the market price, totals, the dashboard, snapshots or ad text.
+- Same display gate as the card page: "Few sales" below
+  `POKETRACE_MIN_SALES` (default 5) or when low-confidence, "—" with no
+  row or a failed lookup.
+- Sortable, with "Few sales" and "—" cards last in both directions. The
+  page's rows load in one query (`poketrace_prices.rows_by_card`).
+- In the column chooser like the other optional columns. The table's
+  wrap-text CSS now targets columns by `data-col` instead of position.
+
 **eBay sold prices via PokeTrace, reference only (#414)**
 - New `poketrace_prices.py`: eBay's sold Near Mint 30-day median from
   PokeTrace's free tier, stored as `card_prices` source `poketrace_ebay` (USD

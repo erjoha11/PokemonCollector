@@ -292,14 +292,15 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 /* Free-text columns are the ones driving horizontal scroll (long set/series
    names, comma-joined collection lists, notes) -- let these wrap instead of
    forcing the table wider; short/numeric columns keep nowrap so they stay
-   compact. */
-.inventory-table td:nth-child(4),  /* Series */
-.inventory-table td:nth-child(5),  /* Set */
-.inventory-table td:nth-child(6),  /* Collections */
-.inventory-table td:nth-child(16), /* Illustrator */
-.inventory-table td:nth-child(18), /* Classification */
-.inventory-table td:nth-child(19), /* Location */
-.inventory-table td:nth-child(20) /* Notes */ {
+   compact. By data-col, not position: the optional columns (and #416's
+   eBay sold) shift positions, which used to point these at the wrong cells. */
+.inventory-table td[data-col="series"],
+.inventory-table td[data-col="set"],
+.inventory-table td[data-col="collections"],
+.inventory-table td[data-col="illustrator"],
+.inventory-table td[data-col="classification"],
+.inventory-table td[data-col="location"],
+.inventory-table td[data-col="notes"] {
   white-space: normal;
   word-break: break-word;
   max-width: 130px;
@@ -1936,6 +1937,10 @@ html.card-modal-open { overflow: hidden; }
 }
 .price-sources-table .price-source-reference td { color: var(--ink-secondary); }
 .price-sources-table .price-source-reference .price-reference-muted { opacity: 0.7; font-style: italic; }
+/* Inventory's eBay sold column (#416): reference-only, so muted like the
+   card page's Reference rows. */
+.inventory-table .ebay-sold-meta { margin-left: 0.3em; font-size: 0.85em; }
+.inventory-table .ebay-sold-few { opacity: 0.7; font-style: italic; }
 .price-reference-provenance { white-space: nowrap; }
 .price-reference {
   display: inline-block;
