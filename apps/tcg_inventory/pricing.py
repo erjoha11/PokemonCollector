@@ -65,10 +65,14 @@ CHAIN: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG, SOURCE_DEX
 # card page for comparison, but never considered by `resolve` -- so never the
 # market price, a snapshot or any total. Promoting one later is a deliberate
 # pricing-rule change: move it into CHAIN (and update README "Pricing").
-# `poketrace_ebay` is eBay's sold Near Mint median via PokeTrace
-# (poketrace_prices.py).
+# `poketrace_ebay` is eBay's sold Near Mint median (30 days) via PokeTrace
+# (poketrace_prices.py); `poketrace_ebay_7d` is the same tier's 7-day
+# average, written from the same response (issue #416).
 SOURCE_POKETRACE_EBAY = "poketrace_ebay"
-REFERENCE_SOURCES: frozenset[str] = frozenset({SOURCE_POKETRACE_EBAY})
+SOURCE_POKETRACE_EBAY_7D = "poketrace_ebay_7d"
+# Display order on the card page; REFERENCE_SOURCES is the membership test.
+REFERENCE_SOURCE_ORDER: tuple[str, ...] = (SOURCE_POKETRACE_EBAY, SOURCE_POKETRACE_EBAY_7D)
+REFERENCE_SOURCES: frozenset[str] = frozenset(REFERENCE_SOURCE_ORDER)
 # The sources that price a card from TCGplayer's per-print keys, chosen by
 # card_images._match_variant_key (issue #350).
 TCGPLAYER_SOURCES: tuple[str, ...] = (SOURCE_TCGDEX_TCGPLAYER, SOURCE_POKEMONTCG)
@@ -80,6 +84,7 @@ SOURCE_LABELS: dict[str, str] = {
     SOURCE_POKEMONTCG: "TCGplayer via pokemontcg.io",
     SOURCE_TCGDEX_CARDMARKET: "Cardmarket via TCGdex",
     SOURCE_POKETRACE_EBAY: "eBay sold via PokeTrace",
+    SOURCE_POKETRACE_EBAY_7D: "eBay 7d avg via PokeTrace",
 }
 
 FRESH_DAYS = 14
@@ -88,7 +93,8 @@ FLAG_STALE = "stale"
 FLAG_NO_PRICE = "no_price"
 FLAG_VARIANT_UNCERTAIN = "variant_price_uncertain"
 FLAG_LOW_CONFIDENCE = "low_confidence"
-# Per-source and informational: an aggregate price (poketrace_ebay's median)
+# Per-source and informational: an aggregate price (poketrace_ebay's median,
+# poketrace_ebay_7d's average)
 # from fewer sales than the source's minimum (POKETRACE_MIN_SALES).
 FLAG_FEW_SALES = "few_sales"
 # A source row carrying one of these is never chosen while it's fresh (it
@@ -106,7 +112,7 @@ FLAG_LABELS: dict[str, tuple[str, str]] = {
         "The source had several prints of this card and the variant couldn't be matched to one of them.",
     ),
     FLAG_LOW_CONFIDENCE: ("Low confidence", "This price failed a cross-check against the other sources."),
-    FLAG_FEW_SALES: ("Few sales", "Too few recent sales behind this median to rely on it."),
+    FLAG_FEW_SALES: ("Few sales", "Too few recent sales behind this price to rely on it."),
 }
 
 

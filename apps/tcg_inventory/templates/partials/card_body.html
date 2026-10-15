@@ -88,7 +88,7 @@
           {%- for ref in reference_rows %}
           {%- set p = ref.row %}
           <tr class="price-source-reference">
-            <td>{{ p.source | source_label }} (NM median)</td>
+            <td>{{ p.source | source_label }} ({{ 'NM' if p.source == 'poketrace_ebay_7d' else 'NM median' }})</td>
             {%- if ref.shows_value %}
             <td class="num">{% if p.price is not none and p.currency and p.currency != 'NOK' %}{{ '%.2f' | format(p.price) }} {{ p.currency }}{% else %}–{% endif %}</td>
             <td class="num">{{ p.price_nok | kr }}</td>

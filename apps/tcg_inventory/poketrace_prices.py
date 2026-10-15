@@ -7,9 +7,12 @@ card: eBay's **Near Mint `median30d`** in USD, converted to NOK at Norges
 Bank's rate (fx_rates), as `card_prices` source `poketrace_ebay`, with
 `sample_size` (the tier's `saleCount`) and `window_days` (30; PokeTrace
 doesn't document which window `saleCount` covers, see README "Pricing").
+From the same response, no extra request, the tier's **`avg7d`** goes to
+source `poketrace_ebay_7d` (`window_days` 7, same `saleCount`, issue #416);
+a record with no 7-day average stamps only that source's lookup as failed.
 
-**Reference-only.** `poketrace_ebay` is in `pricing.REFERENCE_SOURCES`, not
-in `CHAIN`, so `pricing.resolve` never picks it: no market price, snapshot
+**Reference-only.** Both sources are in `pricing.REFERENCE_SOURCES`, not
+in `CHAIN`, so `pricing.resolve` never picks them: no market price, snapshot
 or total changes because of this module. It never calls
 `pricing.resolve_cards` either (there is nothing for it to change).
 
@@ -50,7 +53,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 import httpx
-from sqlalchemy import and_, exists, or_
+from sqlalchemy import and_, case, exists, func, literal, or_
 from sqlalchemy.orm import Session, selectinload
 
 import constants
@@ -63,10 +66,12 @@ from tcgdex_prices import names_match, normalize_local_id
 API_BASE = "https://api.poketrace.com/v1"
 KEY_ENV = "POKETRACE_API_KEY"
 SOURCE = pricing.SOURCE_POKETRACE_EBAY
+SOURCE_7D = pricing.SOURCE_POKETRACE_EBAY_7D  # same response, NM `avg7d` (#416)
 SOURCE_ID = "poketrace"  # master_card_ids.source for PokeTrace's card UUID
 SOURCE_TCGPLAYER = "tcgplayer"  # master_card_ids.source for refs.tcgplayerId
 TIER = "NEAR_MINT"
 WINDOW_DAYS = 30
+WINDOW_DAYS_7D = 7
 MARKET = "US"
 
 # masterdata language -> PokeTrace `game`. No Korean game exists.
@@ -165,6 +170,47 @@ def shows_value(row) -> bool:
     if (row.sample_size or 0) < min_sales():
         return False
     return pricing.FLAG_LOW_CONFIDENCE not in pricing.flag_list(row.flags)
+
+
+def shown_price_expr(price=CardPrice):
+    """`shows_value` as SQL (issue #416): the row's `price_nok` when the
+    card page would show it, else NULL -- so the Inventory's "eBay sold"
+    sort puts Few-sales rows with the rows that have no price, last.
+    `price` is the CardPrice entity or alias the query joined. `flags` is
+    stored comma-joined (pricing._join_flags), hence the ",flags," LIKE."""
+    padded = literal(",").concat(func.coalesce(price.flags, "")).concat(",")
+    return case(
+        (
+            and_(
+                price.price_nok.isnot(None),
+                func.coalesce(price.sample_size, 0) >= min_sales(),
+                ~padded.like(f"%,{pricing.FLAG_LOW_CONFIDENCE},%"),
+            ),
+            price.price_nok,
+        ),
+        else_=None,
+    )
+
+
+# Chunked so even "Show all" (1,100+ cards) stays far under SQLite's bound-
+# parameter limit; a normal page is one query.
+_ROWS_CHUNK = 500
+
+
+def rows_by_card(db: Session, card_ids, sources=(SOURCE, SOURCE_7D)) -> dict[int, dict[str, CardPrice]]:
+    """{card_id: {source: row}} for the given cards' PokeTrace rows (the
+    Inventory's "eBay sold" and "eBay 7d avg" columns, #416): one IN query
+    per 500 cards covering every source, never one per card or per column.
+    At most one row per card and source (`uq_card_prices_card_id_source`);
+    cards without any are left out."""
+    ids = sorted({cid for cid in card_ids if cid is not None})
+    rows: dict[int, dict[str, CardPrice]] = {}
+    for start in range(0, len(ids), _ROWS_CHUNK):
+        chunk = ids[start : start + _ROWS_CHUNK]
+        query = db.query(CardPrice).filter(CardPrice.source.in_(sources), CardPrice.card_id.in_(chunk))
+        for row in query:
+            rows.setdefault(row.card_id, {})[row.source] = row
+    return rows
 
 
 # --------------------------------------------------------------------------
@@ -422,18 +468,27 @@ def _parse_date(value) -> dt.date | None:
         return None
 
 
-def ebay_price(record: dict, today: dt.date, min_sales_n: int) -> tuple[EbayPrice | None, str | None]:
-    """eBay's NM `median30d` from a PokeTrace record, or (None, reason).
-    Flags: `low_confidence` when PokeTrace says so (a tier without a
+# The NEAR_MINT tier field behind each source, and its words in a reason.
+PRICE_FIELDS = {SOURCE: ("median30d", "30-day median"), SOURCE_7D: ("avg7d", "7-day average")}
+
+
+def ebay_price(
+    record: dict, today: dt.date, min_sales_n: int, source: str = SOURCE
+) -> tuple[EbayPrice | None, str | None]:
+    """eBay's NM `median30d` (source SOURCE) or `avg7d` (SOURCE_7D, #416)
+    from a PokeTrace record, or (None, reason). The same tier, date and
+    sale-count checks apply to both; `sample_size` is the tier's
+    `saleCount` for both (PokeTrace has no 7-day count). Flags: `low_confidence` when PokeTrace says so (a tier without a
     `confidence` field, as in the live US records, is not low), `few_sales`
     under `min_sales_n` sales. `updated` is the tier's own `lastUpdated`,
     falling back to the record's."""
     tier = ((record.get("prices") or {}).get("ebay") or {}).get(TIER)
     if not isinstance(tier, dict):
         return None, "no eBay Near Mint sales"
-    median = tier.get("median30d")
+    field_name, words = PRICE_FIELDS[source]
+    median = tier.get(field_name)
     if not isinstance(median, (int, float)) or isinstance(median, bool) or median <= 0:
-        return None, "no eBay Near Mint 30-day median"
+        return None, f"no eBay Near Mint {words}"
     updated = _parse_date(tier.get("lastUpdated")) or _parse_date(record.get("lastUpdated"))
     if updated is not None and (today - updated).days > MAX_UPSTREAM_AGE_DAYS:
         return None, f"newest eBay Near Mint data is from {updated.isoformat()}"
@@ -544,6 +599,10 @@ class _Run:
 
     def fail(self, card: Card, reason: str) -> None:
         pricing.record_failure(card, SOURCE, self.today)
+        # A card that never had a 7d row gets none here (no clutter for the
+        # unmatched); one that had keeps its last price, stamped failed.
+        if pricing.get_row(card, SOURCE_7D) is not None:
+            pricing.record_failure(card, SOURCE_7D, self.today)
         self.result.cards_unmatched.append(f"{_label(card)}: {reason}")
         self._checked()
 
@@ -561,9 +620,24 @@ class _Run:
         if price is None:
             self.fail(card, reason)
             return
+        # The 7-day average from the same record, no extra request (#416).
+        # None (no sales in the last 7 days) is a failed lookup for SOURCE_7D
+        # alone: the median above is still stored.
+        avg7d, _ = ebay_price(record, self.today, self.min_sales_n, source=SOURCE_7D)
+        if avg7d is None:
+            pricing.record_failure(card, SOURCE_7D, self.today)
+        else:
+            self._record(card, SOURCE_7D, avg7d, record, WINDOW_DAYS_7D)
+        self._record(card, SOURCE, price, record, WINDOW_DAYS)
+        self.result.cards_priced += 1
+        if price.flags:
+            self.result.cards_thin += 1
+        self._checked()
+
+    def _record(self, card: Card, source: str, price: EbayPrice, record: dict, window_days: int) -> None:
         pricing.record_price(
             card,
-            SOURCE,
+            source,
             price_nok=round(price.price * self.rate, 2),
             price=price.price,
             currency="USD",
@@ -573,12 +647,8 @@ class _Run:
             source_updated_at=price.updated,
             flags=price.flags,
             sample_size=price.sample_size,
-            window_days=WINDOW_DAYS,
+            window_days=window_days,
         )
-        self.result.cards_priced += 1
-        if price.flags:
-            self.result.cards_thin += 1
-        self._checked()
 
     def _checked(self) -> None:
         self.result.cards_checked += 1

@@ -204,6 +204,17 @@ def test_reference_source_is_outside_chain_and_labelled():
     assert pricing.SOURCE_LABELS[P.SOURCE] == "eBay sold via PokeTrace"
 
 
+def test_the_7d_average_is_reference_only_too():
+    assert P.SOURCE_7D == "poketrace_ebay_7d"
+    assert P.SOURCE_7D in pricing.REFERENCE_SOURCES and P.SOURCE_7D not in pricing.CHAIN
+    assert pricing.SOURCE_LABELS[P.SOURCE_7D] == "eBay 7d avg via PokeTrace"
+    assert pricing.REFERENCE_SOURCE_ORDER == (P.SOURCE, P.SOURCE_7D)
+    res = pricing.resolve([_row(P.SOURCE_7D, 500.0, 1)], TODAY)
+    assert (res.price, res.source) == (None, None)
+    res = pricing.resolve([_row("dex", 100.0, 40), _row(P.SOURCE_7D, 500.0, 0)], TODAY)
+    assert (res.price, res.source) == (100.0, "dex")
+
+
 def test_resolve_a_fresh_ebay_row_is_not_the_fallback_when_no_chain_source_is_fresh():
     # (a) Every CHAIN row stale, the eBay row fresh: the stale CHAIN price wins.
     res = pricing.resolve([_row("dex", 100.0, 30), _row(P.SOURCE, 500.0, 1)], TODAY)
@@ -349,6 +360,20 @@ def test_no_usable_price(rec, reason):
     assert price is None and why.startswith(reason)
 
 
+def test_7d_average_from_the_live_record():
+    price, reason = P.ebay_price(CHARIZARD, TODAY, 5, source=P.SOURCE_7D)
+    assert reason is None
+    assert price.price == 334.95715 and price.sample_size == 551 and price.flags == ()
+    price, _ = P.ebay_price(record(confidence="low", saleCount=3), TODAY, 5, source=P.SOURCE_7D)
+    assert price.flags == (pricing.FLAG_LOW_CONFIDENCE, pricing.FLAG_FEW_SALES)
+
+
+@pytest.mark.parametrize("avg7d", [None, 0])
+def test_no_7d_average(avg7d):
+    assert P.ebay_price(record(avg7d=avg7d), TODAY, 5, source=P.SOURCE_7D) == (
+        None, "no eBay Near Mint 7-day average")
+
+
 def test_no_near_mint_tier():
     rec = record()
     del rec["prices"]["ebay"]["NEAR_MINT"]
@@ -418,6 +443,94 @@ def test_first_match_by_search_stores_ids_price_and_leaves_market_price_alone(db
     pricing.resolve_cards(db_session, today=TODAY)
     db_session.commit()
     assert market_state(db_session) == before
+
+
+def test_the_same_response_stores_the_7d_average(db_session):
+    card = add_card(db_session)
+    before = market_state(db_session)
+    client, http, _ = make_client(sequence(page(record())))
+
+    result = P.refresh_poketrace_prices(db_session, client, today=TODAY, min_sales_n=5)
+
+    assert result.requests == 1 and len(http.calls) == 1  # no extra request
+    row = pricing.get_row(card, P.SOURCE_7D)
+    assert row.price == 334.95715 and row.currency == "USD"
+    assert row.price_nok == round(334.95715 * TEST_USD_TO_NOK, 2)
+    assert (row.sample_size, row.window_days, row.flags, row.lookup_failed_at) == (551, 7, None, None)
+    pricing.resolve_cards(db_session, today=TODAY)
+    db_session.commit()
+    assert market_state(db_session) == before
+
+
+def test_no_7d_sales_is_a_failed_7d_lookup_and_keeps_the_median(db_session):
+    card = add_card(db_session)
+    client, _, _ = make_client(sequence(page(record(avg7d=None))))
+
+    result = P.refresh_poketrace_prices(db_session, client, today=TODAY, min_sales_n=5)
+
+    assert result.cards_priced == 1 and result.cards_unmatched == []
+    assert ebay_row(card).price == 342.745
+    row = pricing.get_row(card, P.SOURCE_7D)
+    assert row.price_nok is None and row.lookup_failed_at == TODAY
+
+
+def test_an_unmatched_card_gets_no_7d_row_but_an_old_one_is_stamped(db_session):
+    fresh = add_card(db_session)
+    known = add_card(db_session, card_id="sv3pt5-25", name="Pikachu", number="25/165", variant="Normal",
+                     dex_price=50.0)
+    pricing.record_price(known, P.SOURCE_7D, price_nok=80.0, fetched_at=TODAY - dt.timedelta(days=8))
+    db_session.commit()
+    client, _, _ = make_client(sequence(page(), page()))
+
+    P.refresh_poketrace_prices(db_session, client, today=TODAY, min_sales_n=5)
+
+    assert pricing.get_row(fresh, P.SOURCE_7D) is None
+    row = pricing.get_row(known, P.SOURCE_7D)
+    assert row.price_nok == 80.0 and row.lookup_failed_at == TODAY
+
+
+def test_rows_by_card_is_one_query_per_500_cards(db_session):
+    from sqlalchemy import event
+
+    a = add_card(db_session)
+    b = add_card(db_session, card_id="sv3pt5-25", name="Pikachu", number="25/165", variant="Normal")
+    pricing.record_price(a, P.SOURCE, price_nok=300.0, fetched_at=TODAY)
+    pricing.record_price(a, P.SOURCE_7D, price_nok=250.0, fetched_at=TODAY)
+    pricing.record_price(b, P.SOURCE_7D, price_nok=40.0, fetched_at=TODAY)
+    db_session.commit()
+    a_id, b_id = a.id, b.id
+    statements = []
+    listener = lambda conn, cursor, statement, *args: statements.append(statement)  # noqa: E731
+    event.listen(db_session.get_bind(), "before_cursor_execute", listener)
+    try:
+        rows = P.rows_by_card(db_session, [a_id, b_id, 999])
+        assert len(statements) == 1
+        assert {cid: {s: r.price_nok for s, r in by.items()} for cid, by in rows.items()} == {
+            a_id: {P.SOURCE: 300.0, P.SOURCE_7D: 250.0},
+            b_id: {P.SOURCE_7D: 40.0},
+        }
+        statements.clear()
+        P.rows_by_card(db_session, range(1, 1201))  # "Show all" on a 1,200-card inventory
+        assert len(statements) == 3
+        statements.clear()
+        assert P.rows_by_card(db_session, []) == {} and statements == []
+    finally:
+        event.remove(db_session.get_bind(), "before_cursor_execute", listener)
+
+
+@pytest.mark.parametrize(
+    "price, n, flags",
+    [(300.0, 551, None), (300.0, 4, None), (300.0, 551, "low_confidence"), (300.0, 2, "few_sales,low_confidence"),
+     (None, 551, None), (300.0, None, None), (300.0, 551, "few_sales")],
+)
+def test_the_sql_gate_matches_shows_value(db_session, price, n, flags):
+    card = add_card(db_session)
+    row = pricing.record_price(card, P.SOURCE, price_nok=price or 1.0, fetched_at=TODAY, sample_size=n)
+    row.price_nok, row.flags = price, flags
+    db_session.commit()
+    [(shown,)] = db_session.query(P.shown_price_expr()).filter(CardPrice.id == row.id).all()
+    assert (shown is not None) == P.shows_value(row)
+    assert shown == (price if P.shows_value(row) else None)
 
 
 def test_flags_and_sample_size_are_stored(db_session):

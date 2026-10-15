@@ -246,6 +246,27 @@ yet.
 
 ### tcg_inventory
 
+**eBay sold and eBay 7-day average columns on Inventory (#416)**
+- Two reference-only Inventory columns right of "Market price": "eBay sold"
+  (the `poketrace_ebay` 30-day NM median) and "eBay 7d avg". Each shows the
+  NOK price with a muted `n=551 · 30d` / `7d`, a muted "Few sales" when the
+  card page's gate fails (`poketrace_prices.shows_value`, live
+  `POKETRACE_MIN_SALES`), and "—" with no row or no price. Both can be hidden
+  in the column chooser, and both sort with "—" and "Few sales" rows last in
+  either direction.
+- New reference source `poketrace_ebay_7d`: the NM tier's `avg7d`, written
+  by the same PokeTrace refresh from the same response (no extra request),
+  `window_days` 7. It's in `REFERENCE_SOURCES`, so `resolve()` never picks
+  it. The user asked for "the average of the last 5 sold"; individual sales
+  need PokeTrace's paid Scale plan, so `avg7d` is the closest free figure.
+  Existing cards get it on their next weekly refresh. No schema change.
+- Card page: the 7-day average is a second "Reference" row under the
+  median.
+- The page's eBay rows load in one query (`poketrace_prices.rows_by_card`,
+  both sources), not one per row.
+- Market price, totals, the dashboard, snapshots and ad text are unchanged.
+- Docs: README "Pages" (Inventory) and "Pricing".
+
 **eBay sold prices via PokeTrace, reference only (#414)**
 - New `poketrace_prices.py`: eBay's sold Near Mint 30-day median from
   PokeTrace's free tier, stored as `card_prices` source `poketrace_ebay` (USD
