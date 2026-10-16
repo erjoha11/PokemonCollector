@@ -1137,14 +1137,14 @@ without updating both the code and this doc.
 
    **Display order (#389).** Every place that lists a card's collections
    (Inventory's Collections column, the card page, the collection page's
-   "also in" badge, the dashboard's shared-collection badge) goes through
+   and the dashboard's shared-collection badges) goes through
    one helper, `Card.collections_by_priority`: primary first, then by rank,
    then by name. The two badges (`shared_badge` in `partials/macros.html`)
    name the card's other collections as links, never the one being viewed:
    the first two visible, the rest as "+N", the full list in the tooltip
-   ("Also in: ..."). The collection page prefixes the names with "also in";
-   the dashboard shows only the names (#419), with a visually hidden
-   "Also in:" for screen readers. On Inventory and the card page
+   ("Also in: ..."). Both show only the names, no visible "also in" /
+   "shared with" prefix (#419), with a visually hidden "Also in:" for
+   screen readers. On Inventory and the card page
    the order is the only emphasis (the primary isn't bold since #393), and
    an in-transit card's **Incoming** badge (rule 1) leads, ahead of the
    primary; Incoming stays a status, not a collection link. **Since Phase 1
