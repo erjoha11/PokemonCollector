@@ -24,13 +24,13 @@
 {% macro fav_sort(label, field) %}{{ sort_th(label, field, 'fsort', 'fdir', fsort, fdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {% macro top10_sort(label, field) %}{{ sort_th(label, field, 'psort', 'pdir', psort, pdir, hx_target='#dashboard-pokemon-cards', hx_select='#dashboard-pokemon-cards', hx_swap='outerHTML') }}{% endmacro %}
 {# `in_collection`: the collection row this card is listed under, if any --
-   a card also tagged with other collections gets a "shared with" badge
-   naming them (macros.shared_badge), since it's counted in each of those
+   a card also tagged with other collections gets a badge naming them
+   (macros.shared_badge, names only since #419), since it's counted in each of those
    rows too. #}
 {% macro card_leaf_row(card, css_class, group_id, show_total_value=true, show_set_series=false, in_collection=none) %}
 <tr class="{{ css_class }}{{ ' card-row-unowned' if card.qty == 0 else '' }}" data-group="{{ group_id }}" hidden>
   <td>{{ card_link(card) }}{% if card.number %} <span class="muted">#{{ card.number }}</span>{% endif %}{% if card.qty == 0 %}<span class="tx-platform-badge unowned-badge" title="No longer owned (qty 0)">0 owned</span>{% endif %}
-  {%- if in_collection %} {{ shared_badge(card, in_collection, 'shared with') }}{% endif %}</td>
+  {%- if in_collection %} {{ shared_badge(card, in_collection) }}{% endif %}</td>
   {% if show_set_series %}
   <td>{% if card.set %}{{ filter_link('set', card.set) }}{% else %}-{% endif %}</td>
   <td>{% if card.series %}{{ filter_link('series', card.series) }}{% else %}-{% endif %}</td>
@@ -162,15 +162,15 @@
         {% endfor %}
         {% endfor %}
         {# Incoming (issue #393): every in-transit card (the Dex Incoming
-           status, #382 -- never a collection), each with a "shared with"
-           badge naming its real collections. Same every-row rule as the
+           status, #382 -- never a collection), each with a badge
+           naming its real collections. Same every-row rule as the
            collection rows: these cards are also counted in their own
            collection rows (or Bulk), so this row isn't part of any sum.
            Only shown when something is incoming. #}
         {% set incoming = collection_breakdown.incoming %}
         {% if incoming.cards %}
         <tr>
-          <td>{{ toggle_button(incoming.name, 'coll-incoming') }} {{ info('Tagged Incoming in Dex: paid for, not received yet. These cards are also counted in their own collection rows (or Bulk), shown as \'shared with\' when expanded.') }}</td>
+          <td>{{ toggle_button(incoming.name, 'coll-incoming') }} {{ info('Tagged Incoming in Dex: paid for, not received yet. These cards are also counted in their own collection rows (or Bulk), shown next to each card when expanded.') }}</td>
           <td class="num">{{ incoming.unique_count }}</td>
           <td class="num">{{ incoming.duplicates }}</td>
           <td class="num"><a href="/inventory?transit=1">{{ incoming.qty }}</a></td>

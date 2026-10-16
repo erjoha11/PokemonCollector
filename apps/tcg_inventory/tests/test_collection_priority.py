@@ -149,10 +149,11 @@ def test_collection_page_also_in_title_is_priority_ordered(client):
     assert f'title="Also in: {ILLUSTRATOR}, {VINTAGE}, {GENERIC}"' in html
 
 
-# ── "Also in" / "shared with" badges name the other collections ──────────
+# ── "Also in" / dashboard shared badges name the other collections ───────
 # (PR #390 follow-up): the first SHARED_CAP other collections as visible
 # links in priority order, the rest as "+N", the full list in the title,
-# never the collection whose page/row it is.
+# never the collection whose page/row it is. The dashboard's badge has no
+# visible label, only the names (#419), with a visually hidden "Also in:".
 
 SHARED_CAP = 2
 ALL_FOUR = [ILLUSTRATOR, VINTAGE, GENERIC, UNKNOWN]  # Charizard's, in priority order
@@ -164,11 +165,13 @@ def _collection_ids():
 
 
 def _expected_badge(label, others, ids):
+    """`label=None` is the dashboard's names-only badge (#419)."""
     visible = ", ".join(f'<a href="/collections/{ids[n]}">{n}</a>' for n in others[:SHARED_CAP])
     more = f' <span class="shared-more">+{len(others) - SHARED_CAP}</span>' if len(others) > SHARED_CAP else ""
+    prefix = f"{label} " if label else '<span class="visually-hidden">Also in: </span>'
     return (
         f'<span class="tx-platform-badge shared-badge" title="Also in: {", ".join(others)}">'
-        f"{label} {visible}{more}</span>"
+        f"{prefix}{visible}{more}</span>"
     )
 
 
@@ -197,14 +200,14 @@ def test_collection_page_also_in_badge_names_others_with_overflow(client):
         assert f'href="/collections/{ids[here]}"' not in shown
 
 
-def test_dashboard_shared_with_badge_names_others_with_overflow(client):
+def test_dashboard_shared_badge_names_others_with_overflow(client):
     _seed(client)
     ids = _collection_ids()
     html = client.get("/").text
     for here in ALL_FOUR:
         others = [n for n in ALL_FOUR if n != here]
         row = _dashboard_leaf_row(html, here, "Charizard")
-        assert _expected_badge("shared with", others, ids) in row, here
+        assert _expected_badge(None, others, ids) in row, here
         assert f'href="/collections/{ids[here]}"' not in row
         # Visible names in priority order, "+1" for the third.
         assert _order(row, others[:SHARED_CAP])
@@ -228,6 +231,25 @@ def test_shared_badges_without_overflow_and_single_collection(client):
     assert _expected_badge("also in", [ILLUSTRATOR, VINTAGE], ids) in coll
     assert "shared-more" not in coll
     dash = client.get("/").text
-    assert _expected_badge("shared with", [ILLUSTRATOR, GENERIC], ids) in _dashboard_leaf_row(dash, VINTAGE, "Squirtle")
+    assert _expected_badge(None, [ILLUSTRATOR, GENERIC], ids) in _dashboard_leaf_row(dash, VINTAGE, "Squirtle")
     # Mew is only in GENERIC: no badge on its row.
     assert "shared-badge" not in _dashboard_leaf_row(dash, GENERIC, "Mew")
+
+
+def test_dashboard_shared_badge_shows_names_only_with_accessible_label(client):
+    """#419: the dashboard badge drops the visible "shared with" prefix; the
+    names stay links, and "Also in:" survives as the title and as visually
+    hidden text for screen readers. The collection page keeps "also in"."""
+    _seed(client)
+    ids = _collection_ids()
+    html = client.get("/").text
+    assert "shared with" not in html
+    row = _dashboard_leaf_row(html, VINTAGE, "Charizard")
+    badge = re.search(r'<span class="tx-platform-badge shared-badge"[^>]*>.*</span>', row, re.S).group(0)
+    assert f'title="Also in: {ILLUSTRATOR}, {GENERIC}, {UNKNOWN}"' in badge
+    assert '<span class="visually-hidden">Also in: </span>' in badge
+    visible = re.sub(r'<span class="visually-hidden">[^<]*</span>', "", badge)
+    visible = re.sub(r"<[^>]+>", "", visible)
+    assert visible == f"{ILLUSTRATOR}, {GENERIC} +1"
+    coll = client.get(f"/collections/{ids[VINTAGE]}").text
+    assert ">also in <a " in coll
