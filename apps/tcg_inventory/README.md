@@ -25,7 +25,8 @@ run).
   (`queries.collection_membership_breakdown`: one row per collection with
   every card carrying its tag, Bulk, a deduplicated Collections row and a
   deduplicated Total row — collection rows can sum to more than Total, a
-  multi-tagged card is marked "shared with N" in drilldown; an Incoming
+  multi-tagged card gets a badge naming its other collections in drilldown
+  (just the names, e.g. "Vintage, Generic +2", #419); an Incoming
   row lists every in-transit card, #382/#393, see business rule 1), by series
   (with completion, see below), most valuable cards (scrollable list), by
   rarity.
@@ -1091,7 +1092,7 @@ without updating both the code and this doc.
    incoming · X kr", and an **Incoming** row in the Dashboard's Inventory
    breakdown (#393, `collection_membership_breakdown`'s `incoming`): every
    in-transit card, driven by the status, never a collection, each with a
-   "shared with" badge naming its real collections. Same every-row rule as
+   badge naming its real collections (names only, #419). Same every-row rule as
    the collection rows: an in-transit card counts (whole card) in Incoming
    *and* in each of its collection rows, or Bulk if it has none; it's
    counted once in Collections/Total, and Incoming isn't part of either.
@@ -1113,7 +1114,7 @@ without updating both the code and this doc.
    no longer written by any sync and is dead data; removing it is a
    separate, confirmed prod change (see #382). Until then it's kept but
    hidden (`Collection.is_status`, #393): no Dashboard row, never named in
-   Inventory's Collections column or a "shared with"/"also in" badge, and a
+   Inventory's Collections column or a shared-collection badge, and a
    card tagged only with it counts as Bulk on the Dashboard.
 2. **`duplicates = max(qty - 1, 0)`**, always derived, never stored. This
    is the ownership figure; sale-facing spares use in-hand copies (rule 1).
@@ -1136,11 +1137,14 @@ without updating both the code and this doc.
 
    **Display order (#389).** Every place that lists a card's collections
    (Inventory's Collections column, the card page, the collection page's
-   "also in" badge, the dashboard's "shared with" badge) goes through
+   and the dashboard's shared-collection badges) goes through
    one helper, `Card.collections_by_priority`: primary first, then by rank,
    then by name. The two badges (`shared_badge` in `partials/macros.html`)
    name the card's other collections as links, never the one being viewed:
-   the first two visible, the rest as "+N", the full list in the tooltip. On Inventory and the card page
+   the first two visible, the rest as "+N", the full list in the tooltip
+   ("Also in: ..."). Both show only the names, no visible "also in" /
+   "shared with" prefix (#419), with a visually hidden "Also in:" for
+   screen readers. On Inventory and the card page
    the order is the only emphasis (the primary isn't bold since #393), and
    an in-transit card's **Incoming** badge (rule 1) leads, ahead of the
    primary; Incoming stays a status, not a collection link. **Since Phase 1

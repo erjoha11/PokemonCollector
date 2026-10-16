@@ -246,6 +246,17 @@ yet.
 
 ### tcg_inventory
 
+**Shared-collection badges show only the names (#419)**
+- Both badges on a card that's in more than one collection drop their
+  prefix and show just the linked names, e.g. "Vintage, Generic +2": the
+  dashboard's (collection drilldown and the Incoming row) loses "shared
+  with", the collection page's loses "also in". Links, order and the "+N"
+  overflow are unchanged.
+- The full list stays in the tooltip ("Also in: ..."), and a visually
+  hidden "Also in:" keeps it clear to screen readers.
+- `shared_badge` (`partials/macros.html`) no longer takes a `label`.
+- Docs: README "Pages" (Dashboard) and business rules 1 and 3.
+
 **eBay sold and eBay 7-day average columns on Inventory (#416)**
 - Two reference-only Inventory columns right of "Market price": "eBay sold"
   (the `poketrace_ebay` 30-day NM median) and "eBay 7d avg". Each shows the

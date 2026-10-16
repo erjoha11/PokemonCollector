@@ -695,9 +695,10 @@ details.collapsible[open] summary { margin-bottom: 0.9rem; }
 .card-row-unowned {
   opacity: 0.55;
 }
-/* "shared with A, B +N" / "also in ..." on a card listed under a collection
-   it shares with others (macros.shared_badge): the names are links, the full
-   list is the title. Allowed to wrap so long collection names don't widen
+/* "A, B +N" (collection page and dashboard, names only since #419) on a
+   card listed under a collection it shares with others
+   (macros.shared_badge): the names are links, the full list is the title,
+   and the pill background keeps the bare names reading as a tag. Allowed to wrap so long collection names don't widen
    the dashboard table or the gallery card. */
 .shared-badge {
   margin-left: 0.35rem;

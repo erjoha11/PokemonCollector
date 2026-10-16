@@ -69,7 +69,7 @@ class Collection(Base):
         "Incoming"): the importer never creates one since #382, so this is
         only ever a leftover from before it (prod's id 10). Kept in the
         database, but never shown as a collection next to the in-transit
-        badge or in "shared with"/"also in" badges (issue #393)."""
+        badge or in the shared-collection badges (issue #393)."""
         return constants.is_status_category(self.name)
 
 

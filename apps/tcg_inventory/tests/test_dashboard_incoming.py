@@ -1,8 +1,9 @@
 """Dashboard Inventory breakdown: in-transit cards listed under an
-"Incoming" row with a "shared with <their collections>" badge (issue #393),
+"Incoming" row with a badge naming their collections (issue #393; names
+only since #419),
 driven by the in-transit status (#382), never by a collection. Prod's dead
 pre-#382 "Incoming" collection (id 10) is kept in the database but never
-produces a row or a "shared with Incoming" badge."""
+produces a row or an "Incoming" shared-collection badge."""
 from __future__ import annotations
 
 import re
@@ -118,10 +119,12 @@ def test_dashboard_lists_in_transit_cards_under_incoming(client):
     incoming = _leaf_rows(html, "coll-incoming")
     assert len(incoming) == 2
     chari = _row_for(incoming, "Charizard")
-    # "shared with" names its real collections, in priority order.
-    badge = re.search(r'<span class="tx-platform-badge shared-badge" title="Also in: ([^"]*)">(.*?)</span>', chari, re.S)
+    # The badge names its real collections, in priority order, with no
+    # visible "shared with" prefix (#419).
+    badge = re.search(r'<span class="tx-platform-badge shared-badge" title="Also in: ([^"]*)">', chari)
     assert badge.group(1) == f"{VINTAGE}, {GENERIC}"
-    assert f'shared with <a href="/collections/{ids[VINTAGE]}">{VINTAGE}</a>, <a href="/collections/{ids[GENERIC]}">{GENERIC}</a>' in chari
+    assert "shared with" not in chari
+    assert f'<span class="visually-hidden">Also in: </span><a href="/collections/{ids[VINTAGE]}">{VINTAGE}</a>, <a href="/collections/{ids[GENERIC]}">{GENERIC}</a>' in chari
     # A Bulk card in transit has no collection to share with.
     assert "shared-badge" not in _row_for(incoming, "Pikachu")
     assert ">Bulbasaur</a>" not in "".join(incoming)
